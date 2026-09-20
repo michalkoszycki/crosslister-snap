@@ -2,21 +2,28 @@
 // live in graph.js; sign-in lives in auth.js. This file only wires them to
 // buttons and paints the result.
 
-import { config } from "./config.js";
+import { config } from "./config.js?v=1.1.0";
+import { VERSION } from "./version.js?v=1.1.0";
 import {
     addRecent,
     buildFileName,
+    cameraErrorMessage,
     cleanItemName,
     initialState,
+    makeDebouncer,
     MAX_ATTEMPTS,
     nextNumber,
+    noteNeedsSave,
+    NOTE_DEBOUNCE_MS,
+    noteStatusText,
     photoExtension,
     progressLine,
     reduce,
     retryDelayMs,
     shouldRetry,
-} from "./core.js";
-import { uploadPhoto } from "./graph.js";
+} from "./core.js?v=1.1.0";
+import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.1.0";
+import { cameraSupported, createCamera } from "./camera.js?v=1.1.0";
 import {
     clientIdMissing,
     currentAccount,
@@ -24,10 +31,11 @@ import {
     initAuth,
     signIn,
     signOut,
-} from "./auth.js";
+} from "./auth.js?v=1.1.0";
 
 const COUNTER_KEY = "snap.counters";
 const RECENTS_KEY = "snap.recents";
+const NOTES_KEY = "snap.notes";
 
 /** @type {import("./core.js").SnapState} */
 let state = initialState("");
@@ -35,10 +43,21 @@ let state = initialState("");
 /** id -> { file: File, url: string } -- the bytes never leave memory until done. */
 const blobs = new Map();
 
+/** id -> AbortController, so the x on a thumbnail can cancel a live upload. */
+const controllers = new Map();
+
 let queueRunning = false;
 const queue = [];
 
 const el = {};
+
+/** The in-page camera. Nothing touches the device until "Open camera". */
+const camera = createCamera();
+let cameraWanted = false; // he opened it; restart it when the page comes back
+
+const noteSaver = makeDebouncer(NOTE_DEBOUNCE_MS);
+/** The folder the note in the box belongs to, so a rename cannot misfile it. */
+let noteItemName = "";
 
 function $(id) {
     return document.getElementById(id);
@@ -76,6 +95,21 @@ function rememberItem(itemName) {
     renderRecents();
 }
 
+/** Notes live in sessionStorage per item, so reopening one today brings it back. */
+function rememberNote(itemName, text) {
+    if (!itemName) return;
+    const notes = readJson(sessionStorage, NOTES_KEY, {});
+    if (text) notes[itemName] = text;
+    else delete notes[itemName];
+    writeJson(sessionStorage, NOTES_KEY, notes);
+}
+
+function recallNote(itemName) {
+    const notes = readJson(sessionStorage, NOTES_KEY, {});
+    const v = itemName ? notes[itemName] : "";
+    return typeof v === "string" ? v : "";
+}
+
 // --- rendering -------------------------------------------------------------
 
 function setState(next) {
@@ -103,6 +137,9 @@ function render() {
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
+    el.cameraOpen.disabled = !ready;
+    el.shutter.disabled = !ready;
+    el.noteStatus.textContent = noteStatusText(state.note, state.online);
 
     el.progress.textContent = progressLine(state);
     renderStrip();
@@ -127,15 +164,17 @@ function renderStrip() {
 
         const badge = document.createElement("span");
         badge.className = "badge";
-        badge.textContent =
-            p.status === "done"
-                ? "done"
-                : p.status === "failed"
-                  ? "failed"
-                  : p.status === "uploading"
-                    ? `${Math.round(p.progress * 100)}%`
-                    : "waiting";
+        badge.textContent = badgeText(p);
         card.append(badge);
+
+        // the x: no confirmation, straight to OneDrive. 44 px touch target.
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "kill";
+        x.textContent = "×";
+        x.setAttribute("aria-label", `Delete ${p.name}`);
+        x.addEventListener("click", () => removePhoto(p.id));
+        card.append(x);
 
         const label = document.createElement("span");
         label.className = "shot-name";
@@ -152,9 +191,26 @@ function renderStrip() {
                 enqueue(p.id, true);
             });
             card.append(retry);
-            if (p.error) card.title = p.error;
         }
+        if (p.error) card.title = p.error;
         el.strip.append(card);
+    }
+}
+
+function badgeText(p) {
+    switch (p.status) {
+        case "done":
+            return "done";
+        case "failed":
+            return "failed";
+        case "uploading":
+            return `${Math.round(p.progress * 100)}%`;
+        case "deleting":
+            return "deleting";
+        case "delete-failed":
+            return "delete failed";
+        default:
+            return "waiting";
     }
 }
 
@@ -189,9 +245,26 @@ function onItemNameChanged() {
     const cleaned = cleanItemName(el.itemInput.value);
     if (cleaned !== state.itemName) {
         setState(reduce(state, { type: "setItem", itemName: cleaned }));
+        adoptNoteFor(cleaned);
     } else {
         render();
     }
+}
+
+/**
+ * Keep the note box pointing at the right folder.
+ * - reopening an item this session already has a note for: bring the text back;
+ * - still typing the name with a note already written: the text follows along,
+ *   unsaved, so it lands in the folder he ends up with.
+ */
+function adoptNoteFor(itemName) {
+    noteItemName = itemName;
+    if (!itemName) return;
+    const stored = recallNote(itemName);
+    const text = stored || state.note.text;
+    if (el.note.value !== text) el.note.value = text;
+    setState(reduce(state, { type: "noteReset", text }));
+    if (text) rememberNote(itemName, text);
 }
 
 function acceptFiles(fileList) {
@@ -218,6 +291,191 @@ function enqueue(id, front = false) {
     if (front) queue.unshift(id);
     else queue.push(id);
     runQueue();
+}
+
+// --- deleting a photo ------------------------------------------------------
+
+/**
+ * The x on a thumbnail. No "are you sure": the card goes at once and the
+ * DELETE follows. If Graph says no, the card comes back marked so, with the x
+ * still there to try again. OneDrive keeps the file in its recycle bin either
+ * way, so nothing here is truly final.
+ */
+async function removePhoto(id) {
+    const photo = photoById(id);
+    if (!photo || photo.status === "deleting") return;
+
+    // never let it upload (again) once he has struck it out
+    const at = queue.indexOf(id);
+    if (at >= 0) queue.splice(at, 1);
+
+    const controller = controllers.get(id);
+    if (controller) {
+        // mid-upload: abort the PUT. A half-written upload session expires on
+        // its own and leaves no file, so there is nothing to delete.
+        controller.abort();
+        controllers.delete(id);
+    }
+
+    if (!photo.driveItemId) {
+        // queued, failed, or just cancelled: nothing of it reached OneDrive.
+        // The one odd case is an upload that finished without handing back an
+        // id; say so rather than pretend the file is gone.
+        if (photo.status === "done") {
+            say(
+                `${photo.name} is off this page, but OneDrive gave no id for it - delete it there if it matters.`,
+                "warn"
+            );
+        }
+        forgetPhoto(id);
+        return;
+    }
+
+    setState(reduce(state, { type: "deleting", id }));
+    try {
+        const token = await getAccessToken();
+        await deleteDriveItem({
+            accessToken: token,
+            itemId: photo.driveItemId,
+            graphRoot: config.graphRoot,
+        });
+        forgetPhoto(id);
+    } catch (e) {
+        const status = typeof e?.status === "number" ? e.status : 0;
+        setState(reduce(state, { type: "deleteFailed", id, error: describe(e, status) }));
+        say(`${photo.name}: could not delete - ${describe(e, status)}`, "warn");
+    }
+}
+
+/** Drop a photo from the strip and free its preview. */
+function forgetPhoto(id) {
+    const held = blobs.get(id);
+    if (held) {
+        URL.revokeObjectURL(held.url);
+        blobs.delete(id);
+    }
+    controllers.delete(id);
+    setState(reduce(state, { type: "remove", id }));
+}
+
+// --- the note --------------------------------------------------------------
+
+function onNoteInput() {
+    const text = el.note.value;
+    setState(reduce(state, { type: "noteText", text }));
+    rememberNote(noteItemName || state.itemName, text);
+    noteSaver.schedule(() => {
+        saveNote().catch(() => {});
+    });
+}
+
+/**
+ * Send the note, if there is anything to send. Empty text deletes the note.txt
+ * this session uploaded; empty text with nothing uploaded does nothing at all.
+ */
+async function saveNote() {
+    const item = state.itemName;
+    if (!noteNeedsSave(state)) return;
+    const text = state.note.text;
+    const isEmpty = text.trim() === "";
+
+    setState(reduce(state, { type: "noteSaving" }));
+    try {
+        const token = await getAccessToken();
+        if (isEmpty) {
+            if (state.note.driveItemId) {
+                await deleteDriveItem({
+                    accessToken: token,
+                    itemId: state.note.driveItemId,
+                    graphRoot: config.graphRoot,
+                });
+            }
+            if (state.itemName !== item) return; // he moved on mid-flight
+            setState(reduce(state, { type: "noteSaved", text: "", uploaded: false }));
+            return;
+        }
+        const driveItem = await uploadTextFile({
+            accessToken: token,
+            basePath: config.basePath,
+            itemName: item,
+            fileName: config.noteFileName,
+            text,
+            graphRoot: config.graphRoot,
+        });
+        if (state.itemName !== item) return;
+        rememberItem(item);
+        setState(
+            reduce(state, {
+                type: "noteSaved",
+                text,
+                uploaded: true,
+                driveItemId: driveItem && driveItem.id ? driveItem.id : undefined,
+            })
+        );
+    } catch (e) {
+        const status = typeof e?.status === "number" ? e.status : 0;
+        setState(reduce(state, { type: "noteFailed", error: describe(e, status) }));
+    }
+}
+
+/** Run a waiting note save now, e.g. on "Next item" or when the page hides. */
+function flushNote() {
+    noteSaver.cancel();
+    return saveNote().catch(() => {});
+}
+
+// --- the camera ------------------------------------------------------------
+
+async function openCamera() {
+    if (!state.itemName) {
+        say("Type an item name first.", "warn");
+        return;
+    }
+    el.cameraError.hidden = true;
+    try {
+        await camera.start(el.preview);
+        cameraWanted = true;
+        el.cameraLive.hidden = false;
+        el.cameraOpen.hidden = true;
+    } catch (e) {
+        cameraWanted = false;
+        el.cameraError.textContent = cameraErrorMessage(e);
+        el.cameraError.hidden = false;
+        el.cameraLive.hidden = true;
+        el.cameraOpen.hidden = false;
+        el.fallbacks.open = true;
+    }
+}
+
+/** Stop the camera but remember whether he had it open. */
+function suspendCamera() {
+    camera.stop();
+    el.cameraLive.hidden = true;
+    el.cameraOpen.hidden = false;
+}
+
+function closeCamera() {
+    cameraWanted = false;
+    suspendCamera();
+}
+
+async function takeShot() {
+    if (!camera.isActive()) return;
+    flash();
+    try {
+        const blob = await camera.capture();
+        acceptFiles([blob]);
+    } catch (e) {
+        say(`Could not take the photo: ${e.message}`, "warn");
+    }
+}
+
+/** A blink over the preview, so a tap is visibly a shot. */
+function flash() {
+    el.flash.classList.remove("flash-on");
+    // reading offsetWidth restarts the CSS animation
+    void el.flash.offsetWidth;
+    el.flash.classList.add("flash-on");
 }
 
 // --- the upload queue ------------------------------------------------------
@@ -262,18 +520,21 @@ async function uploadOne(id) {
         if (wait > 0) await sleep(wait);
 
         setState(reduce(state, { type: "start", id }));
+        const controller = new AbortController();
+        controllers.set(id, controller);
         try {
             // eslint-disable-next-line no-await-in-loop
             const token = await getAccessToken();
             // eslint-disable-next-line no-await-in-loop
             let shown = 0;
-            await uploadPhoto({
+            const driveItem = await uploadPhoto({
                 accessToken: token,
                 basePath: config.basePath,
                 itemName: held.itemName,
                 fileName: photo.name,
                 file: held.file,
                 graphRoot: config.graphRoot,
+                signal: controller.signal,
                 onProgress: (fraction) => {
                     // repaint at most every 5% -- the strip is rebuilt on each render
                     if (fraction - shown < 0.05 && fraction < 1) return;
@@ -281,11 +542,24 @@ async function uploadOne(id) {
                     setState(reduce(state, { type: "progress", id, progress: fraction }));
                 },
             });
-            setState(reduce(state, { type: "done", id }));
+            controllers.delete(id);
+            // the last range's answer is the created driveItem; its id is what
+            // a delete needs later.
+            setState(
+                reduce(state, {
+                    type: "done",
+                    id,
+                    driveItemId: driveItem && driveItem.id ? driveItem.id : undefined,
+                })
+            );
             setState(reduce(state, { type: "online", online: true }));
             say("");
             return;
         } catch (e) {
+            controllers.delete(id);
+            // he pressed the x while this was in flight: the photo is already
+            // gone from the list, and an abandoned upload session leaves no file.
+            if (e && e.cancelled) return;
             const status = typeof e?.status === "number" ? e.status : 0;
             if (status === 0) setState(reduce(state, { type: "online", online: navigator.onLine }));
             if (!shouldRetry(attempt, status)) {
@@ -311,12 +585,17 @@ function sleep(ms) {
 
 // --- wiring ----------------------------------------------------------------
 
-function nextItem() {
+async function nextItem() {
+    await flushNote(); // the note he just typed belongs to the item he is leaving
     for (const held of blobs.values()) URL.revokeObjectURL(held.url);
     blobs.clear();
+    controllers.clear();
     queue.length = 0;
+    closeCamera();
     el.itemInput.value = "";
-    setState(reduce(state, { type: "reset", itemName: "" }));
+    el.note.value = "";
+    noteItemName = "";
+    setState(reduce(state, { type: "reset", itemName: "", note: "" }));
     el.itemInput.focus();
 }
 
@@ -324,6 +603,7 @@ function retryAllFailed() {
     for (const p of state.photos) {
         if (p.status === "failed") enqueue(p.id);
     }
+    if (state.note.status === "failed") saveNote().catch(() => {});
 }
 
 async function main() {
@@ -347,13 +627,48 @@ async function main() {
         nextBtn: $("next-item"),
         offline: $("offline"),
         message: $("message"),
+        note: $("note"),
+        noteStatus: $("note-status"),
+        cameraOpen: $("camera-open"),
+        cameraLive: $("camera-live"),
+        cameraClose: $("camera-close"),
+        cameraError: $("camera-error"),
+        preview: $("camera-preview"),
+        shutter: $("shutter"),
+        flash: $("camera-flash"),
+        fallbacks: $("fallbacks"),
+        version: $("version"),
+        reloadLatest: $("reload-latest"),
     });
 
+    el.version.textContent = VERSION;
     state = reduce(initialState(""), { type: "online", online: navigator.onLine });
     renderRecents();
     render();
 
     el.itemInput.addEventListener("input", onItemNameChanged);
+    el.note.addEventListener("input", onNoteInput);
+    el.note.addEventListener("blur", () => flushNote());
+    el.cameraOpen.addEventListener("click", () => {
+        openCamera().catch(() => {});
+    });
+    el.cameraClose.addEventListener("click", closeCamera);
+    el.shutter.addEventListener("click", () => {
+        takeShot().catch(() => {});
+    });
+    el.reloadLatest.addEventListener("click", (e) => {
+        e.preventDefault();
+        // a URL the ten-minute GitHub Pages cache has never seen
+        window.location.href = `${window.location.pathname}?v=${Date.now()}`;
+    });
+
+    if (!cameraSupported()) {
+        el.cameraOpen.hidden = true;
+        el.cameraError.textContent =
+            "This browser cannot open a camera here (it needs https or localhost). Use the phone's camera app below.";
+        el.cameraError.hidden = false;
+        el.fallbacks.open = true;
+    }
     el.snapInput.addEventListener("change", (e) => {
         acceptFiles(e.target.files);
         e.target.value = "";
@@ -362,11 +677,24 @@ async function main() {
         acceptFiles(e.target.files);
         e.target.value = "";
     });
-    el.nextBtn.addEventListener("click", nextItem);
+    el.nextBtn.addEventListener("click", () => {
+        nextItem().catch(() => {});
+    });
     el.signinBtn.addEventListener("click", () => signIn().catch((e) => say(String(e), "warn")));
     el.signoutLink.addEventListener("click", (e) => {
         e.preventDefault();
+        closeCamera();
         signOut().catch((err) => say(String(err), "warn"));
+    });
+
+    // Leaving the page: hand the camera back to Android and get the note out.
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            flushNote();
+            if (camera.isActive()) suspendCamera();
+        } else if (cameraWanted && !camera.isActive()) {
+            openCamera().catch(() => {});
+        }
     });
 
     window.addEventListener("online", () => {
@@ -378,7 +706,8 @@ async function main() {
         setState(reduce(state, { type: "online", online: false }));
     });
     window.addEventListener("beforeunload", (e) => {
-        const unfinished = state.photos.some((p) => p.status !== "done");
+        const unfinished =
+            state.photos.some((p) => p.status !== "done") || noteNeedsSave(state);
         if (unfinished) {
             e.preventDefault();
             e.returnValue = "";

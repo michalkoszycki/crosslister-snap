@@ -22,7 +22,7 @@ function referencedFiles(source) {
     const out = new Set();
     for (const m of source.matchAll(/(?:src|href)="([^"]+)"/g)) {
         const v = m[1];
-        if (!v.startsWith("http") && !v.startsWith("#")) out.add(v);
+        if (!v.startsWith("http") && !v.startsWith("#")) out.add(v.split("?")[0]);
     }
     return out;
 }
@@ -59,7 +59,72 @@ test("the Content-Security-Policy allows Graph and the login endpoints only", ()
     assert.match(csp, /connect-src[^;]*https:\/\/api\.onedrive\.com/);
     assert.match(csp, /connect-src[^;]*https:\/\/login\.microsoftonline\.com/);
     assert.match(csp, /script-src 'self'/);
+    // the camera preview and the blob: thumbnails, with default-src still 'none'
+    assert.match(csp, /media-src 'self' blob:/);
+    assert.match(csp, /img-src[^;]*blob:/);
+    assert.match(csp, /default-src 'none'/);
     assert.ok(!csp.includes("unsafe-inline"), "CSP must not allow inline script");
+    assert.ok(!csp.includes("*.microsoft.com"), "CSP must stay host-specific");
+});
+
+test("every ?v= in the repo is the one VERSION, so nothing loads half-stale", async () => {
+    const { VERSION } = await import("../version.js");
+    const files = [
+        "index.html",
+        "app.js",
+        "graph.js",
+        "core.js",
+        "camera.js",
+        "auth.js",
+        "config.js",
+        "version.js",
+    ];
+    let seen = 0;
+    for (const file of files) {
+        const src = readFileSync(join(root, file), "utf8");
+        for (const m of src.matchAll(/\?v=(\d+\.\d+\.\d+)/g)) {
+            seen += 1;
+            assert.equal(m[1], VERSION, `${file} carries ?v=${m[1]}, but VERSION is ${VERSION}`);
+        }
+    }
+    assert.ok(seen >= 6, `expected the cache-busting query on every module, saw ${seen}`);
+    // index.html must bust both the page's script and its stylesheet
+    assert.match(html, new RegExp(`src="app\\.js\\?v=${VERSION.replace(/\./g, "\\.")}"`));
+    assert.match(html, new RegExp(`href="styles\\.css\\?v=${VERSION.replace(/\./g, "\\.")}"`));
+});
+
+test("note.txt is a contract with the CLI and lives in config.js", () => {
+    const cfg = readFileSync(join(root, "config.js"), "utf8");
+    assert.match(cfg, /noteFileName:\s*"note\.txt"/);
+    const app = readFileSync(join(root, "app.js"), "utf8");
+    assert.ok(
+        !/"note\.txt"/.test(app),
+        "app.js must use config.noteFileName, not the literal name"
+    );
+});
+
+test("the new screen elements are all in index.html", () => {
+    const ids = idsIn(html);
+    for (const id of [
+        "note",
+        "note-status",
+        "camera-box",
+        "camera-open",
+        "camera-live",
+        "camera-preview",
+        "camera-flash",
+        "camera-close",
+        "camera-error",
+        "shutter",
+        "fallbacks",
+        "version",
+        "reload-latest",
+    ]) {
+        assert.ok(ids.has(id), `index.html is missing #${id}`);
+    }
+    // the old confirm-every-shot path stays, but only as a fallback
+    assert.match(html, /capture="environment"/);
+    assert.match(html, /<video id="camera-preview"/);
 });
 
 test("the manifest points at icons that exist", () => {
@@ -77,7 +142,16 @@ test("config.js holds a client id and nothing secret; no token is ever logged", 
     // one is committed. It must be the placeholder or a GUID, never anything else.
     assert.match(value, /^(PASTE-YOUR-APPLICATION-CLIENT-ID-HERE|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
     assert.ok(!/client_?secret|password/i.test(cfg), "config.js must never carry a secret");
-    for (const file of ["app.js", "auth.js", "graph.js", "core.js", "config.js", "bridge.js"]) {
+    for (const file of [
+        "app.js",
+        "auth.js",
+        "graph.js",
+        "core.js",
+        "camera.js",
+        "config.js",
+        "version.js",
+        "bridge.js",
+    ]) {
         const src = readFileSync(join(root, file), "utf8");
         assert.ok(
             !/console\.(log|debug|info)\s*\(/.test(src),
@@ -101,6 +175,11 @@ function fakeElement(id = "") {
         src: "",
         alt: "",
         type: "",
+        open: false,
+        srcObject: null,
+        videoWidth: 0,
+        videoHeight: 0,
+        offsetWidth: 0,
         children: [],
         classList: {
             add: (c) => classes.add(c),
@@ -140,6 +219,8 @@ function installDom(ids) {
             return nodes.get(id) ?? null;
         },
         createElement: () => fakeElement(),
+        addEventListener() {},
+        visibilityState: "visible",
         title: "",
     };
     globalThis.window = {
@@ -152,7 +233,9 @@ function installDom(ids) {
         addEventListener() {},
         history: { replaceState() {} },
     };
-    // navigator is a getter on globalThis in Node, so it needs redefining
+    // navigator is a getter on globalThis in Node, so it needs redefining.
+    // Deliberately WITHOUT mediaDevices: an old browser, or plain http, and the
+    // app must still come up and fall back to the file inputs.
     Object.defineProperty(globalThis, "navigator", {
         value: { onLine: true },
         configurable: true,
@@ -182,6 +265,13 @@ test("app.js loads against the real index.html ids without an error", async () =
     // and it must have painted the signed-out state
     assert.equal(nodes.get("work").hidden, true);
     assert.equal(nodes.get("signin-box").hidden, false);
+    // with no navigator.mediaDevices it says so instead of throwing
+    assert.equal(nodes.get("camera-open").hidden, true);
+    assert.equal(nodes.get("camera-error").hidden, false);
+    assert.match(nodes.get("camera-error").textContent, /camera/i);
+    // and the running version is on the page
+    const { VERSION } = await import("../version.js");
+    assert.equal(nodes.get("version").textContent, VERSION);
 });
 
 test("config.js derives the redirect URI from wherever the page is served", async () => {

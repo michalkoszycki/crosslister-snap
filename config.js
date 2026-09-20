@@ -28,6 +28,16 @@ export const config = {
      *  ever needs the files of the signed-in person. */
     scopes: ["Files.ReadWrite"],
 
+    /**
+     * The notes file, written next to the photos as
+     * Pictures/Uploads/<item>/note.txt (UTF-8, plain text).
+     *
+     * This name is a CONTRACT with the crosslister CLI on the PC, which reads
+     * it to pre-fill the listing description. Change it here and you must
+     * change it there too.
+     */
+    noteFileName: "note.txt",
+
     /** Graph API root. */
     graphRoot: "https://graph.microsoft.com/v1.0",
 };

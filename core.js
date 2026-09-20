@@ -102,13 +102,46 @@ export function uploadSessionUrl(
     fileName,
     graphRoot = "https://graph.microsoft.com/v1.0"
 ) {
+    return `${itemPathAddress(basePath, itemName, fileName, graphRoot)}:/createUploadSession`;
+}
+
+/**
+ * The Graph URL that PUTs the whole content of a small file, addressed by path.
+ * Used for note.txt; see graph.js for the doc link and the 250 MB limit.
+ * @param {string} basePath
+ * @param {string} itemName
+ * @param {string} fileName
+ * @param {string} [graphRoot]
+ * @returns {string}
+ */
+export function fileContentUrl(
+    basePath,
+    itemName,
+    fileName,
+    graphRoot = "https://graph.microsoft.com/v1.0"
+) {
+    return `${itemPathAddress(basePath, itemName, fileName, graphRoot)}:/content`;
+}
+
+/** ".../me/drive/root:/Pictures/Uploads/<item>/<file>" -- no trailing action. */
+function itemPathAddress(basePath, itemName, fileName, graphRoot) {
     const parts = String(basePath)
         .split("/")
         .map((p) => p.trim())
         .filter(Boolean)
         .concat([itemName, fileName])
         .map(encodePathSegment);
-    return `${graphRoot}/me/drive/root:/${parts.join("/")}:/createUploadSession`;
+    return `${graphRoot}/me/drive/root:/${parts.join("/")}`;
+}
+
+/**
+ * The Graph URL for one drive item by id (DELETE lands here).
+ * @param {string} itemId
+ * @param {string} [graphRoot]
+ * @returns {string}
+ */
+export function driveItemUrl(itemId, graphRoot = "https://graph.microsoft.com/v1.0") {
+    return `${graphRoot}/me/drive/items/${encodeURIComponent(itemId)}`;
 }
 
 /** 320 KiB -- Graph requires every non-final range to be a multiple of this. */
@@ -184,9 +217,24 @@ export function shouldRetry(attempt, status) {
  * @property {string} id
  * @property {string} name        file name in OneDrive
  * @property {number} n           1-based number within the item
- * @property {"queued"|"uploading"|"done"|"failed"} status
+ * @property {"queued"|"uploading"|"done"|"failed"|"deleting"|"delete-failed"} status
  * @property {number} progress    0..1
  * @property {number} attempts
+ * @property {string} [driveItemId]  the OneDrive id, known once the upload finished
+ * @property {string} [error]
+ */
+
+/**
+ * The note for the current item.
+ * - text       what is in the box right now
+ * - savedText  what OneDrive holds (empty string = nothing up there)
+ * - uploaded   true once a note.txt exists for this item in this session
+ * @typedef {Object} NoteState
+ * @property {string} text
+ * @property {string} savedText
+ * @property {"clean"|"dirty"|"saving"|"saved"|"failed"} status
+ * @property {boolean} uploaded
+ * @property {string} [driveItemId]
  * @property {string} [error]
  */
 
@@ -195,11 +243,24 @@ export function shouldRetry(attempt, status) {
  * @property {string} itemName    cleaned item name
  * @property {Photo[]} photos
  * @property {boolean} online
+ * @property {NoteState} note
  */
+
+/** @returns {NoteState} */
+export function initialNote(text = "") {
+    return {
+        text,
+        savedText: "",
+        status: text ? "dirty" : "clean",
+        uploaded: false,
+        driveItemId: undefined,
+        error: undefined,
+    };
+}
 
 /** @returns {SnapState} */
 export function initialState(itemName = "") {
-    return { itemName, photos: [], online: true };
+    return { itemName, photos: [], online: true, note: initialNote("") };
 }
 
 /**
@@ -209,10 +270,18 @@ export function initialState(itemName = "") {
  *   {type:"add", id, name, n}
  *   {type:"start", id}
  *   {type:"progress", id, progress}
- *   {type:"done", id}
+ *   {type:"done", id, driveItemId?}
  *   {type:"fail", id, error}
+ *   {type:"deleting", id}
+ *   {type:"deleteFailed", id, error}
+ *   {type:"remove", id}            drops the photo from the list for good
  *   {type:"online", online}
- *   {type:"reset", itemName?}
+ *   {type:"reset", itemName?, note?}
+ *   {type:"noteText", text}
+ *   {type:"noteReset", text}
+ *   {type:"noteSaving"}
+ *   {type:"noteSaved", text, uploaded, driveItemId?}
+ *   {type:"noteFailed", error}
  *
  * @param {SnapState} state
  * @param {{type:string}&Record<string,any>} action
@@ -255,6 +324,7 @@ export function reduce(state, action) {
                 ...p,
                 status: "done",
                 progress: 1,
+                driveItemId: action.driveItemId ?? p.driveItemId,
                 error: undefined,
             }));
         case "fail":
@@ -263,6 +333,22 @@ export function reduce(state, action) {
                 status: "failed",
                 error: action.error || "upload failed",
             }));
+        case "deleting":
+            return patch(state, action.id, (p) => ({
+                ...p,
+                status: "deleting",
+                error: undefined,
+            }));
+        case "deleteFailed":
+            return patch(state, action.id, (p) => ({
+                ...p,
+                status: "delete-failed",
+                error: action.error || "delete failed",
+            }));
+        case "remove": {
+            const photos = state.photos.filter((p) => p.id !== action.id);
+            return photos.length === state.photos.length ? state : { ...state, photos };
+        }
         case "online":
             return { ...state, online: !!action.online };
         case "reset":
@@ -270,9 +356,157 @@ export function reduce(state, action) {
                 ...state,
                 itemName: action.itemName ?? "",
                 photos: [],
+                note: initialNote(action.note ?? ""),
+            };
+
+        // --- the note ------------------------------------------------------
+        case "noteText": {
+            const text = typeof action.text === "string" ? action.text : "";
+            return {
+                ...state,
+                note: {
+                    ...state.note,
+                    text,
+                    status: text === state.note.savedText ? "clean" : "dirty",
+                    error: undefined,
+                },
+            };
+        }
+        case "noteReset":
+            // a different item folder: nothing of the old note's saved state
+            // can be true of the new one.
+            return { ...state, note: initialNote(action.text ?? "") };
+        case "noteSaving":
+            return { ...state, note: { ...state.note, status: "saving", error: undefined } };
+        case "noteSaved": {
+            const savedText = typeof action.text === "string" ? action.text : "";
+            return {
+                ...state,
+                note: {
+                    ...state.note,
+                    savedText,
+                    uploaded: !!action.uploaded,
+                    // nothing up there any more means no id to remember
+                    driveItemId: action.uploaded
+                        ? (action.driveItemId ?? state.note.driveItemId)
+                        : undefined,
+                    // he may have typed on while the save was in flight
+                    status: state.note.text === savedText ? "saved" : "dirty",
+                    error: undefined,
+                },
+            };
+        }
+        case "noteFailed":
+            return {
+                ...state,
+                note: {
+                    ...state.note,
+                    status: "failed",
+                    error: action.error || "could not save the note",
+                },
             };
         default:
             return state;
+    }
+}
+
+/**
+ * Is there anything to send for the note? Only when the text differs from
+ * what OneDrive already has and there is a folder to put it in.
+ * @param {SnapState} state
+ * @returns {boolean}
+ */
+export function noteNeedsSave(state) {
+    if (!state.itemName) return false;
+    if (state.note.text === state.note.savedText) return false;
+    // an empty note with nothing uploaded has nothing to do
+    if (state.note.text.trim() === "" && !state.note.uploaded) return false;
+    return true;
+}
+
+/**
+ * The quiet line next to the note box. Empty string = show nothing.
+ * @param {NoteState} note
+ * @param {boolean} online
+ * @returns {string}
+ */
+export function noteStatusText(note, online = true) {
+    switch (note.status) {
+        case "saving":
+            return "saving...";
+        case "saved":
+            return "saved";
+        case "failed":
+            return online ? "not saved, will retry" : "not saved (offline), will retry";
+        default:
+            return "";
+    }
+}
+
+/** How long after the last keystroke the note is sent. */
+export const NOTE_DEBOUNCE_MS = 1500;
+
+/**
+ * A one-slot debouncer. The timer functions are arguments so tests can drive it
+ * without waiting for real time.
+ *
+ * @param {number} ms
+ * @param {{setTimer?:Function, clearTimer?:Function}} [timers]
+ * @returns {{schedule:(fn:Function)=>void, flush:()=>void, cancel:()=>void, pending:()=>boolean}}
+ */
+export function makeDebouncer(ms, timers = {}) {
+    const setTimer = timers.setTimer || ((fn, d) => setTimeout(fn, d));
+    const clearTimer = timers.clearTimer || ((h) => clearTimeout(h));
+    let handle = null;
+    let held = null;
+
+    function cancel() {
+        if (handle !== null) clearTimer(handle);
+        handle = null;
+        held = null;
+    }
+    return {
+        schedule(fn) {
+            if (handle !== null) clearTimer(handle);
+            held = fn;
+            handle = setTimer(() => {
+                handle = null;
+                const f = held;
+                held = null;
+                if (f) f();
+            }, ms);
+        },
+        /** Run the waiting call now (used on "Next item" and on page hide). */
+        flush() {
+            const f = held;
+            cancel();
+            if (f) f();
+        },
+        cancel,
+        pending() {
+            return handle !== null;
+        },
+    };
+}
+
+/**
+ * Plain-English version of the DOMException names getUserMedia throws.
+ * https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#exceptions
+ * @param {{name?:string, message?:string}} err
+ * @returns {string}
+ */
+export function cameraErrorMessage(err) {
+    switch (err && err.name) {
+        case "NotAllowedError":
+        case "SecurityError":
+            return "Camera blocked. Allow the camera for this page in Chrome's site settings, or use the phone's camera app below.";
+        case "NotFoundError":
+        case "OverconstrainedError":
+            return "No camera found on this device. Use the phone's camera app below.";
+        case "NotReadableError":
+            return "The camera is busy - close any other app using it, then tap Open camera again.";
+        default:
+            return `The camera could not start${err && err.message ? `: ${err.message}` : "."} Use the phone's camera app below.`;
     }
 }
 

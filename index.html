@@ -14,12 +14,18 @@
                  *.sharepoint.com     -> the same, if Microsoft ever routes there
                  login.microsoftonline.com -> token endpoint
     frame-src / form-action -> the sign-in page itself
+    media-src    'self' blob: -> the live camera preview. A MediaStream handed
+                 to video.srcObject is not a fetch, so CSP does not check it,
+                 but default-src is 'none' here and a blob: preview would be
+                 blocked; this keeps both paths working without loosening
+                 anything else.
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   script-src 'self';
   style-src 'self';
   img-src 'self' blob: data:;
+  media-src 'self' blob:;
   connect-src 'self' https://graph.microsoft.com https://my.microsoftpersonalcontent.com https://api.onedrive.com https://*.up.1drv.com https://*.sharepoint.com https://login.microsoftonline.com https://login.live.com;
   frame-src https://login.microsoftonline.com https://login.live.com;
   form-action https://login.microsoftonline.com https://login.live.com;
@@ -29,7 +35,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=1.1.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -63,16 +69,42 @@
              autocapitalize="sentences" placeholder="e.g. Blue Levi jacket">
     </label>
     <p id="cleaned" class="small mono" hidden></p>
+
+    <label class="field">
+      <span class="field-label">
+        Notes for this item
+        <span id="note-status" class="note-status"></span>
+      </span>
+      <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
+                placeholder="Size, flaws, brand, anything the listing should say."></textarea>
+    </label>
+
     <p id="hint" class="small">Type the item name to start snapping.</p>
 
-    <label id="snap-label" class="big snap" for="snap-input">Snap</label>
-    <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
-
-    <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
-    <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
+    <section id="camera-box" class="camera">
+      <button type="button" id="camera-open" class="big">Open camera</button>
+      <div id="camera-live" class="camera-live" hidden>
+        <div class="preview-wrap">
+          <video id="camera-preview" playsinline autoplay muted></video>
+          <div id="camera-flash" class="flash"></div>
+        </div>
+        <button type="button" id="shutter" class="shutter" aria-label="Take a photo"></button>
+        <button type="button" id="camera-close" class="secondary">Close camera</button>
+      </div>
+      <p id="camera-error" class="small warn-text" hidden></p>
+    </section>
 
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
+
+    <details id="fallbacks" class="fallbacks">
+      <summary class="small">Other ways to add a photo</summary>
+      <label id="snap-label" class="secondary" for="snap-input">Use the phone's camera app</label>
+      <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
+
+      <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
+      <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
+    </details>
 
     <button type="button" id="next-item" class="secondary wide">Next item</button>
 
@@ -84,10 +116,17 @@
 </main>
 
 <footer class="small">
-  Photos go straight to OneDrive &rarr; <span class="mono">Pictures/Uploads/&lt;item&gt;/</span>,
-  originals, nothing resized.
+  <p>
+    Photos go straight to OneDrive &rarr; <span class="mono">Pictures/Uploads/&lt;item&gt;/</span>,
+    originals, nothing resized. Notes are saved there as
+    <span class="mono">note.txt</span>.
+  </p>
+  <p class="version-line">
+    version <span id="version" class="mono"></span>
+    &middot; <a href="#" id="reload-latest">Reload latest</a>
+  </p>
 </footer>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=1.1.0"></script>
 </body>
 </html>
