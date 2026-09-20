@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="crosslister snap">
+  <rect width="512" height="512" rx="112" fill="#1667c8"/>
+  <path d="M176 168h48l22-34h68l22 34h48a28 28 0 0 1 28 28v152a28 28 0 0 1-28 28H176a28 28 0 0 1-28-28V196a28 28 0 0 1 28-28z" fill="#ffffff"/>
+  <circle cx="290" cy="272" r="62" fill="#1667c8"/>
+  <circle cx="290" cy="272" r="34" fill="#ffffff"/>
+  <rect x="176" y="196" width="46" height="22" rx="11" fill="#1667c8"/>
+</svg>

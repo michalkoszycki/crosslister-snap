@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  Content-Security-Policy. Everything the page runs comes from this repo
+  ('self'); the only places it may talk to are Microsoft's sign-in service,
+  Microsoft Graph, and the OneDrive upload hosts that Graph hands back.
+    connect-src  graph.microsoft.com  -> createUploadSession
+                 *.up.1drv.com        -> the pre-authenticated upload URL (personal OneDrive)
+                 *.sharepoint.com     -> the same, if Microsoft ever routes there
+                 login.microsoftonline.com -> token endpoint
+    frame-src / form-action -> the sign-in page itself
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self';
+  style-src 'self';
+  img-src 'self' blob: data:;
+  connect-src 'self' https://graph.microsoft.com https://*.up.1drv.com https://*.sharepoint.com https://login.microsoftonline.com https://login.live.com;
+  frame-src https://login.microsoftonline.com https://login.live.com;
+  form-action https://login.microsoftonline.com https://login.live.com;
+  manifest-src 'self';
+  base-uri 'none';
+  object-src 'none'">
+<meta name="theme-color" content="#101418">
+<meta name="referrer" content="no-referrer">
+<title>crosslister snap</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="vendor/msal-browser-5.22.0.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>crosslister snap</h1>
+  <div class="account">
+    <span id="who" class="who"></span>
+    <a href="#" id="signout" class="signout" hidden>Sign out</a>
+  </div>
+</header>
+
+<main>
+  <p id="offline" class="banner banner-warn" hidden>
+    You are offline. Photos stay on this page; they upload when you are back.
+  </p>
+  <p id="message" class="message" hidden></p>
+
+  <section id="signin-box" class="card">
+    <h2>Sign in to OneDrive</h2>
+    <p class="small">One tap. You stay signed in on this phone afterwards.</p>
+    <button type="button" id="signin" class="big">Sign in</button>
+  </section>
+
+  <section id="work" hidden>
+    <label class="field">
+      <span class="field-label">Item name</span>
+      <input id="item-name" type="text" inputmode="text" autocomplete="off"
+             autocapitalize="sentences" placeholder="e.g. Blue Levi jacket">
+    </label>
+    <p id="cleaned" class="small mono" hidden></p>
+    <p id="hint" class="small">Type the item name to start snapping.</p>
+
+    <label id="snap-label" class="big snap" for="snap-input">Snap</label>
+    <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
+
+    <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
+    <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
+
+    <p id="progress" class="progress"></p>
+    <ul id="strip" class="strip"></ul>
+
+    <button type="button" id="next-item" class="secondary wide">Next item</button>
+
+    <section id="recents-box" hidden>
+      <h2 class="small-head">Recent items</h2>
+      <ul id="recents" class="recents"></ul>
+    </section>
+  </section>
+</main>
+
+<footer class="small">
+  Photos go straight to OneDrive &rarr; <span class="mono">Pictures/Uploads/&lt;item&gt;/</span>,
+  originals, nothing resized.
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
