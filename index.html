@@ -8,7 +8,9 @@
   ('self'); the only places it may talk to are Microsoft's sign-in service,
   Microsoft Graph, and the OneDrive upload hosts that Graph hands back.
     connect-src  graph.microsoft.com  -> createUploadSession
-                 *.up.1drv.com        -> the pre-authenticated upload URL (personal OneDrive)
+                 my.microsoftpersonalcontent.com, api.onedrive.com, *.up.1drv.com
+                                      -> the pre-authenticated upload URL (personal OneDrive;
+                                         which host depends on the account, seen 2026-09-19)
                  *.sharepoint.com     -> the same, if Microsoft ever routes there
                  login.microsoftonline.com -> token endpoint
     frame-src / form-action -> the sign-in page itself
@@ -18,7 +20,7 @@
   script-src 'self';
   style-src 'self';
   img-src 'self' blob: data:;
-  connect-src 'self' https://graph.microsoft.com https://*.up.1drv.com https://*.sharepoint.com https://login.microsoftonline.com https://login.live.com;
+  connect-src 'self' https://graph.microsoft.com https://my.microsoftpersonalcontent.com https://api.onedrive.com https://*.up.1drv.com https://*.sharepoint.com https://login.microsoftonline.com https://login.live.com;
   frame-src https://login.microsoftonline.com https://login.live.com;
   form-action https://login.microsoftonline.com https://login.live.com;
   manifest-src 'self';

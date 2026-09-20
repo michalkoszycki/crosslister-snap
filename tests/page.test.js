@@ -54,6 +54,9 @@ test("the Content-Security-Policy allows Graph and the login endpoints only", ()
     const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
     assert.match(csp, /connect-src[^;]*https:\/\/graph\.microsoft\.com/);
     assert.match(csp, /connect-src[^;]*https:\/\/\*\.up\.1drv\.com/);
+    // the hosts a personal OneDrive actually hands back for the byte upload (seen live)
+    assert.match(csp, /connect-src[^;]*https:\/\/my\.microsoftpersonalcontent\.com/);
+    assert.match(csp, /connect-src[^;]*https:\/\/api\.onedrive\.com/);
     assert.match(csp, /connect-src[^;]*https:\/\/login\.microsoftonline\.com/);
     assert.match(csp, /script-src 'self'/);
     assert.ok(!csp.includes("unsafe-inline"), "CSP must not allow inline script");
