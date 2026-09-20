@@ -58,9 +58,12 @@ export async function createUploadSession({
                 item: {
                     "@microsoft.graph.conflictBehavior": "rename",
                     name: fileName,
+                    // fileSize is documented for OneDrive (personal): if it
+                    // exceeds the quota Graph answers 507 straight away
+                    // instead of after uploading the bytes.
+                    fileSize,
                 },
                 deferCommit: false,
-                fileSize,
             }),
         });
     } catch (e) {
