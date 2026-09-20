@@ -1,6 +1,6 @@
 {
   "name": "crosslister-snap",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Snap item photos straight into OneDrive Pictures/Uploads from an Android phone.",
@@ -9,6 +9,7 @@
     "test": "node --test",
     "check": "node --test",
     "icons": "node tools/make-icons.mjs",
+    "bump": "node tools/bump-version.mjs",
     "serve": "python -m http.server 8080"
   }
 }
