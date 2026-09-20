@@ -10,6 +10,7 @@
     --accent: #1667c8;
     --accent-ink: #ffffff;
     --ok: #1c7d3f;
+    --ok-ink: #ffffff;
     --bad: #b3261e;
     --warn: #8a5300;
     --warn-bg: #fff4d6;
@@ -26,6 +27,7 @@
         --accent: #4d9bff;
         --accent-ink: #06101d;
         --ok: #62d48c;
+        --ok-ink: #06210f;
         --bad: #ff8a80;
         --warn: #ffd27d;
         --warn-bg: #3a2d10;
@@ -163,6 +165,26 @@ textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
     box-shadow: 0 0 0 3px var(--accent);
 }
 .shutter:active { transform: scale(0.94); }
+
+/* DONE: finishes this item and clears the page for the next one. Same size as the shutter
+   (Michal, 2026-09-20: "as big as the snap button. and green"), a different colour and a
+   word on it so the two are never mistaken for each other. */
+.done {
+    display: block;
+    width: 86px;
+    height: 86px;
+    margin: 18px auto 8px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--ok);
+    color: var(--ok-ink);
+    border: 6px solid var(--card);
+    box-shadow: 0 0 0 3px var(--ok);
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+.done:active { transform: scale(0.94); }
 
 .fallbacks { margin-top: 18px; }
 .fallbacks summary { cursor: pointer; padding: 8px 0; }

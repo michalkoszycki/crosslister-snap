@@ -2,8 +2,8 @@
 // live in graph.js; sign-in lives in auth.js. This file only wires them to
 // buttons and paints the result.
 
-import { config } from "./config.js?v=1.1.0";
-import { VERSION } from "./version.js?v=1.1.0";
+import { config } from "./config.js?v=1.1.1";
+import { VERSION } from "./version.js?v=1.1.1";
 import {
     addRecent,
     buildFileName,
@@ -21,9 +21,9 @@ import {
     reduce,
     retryDelayMs,
     shouldRetry,
-} from "./core.js?v=1.1.0";
-import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.1.0";
-import { cameraSupported, createCamera } from "./camera.js?v=1.1.0";
+} from "./core.js?v=1.1.1";
+import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.1.1";
+import { cameraSupported, createCamera } from "./camera.js?v=1.1.1";
 import {
     clientIdMissing,
     currentAccount,
@@ -31,7 +31,7 @@ import {
     initAuth,
     signIn,
     signOut,
-} from "./auth.js?v=1.1.0";
+} from "./auth.js?v=1.1.1";
 
 const COUNTER_KEY = "snap.counters";
 const RECENTS_KEY = "snap.recents";
@@ -418,7 +418,7 @@ async function saveNote() {
     }
 }
 
-/** Run a waiting note save now, e.g. on "Next item" or when the page hides. */
+/** Run a waiting note save now, e.g. on DONE or when the page hides. */
 function flushNote() {
     noteSaver.cancel();
     return saveNote().catch(() => {});

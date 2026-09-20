@@ -35,7 +35,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.1.0">
+<link rel="stylesheet" href="styles.css?v=1.1.1">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -97,6 +97,8 @@
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
 
+    <button type="button" id="next-item" class="done" aria-label="Done with this item, start the next one">DONE</button>
+
     <details id="fallbacks" class="fallbacks">
       <summary class="small">Other ways to add a photo</summary>
       <label id="snap-label" class="secondary" for="snap-input">Use the phone's camera app</label>
@@ -105,8 +107,6 @@
       <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
       <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
     </details>
-
-    <button type="button" id="next-item" class="secondary wide">Next item</button>
 
     <section id="recents-box" hidden>
       <h2 class="small-head">Recent items</h2>
@@ -127,6 +127,6 @@
   </p>
 </footer>
 
-<script type="module" src="app.js?v=1.1.0"></script>
+<script type="module" src="app.js?v=1.1.1"></script>
 </body>
 </html>

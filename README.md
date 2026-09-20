@@ -72,7 +72,7 @@ and `toBlob("image/jpeg", 0.92)`, which gives the *preview* size instead —
 usually around 1920×1080. Either way the file is a JPEG and is named
 `<item>-<n>.jpg` like every other photo.
 
-The camera is released (`track.stop()`) on **Next item**, on sign-out and
+The camera is released (`track.stop()`) on **DONE**, on sign-out and
 whenever the page is hidden, and comes back on its own when you return.
 
 ## Notes
@@ -80,7 +80,7 @@ whenever the page is hidden, and comes back on its own when you return.
 The **Notes for this item** box is saved to
 `Pictures/Uploads/<item>/note.txt`, UTF-8 plain text, one file per item,
 overwritten each time. It saves itself a second and a half after you stop
-typing, and again when you leave the box, tap **Next item**, or switch away
+typing, and again when you leave the box, tap **DONE**, or switch away
 from the page. The small grey word next to the label is the only status:
 "saving...", "saved", or "not saved (offline), will retry". Emptying the box
 deletes the `note.txt` that was uploaded; if none was, nothing is sent at all.

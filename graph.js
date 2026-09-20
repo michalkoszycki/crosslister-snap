@@ -26,7 +26,7 @@
 //  * the PUT to uploadUrl must NOT carry the Authorization header (the upload
 //    URL is pre-authenticated; sending the bearer token can give a 401).
 
-import { driveItemUrl, fileContentUrl, planRanges, uploadSessionUrl } from "./core.js?v=1.1.0";
+import { driveItemUrl, fileContentUrl, planRanges, uploadSessionUrl } from "./core.js?v=1.1.1";
 
 /** An error that carries the HTTP status, so retry logic can look at it. */
 export class UploadError extends Error {
