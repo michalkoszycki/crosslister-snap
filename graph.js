@@ -54,16 +54,13 @@ export async function createUploadSession({
                 Authorization: `Bearer ${accessToken}`,
                 "Content-Type": "application/json",
             },
+            // The smallest body Graph accepts. A personal OneDrive answered
+            // 400 "Invalid request" to the fuller one (name, fileSize and
+            // deferCommit, which is a OneDrive for Business / SharePoint
+            // option) on Michal's first real upload, 2026-09-19. The file name
+            // is already in the URL path.
             body: JSON.stringify({
-                item: {
-                    "@microsoft.graph.conflictBehavior": "rename",
-                    name: fileName,
-                    // fileSize is documented for OneDrive (personal): if it
-                    // exceeds the quota Graph answers 507 straight away
-                    // instead of after uploading the bytes.
-                    fileSize,
-                },
-                deferCommit: false,
+                item: { "@microsoft.graph.conflictBehavior": "rename" },
             }),
         });
     } catch (e) {
