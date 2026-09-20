@@ -10,7 +10,7 @@
 
 export const config = {
     /** Application (client) ID from the Microsoft Entra admin center. */
-    clientId: "PASTE-YOUR-APPLICATION-CLIENT-ID-HERE",
+    clientId: "2db33f4c-37f9-4a9c-98b6-3eb1d3170637",
 
     /**
      * "consumers" = personal Microsoft accounts (outlook.com, hotmail.com,

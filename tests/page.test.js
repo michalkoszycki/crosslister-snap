@@ -67,10 +67,13 @@ test("the manifest points at icons that exist", () => {
     }
 });
 
-test("no client id or token is committed", () => {
+test("config.js holds a client id and nothing secret; no token is ever logged", () => {
     const cfg = readFileSync(join(root, "config.js"), "utf8");
     const value = /clientId:\s*"([^"]*)"/.exec(cfg)[1];
-    assert.equal(value, "PASTE-YOUR-APPLICATION-CLIENT-ID-HERE");
+    // A single-page app's client id is public by design (README, "Security"), so the real
+    // one is committed. It must be the placeholder or a GUID, never anything else.
+    assert.match(value, /^(PASTE-YOUR-APPLICATION-CLIENT-ID-HERE|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
+    assert.ok(!/client_?secret|password/i.test(cfg), "config.js must never carry a secret");
     for (const file of ["app.js", "auth.js", "graph.js", "core.js", "config.js", "bridge.js"]) {
         const src = readFileSync(join(root, file), "utf8");
         assert.ok(
@@ -169,9 +172,10 @@ test("app.js loads against the real index.html ids without an error", async () =
     for (const id of asked) {
         assert.ok(nodes.has(id), `app.js asked for #${id}, which index.html does not have`);
     }
-    // the placeholder client id must stop the app before any network call
-    assert.match(nodes.get("message").textContent, /client id/i);
-    assert.equal(nodes.get("signin").disabled, true);
+    // Nothing may reach the network from this stubbed page. With the placeholder client id
+    // the app stops and says so; with a real one it gets as far as MSAL, which this stub
+    // does not load, and reports that instead. Either way it explains itself on the page.
+    assert.match(nodes.get("message").textContent, /client id|MSAL did not load/i);
     // and it must have painted the signed-out state
     assert.equal(nodes.get("work").hidden, true);
     assert.equal(nodes.get("signin-box").hidden, false);
