@@ -299,6 +299,8 @@ test("app.js loads against the real index.html ids without an error", async () =
     // and it must have painted the signed-out state
     assert.equal(nodes.get("work").hidden, true);
     assert.equal(nodes.get("signin-box").hidden, false);
+    // DONE is darkened until the item has its first photo, the way Snap waits for a name
+    assert.equal(nodes.get("next-item").disabled, true);
     // and the running version is on the page
     const { VERSION } = await import("../version.js");
     assert.equal(nodes.get("version").textContent, VERSION);

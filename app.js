@@ -2,8 +2,8 @@
 // live in graph.js; sign-in lives in auth.js. This file only wires them to
 // buttons and paints the result.
 
-import { config } from "./config.js?v=1.2.0";
-import { VERSION } from "./version.js?v=1.2.0";
+import { config } from "./config.js?v=1.2.1";
+import { VERSION } from "./version.js?v=1.2.1";
 import {
     buildFileName,
     cleanItemName,
@@ -19,8 +19,8 @@ import {
     reduce,
     retryDelayMs,
     shouldRetry,
-} from "./core.js?v=1.2.0";
-import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.0";
+} from "./core.js?v=1.2.1";
+import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.1";
 import {
     clientIdMissing,
     currentAccount,
@@ -28,7 +28,7 @@ import {
     initAuth,
     signIn,
     signOut,
-} from "./auth.js?v=1.2.0";
+} from "./auth.js?v=1.2.1";
 
 const COUNTER_KEY = "snap.counters";
 const NOTES_KEY = "snap.notes";
@@ -122,6 +122,8 @@ function render() {
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
+    // DONE is darkened like Snap until this item has its first photo (Michal, 2026-09-21).
+    el.nextBtn.disabled = state.photos.length === 0;
     el.hint.hidden = ready;
     el.noteStatus.textContent = noteStatusText(state.note, state.online);
 
