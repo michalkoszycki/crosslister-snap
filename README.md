@@ -1,6 +1,6 @@
 # crosslister snap
 
-Open the phone, tap the icon, type the item name, tap the shutter. Each photo
+Open the phone, tap the icon, type the item name, tap **Snap**. Each photo
 goes straight into OneDrive under `Pictures/Uploads/<item name>/`, which is the
 folder the [crosslister](../crosslister) CLI reads on the PC. No camera roll
 detour, no OneDrive app, no "pick files, upload". Works from anywhere; the PC
@@ -19,9 +19,9 @@ registration and one line in `config.js`.
 2. `auth.js` signs the person in with MSAL Browser v5 (redirect flow, personal
    Microsoft accounts, the `Files.ReadWrite` scope), tokens cached in
    `localStorage`.
-3. `camera.js` runs an in-page camera (`getUserMedia` + `ImageCapture`), and
-   `app.js` hands each still to `graph.js` immediately, one at a time, in the
-   background.
+3. **Snap** is a `<label>` for `<input type="file" capture="environment">`: the
+   phone's own camera app opens full screen, and `app.js` hands each photo it
+   returns to `graph.js` immediately, one at a time, in the background.
 4. `graph.js` asks Microsoft Graph for an upload session addressed by path and
    PUTs the bytes; the `<item name>` folder is created implicitly by that path.
    It also PUTs `note.txt` and DELETEs a photo you struck out.
@@ -39,7 +39,6 @@ The bytes never touch a server of ours: phone -> Microsoft, directly.
 | `redirect.html`, `bridge.js` | the MSAL v5 "redirect bridge" page sign-in comes back to |
 | `config.js` | **the only file you edit**: client id, folder, scopes, `note.txt` |
 | `app.js` | screen wiring, the upload queue, offline handling |
-| `camera.js` | the live camera: `getUserMedia`, `ImageCapture`, canvas fallback |
 | `auth.js` | sign in / sign out / get a token |
 | `graph.js` | every Microsoft Graph call |
 | `core.js` | pure logic, no DOM, no network |
@@ -49,31 +48,21 @@ The bytes never touch a server of ours: phone -> Microsoft, directly.
 | `tools/bump-version.mjs` | rewrites every `?v=` to match `VERSION` |
 | `tests/` | `node --test`, no dependencies |
 
-## Taking photos: no accept/retake
+## Taking photos
 
-Tap **Open camera** once (that tap is what makes Chrome ask for the camera, and
-it is why the permission prompt does not appear on page load). From then on the
-preview is live and **every tap of the round shutter is a photo** — it goes
-straight into the upload queue, the preview keeps running, and there is no
-accept/retake screen at all. The screen blinks white so you know it fired.
+**Snap** is a big label for `<input type="file" accept="image/*"
+capture="environment">`. Tapping it hands over to the phone's own camera app,
+full screen, with that app's own controls and its own accept/retake screen after
+each shot — a web page cannot switch that screen off, and Michal asked for the
+full-screen camera back with the confirmation kept (2026-09-21). Accept a shot
+and it goes straight into the upload queue.
 
-That blink is the whole confirmation, by design. The old
-`<input type="file" capture="environment">` is still there, tucked under **Other
-ways to add a photo**, but it hands over to the Android camera app, and *that*
-app always shows its own accept/retake screen — a web page cannot switch that
-off. Use it only if the in-page camera will not start.
+Because it is the phone's camera, you get the camera's full resolution and its
+own JPEG, several MB on a Pixel. The file is renamed `<item>-<n>.jpg` on the way
+into OneDrive.
 
-**What resolution you get.** With `ImageCapture.takePhoto()` (Chrome on
-Android) the page asks for the largest `imageWidth`/`imageHeight` that
-`getPhotoCapabilities()` reports, which is the camera's full still — on a Pixel
-that is typically a 12 MP JPEG, several MB. Where `ImageCapture` is missing or
-throws (Firefox, Safari), it falls back to drawing the live frame onto a canvas
-and `toBlob("image/jpeg", 0.92)`, which gives the *preview* size instead —
-usually around 1920×1080. Either way the file is a JPEG and is named
-`<item>-<n>.jpg` like every other photo.
-
-The camera is released (`track.stop()`) on **DONE**, on sign-out and
-whenever the page is hidden, and comes back on its own when you return.
+**Add from gallery** takes photos already on the phone; it accepts several at
+once and queues them the same way.
 
 ## Notes
 
@@ -113,12 +102,12 @@ still `Boots-3.jpg`. Gaps are fine, and a file name is never reused.
 GitHub Pages caches every file for ten minutes, which can leave the phone with
 a new `index.html` next to a stale `app.js`. So `version.js` holds one
 `VERSION`, and everything the page loads carries it: the stylesheet, `app.js`,
-and every ES module import inside the app (`./core.js?v=1.1.0`). A new version
+and every ES module import inside the app (`./core.js?v=1.2.0`). A new version
 is a new URL, and a new URL was never in the cache. Node accepts the same query
 on a relative import, so `node --test` is unaffected.
 
-The running version is in small print at the bottom of the page, next to
-**Reload latest**, which reloads with a timestamp query if you are impatient.
+The running version is in small print at the bottom of the page, and nothing
+else is.
 
 To release: edit `VERSION`, run `node tools/bump-version.mjs`, commit, push. A
 test fails if any `?v=` drifts out of step.
@@ -198,30 +187,23 @@ small-file upload, so nothing new is ever consented to.
   items to the recycle bin", `Files.ReadWrite` least privileged for a personal
   account):
   <https://learn.microsoft.com/en-us/graph/api/driveitem-delete?view=graph-rest-1.0>
-- `getUserMedia` constraint syntax, the exception names, the secure-context
-  rule (https or localhost):
-  <https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia>
-- `new ImageCapture(track)` and `takePhoto(photoSettings)` → `Promise<Blob>`,
-  and the `readyState === "live"` requirement:
-  <https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture/takePhoto>
-- `getPhotoCapabilities()` → `{ imageWidth: {min,max,step}, imageHeight: … }`,
-  where the "largest still on offer" comes from:
-  <https://developer.mozilla.org/en-US/docs/Web/API/ImageCapture/getPhotoCapabilities>
-- CSP `media-src` (what it covers for `<audio>`/`<video>`):
-  <https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/media-src>
+- `<input type="file">` with `accept` and `capture`, i.e. what makes the phone's
+  own camera app open:
+  <https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#capture>
 
 ## Verified vs unverified
 
 **Verified by running it here**
 
-- `node --test`: 73 tests, all passing.
+- `node --test`: 63 tests, all passing.
 - Every module still loads with its `?v=` query, both in Node and over
   `python -m http.server 8080` (checked with curl: `app.js?v=…`, `core.js?v=…`,
-  `camera.js?v=…`, `styles.css?v=…` — all 200, right content types).
-- The note, photo-delete and camera logic under stubs: the state machines, the
-  debouncer, the largest-size pick from `getPhotoCapabilities()`, the canvas
-  fallback when `ImageCapture` is absent or `takePhoto()` throws, and that the
-  page comes up and says so when `navigator.mediaDevices` is missing entirely.
+  `graph.js?v=…`, `styles.css?v=…` — all 200, right content types; `camera.js`
+  is gone and 404s).
+- The note and photo-delete logic under stubs: both state machines and the
+  debouncer.
+- The order of the work section in `index.html` — name, Snap, gallery, progress,
+  strip, notes, DONE — and that no camera, shutter or recents element is left.
 - `app.js` loads and paints against the real ids in `index.html`, under a stubbed
   DOM, with no thrown error (`tests/page.test.js`).
 - Every file `index.html` and `redirect.html` reference exists and is served with
@@ -246,17 +228,6 @@ small-file upload, so nothing new is ever consented to.
   OneDrive from a browser, including whether CORS lets the PUT through to the
   `*.up.1drv.com` host the session returns. The code follows the documented
   shape but has never been run against the live service.
-- **What resolution `takePhoto()` actually delivers on the Pixel.** The page
-  asks for `getPhotoCapabilities().imageWidth.max` × `imageHeight.max`, but
-  Chrome has been known to ignore the request and hand back the preview size.
-  Check: snap one photo, then look at the file in OneDrive — its pixel
-  dimensions and its size in MB. A ~12 MP, multi-MB JPEG is the good case; a
-  1920×1080, few-hundred-KB one means Chrome fell back and the canvas path is
-  no worse.
-- **The camera permission prompt in the home-screen app.** Chrome asks on the
-  first **Open camera** tap. Whether a page launched from the Android home
-  screen (standalone display mode) asks separately, or inherits the answer the
-  browser tab already gave, has not been tried.
 - **Delete.** The `DELETE` has never been sent against the live service. Check:
   tap the x on an uploaded photo; the card should vanish within a second and
   the file should be gone from `Pictures/Uploads/<item>/` on onedrive.com and
@@ -267,8 +238,8 @@ small-file upload, so nothing new is ever consented to.
   `createUploadSession` 400 of 2026-09-19). Check: type a note, wait two
   seconds for "saved", then look for `note.txt` in the item folder and open it.
   Then clear the box and confirm the file disappears.
-- The old `capture="environment"` fallback on the Pixel: that it opens the
-  camera app and that the photo is not added to the gallery. That is Android's
+- **Snap** on the Pixel: that `capture="environment"` opens the camera app full
+  screen and that the photo is not added to the camera roll. That is Android's
   choice, not the page's.
 - "Add to Home screen" producing a standalone app icon.
 
@@ -281,9 +252,8 @@ small-file upload, so nothing new is ever consented to.
 - The app asks for `Files.ReadWrite` only — the signed-in person's own files.
   Never `Files.ReadWrite.All`. Writing `note.txt` and deleting a photo are both
   covered by it, so the set of permissions has not grown.
-- The camera stream never leaves the device as a stream: a still is captured,
-  uploaded to OneDrive, and the tracks are stopped as soon as the page is
-  hidden or the item is finished. There is no recording and no `audio: true`.
+- The page never opens a camera itself: it asks Android for a photo and receives
+  a file. There is no `getUserMedia`, no preview stream and no microphone.
 - No analytics, no external fonts, nothing loaded from a third party at all.
 - Nothing is logged to the console; a test enforces that.
 - Access tokens live in `localStorage` under MSAL's own keys, as MSAL manages

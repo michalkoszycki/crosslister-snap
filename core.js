@@ -489,27 +489,6 @@ export function makeDebouncer(ms, timers = {}) {
     };
 }
 
-/**
- * Plain-English version of the DOMException names getUserMedia throws.
- * https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#exceptions
- * @param {{name?:string, message?:string}} err
- * @returns {string}
- */
-export function cameraErrorMessage(err) {
-    switch (err && err.name) {
-        case "NotAllowedError":
-        case "SecurityError":
-            return "Camera blocked. Allow the camera for this page in Chrome's site settings, or use the phone's camera app below.";
-        case "NotFoundError":
-        case "OverconstrainedError":
-            return "No camera found on this device. Use the phone's camera app below.";
-        case "NotReadableError":
-            return "The camera is busy - close any other app using it, then tap Open camera again.";
-        default:
-            return `The camera could not start${err && err.message ? `: ${err.message}` : "."} Use the phone's camera app below.`;
-    }
-}
-
 function patch(state, id, fn) {
     let hit = false;
     const photos = state.photos.map((p) => {
@@ -561,20 +540,4 @@ export function currentCount(counters, itemName) {
 export function nextNumber(counters, itemName) {
     const n = currentCount(counters, itemName) + 1;
     return { n, counters: { ...(counters || {}), [itemName]: n } };
-}
-
-/** How many recently used item names are remembered. */
-export const MAX_RECENTS = 12;
-
-/**
- * Put `itemName` at the front of the recents list, without duplicates.
- * @param {string[]} recents
- * @param {string} itemName
- * @returns {string[]}
- */
-export function addRecent(recents, itemName) {
-    const name = cleanItemName(itemName);
-    if (!name) return Array.isArray(recents) ? recents.slice(0, MAX_RECENTS) : [];
-    const rest = (Array.isArray(recents) ? recents : []).filter((r) => r !== name);
-    return [name, ...rest].slice(0, MAX_RECENTS);
 }

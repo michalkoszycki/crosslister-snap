@@ -61,7 +61,6 @@ h1 {
 }
 
 h2 { font-size: 18px; margin: 0 0 8px; }
-.small-head { font-size: 15px; color: var(--muted); margin: 20px 0 6px; }
 
 .account { display: flex; align-items: baseline; gap: 10px; }
 .who { font-size: 12px; color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -116,78 +115,6 @@ textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 /* the quiet "saved" / "saving..." next to the notes label */
 .note-status { float: right; font-size: 12px; color: var(--muted); font-weight: 400; }
-.warn-text { color: var(--warn); }
-
-/* --- the in-page camera ------------------------------------------------- */
-
-.camera { margin-top: 14px; }
-
-.preview-wrap {
-    position: relative;
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: #000;
-    border: 1px solid var(--line);
-}
-.preview-wrap video {
-    display: block;
-    width: 100%;
-    max-height: 56vh;
-    object-fit: cover;
-    background: #000;
-}
-
-/* the blink that says "that one is taken" */
-.flash {
-    position: absolute;
-    inset: 0;
-    background: #fff;
-    opacity: 0;
-    pointer-events: none;
-}
-.flash-on { animation: blink 260ms ease-out; }
-@keyframes blink {
-    0% { opacity: 0.85; }
-    100% { opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .flash-on { animation: none; }
-}
-
-.shutter {
-    display: block;
-    width: 86px;
-    height: 86px;
-    margin: 16px auto 4px;
-    border-radius: 50%;
-    background: var(--accent);
-    border: 6px solid var(--card);
-    box-shadow: 0 0 0 3px var(--accent);
-}
-.shutter:active { transform: scale(0.94); }
-
-/* DONE: finishes this item and clears the page for the next one. Same size as the shutter
-   (Michal, 2026-09-20: "as big as the snap button. and green"), a different colour and a
-   word on it so the two are never mistaken for each other. */
-.done {
-    display: block;
-    width: 86px;
-    height: 86px;
-    margin: 18px auto 8px;
-    padding: 0;
-    border-radius: 50%;
-    background: var(--ok);
-    color: var(--ok-ink);
-    border: 6px solid var(--card);
-    box-shadow: 0 0 0 3px var(--ok);
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-}
-.done:active { transform: scale(0.94); }
-
-.fallbacks { margin-top: 18px; }
-.fallbacks summary { cursor: pointer; padding: 8px 0; }
 
 button, .big, .secondary {
     font: inherit;
@@ -207,7 +134,11 @@ button, .big, .secondary {
     text-align: center;
     margin-top: 14px;
 }
-.snap { padding: 34px 22px; font-size: 26px; letter-spacing: 0.02em; }
+/* Snap, and DONE below the notes: the same button, same height, same corners,
+   same word size. DONE is green and nothing else (Michal, 2026-09-21: "the same
+   style just different color. not round"). */
+.snap, .done { padding: 34px 22px; font-size: 26px; letter-spacing: 0.02em; }
+.done { background: var(--ok); color: var(--ok-ink); }
 
 .secondary {
     display: block;
@@ -219,7 +150,6 @@ button, .big, .secondary {
     padding: 16px;
     margin-top: 10px;
 }
-.wide { margin-top: 18px; }
 
 .disabled, button:disabled { opacity: 0.45; pointer-events: none; }
 
@@ -293,18 +223,8 @@ button, .big, .secondary {
     font-size: 13px;
 }
 
-.recents { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.recent {
-    background: var(--card);
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 10px 14px;
-    font-size: 14px;
-}
-
 footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
 footer p { margin: 6px 0; }
 .version-line { color: var(--muted); font-size: 12px; }
-.version-line a { color: var(--accent); }
 
 body.bridge { display: flex; align-items: center; justify-content: center; min-height: 70vh; text-align: center; }

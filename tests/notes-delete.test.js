@@ -1,13 +1,10 @@
-// tests/notes-delete-camera.test.js -- the logic added for the notes field,
-// the delete-a-thumbnail x, and the in-page camera. Still pure: no DOM, no
-// network. The camera module is exercised with stubs standing in for
-// getUserMedia / ImageCapture / canvas.
+// tests/notes-delete.test.js -- the logic behind the notes field and the x
+// that deletes a thumbnail. Pure: no DOM, no network.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-    cameraErrorMessage,
     driveItemUrl,
     fileContentUrl,
     initialNote,
@@ -19,7 +16,6 @@ import {
     progressLine,
     reduce,
 } from "../core.js";
-import { cameraSupported, createCamera, VIDEO_CONSTRAINTS } from "../camera.js";
 
 // --- Graph URLs ------------------------------------------------------------
 
@@ -234,163 +230,4 @@ test("flush runs the waiting call now and cancel drops it", () => {
 
 test("the note debounce is a second or two, as asked", () => {
     assert.ok(NOTE_DEBOUNCE_MS >= 1000 && NOTE_DEBOUNCE_MS <= 2000);
-});
-
-// --- camera errors ---------------------------------------------------------
-
-test("camera errors are explained in plain words, pointing at the fallback", () => {
-    assert.match(cameraErrorMessage({ name: "NotAllowedError" }), /Camera blocked/);
-    assert.match(cameraErrorMessage({ name: "NotFoundError" }), /No camera/);
-    assert.match(cameraErrorMessage({ name: "NotReadableError" }), /busy/);
-    assert.match(cameraErrorMessage({ name: "Weird", message: "x" }), /could not start/);
-    for (const name of ["NotAllowedError", "NotFoundError", "Weird"]) {
-        assert.match(cameraErrorMessage({ name }), /camera app below/);
-    }
-});
-
-// --- the camera module, with stubs -----------------------------------------
-
-function stubVideo() {
-    return {
-        srcObject: null,
-        videoWidth: 1920,
-        videoHeight: 1080,
-        muted: false,
-        setAttribute() {},
-        play: async () => {},
-    };
-}
-
-function stubStream() {
-    const track = { readyState: "live", kind: "video", stopped: false, stop() { this.stopped = true; } };
-    return {
-        track,
-        getVideoTracks: () => [track],
-        getTracks: () => [track],
-    };
-}
-
-function stubNav(stream, calls) {
-    return {
-        mediaDevices: {
-            getUserMedia: async (c) => {
-                calls.push(c);
-                return stream;
-            },
-        },
-    };
-}
-
-test("cameraSupported is false where there is no mediaDevices (http, old browser)", () => {
-    assert.equal(cameraSupported({}), false);
-    assert.equal(cameraSupported(undefined), false);
-    assert.equal(cameraSupported({ mediaDevices: { getUserMedia: () => {} } }), true);
-});
-
-test("it asks for the rear camera as an ideal, never an exact", () => {
-    assert.equal(VIDEO_CONSTRAINTS.facingMode.ideal, "environment");
-    assert.equal("exact" in VIDEO_CONSTRAINTS.facingMode, false);
-    assert.ok(VIDEO_CONSTRAINTS.width.ideal >= 3000);
-});
-
-test("start attaches the stream to the video and asks for the back camera", async () => {
-    const stream = stubStream();
-    const calls = [];
-    const video = stubVideo();
-    const cam = createCamera({ nav: stubNav(stream, calls), imageCaptureCtor: null });
-    await cam.start(video);
-    assert.equal(video.srcObject, stream);
-    assert.equal(calls[0].audio, false);
-    assert.equal(calls[0].video.facingMode.ideal, "environment");
-    assert.equal(cam.isActive(), true);
-    cam.stop();
-    assert.equal(stream.track.stopped, true);
-    assert.equal(video.srcObject, null);
-    assert.equal(cam.isActive(), false);
-});
-
-test("capture uses ImageCapture at the largest size the camera admits to", async () => {
-    const stream = stubStream();
-    const asked = [];
-    class FakeImageCapture {
-        constructor(track) {
-            this.track = track;
-        }
-        async getPhotoCapabilities() {
-            return {
-                imageWidth: { min: 640, max: 4032, step: 1 },
-                imageHeight: { min: 480, max: 3024, step: 1 },
-            };
-        }
-        async takePhoto(settings) {
-            asked.push(settings);
-            return { size: 1234, type: "image/jpeg" };
-        }
-    }
-    const cam = createCamera({
-        nav: stubNav(stream, []),
-        imageCaptureCtor: FakeImageCapture,
-    });
-    await cam.start(stubVideo());
-    const blob = await cam.capture();
-    assert.equal(blob.type, "image/jpeg");
-    assert.deepEqual(asked[0], { imageWidth: 4032, imageHeight: 3024 });
-    assert.equal(cam.lastMode(), "ImageCapture");
-});
-
-test("capture falls back to the canvas when ImageCapture is missing", async () => {
-    const stream = stubStream();
-    let drew = false;
-    const doc = {
-        createElement: () => ({
-            width: 0,
-            height: 0,
-            getContext: () => ({ drawImage: () => (drew = true) }),
-            toBlob: (cb, type, q) => cb({ size: 99, type, quality: q }),
-        }),
-    };
-    const cam = createCamera({ nav: stubNav(stream, []), imageCaptureCtor: null, doc });
-    await cam.start(stubVideo());
-    const blob = await cam.capture();
-    assert.equal(drew, true);
-    assert.equal(blob.type, "image/jpeg");
-    assert.equal(blob.quality, 0.92);
-    assert.equal(cam.lastMode(), "canvas");
-});
-
-test("capture falls back to the canvas when takePhoto throws", async () => {
-    const stream = stubStream();
-    class Throwing {
-        async getPhotoCapabilities() {
-            throw new Error("nope");
-        }
-        async takePhoto() {
-            const e = new Error("InvalidStateError");
-            e.name = "InvalidStateError";
-            throw e;
-        }
-    }
-    const doc = {
-        createElement: () => ({
-            width: 0,
-            height: 0,
-            getContext: () => ({ drawImage() {} }),
-            toBlob: (cb, type) => cb({ size: 1, type }),
-        }),
-    };
-    const cam = createCamera({ nav: stubNav(stream, []), imageCaptureCtor: Throwing, doc });
-    await cam.start(stubVideo());
-    const blob = await cam.capture();
-    assert.equal(blob.type, "image/jpeg");
-    assert.equal(cam.lastMode(), "canvas");
-});
-
-test("capture before start is an error, not a crash later", async () => {
-    const cam = createCamera({ nav: stubNav(stubStream(), []), imageCaptureCtor: null });
-    await assert.rejects(() => cam.capture(), /not running/);
-});
-
-test("start without a camera API says NotSupportedError", async () => {
-    const cam = createCamera({ nav: {}, imageCaptureCtor: null });
-    await assert.rejects(() => cam.start(stubVideo()), { name: "NotSupportedError" });
 });

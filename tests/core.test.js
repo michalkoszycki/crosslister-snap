@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-    addRecent,
     buildFileName,
     cleanItemName,
     currentCount,
@@ -10,7 +9,6 @@ import {
     initialState,
     MAX_ATTEMPTS,
     MAX_ITEM_NAME,
-    MAX_RECENTS,
     nameWasChanged,
     nextNumber,
     photoExtension,
@@ -281,22 +279,4 @@ test("nextNumber survives missing or broken counters", () => {
     assert.equal(nextNumber(undefined, "Boots").n, 1);
     assert.equal(nextNumber({ Boots: "seven" }, "Boots").n, 1);
     assert.equal(currentCount(null, "Boots"), 0);
-});
-
-// --- recents ---------------------------------------------------------------
-
-test("addRecent puts the newest first without duplicates", () => {
-    let r = addRecent([], "Boots");
-    r = addRecent(r, "Jacket");
-    r = addRecent(r, "Boots");
-    assert.deepEqual(r, ["Boots", "Jacket"]);
-});
-
-test("addRecent cleans the name, ignores empty ones and caps the list", () => {
-    assert.deepEqual(addRecent([], "  Boots/  "), ["Boots"]);
-    assert.deepEqual(addRecent(["Boots"], "   "), ["Boots"]);
-    let r = [];
-    for (let i = 0; i < MAX_RECENTS + 5; i += 1) r = addRecent(r, `item ${i}`);
-    assert.equal(r.length, MAX_RECENTS);
-    assert.equal(r[0], `item ${MAX_RECENTS + 4}`);
 });

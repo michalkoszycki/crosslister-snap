@@ -2,12 +2,10 @@
 // live in graph.js; sign-in lives in auth.js. This file only wires them to
 // buttons and paints the result.
 
-import { config } from "./config.js?v=1.1.1";
-import { VERSION } from "./version.js?v=1.1.1";
+import { config } from "./config.js?v=1.2.0";
+import { VERSION } from "./version.js?v=1.2.0";
 import {
-    addRecent,
     buildFileName,
-    cameraErrorMessage,
     cleanItemName,
     initialState,
     makeDebouncer,
@@ -21,9 +19,8 @@ import {
     reduce,
     retryDelayMs,
     shouldRetry,
-} from "./core.js?v=1.1.1";
-import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.1.1";
-import { cameraSupported, createCamera } from "./camera.js?v=1.1.1";
+} from "./core.js?v=1.2.0";
+import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.0";
 import {
     clientIdMissing,
     currentAccount,
@@ -31,10 +28,9 @@ import {
     initAuth,
     signIn,
     signOut,
-} from "./auth.js?v=1.1.1";
+} from "./auth.js?v=1.2.0";
 
 const COUNTER_KEY = "snap.counters";
-const RECENTS_KEY = "snap.recents";
 const NOTES_KEY = "snap.notes";
 
 /** @type {import("./core.js").SnapState} */
@@ -50,10 +46,6 @@ let queueRunning = false;
 const queue = [];
 
 const el = {};
-
-/** The in-page camera. Nothing touches the device until "Open camera". */
-const camera = createCamera();
-let cameraWanted = false; // he opened it; restart it when the page comes back
 
 const noteSaver = makeDebouncer(NOTE_DEBOUNCE_MS);
 /** The folder the note in the box belongs to, so a rename cannot misfile it. */
@@ -87,12 +79,6 @@ function takeNumber(itemName) {
     const { n, counters: updated } = nextNumber(counters, itemName);
     writeJson(sessionStorage, COUNTER_KEY, updated);
     return n;
-}
-
-function rememberItem(itemName) {
-    const recents = addRecent(readJson(localStorage, RECENTS_KEY, []), itemName);
-    writeJson(localStorage, RECENTS_KEY, recents);
-    renderRecents();
 }
 
 /** Notes live in sessionStorage per item, so reopening one today brings it back. */
@@ -137,8 +123,6 @@ function render() {
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
-    el.cameraOpen.disabled = !ready;
-    el.shutter.disabled = !ready;
     el.noteStatus.textContent = noteStatusText(state.note, state.online);
 
     el.progress.textContent = progressLine(state);
@@ -214,25 +198,6 @@ function badgeText(p) {
     }
 }
 
-function renderRecents() {
-    const recents = readJson(localStorage, RECENTS_KEY, []);
-    el.recents.replaceChildren();
-    el.recentsBox.hidden = recents.length === 0;
-    for (const name of recents) {
-        const li = document.createElement("li");
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "recent";
-        b.textContent = name;
-        b.addEventListener("click", () => {
-            el.itemInput.value = name;
-            onItemNameChanged();
-        });
-        li.append(b);
-        el.recents.append(li);
-    }
-}
-
 function say(message, kind = "info") {
     el.message.textContent = message || "";
     el.message.className = `message ${kind}`;
@@ -273,7 +238,6 @@ function acceptFiles(fileList) {
         say("Type an item name first.", "warn");
         return;
     }
-    rememberItem(item);
     let next = state;
     for (const file of fileList) {
         const n = takeNumber(item);
@@ -403,7 +367,6 @@ async function saveNote() {
             graphRoot: config.graphRoot,
         });
         if (state.itemName !== item) return;
-        rememberItem(item);
         setState(
             reduce(state, {
                 type: "noteSaved",
@@ -422,60 +385,6 @@ async function saveNote() {
 function flushNote() {
     noteSaver.cancel();
     return saveNote().catch(() => {});
-}
-
-// --- the camera ------------------------------------------------------------
-
-async function openCamera() {
-    if (!state.itemName) {
-        say("Type an item name first.", "warn");
-        return;
-    }
-    el.cameraError.hidden = true;
-    try {
-        await camera.start(el.preview);
-        cameraWanted = true;
-        el.cameraLive.hidden = false;
-        el.cameraOpen.hidden = true;
-    } catch (e) {
-        cameraWanted = false;
-        el.cameraError.textContent = cameraErrorMessage(e);
-        el.cameraError.hidden = false;
-        el.cameraLive.hidden = true;
-        el.cameraOpen.hidden = false;
-        el.fallbacks.open = true;
-    }
-}
-
-/** Stop the camera but remember whether he had it open. */
-function suspendCamera() {
-    camera.stop();
-    el.cameraLive.hidden = true;
-    el.cameraOpen.hidden = false;
-}
-
-function closeCamera() {
-    cameraWanted = false;
-    suspendCamera();
-}
-
-async function takeShot() {
-    if (!camera.isActive()) return;
-    flash();
-    try {
-        const blob = await camera.capture();
-        acceptFiles([blob]);
-    } catch (e) {
-        say(`Could not take the photo: ${e.message}`, "warn");
-    }
-}
-
-/** A blink over the preview, so a tap is visibly a shot. */
-function flash() {
-    el.flash.classList.remove("flash-on");
-    // reading offsetWidth restarts the CSS animation
-    void el.flash.offsetWidth;
-    el.flash.classList.add("flash-on");
 }
 
 // --- the upload queue ------------------------------------------------------
@@ -591,7 +500,6 @@ async function nextItem() {
     blobs.clear();
     controllers.clear();
     queue.length = 0;
-    closeCamera();
     el.itemInput.value = "";
     el.note.value = "";
     noteItemName = "";
@@ -622,53 +530,21 @@ async function main() {
         hint: $("hint"),
         strip: $("strip"),
         progress: $("progress"),
-        recents: $("recents"),
-        recentsBox: $("recents-box"),
         nextBtn: $("next-item"),
         offline: $("offline"),
         message: $("message"),
         note: $("note"),
         noteStatus: $("note-status"),
-        cameraOpen: $("camera-open"),
-        cameraLive: $("camera-live"),
-        cameraClose: $("camera-close"),
-        cameraError: $("camera-error"),
-        preview: $("camera-preview"),
-        shutter: $("shutter"),
-        flash: $("camera-flash"),
-        fallbacks: $("fallbacks"),
         version: $("version"),
-        reloadLatest: $("reload-latest"),
     });
 
     el.version.textContent = VERSION;
     state = reduce(initialState(""), { type: "online", online: navigator.onLine });
-    renderRecents();
     render();
 
     el.itemInput.addEventListener("input", onItemNameChanged);
     el.note.addEventListener("input", onNoteInput);
     el.note.addEventListener("blur", () => flushNote());
-    el.cameraOpen.addEventListener("click", () => {
-        openCamera().catch(() => {});
-    });
-    el.cameraClose.addEventListener("click", closeCamera);
-    el.shutter.addEventListener("click", () => {
-        takeShot().catch(() => {});
-    });
-    el.reloadLatest.addEventListener("click", (e) => {
-        e.preventDefault();
-        // a URL the ten-minute GitHub Pages cache has never seen
-        window.location.href = `${window.location.pathname}?v=${Date.now()}`;
-    });
-
-    if (!cameraSupported()) {
-        el.cameraOpen.hidden = true;
-        el.cameraError.textContent =
-            "This browser cannot open a camera here (it needs https or localhost). Use the phone's camera app below.";
-        el.cameraError.hidden = false;
-        el.fallbacks.open = true;
-    }
     el.snapInput.addEventListener("change", (e) => {
         acceptFiles(e.target.files);
         e.target.value = "";
@@ -683,18 +559,12 @@ async function main() {
     el.signinBtn.addEventListener("click", () => signIn().catch((e) => say(String(e), "warn")));
     el.signoutLink.addEventListener("click", (e) => {
         e.preventDefault();
-        closeCamera();
         signOut().catch((err) => say(String(err), "warn"));
     });
 
-    // Leaving the page: hand the camera back to Android and get the note out.
+    // Leaving the page: get the note out before it can be lost.
     document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") {
-            flushNote();
-            if (camera.isActive()) suspendCamera();
-        } else if (cameraWanted && !camera.isActive()) {
-            openCamera().catch(() => {});
-        }
+        if (document.visibilityState === "hidden") flushNote();
     });
 
     window.addEventListener("online", () => {

@@ -59,9 +59,10 @@ test("the Content-Security-Policy allows Graph and the login endpoints only", ()
     assert.match(csp, /connect-src[^;]*https:\/\/api\.onedrive\.com/);
     assert.match(csp, /connect-src[^;]*https:\/\/login\.microsoftonline\.com/);
     assert.match(csp, /script-src 'self'/);
-    // the camera preview and the blob: thumbnails, with default-src still 'none'
-    assert.match(csp, /media-src 'self' blob:/);
+    // blob: thumbnails, with default-src still 'none'
     assert.match(csp, /img-src[^;]*blob:/);
+    // media-src went with the in-page camera; nothing plays media here now
+    assert.ok(!csp.includes("media-src"), "CSP must not carry media-src any more");
     assert.match(csp, /default-src 'none'/);
     assert.ok(!csp.includes("unsafe-inline"), "CSP must not allow inline script");
     assert.ok(!csp.includes("*.microsoft.com"), "CSP must stay host-specific");
@@ -74,7 +75,6 @@ test("every ?v= in the repo is the one VERSION, so nothing loads half-stale", as
         "app.js",
         "graph.js",
         "core.js",
-        "camera.js",
         "auth.js",
         "config.js",
         "version.js",
@@ -103,28 +103,63 @@ test("note.txt is a contract with the CLI and lives in config.js", () => {
     );
 });
 
-test("the new screen elements are all in index.html", () => {
+test("the screen elements are all in index.html", () => {
     const ids = idsIn(html);
     for (const id of [
+        "item-name",
+        "cleaned",
+        "hint",
+        "snap-label",
+        "snap-input",
+        "gallery-label",
+        "gallery-input",
+        "progress",
+        "strip",
         "note",
         "note-status",
-        "camera-box",
-        "camera-open",
-        "camera-live",
-        "camera-preview",
-        "camera-flash",
-        "camera-close",
-        "camera-error",
-        "shutter",
-        "fallbacks",
+        "next-item",
         "version",
-        "reload-latest",
     ]) {
         assert.ok(ids.has(id), `index.html is missing #${id}`);
     }
-    // the old confirm-every-shot path stays, but only as a fallback
+    // Snap hands over to the phone's own camera app, full screen
     assert.match(html, /capture="environment"/);
-    assert.match(html, /<video id="camera-preview"/);
+});
+
+test("the work section reads top to bottom the way Michal asked", () => {
+    // Michal, 2026-09-21: the page goes back to the Snap label that opens the
+    // phone's camera app, with the notes under the photos and a DONE button in
+    // the same shape as Snap.
+    const work = /<section id="work"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
+    const order = [...work.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(order, [
+        "item-name",
+        "cleaned",
+        "hint",
+        "snap-label",
+        "snap-input",
+        "gallery-label",
+        "gallery-input",
+        "progress",
+        "strip",
+        "note-status",
+        "note",
+        "next-item",
+    ]);
+
+    // DONE: the same big button as Snap, only green; never a round one
+    const done = /<button type="button" id="next-item"[^>]*>([^<]*)</.exec(html);
+    assert.match(done[0], /class="[^"]*\bbig\b[^"]*"/);
+    assert.equal(done[1].trim(), "DONE");
+
+    // and nothing of the in-page camera, the recents or the footer blurb is left
+    for (const id of idsIn(html)) {
+        assert.ok(
+            !/^(camera|shutter|recents|fallbacks|reload-latest)/.test(id),
+            `index.html still carries #${id}`
+        );
+    }
+    assert.ok(!existsSync(join(root, "camera.js")), "camera.js must be gone");
 });
 
 test("the manifest points at icons that exist", () => {
@@ -147,7 +182,6 @@ test("config.js holds a client id and nothing secret; no token is ever logged", 
         "auth.js",
         "graph.js",
         "core.js",
-        "camera.js",
         "config.js",
         "version.js",
         "bridge.js",
@@ -234,8 +268,8 @@ function installDom(ids) {
         history: { replaceState() {} },
     };
     // navigator is a getter on globalThis in Node, so it needs redefining.
-    // Deliberately WITHOUT mediaDevices: an old browser, or plain http, and the
-    // app must still come up and fall back to the file inputs.
+    // Only onLine is needed: the page never touches a device API itself, it
+    // hands over to the phone's camera app through the file input.
     Object.defineProperty(globalThis, "navigator", {
         value: { onLine: true },
         configurable: true,
@@ -265,10 +299,6 @@ test("app.js loads against the real index.html ids without an error", async () =
     // and it must have painted the signed-out state
     assert.equal(nodes.get("work").hidden, true);
     assert.equal(nodes.get("signin-box").hidden, false);
-    // with no navigator.mediaDevices it says so instead of throwing
-    assert.equal(nodes.get("camera-open").hidden, true);
-    assert.equal(nodes.get("camera-error").hidden, false);
-    assert.match(nodes.get("camera-error").textContent, /camera/i);
     // and the running version is on the page
     const { VERSION } = await import("../version.js");
     assert.equal(nodes.get("version").textContent, VERSION);
