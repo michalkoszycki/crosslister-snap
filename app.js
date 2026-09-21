@@ -2,8 +2,8 @@
 // live in graph.js; sign-in lives in auth.js. This file only wires them to
 // buttons and paints the result.
 
-import { config } from "./config.js?v=1.2.1";
-import { VERSION } from "./version.js?v=1.2.1";
+import { config } from "./config.js?v=1.2.2";
+import { VERSION } from "./version.js?v=1.2.2";
 import {
     buildFileName,
     cleanItemName,
@@ -19,8 +19,8 @@ import {
     reduce,
     retryDelayMs,
     shouldRetry,
-} from "./core.js?v=1.2.1";
-import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.1";
+} from "./core.js?v=1.2.2";
+import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.2";
 import {
     clientIdMissing,
     currentAccount,
@@ -28,7 +28,7 @@ import {
     initAuth,
     signIn,
     signOut,
-} from "./auth.js?v=1.2.1";
+} from "./auth.js?v=1.2.2";
 
 const COUNTER_KEY = "snap.counters";
 const NOTES_KEY = "snap.notes";

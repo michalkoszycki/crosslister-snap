@@ -11,6 +11,8 @@
     --accent-ink: #ffffff;
     --ok: #1c7d3f;
     --ok-ink: #ffffff;
+    --done: #1f5a36;
+    --done-ink: #ffffff;
     --bad: #b3261e;
     --warn: #8a5300;
     --warn-bg: #fff4d6;
@@ -28,6 +30,8 @@
         --accent-ink: #06101d;
         --ok: #62d48c;
         --ok-ink: #06210f;
+        --done: #1f5a36;
+        --done-ink: #e9edf2;
         --bad: #ff8a80;
         --warn: #ffd27d;
         --warn-bg: #3a2d10;
@@ -138,7 +142,10 @@ button, .big, .secondary {
    same word size. DONE is green and nothing else (Michal, 2026-09-21: "the same
    style just different color. not round"). */
 .snap, .done { padding: 34px 22px; font-size: 26px; letter-spacing: 0.02em; }
-.done { background: var(--ok); color: var(--ok-ink); }
+.done { background: var(--done); color: var(--done-ink); }
+/* Until the item has its first photo DONE is plain grey, not a faded green: nothing to
+   finish yet (Michal, 2026-09-21). Overrides the shared 0.45 opacity of disabled buttons. */
+.done:disabled { background: var(--line); color: var(--muted); opacity: 1; }
 
 .secondary {
     display: block;
