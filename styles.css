@@ -66,9 +66,14 @@ h1 {
 
 h2 { font-size: 18px; margin: 0 0 8px; }
 
-.account { display: flex; align-items: baseline; gap: 10px; }
-.who { font-size: 12px; color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.signout { font-size: 13px; color: var(--accent); }
+/* the Settings link in the header: a button that looks like a link */
+.link {
+    background: none;
+    border: none;
+    padding: 10px 0 10px 12px;
+    color: var(--accent);
+    font-size: 14px;
+}
 
 .small { font-size: 13px; color: var(--muted); }
 .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; word-break: break-all; }
@@ -92,7 +97,7 @@ h2 { font-size: 18px; margin: 0 0 8px; }
 .field { display: block; margin: 14px 0 6px; }
 .field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 
-input[type="text"] {
+input[type="text"], input[type="url"] {
     width: 100%;
     font-size: 19px;
     padding: 14px;
@@ -101,7 +106,7 @@ input[type="text"] {
     background: var(--card);
     color: var(--ink);
 }
-input[type="text"]:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
+input[type="text"]:focus, input[type="url"]:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 textarea {
     width: 100%;
@@ -188,10 +193,8 @@ button, .big, .secondary {
     padding-bottom: 4px;
 }
 .shot img { display: block; width: 100%; height: 104px; object-fit: cover; background: var(--line); }
-.shot-done { border-color: var(--ok); }
-.shot-failed, .shot-delete-failed { border-color: var(--bad); }
-/* fading out the moment the x is tapped; it comes back if the delete fails */
-.shot-deleting { opacity: 0.35; transition: opacity 150ms linear; }
+/* a photo marked for the AI wears the accent colour all round */
+.shot-ai { border-color: var(--accent); }
 
 /* the delete x: a small glyph inside a 44 px thumb target */
 .kill {
@@ -210,28 +213,71 @@ button, .big, .secondary {
 }
 .kill:active { background: var(--bad); }
 
-.badge {
+/* the AI mark: bottom right of the photo (the x has the top right), a 44 px
+   touch target. Off: a faint outlined "AI". On: a filled accent chip. */
+.ai-mark {
     position: absolute;
-    top: 6px; left: 6px;
-    background: rgba(0, 0, 0, 0.66);
-    color: #fff;
-    font-size: 11px;
-    padding: 2px 7px;
-    border-radius: 9px;
+    top: 60px; /* the photo is 104 px tall: 104 - 44 */
+    right: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.85);
+    isolation: isolate;
 }
+.ai-mark::before {
+    content: "";
+    position: absolute;
+    inset: 9px 6px 9px 6px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.45);
+    z-index: -1;
+}
+.ai-mark.on { color: var(--accent-ink); }
+.ai-mark.on::before { background: var(--accent); border-color: var(--accent); }
+/* after sending, the mark shows what went to the AI but no longer toggles */
+.ai-mark:disabled { opacity: 1; }
+.ai-mark:disabled:not(.on) { visibility: hidden; }
 .shot-name { display: block; font-size: 10px; color: var(--muted); padding: 4px 6px 0; word-break: break-all; }
-.retry {
-    display: block;
-    width: calc(100% - 12px);
-    margin: 6px;
-    padding: 8px;
-    background: var(--bad);
-    color: #fff;
-    font-size: 13px;
+
+/* ebay | craigslist, side by side, each with its status line and link under it */
+.venues {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
 }
+.venue { min-width: 0; }
+.venue-btn {
+    margin-top: 0;
+    background: var(--card);
+    color: var(--accent);
+    border: 2px solid var(--accent);
+    padding: 24px 8px;
+    font-size: 22px;
+}
+.venue-status { margin: 8px 2px 0; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+.venue-status.ok { color: var(--ok); }
+.venue-status.bad { color: var(--bad); }
+.venue-link {
+    display: block;
+    margin: 8px 2px 0;
+    font-size: 14px;
+    color: var(--accent);
+    overflow-wrap: anywhere;
+}
+.hint-line { margin: 10px 0 0; }
 
 footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
 footer p { margin: 6px 0; }
 .version-line { color: var(--muted); font-size: 12px; }
-
-body.bridge { display: flex; align-items: center; justify-content: center; min-height: 70vh; text-align: center; }

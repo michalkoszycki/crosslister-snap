@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Snap item photos straight into OneDrive Pictures/Uploads from an Android phone.",
+  "description": "Snap item photos on the phone; the home PC lists them on eBay and Craigslist.",
   "license": "MIT",
   "scripts": {
     "test": "node --test",

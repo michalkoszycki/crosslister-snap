@@ -1,7 +1,7 @@
 {
   "name": "crosslister snap",
   "short_name": "snap",
-  "description": "Snap item photos into OneDrive Pictures/Uploads for the crosslister CLI.",
+  "description": "Snap item photos and list them on eBay and Craigslist through the home PC.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
