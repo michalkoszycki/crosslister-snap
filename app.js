@@ -2,7 +2,7 @@
 // live in pc.js; shrinking a photo lives in shrink.js. This file only wires
 // them to buttons and paints the result.
 
-import { VERSION } from "./version.js?v=1.2.2";
+import { VERSION } from "./version.js?v=1.3.0";
 import {
     anyActive,
     buildFileName,
@@ -22,9 +22,9 @@ import {
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.2.2";
-import { buildJobForm, checkPc, getJob, postJob } from "./pc.js?v=1.2.2";
-import { shrinkPhoto } from "./shrink.js?v=1.2.2";
+} from "./core.js?v=1.3.0";
+import { buildJobForm, checkPc, getJob, postJob } from "./pc.js?v=1.3.0";
+import { shrinkPhoto } from "./shrink.js?v=1.3.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
