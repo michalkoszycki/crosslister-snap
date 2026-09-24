@@ -1,113 +1,130 @@
 # crosslister snap
 
-Open the phone, tap the icon, type the item name, tap **Snap**. Each photo
-goes straight into OneDrive under `Pictures/Uploads/<item name>/`, which is the
-folder the [crosslister](../crosslister) CLI reads on the PC. No camera roll
-detour, no OneDrive app, no "pick files, upload". Works from anywhere; the PC
-can be off, it picks the photos up next time OneDrive syncs.
+Open the phone, tap the icon, type the item name, tap **Snap**, take the
+photos. Tap the small **AI** at the bottom right of the photos the model should
+look at. Tap **ebay** (or **craigslist**): the home PC drafts the listing,
+posts it, and the link appears under the button. Tap the other button and the
+same item goes up there too, with no second upload and no second model call.
+**DONE** starts the next item.
 
-Notes for the item go into the same folder as `note.txt`, and the little **x**
-on a thumbnail deletes that photo from OneDrive as well as from the page.
+The work happens on the home PC, in `crosslister serve` (the
+[crosslister](../crosslister) repo, `docs/USAGE.md`, "The phone app"). This
+page is a thin client: it holds the photos, sends them, and shows what the PC
+says. Setup is [docs/SETUP.md](docs/SETUP.md): the PC address and a key, once
+per phone.
 
-**Not set up yet.** Do [docs/SETUP.md](docs/SETUP.md) first: it takes one app
-registration and one line in `config.js`.
+A OneDrive fallback for when the PC does not answer is planned for later. The
+page used to upload to OneDrive directly; that code is in the git history
+(up to version 1.2.2).
 
 ## Architecture in five lines
 
 1. A static page on GitHub Pages: plain HTML, CSS and ES modules, no build step,
-   no backend, no npm packages at runtime.
-2. `auth.js` signs the person in with MSAL Browser v5 (redirect flow, personal
-   Microsoft accounts, the `Files.ReadWrite` scope), tokens cached in
-   `localStorage`.
-3. **Snap** is a `<label>` for `<input type="file" capture="environment">`: the
-   phone's own camera app opens full screen, and `app.js` hands each photo it
-   returns to `graph.js` immediately, one at a time, in the background.
-4. `graph.js` asks Microsoft Graph for an upload session addressed by path and
-   PUTs the bytes; the `<item name>` folder is created implicitly by that path.
-   It also PUTs `note.txt` and DELETEs a photo you struck out.
-5. `core.js` holds every decision worth testing (name cleaning, file naming,
-   byte ranges, retry schedule, the photo and note state machines); `tests/`
-   proves it.
-
-The bytes never touch a server of ours: phone -> Microsoft, directly.
+   no backend of its own, no npm packages at runtime.
+2. **Snap** is a `<label>` for `<input type="file" capture="environment">`: the
+   phone's own camera app opens full screen and hands each photo back to the
+   page, which keeps it in memory until **DONE**.
+3. A venue button shrinks each photo (`shrink.js`: at most 2000 px, JPEG 0.85)
+   and sends the item to the PC in one request (`pc.js`), then asks for its
+   status every 3 s until there is a link or an error.
+4. The PC is reached at its Tailscale Funnel address
+   (`https://<pc>.<tailnet>.ts.net`) with a per-person key; both are typed into
+   **Settings** once and kept in the phone's `localStorage`.
+5. `core.js` holds every decision worth testing (settings, the shrink size, the
+   request, the job's state and the line under each button, when a button may be
+   pressed); `tests/` proves it, including a whole run against a fake PC.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `redirect.html`, `bridge.js` | the MSAL v5 "redirect bridge" page sign-in comes back to |
-| `config.js` | **the only file you edit**: client id, folder, scopes, `note.txt` |
-| `app.js` | screen wiring, the upload queue, offline handling |
-| `auth.js` | sign in / sign out / get a token |
-| `graph.js` | every Microsoft Graph call |
+| `app.js` | screen wiring: photos, the AI mark, Settings, the two buttons, polling |
+| `pc.js` | every call to the PC |
+| `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `core.js` | pure logic, no DOM, no network |
 | `version.js` | one `VERSION`; every file the page loads carries it as `?v=` |
-| `vendor/` | pinned `@azure/msal-browser` 5.22.0 bundles + its MIT licence |
+| `styles.css` | the look |
 | `tools/make-icons.mjs` | regenerates `icon-192.png` / `icon-512.png` from scratch |
 | `tools/bump-version.mjs` | rewrites every `?v=` to match `VERSION` |
 | `tests/` | `node --test`, no dependencies |
 
-## Taking photos
+## The screen, top to bottom
 
-**Snap** is a big label for `<input type="file" accept="image/*"
-capture="environment">`. Tapping it hands over to the phone's own camera app,
-full screen, with that app's own controls and its own accept/retake screen after
-each shot — a web page cannot switch that screen off, and Michal asked for the
-full-screen camera back with the confirmation kept (2026-09-21). Accept a shot
-and it goes straight into the upload queue.
+- **Settings** (header, top right): the PC address and the key. **Save and
+  check** stores them and asks the PC whether it knows the key (a read of the
+  newest job: no model call, nothing published).
+- **Item name**, as before: Snap waits for it, and it names the photos
+  (`Boots-1.jpg`, `Boots-2.jpg`, ...). The service has no name field; the model
+  names the listing from the photos and the note.
+- **Snap** and **Add from gallery**, as before.
+- **The photos.** The **x** at the top right takes a photo off the page. The
+  **AI** at the bottom right marks it for the model: off by default, a faint
+  outlined "AI" when off, a filled blue chip (and a blue frame round the photo)
+  when on. Every photo goes to the listing; only the marked ones go to the
+  model, and a new item needs at least one.
+- **Notes for this item**, as before. The note goes with the first button only;
+  the small word next to the label then says `sent`, or
+  `changed after sending - not sent` if it was edited afterwards.
+- **ebay | craigslist**, side by side, each with its status line and link:
+  `sending 3 photos`, `queued, 1 ahead`, the PC's step (`drafting the
+  listing`...), then the link (opens in a new tab), or the PC's error in its own
+  words. `cannot reach the PC` when the request never arrived; the button comes
+  back and the photos are still on the page.
+- **DONE**, at the very bottom: clears the item. It waits while a job for this
+  item is on its way or on the PC.
 
-Because it is the phone's camera, you get the camera's full resolution and its
-own JPEG, several MB on a Pixel. The file is renamed `<item>-<n>.jpg` on the way
-into OneDrive.
+Once the first button has sent the photos, they are locked (no Snap, no x, no
+AI toggles) because the PC's saved row is what the second button uses. If the
+first job fails before the PC saved the row, they unlock and the next press is
+a fresh send.
 
-**Add from gallery** takes photos already on the phone; it accepts several at
-once and queues them the same way.
+When a button is disabled, one line under the pair says why: `Set the PC
+address and key in Settings`, `Snap a photo first`, `Mark at least one photo AI
+(bottom right of the photo)`, `At most 24 photos - delete n`, or that the other
+button goes first.
 
-## Notes
+## The service contract (as this page uses it)
 
-The **Notes for this item** box is saved to
-`Pictures/Uploads/<item>/note.txt`, UTF-8 plain text, one file per item,
-overwritten each time. It saves itself a second and a half after you stop
-typing, and again when you leave the box, tap **DONE**, or switch away
-from the page. The small grey word next to the label is the only status:
-"saving...", "saved", or "not saved (offline), will retry". Emptying the box
-deletes the `note.txt` that was uploaded; if none was, nothing is sent at all.
+Every call carries the header `X-Crosslister-Key: <key>`. Errors are JSON
+`{"detail": "..."}`: 400 with a message, 401 for a wrong key, 404 for an
+unknown job.
 
-`note.txt` is a **contract with the CLI**, which reads it on the PC. The name
-lives in `config.js` as `noteFileName` — change it there and you must change it
-in the CLI too.
+| Call | Sent | Answer |
+| --- | --- | --- |
+| `POST <pc>/jobs`, a new item | multipart: `venue` = `ebay` or `craigslist`, `note`, `ai` = 0-based positions of the marked photos in the order sent (`0,2`), `photos` (1-24 JPEGs) | `{"job": id, "state": "queued", "ahead": n}` |
+| `POST <pc>/jobs`, the other button | `venue` and `sku` only: no photos, no `ai`, no `note` | the same |
+| `GET <pc>/jobs/<id>`, every 3 s | - | `{"state": queued/running/done/failed, "step", "sku", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}` |
+| `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 
-## Deleting a photo
+The `sku` comes from the first job's status as soon as the PC has saved the
+row, so the second button can go while the first job is still publishing. The
+page keeps it with the item until **DONE**.
 
-Every thumbnail has an **x** in its top right (a 44 px touch target around a
-small glyph). Tapping it:
+## Settings
 
-- sends `DELETE /me/drive/items/{id}` straight away — **no confirmation**, on
-  purpose;
-- fades the card out at once, and if Graph refuses, brings it back marked
-  `delete failed`, with the x still there to try again;
-- for a photo still uploading, aborts the PUT instead. An abandoned upload
-  session leaves no file behind, so there is nothing to delete;
-- for a queued or failed photo, just drops it from the page.
+- **PC address**: `https://<pc>.<tailnet>.ts.net`, the address
+  `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
+  `http://127.0.0.1` and `http://localhost` for trying the page on the PC
+  itself; the page's CSP allows exactly those, so any other address could only
+  fail silently.
+- **Key**: one of the keys in `CROSSLISTER_KEYS` in the PC's `.env`. Michal and
+  his wife may use the same key on two phones.
 
-Deleted files go to the **OneDrive recycle bin**, not to nothing, so a mistap
-is recoverable from onedrive.com for 30 days.
-
-Numbering never goes backwards: delete `Boots-2.jpg` and the next photo is
-still `Boots-3.jpg`. Gaps are fine, and a file name is never reused.
+Both are stored in `localStorage` on the phone (`snap.pc`, `snap.key`). Every
+storage read and write is wrapped, so a private window or blocked site data
+only means Settings are not remembered.
 
 ## Getting a fix onto the phone
 
 GitHub Pages caches every file for ten minutes, which can leave the phone with
 a new `index.html` next to a stale `app.js`. So `version.js` holds one
 `VERSION`, and everything the page loads carries it: the stylesheet, `app.js`,
-and every ES module import inside the app (`./core.js?v=1.2.0`). A new version
+and every ES module import inside the app (`./core.js?v=1.3.0`). A new version
 is a new URL, and a new URL was never in the cache. Node accepts the same query
 on a relative import, so `node --test` is unaffected.
 
-The running version is in small print at the bottom of the page, and nothing
-else is.
+The running version is in small print at the bottom of the page.
 
 To release: edit `VERSION`, run `node tools/bump-version.mjs`, commit, push. A
 test fails if any `?v=` drifts out of step.
@@ -122,140 +139,20 @@ node --test
 python -m http.server 8080
 ```
 
-`http://localhost:8080/redirect.html` must be one of the registered redirect
-URIs for sign-in to work locally (SETUP.md step 1 adds it).
-
-## Why MSAL is vendored instead of loaded from a CDN
-
-Microsoft retired the MSAL CDN at `@azure/msal-browser` v3 and now tells app
-developers to take MSAL from a package manager or bundler. We have no bundler,
-so the two pinned minified bundles from the npm tarball of **5.22.0** live in
-`vendor/` and are loaded with plain `<script>` tags:
-
-- `vendor/msal-browser-5.22.0.min.js` — UMD, defines `window.msal`
-  (sha256 `5CE42B98842C06A0D00233253F46684F43DD398B46CB7DD5E1441F1BFD9CAA6D`)
-- `vendor/msal-redirect-bridge-5.22.0.min.js` — UMD, defines
-  `window.msalRedirectBridge`, used only by `redirect.html`
-
-Upside: nothing is fetched from a third party at all, and the strict CSP can be
-`script-src 'self'`. To upgrade, download the new tarball and replace both files
-(and the file names in `index.html`, `redirect.html` and `tests/page.test.js`).
-
-## Graph endpoints used
-
-| Call | Purpose |
-| --- | --- |
-| `POST /v1.0/me/drive/root:/Pictures/Uploads/<item>/<file>:/createUploadSession` | start an upload, creating the folder implicitly, `@microsoft.graph.conflictBehavior: rename` |
-| `PUT <uploadUrl>` with `Content-Range: bytes a-b/total` | the bytes, in ranges that are multiples of 320 KiB (10 MiB each) |
-| `PUT /v1.0/me/drive/root:/Pictures/Uploads/<item>/note.txt:/content` | the note, in one call; a PUT to a path that already has a file replaces it |
-| `DELETE /v1.0/me/drive/items/{id}` | the x on a thumbnail; `204 No Content`, and the file goes to the recycle bin |
-
-The upload URL is pre-authenticated: the `Authorization` header is deliberately
-**not** sent on the PUT of the bytes, as the Graph docs require. The other
-three calls do send it.
-
-The id for the `DELETE` is the `id` of the driveItem Graph returns in its
-answer to the **last** byte range, which `graph.js` keeps on the photo. The
-same goes for `note.txt`: its `id` comes back from the PUT and is what an
-emptied note deletes.
-
-All four calls are covered by the one delegated **`Files.ReadWrite`** scope the
-app already asks for — the Graph reference lists it as the least-privileged
-permission for a personal Microsoft account on both the delete and the
-small-file upload, so nothing new is ever consented to.
-
-## Sources relied on
-
-- createUploadSession, byte ranges, the "no Authorization header on the PUT"
-  rule, retry advice:
-  <https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0>
-- CORS for browser JavaScript against OneDrive/Graph:
-  <https://learn.microsoft.com/en-us/onedrive/developer/rest-api/concepts/working-with-cors?view=odsp-graph-online>
-- MSAL initialization, `createStandardPublicClientApplication`,
-  `handleRedirectPromise`, redirect vs popup:
-  <https://learn.microsoft.com/en-us/entra/msal/javascript/browser/initialization>
-- MSAL v5 changes, the redirect bridge page and why `redirectUri` points at it:
-  <https://learn.microsoft.com/en-us/entra/msal/javascript/browser/v4-migration>
-- MSAL CDN retirement:
-  <https://learn.microsoft.com/en-us/entra/msal/javascript/browser/cdn-usage>
-- App registration, account types, Application (client) ID:
-  <https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app>
-- Small-file upload (`PUT .../:/content`, "up to 250 MB", `Content-Type`
-  required, returns the driveItem), used for `note.txt`:
-  <https://learn.microsoft.com/en-us/graph/api/driveitem-put-content?view=graph-rest-1.0>
-- Delete a file (`DELETE /me/drive/items/{id}`, `204 No Content`, "moves the
-  items to the recycle bin", `Files.ReadWrite` least privileged for a personal
-  account):
-  <https://learn.microsoft.com/en-us/graph/api/driveitem-delete?view=graph-rest-1.0>
-- `<input type="file">` with `accept` and `capture`, i.e. what makes the phone's
-  own camera app open:
-  <https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#capture>
-
-## Verified vs unverified
-
-**Verified by running it here**
-
-- `node --test`: 63 tests, all passing.
-- Every module still loads with its `?v=` query, both in Node and over
-  `python -m http.server 8080` (checked with curl: `app.js?v=…`, `core.js?v=…`,
-  `graph.js?v=…`, `styles.css?v=…` — all 200, right content types; `camera.js`
-  is gone and 404s).
-- The note and photo-delete logic under stubs: both state machines and the
-  debouncer.
-- The order of the work section in `index.html` — name, Snap, gallery, progress,
-  strip, notes, DONE — and that no camera, shutter or recents element is left.
-- `app.js` loads and paints against the real ids in `index.html`, under a stubbed
-  DOM, with no thrown error (`tests/page.test.js`).
-- Every file `index.html` and `redirect.html` reference exists and is served with
-  the right content type by `python -m http.server 8080` (checked with curl:
-  page, modules, vendored MSAL, manifest, icons, redirect page — all 200).
-- The vendored bundles are the real 5.22.0 artefacts and define the globals the
-  page expects.
-- The CSP has no `unsafe-inline` and does list Graph, the OneDrive upload hosts
-  and the login endpoints.
-- Icon PNGs render (checked by eye).
-
-**Unverified until Michal has a client id and signs in**
-
-- The sign-in round trip itself: redirect to Microsoft, `redirect.html`, back to
-  the app, the account name appearing. There is no client id yet, so this could
-  not be exercised.
-- Whether the MSAL v5 redirect bridge behaves as documented on Android Chrome.
-  If sign-in ever loops or lands on a blank `redirect.html`, that is the first
-  suspect; the fallback is to pin `@azure/msal-browser` 4.x, whose redirect flow
-  needs no bridge page and whose redirect URI is the app root.
-- A real upload: `createUploadSession` and the byte-range PUT against a personal
-  OneDrive from a browser, including whether CORS lets the PUT through to the
-  `*.up.1drv.com` host the session returns. The code follows the documented
-  shape but has never been run against the live service.
-- **Delete.** The `DELETE` has never been sent against the live service. Check:
-  tap the x on an uploaded photo; the card should vanish within a second and
-  the file should be gone from `Pictures/Uploads/<item>/` on onedrive.com and
-  present in the recycle bin. If the card comes back saying `delete failed`,
-  long-press it to read the error.
-- **The note upload.** `PUT .../note.txt:/content` has never been sent either,
-  and a personal OneDrive has rejected a fuller body before (the
-  `createUploadSession` 400 of 2026-09-19). Check: type a note, wait two
-  seconds for "saved", then look for `note.txt` in the item folder and open it.
-  Then clear the box and confirm the file disappears.
-- **Snap** on the Pixel: that `capture="environment"` opens the camera app full
-  screen and that the photo is not added to the camera roll. That is Android's
-  choice, not the page's.
-- "Add to Home screen" producing a standalone app icon.
+To point the local page at a local `crosslister serve`
+(`http://127.0.0.1:8765`), the service must allow the page's origin: add
+`http://localhost:8080` to `CROSSLISTER_SERVE_ORIGINS` in the PC's `.env`
+(e.g. `CROSSLISTER_SERVE_ORIGINS=https://*.github.io,http://localhost:8080`).
+**A real press of ebay or craigslist pays for a model call and publishes.**
 
 ## Security and privacy
 
-- No secrets in this repo. The Application (client) ID in `config.js` is public
-  by design: a single-page app cannot keep a secret, so the identity platform
-  treats the client id as an identifier, not a credential. What protects the
-  account is the registered redirect URIs plus the person's own sign-in.
-- The app asks for `Files.ReadWrite` only — the signed-in person's own files.
-  Never `Files.ReadWrite.All`. Writing `note.txt` and deleting a photo are both
-  covered by it, so the set of permissions has not grown.
-- The page never opens a camera itself: it asks Android for a photo and receives
-  a file. There is no `getUserMedia`, no preview stream and no microphone.
-- No analytics, no external fonts, nothing loaded from a third party at all.
+- No secrets in this repo. The key is typed into each phone and lives only in
+  that phone's `localStorage` and in the header of calls to the PC.
+- The CSP lets the page talk to the PC's Tailscale address (or loopback) and
+  nothing else; no third-party script, font or analytics.
+- Shrinking re-encodes each photo, which also drops the camera's metadata (GPS
+  included) before anything leaves the phone.
+- A link from the PC is only made tappable if it is an `http(s)` address, and
+  it opens with `rel="noopener noreferrer"`.
 - Nothing is logged to the console; a test enforces that.
-- Access tokens live in `localStorage` under MSAL's own keys, as MSAL manages
-  them, and never leave the browser except in the `Authorization` header to
-  `graph.microsoft.com`.
