@@ -3,7 +3,7 @@
 // file only wires them to buttons, runs the upload queue's requests, and
 // paints the result.
 
-import { VERSION } from "./version.js?v=1.3.0";
+import { VERSION } from "./version.js?v=1.4.0";
 import {
     anyActive,
     bannerText,
@@ -27,8 +27,8 @@ import {
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.3.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.3.0";
+} from "./core.js?v=1.4.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.4.0";
 import {
     checkPc,
     createItem,
@@ -39,8 +39,8 @@ import {
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.3.0";
-import { shrinkPhoto } from "./shrink.js?v=1.3.0";
+} from "./pc.js?v=1.4.0";
+import { shrinkPhoto } from "./shrink.js?v=1.4.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";

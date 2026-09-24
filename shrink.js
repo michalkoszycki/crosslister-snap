@@ -10,7 +10,7 @@
 // is the fallback for a browser that cannot make a bitmap from the file.
 // The size math is fitWithin() in core.js, which is tested; this stays thin.
 
-import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=1.3.0";
+import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=1.4.0";
 
 /**
  * @param {Blob} file
