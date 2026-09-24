@@ -1,6 +1,9 @@
 // core.js -- pure logic for crosslister snap.
 // No DOM, no network, no browser globals. Everything here is unit tested
-// by `node --test`.
+// by `node --test`. The upload queue's own rules (what goes next, how long
+// to wait) are in queue.js; the state they act on is reduced here.
+
+import { noteDirty, unsent } from "./queue.js?v=1.3.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -170,7 +173,7 @@ export function fitWithin(width, height, max = MAX_EDGE) {
 /** The venues the two buttons send. */
 export const VENUES = ["ebay", "craigslist"];
 
-/** The most photos one job may carry (the service refuses more). */
+/** The most photos one item may carry (the service refuses more). */
 export const MAX_PHOTOS = 24;
 
 /** How often a running job is asked for its status. */
@@ -180,41 +183,30 @@ export const POLL_MS = 3000;
 export const KEY_HEADER = "X-Crosslister-Key";
 
 /**
- * What one press of a venue button sends.
+ * The JSON body one press of a venue button sends to POST /jobs.
  *
- * A new item: venue, note, ai (the 0-based positions of the marked photos, in
- * the order the photos are sent) and every photo. The second button for the
- * same item: venue and sku only -- the PC reuses the row it saved, so there
- * is no second upload and no second model call.
+ * A new item: the item (its folder on the PC, where every photo already is),
+ * the venue, and the numbers of the photos marked AI. The second button for
+ * the same item: the sku and the venue only -- the PC reuses the row it saved,
+ * so there is no second model call.
  *
  * @param {object} o
  * @param {string} o.venue
- * @param {string} [o.sku]          known once the first job has saved the row
- * @param {string} [o.note]
- * @param {{id:string, ai:boolean}[]} [o.photos]  in strip order
- * @returns {{fields:[string,string][], photoIds:string[], sendsNote:boolean}}
+ * @param {string} [o.sku]    known once the first job has saved the row
+ * @param {string} [o.item]   the item's id on the PC
+ * @param {{n:number, ai:boolean}[]} [o.photos]
+ * @returns {{sku:string, venue:string} | {item:string, venue:string, ai:number[]}}
  */
-export function jobRequest({ venue, sku = "", note = "", photos = [] }) {
+export function jobRequest({ venue, sku = "", item = "", photos = [] }) {
     if (!VENUES.includes(venue)) throw new RangeError(`unknown venue ${venue}`);
-    if (sku) {
-        return { fields: [["venue", venue], ["sku", sku]], photoIds: [], sendsNote: false };
-    }
-    const ai = photos.flatMap((p, i) => (p.ai ? [String(i)] : [])).join(",");
-    return {
-        fields: [
-            ["venue", venue],
-            ["note", note.trim()],
-            ["ai", ai],
-        ],
-        photoIds: photos.map((p) => p.id),
-        sendsNote: true,
-    };
+    if (sku) return { sku, venue };
+    return { item, venue, ai: photos.filter((p) => p.ai).map((p) => p.n) };
 }
 
 /**
  * The one line an error from the PC is shown as.
  * The service answers errors as JSON {"detail": "..."}: 400 with a message,
- * 401 for a missing or wrong key, 404 for a job it does not know.
+ * 401 for a missing or wrong key, 404 for an item or job it does not know.
  *
  * @param {number} status HTTP status, 0 when the PC could not be reached
  * @param {unknown} [detail] the `detail` field of the answer, if any
@@ -224,7 +216,7 @@ export function errorText(status, detail) {
     if (status === 0) return "cannot reach the PC";
     if (status === 401) return "wrong key - check Settings";
     if (typeof detail === "string" && detail) return detail;
-    if (status === 404) return "the PC does not know this job";
+    if (status === 404) return "the PC does not know this item or job";
     return `the PC answered ${status}`;
 }
 
@@ -249,8 +241,12 @@ export function safeLink(url) {
  * @typedef {Object} Photo
  * @property {string} id
  * @property {string} name  e.g. "Boots-3.jpg"
- * @property {number} n     1-based number within the item
+ * @property {number} n     1-based number within the item; the file on the PC is nn.jpg
  * @property {boolean} ai   sent to the model when true; every photo goes to the listing
+ * @property {"waiting"|"sending"|"sent"|"failed"} status  on its way to the PC, or there
+ * @property {string} error why the PC refused it
+ * @property {boolean} tried a PUT was started, so the PC may hold it (the x then deletes it there)
+ * @property {boolean} local the page holds the picture; false for one read back from the PC
  */
 
 /**
@@ -268,9 +264,16 @@ export function safeLink(url) {
 /**
  * @typedef {Object} SnapState
  * @property {string} itemName
+ * @property {string} itemId      the item's folder on the PC, once made; kept until DONE
  * @property {Photo[]} photos
+ * @property {number[]} deletes   photo numbers still to delete on the PC
  * @property {boolean} online
- * @property {{text:string, sentText:(string|null)}} note
+ * @property {{text:string, sentText:(string|null), due:boolean}} note
+ *           sentText: what the PC has (null: nothing sent yet); due: send it now
+ * @property {null|{kind:string}} busy  the one request in flight (queue.js)
+ * @property {boolean} stalled    the PC could not be reached; waiting to try again
+ * @property {number} failures    failed tries in a row, for the wait before the next
+ * @property {string} problem     the last failure, shown while stalled
  * @property {string} sku   the saved row, once the first job reports it
  * @property {Record<string, VenueJob>} jobs
  */
@@ -284,9 +287,15 @@ export function idleJob() {
 export function initialState(itemName = "") {
     return {
         itemName,
+        itemId: "",
         photos: [],
+        deletes: [],
         online: true,
-        note: { text: "", sentText: null },
+        note: { text: "", sentText: null, due: false },
+        busy: null,
+        stalled: false,
+        failures: 0,
+        problem: "",
         sku: "",
         jobs: Object.fromEntries(VENUES.map((v) => [v, idleJob()])),
     };
@@ -305,9 +314,9 @@ export function anyActive(state) {
 }
 
 /**
- * Once a job has the photos (it is on its way, on the PC, or has saved the
- * row) the strip is what was sent: no more snapping, deleting or marking for
- * this item. A job that failed before the row was saved unlocks it again.
+ * Once a job is on its way or has saved the row, the strip is what was
+ * posted: no more snapping, deleting or marking for this item. A job that
+ * failed before the row was saved unlocks it again.
  */
 export function photosLocked(state) {
     return !!state.sku || anyActive(state);
@@ -317,14 +326,21 @@ export function photosLocked(state) {
  * The one reducer. Pure: returns a new state, never mutates.
  * Actions:
  *   {type:"setItem", itemName}
- *   {type:"add", id, name, n}
- *   {type:"remove", id}
+ *   {type:"add", id, name, n}             a photo taken; it waits for the upload queue
+ *   {type:"remove", id}                   the x; a photo the PC may hold is deleted there too
  *   {type:"toggleAi", id}
+ *   {type:"retry", id}                    tap on a failed photo
  *   {type:"online", online}
  *   {type:"noteText", text}
+ *   {type:"noteDue"}                      he stopped typing: send the note
  *   {type:"reset"}                        DONE: the next item
+ *   {type:"taskStart", task}              the upload queue (queue.js) sends a request
+ *   {type:"taskDone", task, answer}
+ *   {type:"taskFailed", task, status, error}  status 0: the PC could not be reached
+ *   {type:"resume"}                       try the stalled queue again
+ *   {type:"recovered", itemName, itemId, ai, answer}  a reload, read back from GET /items/<id>
  *   {type:"jobSending", venue, step}
- *   {type:"jobAccepted", venue, job, ahead, sentNote?}
+ *   {type:"jobAccepted", venue, job, ahead}
  *   {type:"jobRefused", venue, error}     the POST did not become a job
  *   {type:"jobStatus", venue, status}     an answer to GET /jobs/<id>
  *   {type:"pollTrouble", venue, error}    that GET failed; keep asking
@@ -342,31 +358,75 @@ export function reduce(state, action) {
                 ...state,
                 photos: [
                     ...state.photos,
-                    { id: action.id, name: action.name, n: action.n, ai: false },
+                    {
+                        id: action.id,
+                        name: action.name,
+                        n: action.n,
+                        ai: false,
+                        status: "waiting",
+                        error: "",
+                        tried: false,
+                        local: true,
+                    },
                 ],
             };
         case "remove": {
-            const photos = state.photos.filter((p) => p.id !== action.id);
-            return photos.length === state.photos.length ? state : { ...state, photos };
+            const gone = state.photos.find((p) => p.id === action.id);
+            if (!gone) return state;
+            const photos = state.photos.filter((p) => p !== gone);
+            const deletes =
+                gone.tried && !state.deletes.includes(gone.n)
+                    ? [...state.deletes, gone.n]
+                    : state.deletes;
+            return { ...state, photos, deletes };
         }
-        case "toggleAi": {
-            let hit = false;
-            const photos = state.photos.map((p) => {
-                if (p.id !== action.id) return p;
-                hit = true;
-                return { ...p, ai: !p.ai };
-            });
-            return hit ? { ...state, photos } : state;
-        }
+        case "toggleAi":
+            return patchPhoto(state, action.id, (p) => ({ ...p, ai: !p.ai }));
+        case "retry":
+            return patchPhoto(state, action.id, (p) =>
+                p.status === "failed" ? { ...p, status: "waiting", error: "" } : p
+            );
         case "online":
-            return { ...state, online: !!action.online };
+            // back online: the stalled queue goes again at once
+            return action.online
+                ? { ...state, online: true, stalled: false }
+                : { ...state, online: false };
         case "noteText":
             return {
                 ...state,
-                note: { ...state.note, text: typeof action.text === "string" ? action.text : "" },
+                note: {
+                    ...state.note,
+                    text: typeof action.text === "string" ? action.text : "",
+                    due: false,
+                },
             };
+        case "noteDue":
+            return { ...state, note: { ...state.note, due: true } };
         case "reset":
             return { ...initialState(""), online: state.online };
+
+        case "taskStart": {
+            const next = { ...state, busy: action.task };
+            if (action.task.kind !== "photo") return next;
+            return patchPhoto(next, action.task.id, (p) => ({
+                ...p,
+                status: "sending",
+                tried: true,
+                error: "",
+            }));
+        }
+        case "taskDone":
+            return taskDone(
+                { ...state, busy: null, stalled: false, failures: 0, problem: "" },
+                action.task,
+                action.answer || {}
+            );
+        case "taskFailed":
+            return taskFailed({ ...state, busy: null }, action.task, action.status, action.error);
+        case "resume":
+            return { ...state, stalled: false };
+        case "recovered":
+            return recovered(state, action);
 
         case "jobSending":
             return withJob(state, action.venue, () => ({
@@ -374,17 +434,13 @@ export function reduce(state, action) {
                 phase: "sending",
                 step: action.step || "sending",
             }));
-        case "jobAccepted": {
-            const next = withJob(state, action.venue, () => ({
+        case "jobAccepted":
+            return withJob(state, action.venue, () => ({
                 ...idleJob(),
                 phase: "queued",
                 jobId: String(action.job),
                 ahead: toCount(action.ahead),
             }));
-            return typeof action.sentNote === "string"
-                ? { ...next, note: { ...next.note, sentText: action.sentNote } }
-                : next;
-        }
         case "jobRefused":
             return withJob(state, action.venue, () => ({
                 ...idleJob(),
@@ -418,6 +474,116 @@ export function reduce(state, action) {
     }
 }
 
+function taskDone(state, task, answer) {
+    switch (task.kind) {
+        case "item":
+            return adoptItem(state, answer);
+        case "photo":
+            return patchPhoto(state, task.id, (p) => ({ ...p, status: "sent", error: "" }));
+        case "delete":
+            return { ...state, deletes: state.deletes.filter((n) => n !== task.n) };
+        case "note":
+            return { ...state, note: { ...state.note, sentText: task.text } };
+        default:
+            return state;
+    }
+}
+
+function taskFailed(state, task, status, error) {
+    const why = error || "not sent";
+    if (status !== 0) {
+        // the PC answered and refused: a photo shows it (tap to retry); a
+        // delete of something already gone is done; the rest is tried again
+        if (task.kind === "photo") {
+            return patchPhoto(state, task.id, (p) => ({ ...p, status: "failed", error: why }));
+        }
+        if (task.kind === "delete" && status === 404) {
+            return { ...state, deletes: state.deletes.filter((n) => n !== task.n) };
+        }
+    }
+    const stalled = { ...state, stalled: true, failures: state.failures + 1, problem: why };
+    if (task.kind !== "photo") return stalled;
+    return patchPhoto(stalled, task.id, (p) =>
+        p.status === "sending" ? { ...p, status: "waiting" } : p
+    );
+}
+
+/**
+ * The item exists on the PC. The same name the same day is the same item
+ * there, so it may already hold photos: they join the strip as sent, and the
+ * photos waiting here are numbered on after them so nothing is overwritten.
+ */
+function adoptItem(state, answer) {
+    const itemId = typeof answer.item === "string" ? answer.item : "";
+    if (!itemId) {
+        return {
+            ...state,
+            stalled: true,
+            failures: state.failures + 1,
+            problem: "the PC gave no item",
+        };
+    }
+    const existing = numbers(answer.photos);
+    if (existing.length === 0) return { ...state, itemId };
+    let next = Math.max(...existing);
+    const waiting = state.photos.map((p) => {
+        next += 1;
+        return { ...p, n: next, name: buildFileName(state.itemName, next) };
+    });
+    const there = existing.map((n) => photoOnPc(state.itemName, n, false));
+    return { ...state, itemId, photos: [...there, ...waiting] };
+}
+
+/** A reloaded page takes the item back as the PC has it. */
+function recovered(state, action) {
+    const answer = action.answer || {};
+    const marked = new Set(numbers(action.ai));
+    const note = typeof answer.note === "string" ? answer.note : "";
+    let next = {
+        ...initialState(action.itemName),
+        online: state.online,
+        itemId: action.itemId,
+        photos: numbers(answer.photos).map((n) => photoOnPc(action.itemName, n, marked.has(n))),
+        note: { text: note, sentText: note, due: false },
+        sku: typeof answer.sku === "string" ? answer.sku : "",
+    };
+    for (const job of Array.isArray(answer.jobs) ? answer.jobs : []) {
+        if (!job || !VENUES.includes(job.venue)) continue;
+        next = withJob(next, job.venue, () => ({ ...idleJob(), jobId: String(job.job) }));
+        next = reduce(next, { type: "jobStatus", venue: job.venue, status: job });
+    }
+    return next;
+}
+
+function photoOnPc(itemName, n, ai) {
+    return {
+        id: `pc#${n}`,
+        name: buildFileName(itemName, n),
+        n,
+        ai,
+        status: "sent",
+        error: "",
+        tried: true,
+        local: false,
+    };
+}
+
+function numbers(list) {
+    return Array.isArray(list)
+        ? [...new Set(list.filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b)
+        : [];
+}
+
+function patchPhoto(state, id, fn) {
+    let hit = false;
+    const photos = state.photos.map((p) => {
+        if (p.id !== id) return p;
+        hit = true;
+        return fn(p);
+    });
+    return hit ? { ...state, photos } : state;
+}
+
 function withJob(state, venue, fn) {
     if (!state.jobs[venue]) return state;
     return { ...state, jobs: { ...state.jobs, [venue]: fn(state.jobs[venue]) } };
@@ -425,6 +591,38 @@ function withJob(state, venue, fn) {
 
 function toCount(x) {
     return Number.isInteger(x) && x > 0 ? x : 0;
+}
+
+/** The highest photo number the item has, so a new photo never reuses one. */
+export function highestNumber(state) {
+    return state.photos.reduce((top, p) => Math.max(top, p.n), 0);
+}
+
+/**
+ * Counters with the item's count raised to at least `n`.
+ * @param {Record<string, number>} counters
+ * @param {string} itemName
+ * @param {number} n
+ * @returns {Record<string, number>}
+ */
+export function raiseCount(counters, itemName, n) {
+    if (currentCount(counters, itemName) >= n) return counters || {};
+    return { ...(counters || {}), [itemName]: n };
+}
+
+/**
+ * What the page keeps in localStorage so a reload can read the item back
+ * from the PC: the name, the id, and which photos are marked AI (the PC does
+ * not know the marks until a button is pressed).
+ * @returns {null|{itemName:string, itemId:string, ai:number[]}}
+ */
+export function savedItem(state) {
+    if (!state.itemId) return null;
+    return {
+        itemName: state.itemName,
+        itemId: state.itemId,
+        ai: state.photos.filter((p) => p.ai).map((p) => p.n),
+    };
 }
 
 // --- what the screen says ------------------------------------------------------
@@ -461,6 +659,7 @@ export const SETTINGS_HINT = "Set the PC address and key in Settings";
 
 /**
  * Whether a venue button can be pressed, and if not, the one-line reason.
+ * A new item goes once every photo is on the PC and at least one is marked AI.
  * @param {SnapState} state
  * @param {string} venue
  * @param {boolean} settingsOk
@@ -473,7 +672,7 @@ export function venueButton(state, venue, settingsOk) {
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     // the second button: the row is saved, nothing more is needed
     if (state.sku) return { enabled: true, hint: "" };
-    // the other button's job has the photos but has not saved the row yet
+    // the other button's job is on its way but has not saved the row yet
     if (anyActive(state)) {
         return { enabled: false, hint: "The other button goes first; this one opens when it has saved the item" };
     }
@@ -483,34 +682,48 @@ export function venueButton(state, venue, settingsOk) {
     if (!state.photos.some((p) => p.ai)) {
         return { enabled: false, hint: "Mark at least one photo AI (bottom right of the photo)" };
     }
+    if (state.photos.some((p) => p.status === "failed")) {
+        return { enabled: false, hint: "A photo did not reach the PC - tap its 'failed' to try again" };
+    }
+    if (unsent(state) || !state.itemId) {
+        const sent = state.photos.filter((p) => p.status === "sent").length;
+        return { enabled: false, hint: `Waiting for the photos to reach the PC (${sent} of ${n} sent)` };
+    }
     return { enabled: true, hint: "" };
 }
 
 /**
- * DONE: needs a photo (as before), and waits while a job for this item is on
- * its way or on the PC.
+ * DONE: needs a photo (as before), waits while a job for this item is on its
+ * way or on the PC, and while a photo or a delete has not reached the PC.
  * @returns {{enabled:boolean, hint:string}}
  */
 export function doneButton(state) {
     if (anyActive(state)) {
         return { enabled: false, hint: "DONE waits until the listing is finished" };
     }
+    if (unsent(state)) {
+        return { enabled: false, hint: "DONE waits until the photos are on the PC" };
+    }
     return { enabled: state.photos.length > 0, hint: "" };
 }
 
 /**
- * The quiet word next to the notes label. The note goes with the first button
- * only; the second button reuses the saved row, so a later edit goes nowhere.
- * @param {{text:string, sentText:(string|null)}} note
+ * The quiet word next to the notes label. The note goes to the PC as he
+ * types (note.txt beside the photos), a moment after he stops.
+ * @param {SnapState} state
  * @returns {string}
  */
-export function noteStatusText(note) {
-    if (note.sentText === null) return "";
-    return note.text.trim() === note.sentText ? "sent" : "changed after sending - not sent";
+export function noteStatusText(state) {
+    const { note } = state;
+    if (!noteDirty(state)) return note.sentText ? "sent" : "";
+    if (!state.itemId) return note.text.trim() ? "goes with the first photo" : "";
+    if (state.busy && state.busy.kind === "note") return "sending...";
+    if (state.stalled || !state.online) return "not sent (offline), will retry";
+    return note.due ? "sending..." : "";
 }
 
 /**
- * The running line above the strip: "4 photos, 2 for the AI".
+ * The running line above the strip: "4 photos, 2 for the AI, 3 on the PC".
  * @param {SnapState} state
  * @returns {string}
  */
@@ -518,13 +731,32 @@ export function progressLine(state) {
     const total = state.photos.length;
     if (total === 0) return "No photos yet.";
     const ai = state.photos.filter((p) => p.ai).length;
+    const sent = state.photos.filter((p) => p.status === "sent").length;
     const photos = total === 1 ? "1 photo" : `${total} photos`;
-    return `${photos}, ${ai} for the AI${photosLocked(state) ? " - sent" : ""}`;
+    return `${photos}, ${ai} for the AI, ${sent === total ? "all" : sent} on the PC`;
 }
 
-/** Leaving the page now would lose something: photos not yet sent, or a job in flight. */
+/**
+ * Leaving the page now would lose something: a photo, a delete or the note
+ * not yet on the PC, or a job on its way.
+ */
 export function leaveWarning(state) {
-    if (anyActive(state)) return true;
-    const sent = !!state.sku || VENUES.some((v) => state.jobs[v].phase === "done");
-    return state.photos.length > 0 && !sent;
+    return anyActive(state) || unsent(state) || (!!state.itemId && noteDirty(state));
+}
+
+/**
+ * The banner at the top: offline, or the PC not answering. The photos wait on
+ * the page meanwhile and the queue carries on by itself.
+ * @param {SnapState} state
+ * @returns {string} "" when all is well
+ */
+export function bannerText(state) {
+    if (!state.online) {
+        return "You are offline. Photos wait on this page and go to the PC when you are back.";
+    }
+    if (state.stalled) {
+        const why = state.problem || "cannot reach the PC";
+        return `${why[0].toUpperCase()}${why.slice(1)}. Photos wait on this page and go to the PC as soon as it answers.`;
+    }
+    return "";
 }

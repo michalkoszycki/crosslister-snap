@@ -1,14 +1,17 @@
-// app.js -- the screen. All the thinking lives in core.js; the calls to the PC
-// live in pc.js; shrinking a photo lives in shrink.js. This file only wires
-// them to buttons and paints the result.
+// app.js -- the screen. All the thinking lives in core.js and queue.js; the
+// calls to the PC live in pc.js; shrinking a photo lives in shrink.js. This
+// file only wires them to buttons, runs the upload queue's requests, and
+// paints the result.
 
 import { VERSION } from "./version.js?v=1.3.0";
 import {
     anyActive,
+    bannerText,
     buildFileName,
     checkSettings,
     cleanItemName,
     doneButton,
+    highestNumber,
     initialState,
     isActive,
     jobRequest,
@@ -18,22 +21,36 @@ import {
     photosLocked,
     POLL_MS,
     progressLine,
+    raiseCount,
     reduce,
+    savedItem,
     venueButton,
     venueLine,
     VENUES,
 } from "./core.js?v=1.3.0";
-import { buildJobForm, checkPc, getJob, postJob } from "./pc.js?v=1.3.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.3.0";
+import {
+    checkPc,
+    createItem,
+    deletePhoto,
+    getItem,
+    getJob,
+    PcError,
+    postJob,
+    putNote,
+    putPhoto,
+} from "./pc.js?v=1.3.0";
 import { shrinkPhoto } from "./shrink.js?v=1.3.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
 const KEY_KEY = "snap.key";
+const ITEM_KEY = "snap.item";
 
 /** @type {import("./core.js").SnapState} */
 let state = initialState("");
 
-/** id -> { file: File, url: string } -- the photos live in memory until DONE. */
+/** id -> { file: File, url: string } -- the pictures taken on this page, until DONE. */
 const blobs = new Map();
 
 /** venue -> the timer of its next status poll */
@@ -41,6 +58,20 @@ const polls = new Map();
 
 /** Bumped on DONE, so a late answer for the previous item is dropped. */
 let generation = 0;
+
+/** The upload queue: one request at a time (queue.js decides which). */
+let pumping = false;
+let resumeTimer = null;
+let noteTimer = null;
+
+/** Resolved on every state change: how an async step waits for the queue. */
+const waiters = [];
+
+/** A saved item is being read back from the PC: no snapping until it is. */
+let restoring = false;
+/** The saved item could not be read back: leave it in storage until a new item starts. */
+let keepSaved = false;
+let lastSaved = null;
 
 const el = {};
 
@@ -69,6 +100,14 @@ function writeText(store, key, value) {
     }
 }
 
+function removeText(store, key) {
+    try {
+        globalThis[store].removeItem(key);
+    } catch {
+        /* nothing was remembered */
+    }
+}
+
 function readJson(store, key, fallback) {
     try {
         const raw = readText(store, key);
@@ -89,6 +128,23 @@ function takeNumber(itemName) {
     return n;
 }
 
+/** After the PC told us its photo numbers: never hand one of them out again. */
+function syncCounter() {
+    const counters = readJson("sessionStorage", COUNTER_KEY, {});
+    writeJson("sessionStorage", COUNTER_KEY, raiseCount(counters, state.itemName, highestNumber(state)));
+}
+
+/** The item id and the AI marks, so a reload can read the item back from the PC. */
+function persist() {
+    if (restoring || keepSaved) return;
+    const saved = savedItem(state);
+    const text = saved ? JSON.stringify(saved) : "";
+    if (text === lastSaved) return;
+    lastSaved = text;
+    if (saved) writeText("localStorage", ITEM_KEY, text);
+    else removeText("localStorage", ITEM_KEY);
+}
+
 /** The saved PC address and key, checked; null when either is missing or wrong. */
 function settings() {
     const s = checkSettings(readText("localStorage", PC_KEY), readText("localStorage", KEY_KEY));
@@ -100,24 +156,32 @@ function settings() {
 function setState(next) {
     state = next;
     render();
+    persist();
+    for (const wake of waiters.splice(0)) wake();
+}
+
+function changed() {
+    return new Promise((resolve) => waiters.push(resolve));
 }
 
 function render() {
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
     el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
+    // the item's folder on the PC is named once, with the first photo
+    el.itemInput.readOnly = restoring || !!state.itemId || state.photos.length > 0;
 
     const locked = photosLocked(state);
-    const ready = !!state.itemName && !locked;
+    const ready = !!state.itemName && !locked && !restoring;
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
-    el.hint.textContent = locked
-        ? "These photos are sent. DONE starts the next item."
-        : "Type the item name to start snapping.";
+    if (restoring) el.hint.textContent = "Reading this item back from the PC...";
+    else if (locked) el.hint.textContent = "These photos went with the listing. DONE starts the next item.";
+    else el.hint.textContent = "Type the item name to start snapping.";
 
-    el.noteStatus.textContent = noteStatusText(state.note);
+    el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
     renderStrip(locked);
     renderVenues();
@@ -127,7 +191,9 @@ function render() {
     el.doneHint.textContent = done.hint;
     el.doneHint.hidden = !done.hint;
 
-    el.offline.hidden = state.online;
+    const banner = bannerText(state);
+    el.offline.textContent = banner;
+    el.offline.hidden = !banner;
 }
 
 function renderVenues() {
@@ -158,14 +224,43 @@ function renderStrip(locked) {
         const card = document.createElement("li");
         card.className = p.ai ? "shot shot-ai" : "shot";
 
-        const img = document.createElement("img");
         const held = blobs.get(p.id);
-        if (held) img.src = held.url;
-        img.alt = p.name;
-        card.append(img);
+        if (held) {
+            const img = document.createElement("img");
+            img.src = held.url;
+            img.alt = p.name;
+            card.append(img);
+        } else {
+            // read back from the PC after a reload: the picture itself is there, not here
+            const there = document.createElement("span");
+            there.className = "shot-remote";
+            there.textContent = "on the PC";
+            card.append(there);
+        }
+
+        // waiting / sent / failed, top left; a failed one is tapped to try again
+        const word = badgeText(p);
+        if (word === "failed") {
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.className = "badge failed";
+            retry.textContent = "failed";
+            retry.title = p.error;
+            retry.setAttribute("aria-label", `${p.name} did not reach the PC (${p.error}); try again`);
+            retry.addEventListener("click", () => {
+                setState(reduce(state, { type: "retry", id: p.id }));
+                pump();
+            });
+            card.append(retry);
+        } else {
+            const badge = document.createElement("span");
+            badge.className = `badge ${word}`;
+            badge.textContent = word;
+            card.append(badge);
+        }
 
         if (!locked) {
-            // the x: no confirmation, the photo just leaves the page. 44 px touch target.
+            // the x: no confirmation; the photo leaves the page, and the PC too
             const x = document.createElement("button");
             x.type = "button";
             x.className = "kill";
@@ -204,6 +299,7 @@ function say(message, kind = "info") {
 // --- photos ----------------------------------------------------------------
 
 function onItemNameChanged() {
+    if (el.itemInput.readOnly) return;
     const cleaned = cleanItemName(el.itemInput.value);
     if (cleaned !== state.itemName) setState(reduce(state, { type: "setItem", itemName: cleaned }));
     else render();
@@ -211,10 +307,11 @@ function onItemNameChanged() {
 
 function acceptFiles(fileList) {
     const item = state.itemName;
-    if (!item) {
+    if (!item || restoring) {
         say("Type an item name first.", "warn");
         return;
     }
+    keepSaved = false; // a new item starts: it is the one to remember now
     let next = state;
     for (const file of fileList) {
         const n = takeNumber(item);
@@ -223,9 +320,10 @@ function acceptFiles(fileList) {
         next = reduce(next, { type: "add", id, name: buildFileName(item, n), n });
     }
     setState(next);
+    pump();
 }
 
-/** The x on a thumbnail: the photo leaves the page. Nothing was sent yet. */
+/** The x on a thumbnail: off the page, and off the PC when it may be there. */
 function removePhoto(id) {
     const held = blobs.get(id);
     if (held) {
@@ -233,6 +331,105 @@ function removePhoto(id) {
         blobs.delete(id);
     }
     setState(reduce(state, { type: "remove", id }));
+    pump();
+}
+
+// --- the upload queue --------------------------------------------------------
+
+async function runTask(pc, task) {
+    switch (task.kind) {
+        case "item":
+            return createItem(pc, task.name);
+        case "photo": {
+            const held = blobs.get(task.id);
+            if (!held) throw new Error("the photo is no longer on this page");
+            // shrunk right before it goes: one decoded photo in memory at a time
+            return putPhoto(pc, state.itemId, task.n, await shrinkPhoto(held.file));
+        }
+        case "delete":
+            return deletePhoto(pc, state.itemId, task.n);
+        case "note":
+            return putNote(pc, state.itemId, task.text);
+        default:
+            throw new Error(`unknown task ${task.kind}`);
+    }
+}
+
+/** Send what queue.js says is next, one request at a time, until nothing is. */
+async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+        for (;;) {
+            const pc = settings();
+            const task = pc ? nextTask(state) : null;
+            if (!task) return;
+            const mine = generation;
+            setState(reduce(state, { type: "taskStart", task }));
+            let answer = null;
+            let failure = null;
+            try {
+                answer = await runTask(pc, task);
+            } catch (e) {
+                failure = e;
+            }
+            if (mine !== generation) continue; // DONE was pressed meanwhile
+            if (failure) {
+                // PcError carries the HTTP status (0: no answer); anything else
+                // (a photo that would not shrink) is this photo's own failure
+                const status = failure instanceof PcError ? failure.status : -1;
+                const error = failure.message || "not sent";
+                setState(reduce(state, { type: "taskFailed", task, status, error }));
+                if (state.stalled) {
+                    scheduleResume();
+                    return;
+                }
+            } else {
+                setState(reduce(state, { type: "taskDone", task, answer }));
+                if (task.kind === "item") syncCounter();
+            }
+        }
+    } finally {
+        pumping = false;
+    }
+}
+
+/** The PC did not answer: try again after a growing pause (or when back online). */
+function scheduleResume() {
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+        resumeTimer = null;
+        setState(reduce(state, { type: "resume" }));
+        pump();
+    }, retryDelayMs(state.failures));
+}
+
+// --- the note ----------------------------------------------------------------
+
+function onNoteInput() {
+    setState(reduce(state, { type: "noteText", text: el.note.value }));
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(noteDue, NOTE_DEBOUNCE_MS);
+}
+
+/** He stopped typing (or left the box, or pressed a button): send the note. */
+function noteDue() {
+    clearTimeout(noteTimer);
+    noteTimer = null;
+    if (!noteDirty(state) || state.note.due) return;
+    setState(reduce(state, { type: "noteDue" }));
+    pump();
+}
+
+/** The note on the PC before a job reads it, or before DONE clears the page. */
+async function noteReady() {
+    noteDue();
+    while (noteDirty(state)) {
+        if (state.stalled || !state.online || !settings()) return false;
+        // eslint-disable-next-line no-await-in-loop
+        await changed();
+    }
+    return true;
 }
 
 // --- the two buttons -------------------------------------------------------
@@ -241,55 +438,21 @@ async function send(venue) {
     const pc = settings();
     if (!pc || !venueButton(state, venue, true).enabled) return;
     const mine = generation;
-    const req = jobRequest({
-        venue,
-        sku: state.sku,
-        note: state.note.text,
-        photos: state.photos,
-    });
-
-    const files = [];
-    if (req.photoIds.length > 0) {
-        setState(reduce(state, { type: "jobSending", venue, step: "getting the photos ready" }));
-        for (const id of req.photoIds) {
-            const photo = state.photos.find((p) => p.id === id);
-            try {
-                // one at a time: a phone has little memory for 24 decoded photos
-                // eslint-disable-next-line no-await-in-loop
-                files.push({ blob: await shrinkPhoto(blobs.get(id).file), name: photo.name });
-            } catch (e) {
-                if (mine !== generation) return;
-                setState(
-                    reduce(state, {
-                        type: "jobRefused",
-                        venue,
-                        error: `${photo.name}: ${e.message || "could not read the photo"}`,
-                    })
-                );
-                return;
-            }
-        }
-    }
-    const count = files.length;
-    setState(
-        reduce(state, {
-            type: "jobSending",
-            venue,
-            step: count ? `sending ${count} photo${count === 1 ? "" : "s"}` : "sending",
-        })
-    );
-    try {
-        const answer = await postJob(pc, buildJobForm(req.fields, files));
+    const reuse = !!state.sku;
+    setState(reduce(state, { type: "jobSending", venue, step: "sending" }));
+    if (!reuse && !(await noteReady())) {
         if (mine !== generation) return;
         setState(
-            reduce(state, {
-                type: "jobAccepted",
-                venue,
-                job: answer.job,
-                ahead: answer.ahead,
-                sentNote: req.sendsNote ? state.note.text.trim() : undefined,
-            })
+            reduce(state, { type: "jobRefused", venue, error: "the note has not reached the PC" })
         );
+        return;
+    }
+    if (mine !== generation) return;
+    const body = jobRequest({ venue, sku: state.sku, item: state.itemId, photos: state.photos });
+    try {
+        const answer = await postJob(pc, body);
+        if (mine !== generation) return;
+        setState(reduce(state, { type: "jobAccepted", venue, job: answer.job, ahead: answer.ahead }));
         schedulePoll(venue, mine);
     } catch (e) {
         if (mine !== generation) return;
@@ -369,20 +532,69 @@ async function saveSettings() {
     } catch (e) {
         el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
     }
+    // photos taken before the settings were right go now
+    setState(reduce(state, { type: "resume" }));
+    pump();
+}
+
+// --- a reload: the item back from the PC -----------------------------------------
+
+async function restore() {
+    const saved = readJson("localStorage", ITEM_KEY, null);
+    if (!saved || typeof saved.itemId !== "string" || !saved.itemId) return;
+    const itemName = typeof saved.itemName === "string" ? saved.itemName : "";
+    const pc = settings();
+    if (!pc || !itemName) {
+        keepSaved = true; // read it back once Settings are right and the page is reloaded
+        return;
+    }
+    restoring = true;
+    el.itemInput.value = itemName;
+    setState(reduce(state, { type: "setItem", itemName }));
+    try {
+        const answer = await getItem(pc, saved.itemId);
+        restoring = false;
+        const ai = Array.isArray(saved.ai) ? saved.ai : [];
+        setState(reduce(state, { type: "recovered", itemName, itemId: saved.itemId, ai, answer }));
+        el.note.value = state.note.text;
+        syncCounter();
+        for (const venue of VENUES) {
+            if (isActive(state.jobs[venue])) schedulePoll(venue, generation);
+        }
+    } catch (e) {
+        restoring = false;
+        el.itemInput.value = "";
+        if (e.status === 404) {
+            say(`${itemName} is no longer on the PC.`, "warn");
+            setState(reduce(state, { type: "reset" }));
+        } else {
+            // leave the saved item alone: a reload once the PC answers brings it back
+            keepSaved = true;
+            say(`Could not read ${itemName} back from the PC (${e.message}). Its photos are safe there; reload when the PC answers.`, "warn");
+            setState(reduce(state, { type: "reset" }));
+        }
+    }
 }
 
 // --- wiring ----------------------------------------------------------------
 
-function nextItem() {
-    if (anyActive(state)) return;
+async function nextItem() {
+    if (!doneButton(state).enabled) return;
+    if (state.itemId && !(await noteReady())) {
+        say("The note has not reached the PC yet. DONE again once it has.", "warn");
+        return;
+    }
     generation += 1;
     for (const t of polls.values()) clearTimeout(t);
     polls.clear();
+    clearTimeout(resumeTimer);
+    clearTimeout(noteTimer);
     for (const held of blobs.values()) URL.revokeObjectURL(held.url);
     blobs.clear();
     el.itemInput.value = "";
     el.note.value = "";
     say("");
+    keepSaved = false;
     setState(reduce(state, { type: "reset" }));
     el.itemInput.focus();
 }
@@ -429,9 +641,8 @@ function main() {
         saveSettings().catch(() => {});
     });
     el.itemInput.addEventListener("input", onItemNameChanged);
-    el.note.addEventListener("input", () =>
-        setState(reduce(state, { type: "noteText", text: el.note.value }))
-    );
+    el.note.addEventListener("input", onNoteInput);
+    el.note.addEventListener("blur", noteDue);
     el.snapInput.addEventListener("change", (e) => {
         acceptFiles(e.target.files);
         e.target.value = "";
@@ -445,18 +656,28 @@ function main() {
             send(venue).catch(() => {});
         });
     }
-    el.nextBtn.addEventListener("click", nextItem);
+    el.nextBtn.addEventListener("click", () => {
+        nextItem().catch(() => {});
+    });
 
-    window.addEventListener("online", () => setState(reduce(state, { type: "online", online: true })));
+    window.addEventListener("online", () => {
+        setState(reduce(state, { type: "online", online: true }));
+        pump();
+    });
     window.addEventListener("offline", () =>
         setState(reduce(state, { type: "online", online: false }))
     );
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") noteDue();
+    });
     window.addEventListener("beforeunload", (e) => {
         if (leaveWarning(state)) {
             e.preventDefault();
             e.returnValue = "";
         }
     });
+
+    restore().catch(() => {});
 }
 
 main();

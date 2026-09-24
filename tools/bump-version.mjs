@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const { VERSION } = await import("../version.js");
 
-const files = ["index.html", "app.js", "pc.js", "shrink.js", "version.js"];
+const files = ["index.html", "app.js", "core.js", "pc.js", "queue.js", "shrink.js", "version.js"];
 const pattern = /\?v=\d+\.\d+\.\d+/g;
 
 let touched = 0;

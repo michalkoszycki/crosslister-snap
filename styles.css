@@ -248,6 +248,44 @@ button, .big, .secondary {
 /* after sending, the mark shows what went to the AI but no longer toggles */
 .ai-mark:disabled { opacity: 1; }
 .ai-mark:disabled:not(.on) { visibility: hidden; }
+/* a photo read back from the PC after a reload: the picture is there, not here */
+.shot-remote {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 104px;
+    background: var(--line);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+/* waiting / sent / failed, top left (the x has the top right). "failed" is a
+   button: tap it and the photo goes again. */
+.badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    background: rgba(0, 0, 0, 0.66);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: none;
+}
+.badge.sent { background: var(--ok); color: var(--ok-ink); }
+button.badge.failed {
+    top: 0;
+    left: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+    border-radius: 10px 0 12px 0;
+    background: var(--bad);
+    color: #fff;
+    font-weight: 700;
+}
+
 .shot-name { display: block; font-size: 10px; color: var(--muted); padding: 4px 6px 0; word-break: break-all; }
 
 /* ebay | craigslist, side by side, each with its status line and link under it */

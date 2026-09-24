@@ -11,6 +11,7 @@ import {
     currentCount,
     doneButton,
     fitWithin,
+    highestNumber,
     initialState,
     JPEG_QUALITY,
     leaveWarning,
@@ -23,6 +24,8 @@ import {
     photosLocked,
     progressLine,
     reduce,
+    raiseCount,
+    savedItem,
     SETTINGS_HINT,
     venueButton,
 } from "../core.js";
@@ -160,6 +163,8 @@ test("fitWithin refuses nonsense sizes", () => {
 
 // --- photos and the AI mark ------------------------------------------------------
 
+const ITEM = "Boots 2026-09-24";
+
 function withPhotos(n, marked = []) {
     let s = initialState("Boots");
     for (let i = 1; i <= n; i += 1) {
@@ -169,9 +174,25 @@ function withPhotos(n, marked = []) {
     return s;
 }
 
-test("a new photo is not marked for the AI", () => {
+/** As withPhotos, with the item made on the PC and every photo sent there. */
+function sent(n, marked = []) {
+    let s = withPhotos(n, marked);
+    const item = { kind: "item", name: "Boots" };
+    s = reduce(s, { type: "taskStart", task: item });
+    s = reduce(s, { type: "taskDone", task: item, answer: { item: ITEM, photos: [] } });
+    for (const p of s.photos) {
+        const task = { kind: "photo", id: p.id, n: p.n };
+        s = reduce(s, { type: "taskStart", task });
+        s = reduce(s, { type: "taskDone", task, answer: {} });
+    }
+    return s;
+}
+
+test("a new photo is not marked for the AI and waits for the upload queue", () => {
     const s = withPhotos(1);
     assert.equal(s.photos[0].ai, false);
+    assert.equal(s.photos[0].status, "waiting");
+    assert.equal(s.photos[0].tried, false);
 });
 
 test("the AI mark toggles, one photo at a time, without touching the old state", () => {
@@ -186,21 +207,26 @@ test("the AI mark toggles, one photo at a time, without touching the old state",
 test("the x takes a photo out of the list; an unknown id changes nothing", () => {
     const s = reduce(withPhotos(3), { type: "remove", id: "p2" });
     assert.deepEqual(s.photos.map((p) => p.id), ["p1", "p3"]);
+    assert.deepEqual(s.deletes, [], "it never left the page, so nothing to delete on the PC");
     assert.equal(reduce(s, { type: "remove", id: "nope" }), s);
+    const there = reduce(sent(3), { type: "remove", id: "p2" });
+    assert.deepEqual(there.deletes, [2], "a sent photo is deleted on the PC too");
 });
 
-test("progressLine counts the photos and the ones for the AI", () => {
+test("progressLine counts the photos, the ones for the AI and the ones on the PC", () => {
     assert.equal(progressLine(initialState("It")), "No photos yet.");
-    assert.equal(progressLine(withPhotos(1)), "1 photo, 0 for the AI");
-    assert.equal(progressLine(withPhotos(4, [1, 3])), "4 photos, 2 for the AI");
+    assert.equal(progressLine(withPhotos(1)), "1 photo, 0 for the AI, 0 on the PC");
+    assert.equal(progressLine(withPhotos(4, [1, 3])), "4 photos, 2 for the AI, 0 on the PC");
+    assert.equal(progressLine(sent(4, [1])), "4 photos, 1 for the AI, all on the PC");
 });
 
 test("DONE resets the item but keeps knowing whether the phone is online", () => {
-    let s = reduce(withPhotos(2, [1]), { type: "online", online: false });
+    let s = reduce(sent(2, [1]), { type: "online", online: false });
     s = reduce(s, { type: "noteText", text: "scuffed" });
     s = reduce(s, { type: "reset" });
     assert.deepEqual(s.photos, []);
     assert.equal(s.itemName, "");
+    assert.equal(s.itemId, "");
     assert.equal(s.note.text, "");
     assert.equal(s.sku, "");
     assert.equal(s.jobs.ebay.phase, "idle");
@@ -210,7 +236,7 @@ test("DONE resets the item but keeps knowing whether the phone is online", () =>
 // --- when the buttons can be pressed -----------------------------------------------
 
 test("without settings neither venue button works, and the hint says why", () => {
-    const s = withPhotos(2, [1]);
+    const s = sent(2, [1]);
     for (const venue of ["ebay", "craigslist"]) {
         assert.deepEqual(venueButton(s, venue, false), { enabled: false, hint: SETTINGS_HINT });
     }
@@ -219,18 +245,18 @@ test("without settings neither venue button works, and the hint says why", () =>
 
 test("a new item needs a photo, at most 24, and at least one AI mark", () => {
     assert.match(venueButton(initialState("x"), "ebay", true).hint, /Snap a photo/);
-    assert.match(venueButton(withPhotos(2), "ebay", true).hint, /Mark at least one photo AI/);
-    assert.equal(venueButton(withPhotos(2), "ebay", true).enabled, false);
-    assert.deepEqual(venueButton(withPhotos(2, [2]), "ebay", true), { enabled: true, hint: "" });
-    const many = withPhotos(MAX_PHOTOS + 2, [1]);
+    assert.match(venueButton(sent(2), "ebay", true).hint, /Mark at least one photo AI/);
+    assert.equal(venueButton(sent(2), "ebay", true).enabled, false);
+    assert.deepEqual(venueButton(sent(2, [2]), "ebay", true), { enabled: true, hint: "" });
+    const many = sent(MAX_PHOTOS + 2, [1]);
     assert.equal(venueButton(many, "ebay", true).enabled, false);
     assert.match(venueButton(many, "ebay", true).hint, /At most 24 photos - delete 2/);
-    assert.equal(venueButton(withPhotos(MAX_PHOTOS, [1]), "ebay", true).enabled, true);
+    assert.equal(venueButton(sent(MAX_PHOTOS, [1]), "ebay", true).enabled, true);
 });
 
 test("DONE needs a photo and waits while a job is on its way or on the PC", () => {
     assert.equal(doneButton(initialState("x")).enabled, false);
-    const s = withPhotos(1, [1]);
+    const s = sent(1, [1]);
     assert.deepEqual(doneButton(s), { enabled: true, hint: "" });
     for (const [action, busy] of [
         [{ type: "jobSending", venue: "ebay", step: "sending" }, true],
@@ -243,19 +269,30 @@ test("DONE needs a photo and waits while a job is on its way or on the PC", () =
     }
 });
 
-test("the photos lock once sent, and unlock if the job failed before saving the row", () => {
-    const s = withPhotos(2, [1]);
+test("DONE waits while a photo or a delete has not reached the PC", () => {
+    assert.deepEqual(doneButton(withPhotos(1)), {
+        enabled: false,
+        hint: "DONE waits until the photos are on the PC",
+    });
+    const struck = reduce(sent(2), { type: "remove", id: "p1" });
+    assert.equal(doneButton(struck).enabled, false, "the delete has not gone yet");
+    const task = { kind: "delete", n: 1 };
+    const gone = reduce(reduce(struck, { type: "taskStart", task }), { type: "taskDone", task });
+    assert.equal(doneButton(gone).enabled, true);
+});
+
+test("the photos lock once a job is on its way, and unlock if it failed before saving the row", () => {
+    const s = sent(2, [1]);
     assert.equal(photosLocked(s), false);
-    const sent = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(photosLocked(sent), true);
-    assert.equal(progressLine(sent), "2 photos, 1 for the AI - sent");
-    const failed = reduce(sent, {
+    const going = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(photosLocked(going), true);
+    const failed = reduce(going, {
         type: "jobStatus",
         venue: "ebay",
         status: { state: "failed", error: "the model said no", sku: "" },
     });
     assert.equal(photosLocked(failed), false);
-    const savedThenFailed = reduce(sent, {
+    const savedThenFailed = reduce(going, {
         type: "jobStatus",
         venue: "ebay",
         status: { state: "failed", error: "publish failed", sku: "B-0042" },
@@ -263,19 +300,36 @@ test("the photos lock once sent, and unlock if the job failed before saving the 
     assert.equal(photosLocked(savedThenFailed), true, "the row is saved; the photos are its");
 });
 
-test("the note says whether it went with the first button", () => {
-    let s = reduce(withPhotos(1, [1]), { type: "noteText", text: "Size 10 " });
-    assert.equal(noteStatusText(s.note), "");
-    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0, sentNote: "Size 10" });
-    assert.equal(noteStatusText(s.note), "sent");
+test("the note status word: waits for the first photo, sending, sent, offline", () => {
+    let s = reduce(initialState("Boots"), { type: "noteText", text: "Size 10 " });
+    assert.equal(noteStatusText(s), "goes with the first photo");
+    s = reduce(sent(1, [1]), { type: "noteText", text: "Size 10 " });
+    assert.equal(noteStatusText(s), "", "still typing");
+    s = reduce(s, { type: "noteDue" });
+    assert.equal(noteStatusText(s), "sending...");
+    const task = { kind: "note", text: "Size 10" };
+    s = reduce(s, { type: "taskStart", task });
+    assert.equal(noteStatusText(s), "sending...");
+    s = reduce(s, { type: "taskDone", task, answer: {} });
+    assert.equal(noteStatusText(s), "sent");
     s = reduce(s, { type: "noteText", text: "Size 10, scuffed" });
-    assert.match(noteStatusText(s.note), /not sent/);
+    s = reduce(s, { type: "noteDue" });
+    const again = { kind: "note", text: "Size 10, scuffed" };
+    s = reduce(reduce(s, { type: "taskStart", task: again }), {
+        type: "taskFailed",
+        task: again,
+        status: 0,
+        error: "cannot reach the PC",
+    });
+    assert.equal(noteStatusText(s), "not sent (offline), will retry");
 });
 
-test("leaving warns while photos are unsent or a job is in flight", () => {
+test("leaving warns while something is not on the PC yet or a job is on its way", () => {
     assert.equal(leaveWarning(initialState("x")), false);
-    const s = withPhotos(1, [1]);
-    assert.equal(leaveWarning(s), true);
+    assert.equal(leaveWarning(withPhotos(1, [1])), true, "a photo not sent yet");
+    const s = sent(1, [1]);
+    assert.equal(leaveWarning(s), false, "everything is on the PC: a reload reads it back");
+    assert.equal(leaveWarning(reduce(s, { type: "noteText", text: "x" })), true);
     const running = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
     assert.equal(leaveWarning(running), true);
     const done = reduce(running, {
@@ -284,4 +338,57 @@ test("leaving warns while photos are unsent or a job is in flight", () => {
         status: { state: "done", sku: "B-1", links: { ebay: "https://www.ebay.com/itm/1" } },
     });
     assert.equal(leaveWarning(done), false);
+});
+
+// --- a reload ------------------------------------------------------------------------
+
+test("what is kept for a reload: the item, its id and the AI marks, once it is on the PC", () => {
+    assert.equal(savedItem(withPhotos(2, [2])), null, "not on the PC yet");
+    assert.deepEqual(savedItem(sent(3, [1, 3])), { itemName: "Boots", itemId: ITEM, ai: [1, 3] });
+});
+
+test("a reloaded page takes the item back as the PC has it", () => {
+    const s = reduce(initialState(""), {
+        type: "recovered",
+        itemName: "Boots",
+        itemId: ITEM,
+        ai: [4],
+        answer: {
+            item: ITEM,
+            photos: [1, 4],
+            note: "Size 10",
+            sku: "B-0042",
+            jobs: [
+                {
+                    job: "j1",
+                    venue: "ebay",
+                    state: "done",
+                    sku: "B-0042",
+                    links: { ebay: "https://www.ebay.com/itm/9" },
+                },
+                { job: "j2", venue: "craigslist", state: "running", step: "filling craigslist" },
+                { job: "j0", venue: "everywhere", state: "done" },
+            ],
+        },
+    });
+    assert.deepEqual(
+        s.photos.map((p) => [p.n, p.name, p.ai, p.status, p.local]),
+        [
+            [1, "Boots-1.jpg", false, "sent", false],
+            [4, "Boots-4.jpg", true, "sent", false],
+        ]
+    );
+    assert.equal(s.itemId, ITEM);
+    assert.deepEqual(s.note, { text: "Size 10", sentText: "Size 10", due: false });
+    assert.equal(s.sku, "B-0042");
+    assert.equal(s.jobs.ebay.link, "https://www.ebay.com/itm/9");
+    assert.equal(s.jobs.craigslist.jobId, "j2");
+    assert.equal(s.jobs.craigslist.phase, "running");
+    assert.equal(highestNumber(s), 4);
+});
+
+test("the photo counter only ever goes up", () => {
+    assert.deepEqual(raiseCount({ Boots: 2 }, "Boots", 5), { Boots: 5 });
+    assert.deepEqual(raiseCount({ Boots: 7 }, "Boots", 5), { Boots: 7 });
+    assert.deepEqual(raiseCount(null, "Boots", 0), {});
 });
