@@ -3,7 +3,7 @@
 // file only wires them to buttons, runs the upload queue's requests, and
 // paints the result.
 
-import { VERSION } from "./version.js?v=1.5.0";
+import { VERSION } from "./version.js?v=1.6.0";
 import {
     anyActive,
     bannerText,
@@ -29,8 +29,8 @@ import {
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.5.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.5.0";
+} from "./core.js?v=1.6.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.6.0";
 import {
     checkPc,
     createItem,
@@ -41,8 +41,8 @@ import {
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.5.0";
-import { shrinkPhoto } from "./shrink.js?v=1.5.0";
+} from "./pc.js?v=1.6.0";
+import { shrinkPhoto } from "./shrink.js?v=1.6.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -208,7 +208,12 @@ function renderVenues() {
     let hint = "";
     for (const venue of VENUES) {
         const button = venueButton(state, venue, ok);
-        el[`${venue}Btn`].disabled = !button.enabled;
+        const node = el[`${venue}Btn`];
+        node.disabled = !button.enabled;
+        // the ring in the button, from the press until the link or the error
+        const active = isActive(state.jobs[venue]);
+        node.classList.toggle("busy", active);
+        node.setAttribute("aria-busy", active ? "true" : "false");
         hint ||= button.hint;
 
         const line = venueLine(state.jobs[venue]);
