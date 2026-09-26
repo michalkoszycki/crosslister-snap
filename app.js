@@ -538,16 +538,17 @@ function onIsbnInput() {
  */
 function takeIsbn(isbn) {
     const before = slots.book;
-    if (isbn !== before.book.isbn) {
-        setState("book", reduce(before, { type: "bookIsbn", isbn }));
-        if (slots.book.book.isbn !== isbn) return; // fixed: the book's item is on the PC already
-        if (isbn) scan = "";
-        el.bookPrice.value = slots.book.book.price;
-        pump();
-    } else if (!isbn || !["idle", "failed"].includes(before.book.lookup.phase)) {
+    if (isbn === before.book.isbn) {
+        if (isbn && ["idle", "failed"].includes(before.book.lookup.phase)) lookupBook(isbn).catch(() => {});
         return;
     }
+    setState("book", reduce(before, { type: "bookIsbn", isbn }));
+    if (slots.book.book.isbn !== isbn) return; // fixed: the book's item is on the PC already
+    if (isbn) scan = "";
+    el.bookPrice.value = slots.book.book.price;
+    // the book first (the card fills while the photos travel), then the waiting photos
     if (isbn) lookupBook(isbn).catch(() => {});
+    pump();
 }
 
 /** GET /books/<isbn>: the card, the listings, and the price box filled with the suggestion. */
