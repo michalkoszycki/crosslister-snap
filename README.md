@@ -8,6 +8,10 @@ at the bottom right of the photos the model should look at. Tap **ebay** (or
 the link appears under the button. Tap the other button and the same item goes
 up there too, with no second model call. **DONE** starts the next item.
 
+Books have their own screen: tap **book** at the top, **Scan** the barcode,
+and the PC finds the book in the catalogues and prices it from eBay. Snap the
+cover, pick the condition, check the price, tap **ebay**.
+
 The work happens on the home PC, in `crosslister serve` (the
 [crosslister](../crosslister) repo, `docs/USAGE.md`, "The phone app"). This
 page is a thin client: it takes the photos, sends them one by one, and shows
@@ -48,6 +52,8 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
 | `pc.js` | every call to the PC |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
+| `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), the price box, the price note, the book card, the conditions |
+| `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
 | `core.js` | pure logic, no DOM, no network: the state and everything the screen says |
 | `version.js` | one `VERSION`; every file the page loads carries it as `?v=` |
 | `styles.css` | the look |
@@ -57,6 +63,13 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 
 ## The screen, top to bottom
 
+- **goods | book**, under the header: which kind of item is on screen. The
+  page opens on **goods**, and after that on whichever this phone last used
+  (`snap.mode` in `localStorage`). The page keeps one item of each kind at
+  once, each with its own state: switching in the middle of an item asks
+  nothing and loses nothing. Photos of the hidden item keep going to the PC
+  (the shown item's go first), and a job running for it keeps being asked
+  about, so its link is there on switching back.
 - **Settings** (header, top right): the PC address and the key. **Save and
   check** stores them and asks the PC whether it knows the key (a read of the
   newest job: no model call, nothing published). **Close** at the bottom hides
@@ -102,6 +115,43 @@ delete n`, `Mark at least one photo AI (bottom right of the photo)`, `A photo
 did not reach the PC - tap its 'failed' to try again`, `Waiting for the photos
 to reach the PC (2 of 4 sent)`, or that the other button goes first.
 
+### Book mode
+
+A book is named by its ISBN, not by a model looking at photos: the PC finds it
+in the catalogues and looks at what it sells for on eBay, so there is no item
+name to type, no AI mark and no model call. Top to bottom:
+
+- **Scan**: the phone's camera, as Snap. The barcode is read on the phone
+  (`scan.js`), the ISBN box fills and the PC is asked about the book. The photo
+  is kept either way as the item's first (the back cover is a fine listing
+  photo). A barcode that would not read says `No barcode found — type the ISBN
+  under the barcode`, and the photo waits on the page for the typed ISBN. A
+  phone that cannot read barcodes at all (iPhones) says so up front. Scan is
+  there until the book's folder is made on the PC; from then its ISBN is fixed
+  until **DONE**.
+- **ISBN**: the number typed instead. ISBN-10 or ISBN-13, hyphens and spaces
+  fine; the check digit must be right. It is looked up 0.4 s after the last
+  keystroke. The book's folder on the PC is `Book <isbn13> <date>`.
+- **The book card**: `looking up...`, then the title in bold, the authors and
+  `publisher · year · format · pages`; or `Not in the catalogues. Post it as
+  goods instead.`; or the PC's own words when it could not look (edit the box
+  to try again).
+- **Snap** and **Add from gallery**: the front cover and anything else. The
+  photos have the same `waiting` / `sent` / `failed` word and the same **x**,
+  and no AI mark.
+- **Condition**: four chips, Like new, Very good, **Good** (the default),
+  Acceptable.
+- **Price**, in dollars, filled with the PC's suggestion when the lookup
+  answers (a price typed first is kept). Under it: `eBay: 12 listings, $6–$24
+  · suggested $11`, or `no eBay listings found — set a price`, with `under $5:
+  a lot or a buyback site may be better` when the suggestion is that low.
+- **Flaws**: the item's note, sent to the PC exactly as the goods note is.
+- **ebay**, one full-width button with the same status line, turning ring and
+  link. It opens once the book is found, there is a photo, every photo is on
+  the PC and the price is a price; otherwise the line under it says which of
+  those is missing.
+- **DONE**, as for goods; it also clears a book that has an ISBN but no photo.
+
 ## The upload queue, and being offline
 
 One request at a time, in this order: the item itself (with the first photo),
@@ -143,7 +193,9 @@ unknown item or job, 409 while the same item is already being posted.
 | `DELETE <pc>/items/<id>/photos/<n>`, the x | - | `{"item", "n", "deleted"}`; safe to repeat |
 | `PUT <pc>/items/<id>/note` | `{"note": "..."}` (blank removes it) | `{"item", "note"}` |
 | `GET <pc>/items/<id>`, after a reload | - | `{"item", "photos", "note", "sku", "jobs"}` |
+| `GET <pc>/books/<isbn13>`, a book's ISBN known | - | `{"isbn", "title", "subtitle", "authors": [...], "publisher", "year", "format", "pages", "price": "11" or null, "listings": {"count", "low", "high"} or null, "route": "list" / "lot or buyback" / "unknown"}`; 404 not in the catalogues, 400 not an ISBN, 502 the catalogues could not be reached |
 | `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay" or "craigslist", "ai": [photo numbers]}` | `{"job": id, "state": "queued", "ahead": n}` |
+| `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "condition": "good", "price": "11"}}`, no `ai` | the same |
 | `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only | the same |
 | `GET <pc>/jobs/<id>`, every 3 s | - | `{"state": queued/running/done/failed, "step", "sku", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
@@ -153,7 +205,8 @@ AI; the note is sent first if it is still being typed. The `sku` comes from the
 first job's status as soon as the PC has saved the row, so the second button
 can go while the first job is still publishing. The page keeps the item id and
 the sku with the item until **DONE** (the id and the AI marks also in
-`localStorage`, `snap.item`, for a reload).
+`localStorage`, `snap.item`, for a reload; a book's id, ISBN, condition, price
+and found record in `snap.book`).
 
 ## Settings
 

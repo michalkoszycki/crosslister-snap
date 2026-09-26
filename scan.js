@@ -8,7 +8,7 @@
 // up front. Nothing here throws: an unreadable photo is "", not an error,
 // because the photo itself is still wanted (it is the back cover).
 
-import { normalizeIsbn } from "./book.js?v=1.6.0";
+import { normalizeIsbn } from "./book.js?v=1.7.0";
 
 /** True when this browser can read a barcode from a photo. */
 export function canScan() {

@@ -403,6 +403,10 @@ button.badge.failed {
     color: var(--accent-ink);
     font-weight: 600;
 }
+/* on a narrow phone four in a row would squeeze "Acceptable" past its chip: two by two */
+@media (max-width: 380px) {
+    .chips { grid-template-columns: 1fr 1fr; }
+}
 .chip:focus-visible, .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 .book-price-note { margin: 0 2px; }
