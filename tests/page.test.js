@@ -312,7 +312,8 @@ test("the page still works when the browser blocks storage outright", async () =
     assert.equal(nodes.get("pc-address").value, "");
 });
 
-test("Settings: a bad address is refused on the page; a good one is saved and checked", async () => {
+test("Settings: a bad address is refused on the page; a good one is saved and checked", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const calls = [];
     const local = memoryStore();
     const { nodes } = await loadPage({
@@ -343,7 +344,8 @@ test("Settings: a bad address is refused on the page; a good one is saved and ch
     assert.equal(nodes.get("venue-hint").textContent, "Snap a photo first");
 });
 
-test("Settings: a wrong key is reported as such", async () => {
+test("Settings: a wrong key is reported as such", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const { nodes } = await loadPage({
         fetchImpl: async () =>
             new Response(JSON.stringify({ detail: "a valid X-Crosslister-Key header is needed" }), {
@@ -385,6 +387,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {} } = {}) {
         items: new Map(Object.entries(items)),
         calls: [],
         posted: [],
+        checks: 0,
         down: false,
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
@@ -392,7 +395,10 @@ function fakePc({ jobs = {}, refuseJob = "", items = {} } = {}) {
         const method = init.method || "GET";
         const u = new URL(url);
         const parts = u.pathname.split("/").slice(1).map(decodeURIComponent);
-        pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        // the page's own server check is counted apart, so `calls` stays the item's traffic
+        const check = method === "GET" && parts[0] === "jobs" && !parts[1];
+        if (check) pc.checks += 1;
+        else pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (parts[0] === "items" && method === "POST") {
@@ -602,7 +608,83 @@ test("offline: photos wait on the page, then go by themselves once the PC answer
     assert.equal(nodes.get("ebay-btn").disabled, false);
 });
 
-test("a photo the PC refuses shows failed; a tap sends it again", async () => {
+function server(nodes) {
+    const node = nodes.get("server");
+    const kind = node.classList.contains("ok") ? "ok" : node.classList.contains("bad") ? "bad" : "";
+    assert.equal(nodes.get("settings-server").textContent, node.textContent, "Settings says the same");
+    return `${node.textContent} (${kind})`;
+}
+
+test("the page checks the server by itself: ok in green, off in red, again every 30 s", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    assert.equal(pc.checks, 1, "checked on load, with no button pressed");
+    assert.equal(server(nodes), "server ok (ok)");
+
+    pc.down = true;
+    t.mock.timers.tick(29000);
+    await settle();
+    assert.equal(pc.checks, 1, "not before 30 s");
+    t.mock.timers.tick(1000);
+    await settle();
+    assert.equal(pc.checks, 2);
+    assert.equal(server(nodes), "server off (bad)");
+
+    pc.down = false;
+    t.mock.timers.tick(30000);
+    await settle();
+    assert.equal(pc.checks, 3);
+    assert.equal(server(nodes), "server ok (ok)");
+});
+
+test("the server check: nothing to ask without settings; a wrong key says so", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { nodes } = await loadPage();
+    assert.equal(server(nodes), "server not set ()");
+
+    const { nodes: keyed } = await loadPage({
+        local: memoryStore(GOOD),
+        fetchImpl: async () => new Response(JSON.stringify({ detail: "wrong" }), { status: 401 }),
+    });
+    assert.equal(server(keyed), "wrong key (bad)");
+});
+
+test("the PC coming back is noticed by the check: waiting photos go without waiting out the pause", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    pc.down = true;
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    assert.equal(server(nodes), "server off (bad)");
+    // the queue's retry pause grows past the check's 30 s after a few misses
+    for (const ms of [1000, 3000, 10000]) {
+        t.mock.timers.tick(ms);
+        await settle();
+    }
+    const before = pc.calls.length;
+    pc.down = false;
+    t.mock.timers.tick(30000 - 14000);
+    await settle();
+    assert.equal(server(nodes), "server ok (ok)");
+    assert.deepEqual(pc.calls.slice(before), ["POST /items", `PUT /items/Vase ${TODAY}/photos/1`]);
+    assert.deepEqual(badges(nodes), ["sent"]);
+});
+
+test("Settings has a Close button", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { nodes } = await loadPage();
+    nodes.get("settings-toggle").fire("click");
+    assert.equal(nodes.get("settings").hidden, false);
+    nodes.get("settings-close").fire("click");
+    assert.equal(nodes.get("settings").hidden, true);
+    assert.equal(nodes.get("settings-toggle").attrs["aria-expanded"], "false");
+});
+
+test("a photo the PC refuses shows failed; a tap sends it again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const pc = fakePc();
     let refuse = true;
     const inner = pc.fetch;
@@ -668,7 +750,8 @@ test("a reload reads the item back from the PC: photos, marks, note, the job sti
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/7");
 });
 
-test("after a reload a new photo numbers on after the PC's, never over them", async () => {
+test("after a reload a new photo numbers on after the PC's, never over them", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const item = `Boots ${TODAY}`;
     const local = memoryStore({
         ...GOOD,
@@ -687,7 +770,8 @@ test("after a reload a new photo numbers on after the PC's, never over them", as
     assert.equal(card(nodes, 2).li.children.find((c) => c.tag === "img").src, "blob:stub");
 });
 
-test("a reload whose item is gone from the PC starts fresh", async () => {
+test("a reload whose item is gone from the PC starts fresh", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const local = memoryStore({
         ...GOOD,
         "snap.item": JSON.stringify({ itemName: "Gone", itemId: `Gone ${TODAY}`, ai: [] }),
@@ -699,7 +783,8 @@ test("a reload whose item is gone from the PC starts fresh", async () => {
     assert.equal(local.getItem("snap.item"), null);
 });
 
-test("a refusal from the PC shows its own words", async () => {
+test("a refusal from the PC shows its own words", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] }); // the page's own server check runs on a timer
     const pc = fakePc({ refuseJob: "mark at least one photo for the AI" });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await typeName(nodes, "Lamp");

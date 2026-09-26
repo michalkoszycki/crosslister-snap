@@ -3,7 +3,7 @@
 // file only wires them to buttons, runs the upload queue's requests, and
 // paints the result.
 
-import { VERSION } from "./version.js?v=1.4.0";
+import { VERSION } from "./version.js?v=1.5.0";
 import {
     anyActive,
     bannerText,
@@ -11,6 +11,7 @@ import {
     checkSettings,
     cleanItemName,
     doneButton,
+    HEALTH_MS,
     highestNumber,
     initialState,
     isActive,
@@ -24,11 +25,12 @@ import {
     raiseCount,
     reduce,
     savedItem,
+    serverLine,
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.4.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.4.0";
+} from "./core.js?v=1.5.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.5.0";
 import {
     checkPc,
     createItem,
@@ -39,8 +41,8 @@ import {
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.4.0";
-import { shrinkPhoto } from "./shrink.js?v=1.4.0";
+} from "./pc.js?v=1.5.0";
+import { shrinkPhoto } from "./shrink.js?v=1.5.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -63,6 +65,11 @@ let generation = 0;
 let pumping = false;
 let resumeTimer = null;
 let noteTimer = null;
+
+/** The server check: what the PC last said (null: not asked yet), the next check, one at a time. */
+let serverStatus = null;
+let healthTimer = null;
+let checking = false;
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -378,6 +385,7 @@ async function pump() {
                 // PcError carries the HTTP status (0: no answer); anything else
                 // (a photo that would not shrink) is this photo's own failure
                 const status = failure instanceof PcError ? failure.status : -1;
+                if (status === 0 || status === 401) heard(status);
                 const error = failure.message || "not sent";
                 setState(reduce(state, { type: "taskFailed", task, status, error }));
                 if (state.stalled) {
@@ -385,6 +393,7 @@ async function pump() {
                     return;
                 }
             } else {
+                heard(200);
                 setState(reduce(state, { type: "taskDone", task, answer }));
                 if (task.kind === "item") syncCounter();
             }
@@ -499,14 +508,72 @@ async function poll(venue, mine) {
 
 // --- settings --------------------------------------------------------------
 
-function toggleSettings() {
-    const open = el.settings.hidden;
+function showSettings(open) {
     el.settings.hidden = !open;
     el.settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
         el.pcAddress.value = readText("localStorage", PC_KEY);
         el.pcKey.value = readText("localStorage", KEY_KEY);
         el.settingsStatus.textContent = "";
+    }
+}
+
+function toggleSettings() {
+    showSettings(el.settings.hidden);
+}
+
+// --- the server check ----------------------------------------------------------
+// The page asks the PC by itself (on load, every HEALTH_MS while on screen, when
+// back online or back on screen) and shows "server ok" / "server off" in the
+// header and in Settings. Every other call to the PC updates it too.
+
+function renderServer() {
+    const line = serverLine(!!settings(), serverStatus);
+    for (const node of [el.server, el.settingsServer]) {
+        node.textContent = line.text;
+        node.classList.toggle("ok", line.kind === "ok");
+        node.classList.toggle("bad", line.kind === "bad");
+    }
+}
+
+/** What the PC last said: 200, or the PcError status (0 = no answer). */
+function heard(status) {
+    serverStatus = status;
+    renderServer();
+}
+
+function scheduleHealth() {
+    clearTimeout(healthTimer);
+    healthTimer = null;
+    if (settings() && document.visibilityState === "visible") {
+        healthTimer = setTimeout(() => {
+            checkServer().catch(() => {});
+        }, HEALTH_MS);
+    }
+}
+
+async function checkServer() {
+    if (checking) return;
+    const pc = settings();
+    if (!pc) {
+        heard(null);
+        return;
+    }
+    checking = true;
+    try {
+        await checkPc(pc);
+        heard(200);
+        // the PC is back: waiting photos go now, not after the retry pause
+        if (state.stalled) {
+            clearTimeout(resumeTimer);
+            setState(reduce(state, { type: "resume" }));
+            pump();
+        }
+    } catch (e) {
+        heard(e instanceof PcError ? e.status : 0);
+    } finally {
+        checking = false;
+        scheduleHealth();
     }
 }
 
@@ -528,10 +595,13 @@ async function saveSettings() {
     el.settingsStatus.textContent = "Saved. Checking the PC...";
     try {
         await checkPc(s);
+        heard(200);
         el.settingsStatus.textContent = "Saved. The PC answers and knows this key.";
     } catch (e) {
+        heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
     }
+    scheduleHealth();
     // photos taken before the settings were right go now
     setState(reduce(state, { type: "resume" }));
     pump();
@@ -607,6 +677,9 @@ function main() {
         pcKey: $("pc-key"),
         settingsSave: $("settings-save"),
         settingsStatus: $("settings-status"),
+        settingsClose: $("settings-close"),
+        settingsServer: $("settings-server"),
+        server: $("server"),
         itemInput: $("item-name"),
         cleaned: $("cleaned"),
         hint: $("hint"),
@@ -636,7 +709,10 @@ function main() {
     state = reduce(initialState(""), { type: "online", online: navigator.onLine });
     render();
 
+    renderServer();
+
     el.settingsToggle.addEventListener("click", toggleSettings);
+    el.settingsClose.addEventListener("click", () => showSettings(false));
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});
     });
@@ -663,12 +739,19 @@ function main() {
     window.addEventListener("online", () => {
         setState(reduce(state, { type: "online", online: true }));
         pump();
+        checkServer().catch(() => {});
     });
     window.addEventListener("offline", () =>
         setState(reduce(state, { type: "online", online: false }))
     );
     document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") noteDue();
+        if (document.visibilityState === "hidden") {
+            noteDue();
+            clearTimeout(healthTimer); // no checks while the phone is in a pocket
+            healthTimer = null;
+        } else {
+            checkServer().catch(() => {});
+        }
     });
     window.addEventListener("beforeunload", (e) => {
         if (leaveWarning(state)) {
@@ -678,6 +761,7 @@ function main() {
     });
 
     restore().catch(() => {});
+    checkServer().catch(() => {});
 }
 
 main();
