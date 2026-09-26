@@ -306,13 +306,38 @@ button.badge.failed {
 .venue { min-width: 0; }
 .venue-btn {
     margin-top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     background: var(--card);
     color: var(--accent);
     border: 2px solid var(--accent);
     padding: 24px 8px;
     font-size: 22px;
 }
+/* A pressed button, while its job is on its way or running on the PC: not faded like
+   any other disabled button, but its word at full strength with a ring turning beside
+   it, until the link or the error comes (Michal, 2026-09-26: "I want to know what
+   process is running" -- the step under the button says which). */
+.venue-btn.busy { opacity: 1; }
+.venue-btn.busy::after {
+    content: "";
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border: 3px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: turn 0.8s linear infinite;
+}
+@keyframes turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .venue-btn.busy::after { animation: none; }
+}
 .venue-status { margin: 8px 2px 0; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+/* the PC's step while the job runs: full ink, it is the line to watch */
+.venue-status.busy { color: var(--ink); }
 .venue-status.ok { color: var(--ok); }
 .venue-status.bad { color: var(--bad); }
 .venue-link {

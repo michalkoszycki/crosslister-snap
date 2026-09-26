@@ -85,7 +85,8 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   retry`, or `goes with the first photo` before there is an item.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
-  the link (opens in a new tab), or the PC's error in its own words.
+  the link (opens in a new tab), or the PC's error in its own words. The pressed
+  button shows a turning ring beside its word until the link or the error comes.
 - **DONE**, at the very bottom: clears the item. It waits while a photo or a
   delete has not reached the PC, and while a job for this item is on its way or
   on the PC; it sends a note still being typed first.

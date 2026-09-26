@@ -522,6 +522,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [3] }], "the item, the venue, the marks");
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+    // the ring turns in the pressed button from the press on; the other button has none
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
+    assert.equal(nodes.get("ebay-btn").attrs["aria-busy"], "true");
+    assert.equal(nodes.get("craigslist-btn").classList.contains("busy"), false);
     assert.equal(nodes.get("next-item").disabled, true);
     assert.match(nodes.get("done-hint").textContent, /DONE waits/);
     assert.equal(nodes.get("snap-input").disabled, true, "posted photos are locked");
@@ -540,6 +544,8 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
     assert.equal(nodes.get("ebay-link").textContent, "https://www.ebay.com/itm/123");
     assert.equal(nodes.get("ebay-btn").disabled, true, "posted once is enough");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false, "the ring stops with the link");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-busy"], "false");
     assert.equal(nodes.get("next-item").disabled, false);
 
     nodes.get("craigslist-btn").fire("click");
@@ -795,4 +801,5 @@ test("a refusal from the PC shows its own words", async (t) => {
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "mark at least one photo for the AI");
     assert.equal(nodes.get("ebay-btn").disabled, false);
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false, "the ring stops with the error");
 });
