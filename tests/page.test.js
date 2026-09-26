@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
-const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "version.js"];
+const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js"];
 
 function idsIn(source) {
     return new Set([...source.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));

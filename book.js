@@ -24,6 +24,13 @@ export const DEFAULT_CONDITION = "good";
 /** A price under this is hardly worth a listing of its own. */
 export const LOW_PRICE = 5;
 
+/**
+ * How long after the last keystroke in the ISBN box the book is looked up:
+ * long enough not to ask about every half-typed number, short enough to feel
+ * instant once the last digit is in.
+ */
+export const ISBN_DEBOUNCE_MS = 400;
+
 // --- the ISBN ------------------------------------------------------------------
 
 /** The EAN-13 check digit of the first twelve digits. */

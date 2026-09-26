@@ -41,6 +41,13 @@
 </header>
 
 <main>
+  <!-- goods | book: two kinds of item, each with its own screen below and its own
+       item in progress; switching never loses either (app.js keeps one of each). -->
+  <div class="modes" role="group" aria-label="What is being listed">
+    <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
+    <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
+  </div>
+
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
     You are offline. Photos wait on this page and go to the PC when you are back.
   </p>
@@ -107,6 +114,76 @@
     <p id="done-hint" class="small hint-line"></p>
     <button type="button" id="next-item" class="big done"
             aria-label="Done with this item, start the next one">DONE</button>
+  </section>
+
+  <!-- The book mode: the barcode names the book, the PC finds it in the catalogues
+       and prices it from eBay, so there is no item name to type and no AI mark. -->
+  <section id="book" hidden>
+    <p id="book-hint" class="small">Scan the barcode on the back cover, or type the ISBN.</p>
+    <label id="book-scan-label" class="big snap" for="book-scan-input">Scan</label>
+    <input id="book-scan-input" type="file" accept="image/*" capture="environment" class="hidden-input">
+
+    <label class="field">
+      <span class="field-label">ISBN</span>
+      <input id="book-isbn" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
+             placeholder="the number under the barcode">
+    </label>
+
+    <div id="book-found" class="card book-card" aria-live="polite" hidden>
+      <p id="book-lookup" class="book-lookup"></p>
+      <p id="book-title" class="book-title"></p>
+      <p id="book-authors" class="book-authors"></p>
+      <p id="book-details" class="small"></p>
+    </div>
+
+    <label id="book-snap-label" class="big" for="book-snap-input">Snap</label>
+    <input id="book-snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
+
+    <label id="book-gallery-label" class="secondary" for="book-gallery-input">Add from gallery</label>
+    <input id="book-gallery-input" type="file" accept="image/*" multiple class="hidden-input">
+
+    <p id="book-progress" class="progress"></p>
+    <ul id="book-strip" class="strip"></ul>
+
+    <div class="field">
+      <span class="field-label">Condition</span>
+      <div id="book-condition" class="chips" role="group" aria-label="Condition">
+        <button type="button" id="book-condition-like_new" class="chip" data-value="like_new"
+                aria-pressed="false">Like new</button>
+        <button type="button" id="book-condition-very_good" class="chip" data-value="very_good"
+                aria-pressed="false">Very good</button>
+        <button type="button" id="book-condition-good" class="chip" data-value="good"
+                aria-pressed="true">Good</button>
+        <button type="button" id="book-condition-acceptable" class="chip" data-value="acceptable"
+                aria-pressed="false">Acceptable</button>
+      </div>
+    </div>
+
+    <label class="field">
+      <span class="field-label">Price, dollars</span>
+      <input id="book-price" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 12">
+    </label>
+    <p id="book-price-note" class="small book-price-note" hidden></p>
+
+    <label class="field">
+      <span class="field-label">
+        Flaws
+        <span id="book-note-status" class="note-status"></span>
+      </span>
+      <textarea id="book-flaws" rows="3" autocomplete="off" autocapitalize="sentences"
+                placeholder="Wear, marks, writing inside, anything a buyer should know."></textarea>
+    </label>
+
+    <div class="venue book-venue">
+      <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
+      <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
+      <a id="book-ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
+    </div>
+    <p id="book-venue-hint" class="small hint-line"></p>
+
+    <p id="book-done-hint" class="small hint-line"></p>
+    <button type="button" id="book-next-item" class="big done"
+            aria-label="Done with this book, start the next one">DONE</button>
   </section>
 </main>
 
