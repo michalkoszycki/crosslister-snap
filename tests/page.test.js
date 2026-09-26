@@ -1133,6 +1133,13 @@ test("a scan with no readable barcode keeps its photo, which waits for the typed
     assert.equal(nodes.get("book-strip").children.length, 1, "the photo is kept");
     assert.equal(bookShot(nodes, 0).badge.textContent, "waiting");
     assert.deepEqual(pc.calls, [], "no ISBN, no folder yet");
+    // what blocks it is the ISBN, not the PC, and every line says so
+    const blocked = "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x";
+    assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN");
+    assert.equal(nodes.get("book-done-hint").textContent, blocked);
+    assert.equal(nodes.get("book-done-hint").hidden, false);
+    assert.equal(nodes.get("book-next-item").disabled, true);
+    assert.equal(nodes.get("book-venue-hint").textContent, blocked);
 
     typeIsbn(nodes, ISBN);
     t.mock.timers.tick(400);

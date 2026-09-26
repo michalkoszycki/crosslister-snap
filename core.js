@@ -902,6 +902,19 @@ export function venueButton(state, venue, settingsOk) {
 }
 
 /**
+ * A book's photos are on the page but it has no ISBN yet (a scan whose
+ * barcode would not read, a cover snapped first). Its folder on the PC is
+ * named by the ISBN, so they cannot go until it is typed: what blocks them is
+ * the ISBN, not the PC, and the lines under ebay and DONE say so.
+ */
+export function waitsForIsbn(state) {
+    return state.mode === "book" && !state.book.isbn && state.photos.length > 0;
+}
+
+export const ISBN_WAIT_HINT =
+    "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x";
+
+/**
  * The book's one button, ebay. It opens once the book is found in the
  * catalogues, at least one photo is taken and every photo is on the PC, and
  * the price box holds a price. A book goes by its catalogue record, not a
@@ -918,6 +931,7 @@ function bookVenueButton(state, venue, settingsOk) {
     if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     const { book } = state;
+    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
     if (!book.isbn) return { enabled: false, hint: "Scan or type the ISBN first" };
     switch (book.lookup.phase) {
         case "found":
@@ -954,6 +968,8 @@ export function doneButton(state) {
     if (anyActive(state)) {
         return { enabled: false, hint: "DONE waits until the listing is finished" };
     }
+    // a book's photos waiting for its ISBN are not waiting for the PC
+    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
     if (unsent(state)) {
         return { enabled: false, hint: "DONE waits until the photos are on the PC" };
     }
@@ -979,7 +995,8 @@ export function noteStatusText(state) {
 /**
  * The running line above the strip: "4 photos, 2 for the AI, 3 on the PC".
  * A book's photos never go to a model, so its line leaves the AI out:
- * "2 photos, all on the PC".
+ * "2 photos, all on the PC"; or "1 photo, waiting for the ISBN" while there is
+ * none to name its folder, which is not the PC being slow.
  * @param {SnapState} state
  * @returns {string}
  */
@@ -989,6 +1006,7 @@ export function progressLine(state) {
     const ai = state.photos.filter((p) => p.ai).length;
     const sent = state.photos.filter((p) => p.status === "sent").length;
     const photos = total === 1 ? "1 photo" : `${total} photos`;
+    if (waitsForIsbn(state)) return `${photos}, waiting for the ISBN`;
     const where = `${sent === total ? "all" : sent} on the PC`;
     if (state.mode === "book") return `${photos}, ${where}`;
     return `${photos}, ${ai} for the AI, ${where}`;

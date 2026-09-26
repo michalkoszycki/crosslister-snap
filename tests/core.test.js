@@ -29,6 +29,7 @@ import {
     SETTINGS_HINT,
     venueButton,
     bookForm,
+    ISBN_WAIT_HINT,
     jobRequest,
 } from "../core.js";
 import {
@@ -711,4 +712,39 @@ test("the line above Scan says what to do, or why the ISBN must be typed", () =>
     assert.equal(scanHint({ ...base, scan: "missed" }), "No barcode found — type the ISBN under the barcode");
     assert.equal(scanHint({ ...base, hasItem: true }), "");
     assert.match(scanHint({ ...base, locked: true }), /DONE starts the next book/);
+});
+
+// --- books: photos waiting for the ISBN ---------------------------------------------
+
+/** A scan whose barcode would not read: the photo is on the page, the book has no ISBN. */
+function scannedNoIsbn(n = 1) {
+    let s = bookState();
+    for (let i = 1; i <= n; i += 1) s = reduce(s, { type: "add", id: `b${i}`, name: `Book-${i}.jpg`, n: i });
+    return s;
+}
+
+test("photos waiting for the ISBN: DONE and ebay say the ISBN is what blocks them, not the PC", () => {
+    const s = scannedNoIsbn();
+    assert.equal(
+        ISBN_WAIT_HINT,
+        "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x"
+    );
+    assert.deepEqual(doneButton(s), { enabled: false, hint: ISBN_WAIT_HINT });
+    assert.deepEqual(venueButton(s, "ebay", true), { enabled: false, hint: ISBN_WAIT_HINT });
+    // with the ISBN typed they are ordinary photos on their way to the PC again
+    const named = reduce(s, { type: "bookIsbn", isbn: ISBN });
+    assert.equal(doneButton(named).hint, "DONE waits until the photos are on the PC");
+    // with the photo struck out there is nothing waiting: back to the first step
+    const struck = reduce(s, { type: "remove", id: "b1" });
+    assert.equal(venueButton(struck, "ebay", true).hint, "Scan or type the ISBN first");
+    assert.deepEqual(doneButton(struck), { enabled: false, hint: "" });
+    // goods photos not yet on the PC keep their own words
+    assert.equal(doneButton(withPhotos(1)).hint, "DONE waits until the photos are on the PC");
+});
+
+test("photos waiting for the ISBN: the progress line says so", () => {
+    assert.equal(progressLine(scannedNoIsbn(1)), "1 photo, waiting for the ISBN");
+    assert.equal(progressLine(scannedNoIsbn(2)), "2 photos, waiting for the ISBN");
+    const named = reduce(scannedNoIsbn(1), { type: "bookIsbn", isbn: ISBN });
+    assert.equal(progressLine(named), "1 photo, 0 on the PC");
 });
