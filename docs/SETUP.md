@@ -79,6 +79,30 @@ between them.
   inbox, where `crosslister post` (nothing named) offers the folder.
 - **DONE** when both links are there (or one is all you want).
 
+### Books
+
+- Tap **book** at the top. The phone remembers it: next time the page opens on
+  books. Tapping **goods** goes back; an item half done on either side stays as
+  it was, its photos still going to the PC.
+- Tap **Scan** and photograph the barcode on the back cover, close and flat.
+  The ISBN box fills, and a moment later the book's card shows its title,
+  authors, publisher, year, format and pages. That photo is the listing's
+  first. (No card: see "When something goes wrong".)
+- Or type the ISBN printed above or under the barcode into the box (10 or 13
+  digits, hyphens fine). It is looked up as soon as the last digit is in.
+- **Snap** the front cover, and anything worth showing (the spine, a flaw).
+- Tap the **condition**: Like new, Very good, Good (already chosen) or
+  Acceptable.
+- Check the **price**. It is filled with the PC's suggestion from eBay's own
+  listings, shown under the box (`eBay: 12 listings, $6–$24 · suggested $11`).
+  Under $5 the line says a lot or a buyback site may be better.
+- Write the **flaws**, if any: wear, marks, writing inside. They go to the PC
+  as the goods note does.
+- Tap **ebay** (it opens once every photo says `sent`). The line under it goes
+  `sending`, `queued`, the PC's steps, then the link. No model call; **the
+  press publishes for real**.
+- **DONE** for the next book.
+
 ---
 
 ## 6. When something goes wrong
@@ -113,6 +137,20 @@ moment are gone from the page; take them again.
 **"wrong key - check Settings"** (at the top, or under a button)
 The key does not match any in `CROSSLISTER_KEYS`. Re-copy it from `.env`; if
 `.env` changed, restart `crosslister serve`.
+
+**Books: "This phone cannot read barcodes; type the ISBN"**
+Reading the barcode needs Chrome on Android; iPhones (and Safari) have no
+barcode reader for web pages. Type the ISBN into the box instead; Scan still
+takes the back-cover photo.
+
+**Books: "No barcode found — type the ISBN under the barcode"**
+The photo was too far, blurred or at an angle. Tap **Scan** again closer, or
+type the ISBN. The missed photo is kept (it goes to the PC once the book has
+its ISBN); its **x** drops it if it is not worth keeping.
+
+**Books: "Not in the catalogues. Post it as goods instead."**
+The PC's catalogues do not know that ISBN (old, local or self-published books).
+DONE, tap **goods**, and post it as an ordinary item.
 
 **A job fails with a message**
 That is the PC's own reason (a Craigslist form that changed, a missing eBay

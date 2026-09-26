@@ -1,12 +1,21 @@
-// app.js -- the screen. All the thinking lives in core.js and queue.js; the
-// calls to the PC live in pc.js; shrinking a photo lives in shrink.js. This
-// file only wires them to buttons, runs the upload queue's requests, and
-// paints the result.
+// app.js -- the screen. All the thinking lives in core.js, queue.js and
+// book.js; the calls to the PC live in pc.js; shrinking a photo lives in
+// shrink.js and reading a barcode in scan.js. This file only wires them to
+// buttons, runs the upload queue's requests, and paints the result.
+//
+// Two kinds of item, goods and books, each with its own screen (#work and
+// #book) chosen by the switch at the top. The page keeps one item of each kind
+// at once, in two independent states (`slots`): the switch only changes which
+// one is on screen. So switching in the middle of an item asks nothing and
+// loses nothing -- photos still waiting keep going to the PC (the one upload
+// queue serves both, the shown item's requests first), and a job running for
+// the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.6.0";
+import { VERSION } from "./version.js?v=1.7.0";
 import {
     anyActive,
     bannerText,
+    bookForm,
     buildFileName,
     checkSettings,
     cleanItemName,
@@ -17,6 +26,7 @@ import {
     isActive,
     jobRequest,
     leaveWarning,
+    MODES,
     nextNumber,
     noteStatusText,
     photosLocked,
@@ -26,45 +36,68 @@ import {
     reduce,
     savedItem,
     serverLine,
+    SETTINGS_HINT,
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.6.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.6.0";
+} from "./core.js?v=1.7.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.7.0";
 import {
     checkPc,
     createItem,
     deletePhoto,
+    getBook,
     getItem,
     getJob,
     PcError,
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.6.0";
-import { shrinkPhoto } from "./shrink.js?v=1.6.0";
+} from "./pc.js?v=1.7.0";
+import { shrinkPhoto } from "./shrink.js?v=1.7.0";
+import {
+    bookCard,
+    CONDITIONS,
+    ISBN_DEBOUNCE_MS,
+    normalizeIsbn,
+    priceNote,
+    scanHint,
+} from "./book.js?v=1.7.0";
+import { canScan, readIsbn } from "./scan.js?v=1.7.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
 const KEY_KEY = "snap.key";
-const ITEM_KEY = "snap.item";
+const MODE_KEY = "snap.mode";
+/** Where each kind of item is kept for a reload: the goods key is the one it always was. */
+const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 
-/** @type {import("./core.js").SnapState} */
-let state = initialState("");
+/**
+ * One item of each kind, both alive at once; `mode` is the one on screen.
+ * @type {Record<"goods"|"book", import("./core.js").SnapState>}
+ */
+const slots = { goods: initialState(""), book: initialState("", "book") };
+/** @type {"goods"|"book"} */
+let mode = "goods";
 
 /** id -> { file: File, url: string } -- the pictures taken on this page, until DONE. */
 const blobs = new Map();
 
-/** venue -> the timer of its next status poll */
+/** "<mode>:<venue>" -> the timer of its next status poll */
 const polls = new Map();
 
-/** Bumped on DONE, so a late answer for the previous item is dropped. */
-let generation = 0;
+/** Bumped on DONE, per kind, so a late answer for the previous item is dropped. */
+const generation = { goods: 0, book: 0 };
 
 /** The upload queue: one request at a time (queue.js decides which). */
 let pumping = false;
-let resumeTimer = null;
-let noteTimer = null;
+const resumeTimers = { goods: null, book: null };
+const noteTimers = { goods: null, book: null };
+
+/** The ISBN box: its lookup waits for him to stop typing. */
+let isbnTimer = null;
+/** The book's last scan: "" / "reading" (the barcode is being read) / "missed" (none found). */
+let scan = "";
 
 /** The server check: what the PC last said (null: not asked yet), the next check, one at a time. */
 let serverStatus = null;
@@ -75,15 +108,19 @@ let checking = false;
 const waiters = [];
 
 /** A saved item is being read back from the PC: no snapping until it is. */
-let restoring = false;
+const restoring = { goods: false, book: false };
 /** The saved item could not be read back: leave it in storage until a new item starts. */
-let keepSaved = false;
-let lastSaved = null;
+const keepSaved = { goods: false, book: false };
+const lastSaved = { goods: null, book: null };
 
 const el = {};
 
 function $(id) {
     return document.getElementById(id);
+}
+
+function other(m) {
+    return m === "goods" ? "book" : "goods";
 }
 
 // --- storage helpers ---------------------------------------------------------
@@ -128,28 +165,36 @@ function writeJson(store, key, value) {
     writeText(store, key, JSON.stringify(value));
 }
 
-function takeNumber(itemName) {
-    const counters = readJson("sessionStorage", COUNTER_KEY, {});
+/**
+ * The next photo number for an item. Never one the item already holds: a
+ * book's photos can be taken before its ISBN names it, under a stand-in name,
+ * so the count is first raised past what the strip has.
+ * @param {string} itemName the counter's name
+ * @param {import("./core.js").SnapState} s the item the photo joins
+ */
+function takeNumber(itemName, s) {
+    const counters = raiseCount(readJson("sessionStorage", COUNTER_KEY, {}), itemName, highestNumber(s));
     const { n, counters: updated } = nextNumber(counters, itemName);
     writeJson("sessionStorage", COUNTER_KEY, updated);
     return n;
 }
 
 /** After the PC told us its photo numbers: never hand one of them out again. */
-function syncCounter() {
+function syncCounter(m) {
+    const s = slots[m];
     const counters = readJson("sessionStorage", COUNTER_KEY, {});
-    writeJson("sessionStorage", COUNTER_KEY, raiseCount(counters, state.itemName, highestNumber(state)));
+    writeJson("sessionStorage", COUNTER_KEY, raiseCount(counters, s.itemName, highestNumber(s)));
 }
 
-/** The item id and the AI marks, so a reload can read the item back from the PC. */
-function persist() {
-    if (restoring || keepSaved) return;
-    const saved = savedItem(state);
+/** The item id and what only the phone knows, so a reload can read the item back from the PC. */
+function persist(m) {
+    if (restoring[m] || keepSaved[m]) return;
+    const saved = savedItem(slots[m]);
     const text = saved ? JSON.stringify(saved) : "";
-    if (text === lastSaved) return;
-    lastSaved = text;
-    if (saved) writeText("localStorage", ITEM_KEY, text);
-    else removeText("localStorage", ITEM_KEY);
+    if (text === lastSaved[m]) return;
+    lastSaved[m] = text;
+    if (saved) writeText("localStorage", SAVED_KEYS[m], text);
+    else removeText("localStorage", SAVED_KEYS[m]);
 }
 
 /** The saved PC address and key, checked; null when either is missing or wrong. */
@@ -160,10 +205,10 @@ function settings() {
 
 // --- rendering -------------------------------------------------------------
 
-function setState(next) {
-    state = next;
+function setState(m, next) {
+    slots[m] = next;
     render();
-    persist();
+    persist(m);
     for (const wake of waiters.splice(0)) wake();
 }
 
@@ -172,66 +217,147 @@ function changed() {
 }
 
 function render() {
+    el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
+    el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
+    el.work.hidden = mode !== "goods";
+    el.book.hidden = mode !== "book";
+
+    renderGoods();
+    renderBook();
+
+    // both items talk to the same PC: the shown one's trouble first
+    const banner = bannerText(slots[mode]) || bannerText(slots[other(mode)]);
+    el.offline.textContent = banner;
+    el.offline.hidden = !banner;
+}
+
+function renderGoods() {
+    const state = slots.goods;
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
     el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
     // the item's folder on the PC is named once, with the first photo
-    el.itemInput.readOnly = restoring || !!state.itemId || state.photos.length > 0;
+    el.itemInput.readOnly = restoring.goods || !!state.itemId || state.photos.length > 0;
 
     const locked = photosLocked(state);
-    const ready = !!state.itemName && !locked && !restoring;
+    const ready = !!state.itemName && !locked && !restoring.goods;
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
-    if (restoring) el.hint.textContent = "Reading this item back from the PC...";
+    if (restoring.goods) el.hint.textContent = "Reading this item back from the PC...";
     else if (locked) el.hint.textContent = "These photos went with the listing. DONE starts the next item.";
     else el.hint.textContent = "Type the item name to start snapping.";
 
     el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
-    renderStrip(locked);
-    renderVenues();
+    renderStrip("goods", el.strip, locked);
+
+    const ok = !!settings();
+    let hint = "";
+    for (const venue of VENUES) {
+        // painted first, then its hint taken: ||= alone would skip painting the second button
+        const said = renderVenue(state, venue, ok, {
+            btn: el[`${venue}Btn`],
+            status: el[`${venue}Status`],
+            link: el[`${venue}Link`],
+        });
+        hint ||= said;
+    }
+    el.venueHint.textContent = hint;
+    el.venueHint.hidden = !hint;
 
     const done = doneButton(state);
     el.nextBtn.disabled = !done.enabled;
     el.doneHint.textContent = done.hint;
     el.doneHint.hidden = !done.hint;
-
-    const banner = bannerText(state);
-    el.offline.textContent = banner;
-    el.offline.hidden = !banner;
 }
 
-function renderVenues() {
-    const ok = !!settings();
-    let hint = "";
-    for (const venue of VENUES) {
-        const button = venueButton(state, venue, ok);
-        const node = el[`${venue}Btn`];
-        node.disabled = !button.enabled;
-        // the ring in the button, from the press until the link or the error
-        const active = isActive(state.jobs[venue]);
-        node.classList.toggle("busy", active);
-        node.setAttribute("aria-busy", active ? "true" : "false");
-        hint ||= button.hint;
+function renderBook() {
+    const state = slots.book;
+    const { book } = state;
+    const locked = photosLocked(state);
+    const busy = restoring.book;
+    const hasItem = !!state.itemId;
 
-        const line = venueLine(state.jobs[venue]);
-        const status = el[`${venue}Status`];
-        status.textContent = line.text;
-        status.className = `venue-status ${line.kind}`;
-        status.hidden = !line.text;
-        const link = el[`${venue}Link`];
-        link.hidden = !line.link;
-        link.textContent = line.link;
-        if (line.link) link.href = line.link;
+    // Scan names the book, so it is there only while the ISBN may still change
+    const scanReady = !locked && !busy && !hasItem && scan !== "reading";
+    el.bookScanLabel.classList.toggle("disabled", !scanReady);
+    el.bookScanInput.disabled = !scanReady;
+    const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy });
+    el.bookHint.textContent = hint;
+    el.bookHint.hidden = !hint;
+    el.bookIsbn.readOnly = busy || hasItem;
+
+    const card = bookCard(book);
+    el.bookFound.hidden = card.hidden;
+    el.bookLookup.textContent = card.status;
+    el.bookLookup.className = card.kind ? `book-lookup ${card.kind}` : "book-lookup";
+    el.bookTitle.textContent = card.title;
+    el.bookTitle.hidden = !card.title;
+    el.bookAuthors.textContent = card.authors;
+    el.bookAuthors.hidden = !card.authors;
+    el.bookDetails.textContent = card.details;
+    el.bookDetails.hidden = !card.details;
+
+    // the cover and more: any time until the listing goes (they wait for the ISBN if need be)
+    const ready = !locked && !busy;
+    el.bookSnapLabel.classList.toggle("disabled", !ready);
+    el.bookGalleryLabel.classList.toggle("disabled", !ready);
+    el.bookSnapInput.disabled = !ready;
+    el.bookGalleryInput.disabled = !ready;
+    el.bookProgress.textContent = progressLine(state);
+    renderStrip("book", el.bookStrip, locked);
+
+    // what the listing says stays put while it is being posted
+    const sending = anyActive(state);
+    for (const { value, node } of el.chips) {
+        node.setAttribute("aria-pressed", book.condition === value ? "true" : "false");
+        node.disabled = sending;
     }
-    el.venueHint.textContent = hint;
-    el.venueHint.hidden = !hint;
+    el.bookPrice.readOnly = sending;
+    const note = priceNote(book.lookup);
+    el.bookPriceNote.textContent = note;
+    el.bookPriceNote.hidden = !note;
+    el.bookNoteStatus.textContent = noteStatusText(state);
+
+    const venueHint = renderVenue(state, "ebay", !!settings(), {
+        btn: el.bookEbayBtn,
+        status: el.bookEbayStatus,
+        link: el.bookEbayLink,
+    });
+    el.bookVenueHint.textContent = venueHint;
+    el.bookVenueHint.hidden = !venueHint;
+
+    const done = doneButton(state);
+    el.bookNextBtn.disabled = !done.enabled;
+    el.bookDoneHint.textContent = done.hint;
+    el.bookDoneHint.hidden = !done.hint;
 }
 
-function renderStrip(locked) {
-    el.strip.replaceChildren();
+/** One venue button, its status line and its link; returns the button's hint. */
+function renderVenue(state, venue, ok, nodes) {
+    const button = venueButton(state, venue, ok);
+    nodes.btn.disabled = !button.enabled;
+    // the ring in the button, from the press until the link or the error
+    const active = isActive(state.jobs[venue]);
+    nodes.btn.classList.toggle("busy", active);
+    nodes.btn.setAttribute("aria-busy", active ? "true" : "false");
+
+    const line = venueLine(state.jobs[venue]);
+    nodes.status.textContent = line.text;
+    nodes.status.className = `venue-status ${line.kind}`;
+    nodes.status.hidden = !line.text;
+    nodes.link.hidden = !line.link;
+    nodes.link.textContent = line.link;
+    if (line.link) nodes.link.href = line.link;
+    return button.hint;
+}
+
+/** The photos. A book's carry no AI mark: its catalogue record says what it is. */
+function renderStrip(m, strip, locked) {
+    const state = slots[m];
+    strip.replaceChildren();
     for (const p of state.photos) {
         const card = document.createElement("li");
         card.className = p.ai ? "shot shot-ai" : "shot";
@@ -260,7 +386,7 @@ function renderStrip(locked) {
             retry.title = p.error;
             retry.setAttribute("aria-label", `${p.name} did not reach the PC (${p.error}); try again`);
             retry.addEventListener("click", () => {
-                setState(reduce(state, { type: "retry", id: p.id }));
+                setState(m, reduce(slots[m], { type: "retry", id: p.id }));
                 pump();
             });
             card.append(retry);
@@ -278,27 +404,31 @@ function renderStrip(locked) {
             x.className = "kill";
             x.textContent = "×";
             x.setAttribute("aria-label", `Delete ${p.name}`);
-            x.addEventListener("click", () => removePhoto(p.id));
+            x.addEventListener("click", () => removePhoto(m, p.id));
             card.append(x);
         }
 
-        // the AI mark, bottom right of the photo: off by default, filled when on
-        const ai = document.createElement("button");
-        ai.type = "button";
-        ai.className = p.ai ? "ai-mark on" : "ai-mark";
-        ai.textContent = "AI";
-        ai.disabled = locked;
-        ai.setAttribute("aria-pressed", p.ai ? "true" : "false");
-        ai.setAttribute("aria-label", `Send ${p.name} to the AI`);
-        ai.addEventListener("click", () => setState(reduce(state, { type: "toggleAi", id: p.id })));
-        card.append(ai);
+        if (m === "goods") {
+            // the AI mark, bottom right of the photo: off by default, filled when on
+            const ai = document.createElement("button");
+            ai.type = "button";
+            ai.className = p.ai ? "ai-mark on" : "ai-mark";
+            ai.textContent = "AI";
+            ai.disabled = locked;
+            ai.setAttribute("aria-pressed", p.ai ? "true" : "false");
+            ai.setAttribute("aria-label", `Send ${p.name} to the AI`);
+            ai.addEventListener("click", () =>
+                setState("goods", reduce(slots.goods, { type: "toggleAi", id: p.id }))
+            );
+            card.append(ai);
+        }
 
         const label = document.createElement("span");
         label.className = "shot-name";
         label.textContent = p.name;
         card.append(label);
 
-        el.strip.append(card);
+        strip.append(card);
     }
 }
 
@@ -308,47 +438,152 @@ function say(message, kind = "info") {
     el.message.hidden = !message;
 }
 
+// --- the mode switch -----------------------------------------------------------
+
+/** goods | book: only which item is on screen changes; both carry on. */
+function setMode(m) {
+    if (!MODES.includes(m) || m === mode) return;
+    mode = m;
+    writeText("localStorage", MODE_KEY, m);
+    render();
+    pump(); // the shown item's photos go first from now on
+}
+
 // --- photos ----------------------------------------------------------------
 
 function onItemNameChanged() {
     if (el.itemInput.readOnly) return;
     const cleaned = cleanItemName(el.itemInput.value);
-    if (cleaned !== state.itemName) setState(reduce(state, { type: "setItem", itemName: cleaned }));
-    else render();
+    if (cleaned !== slots.goods.itemName) {
+        setState("goods", reduce(slots.goods, { type: "setItem", itemName: cleaned }));
+    } else render();
 }
 
-function acceptFiles(fileList) {
-    const item = state.itemName;
-    if (!item || restoring) {
+/**
+ * Photos taken or picked: onto the page at once, and into the upload queue.
+ * A goods item needs its name first; a book's photos may come before its ISBN
+ * (a barcode that would not read) and wait on the page until it names them.
+ */
+function acceptFiles(m, fileList) {
+    const s = slots[m];
+    if (m === "goods" && (!s.itemName || restoring.goods)) {
         say("Type an item name first.", "warn");
         return;
     }
-    keepSaved = false; // a new item starts: it is the one to remember now
-    let next = state;
+    if (restoring[m] || photosLocked(s)) return;
+    keepSaved[m] = false; // a new item starts: it is the one to remember now
+    const item = s.itemName || "Book";
+    let next = s;
     for (const file of fileList) {
-        const n = takeNumber(item);
+        const n = takeNumber(item, next);
         const id = `${item}#${n}#${Date.now()}#${Math.random().toString(36).slice(2, 8)}`;
         blobs.set(id, { file, url: URL.createObjectURL(file) });
         next = reduce(next, { type: "add", id, name: buildFileName(item, n), n });
     }
-    setState(next);
+    setState(m, next);
     pump();
 }
 
 /** The x on a thumbnail: off the page, and off the PC when it may be there. */
-function removePhoto(id) {
+function removePhoto(m, id) {
     const held = blobs.get(id);
     if (held) {
         URL.revokeObjectURL(held.url);
         blobs.delete(id);
     }
-    setState(reduce(state, { type: "remove", id }));
+    setState(m, reduce(slots[m], { type: "remove", id }));
     pump();
+}
+
+// --- the book: scan, ISBN, lookup ------------------------------------------------
+
+/**
+ * Scan: the barcode is read first, so the ISBN names the item before its
+ * first photo goes; then the photo joins the strip either way -- the back
+ * cover is a fine listing photo, and a barcode that would not read leaves it
+ * waiting on the page for the typed ISBN.
+ */
+async function onScan(files) {
+    const file = files && files[0];
+    if (!file || restoring.book || slots.book.itemId) return;
+    const mine = generation.book;
+    scan = "reading";
+    render();
+    const isbn = await readIsbn(file);
+    if (mine !== generation.book) return;
+    scan = isbn ? "" : "missed";
+    if (isbn) {
+        el.bookIsbn.value = isbn;
+        clearTimeout(isbnTimer);
+        isbnTimer = null;
+        takeIsbn(isbn);
+    }
+    acceptFiles("book", [file]);
+}
+
+function onIsbnInput() {
+    if (el.bookIsbn.readOnly) return;
+    clearTimeout(isbnTimer);
+    isbnTimer = setTimeout(() => {
+        isbnTimer = null;
+        takeIsbn(normalizeIsbn(el.bookIsbn.value));
+    }, ISBN_DEBOUNCE_MS);
+}
+
+/**
+ * A valid ISBN-13 (or "" for none) is now the book: it names the item, the
+ * photos that waited for it go, and the PC is asked about it. The same ISBN
+ * again asks again only when the last answer was a failure (editing the box
+ * is how he retries).
+ */
+function takeIsbn(isbn) {
+    const before = slots.book;
+    if (isbn === before.book.isbn) {
+        if (isbn && ["idle", "failed"].includes(before.book.lookup.phase)) lookupBook(isbn).catch(() => {});
+        return;
+    }
+    setState("book", reduce(before, { type: "bookIsbn", isbn }));
+    if (slots.book.book.isbn !== isbn) return; // fixed: the book's item is on the PC already
+    if (isbn) scan = "";
+    el.bookPrice.value = slots.book.book.price;
+    // the book first (the card fills while the photos travel), then the waiting photos
+    if (isbn) lookupBook(isbn).catch(() => {});
+    pump();
+}
+
+/** GET /books/<isbn>: the card, the listings, and the price box filled with the suggestion. */
+async function lookupBook(isbn) {
+    const pc = settings();
+    if (!pc) {
+        setState("book", reduce(slots.book, { type: "bookLookupFailed", isbn, status: -1, error: SETTINGS_HINT }));
+        return;
+    }
+    setState("book", reduce(slots.book, { type: "bookLookupStart", isbn }));
+    try {
+        const answer = await getBook(pc, isbn);
+        heard(200);
+        const typed = slots.book.book.price;
+        setState("book", reduce(slots.book, { type: "bookLookupDone", isbn, answer }));
+        if (slots.book.book.price !== typed) el.bookPrice.value = slots.book.book.price;
+    } catch (e) {
+        const status = e instanceof PcError ? e.status : 0;
+        if (status === 0 || status === 401) heard(status);
+        setState("book", reduce(slots.book, { type: "bookLookupFailed", isbn, status, error: e.message }));
+    }
+}
+
+/** Settings are right now, or the PC is back: a book not yet looked up is asked about again. */
+function retryLookup() {
+    const { book } = slots.book;
+    if (book.isbn && ["idle", "failed"].includes(book.lookup.phase)) {
+        lookupBook(book.isbn).catch(() => {});
+    }
 }
 
 // --- the upload queue --------------------------------------------------------
 
-async function runTask(pc, task) {
+async function runTask(pc, m, task) {
+    const itemId = slots[m].itemId;
     switch (task.kind) {
         case "item":
             return createItem(pc, task.name);
@@ -356,15 +591,24 @@ async function runTask(pc, task) {
             const held = blobs.get(task.id);
             if (!held) throw new Error("the photo is no longer on this page");
             // shrunk right before it goes: one decoded photo in memory at a time
-            return putPhoto(pc, state.itemId, task.n, await shrinkPhoto(held.file));
+            return putPhoto(pc, itemId, task.n, await shrinkPhoto(held.file));
         }
         case "delete":
-            return deletePhoto(pc, state.itemId, task.n);
+            return deletePhoto(pc, itemId, task.n);
         case "note":
-            return putNote(pc, state.itemId, task.text);
+            return putNote(pc, itemId, task.text);
         default:
             throw new Error(`unknown task ${task.kind}`);
     }
+}
+
+/** The shown item's requests first, then the other's: both reach the PC, one request at a time. */
+function pickTask() {
+    for (const m of [mode, other(mode)]) {
+        const task = nextTask(slots[m]);
+        if (task) return { m, task };
+    }
+    return null;
 }
 
 /** Send what queue.js says is next, one request at a time, until nothing is. */
@@ -374,33 +618,32 @@ async function pump() {
     try {
         for (;;) {
             const pc = settings();
-            const task = pc ? nextTask(state) : null;
-            if (!task) return;
-            const mine = generation;
-            setState(reduce(state, { type: "taskStart", task }));
+            const next = pc ? pickTask() : null;
+            if (!next) return;
+            const { m, task } = next;
+            const mine = generation[m];
+            setState(m, reduce(slots[m], { type: "taskStart", task }));
             let answer = null;
             let failure = null;
             try {
-                answer = await runTask(pc, task);
+                answer = await runTask(pc, m, task);
             } catch (e) {
                 failure = e;
             }
-            if (mine !== generation) continue; // DONE was pressed meanwhile
+            if (mine !== generation[m]) continue; // DONE was pressed meanwhile
             if (failure) {
                 // PcError carries the HTTP status (0: no answer); anything else
                 // (a photo that would not shrink) is this photo's own failure
                 const status = failure instanceof PcError ? failure.status : -1;
                 if (status === 0 || status === 401) heard(status);
                 const error = failure.message || "not sent";
-                setState(reduce(state, { type: "taskFailed", task, status, error }));
-                if (state.stalled) {
-                    scheduleResume();
-                    return;
-                }
+                setState(m, reduce(slots[m], { type: "taskFailed", task, status, error }));
+                // a stalled item waits out its pause; the other one may still go
+                if (slots[m].stalled) scheduleResume(m);
             } else {
                 heard(200);
-                setState(reduce(state, { type: "taskDone", task, answer }));
-                if (task.kind === "item") syncCounter();
+                setState(m, reduce(slots[m], { type: "taskDone", task, answer }));
+                if (task.kind === "item") syncCounter(m);
             }
         }
     } finally {
@@ -409,98 +652,113 @@ async function pump() {
 }
 
 /** The PC did not answer: try again after a growing pause (or when back online). */
-function scheduleResume() {
-    clearTimeout(resumeTimer);
-    resumeTimer = setTimeout(() => {
-        resumeTimer = null;
-        setState(reduce(state, { type: "resume" }));
+function scheduleResume(m) {
+    clearTimeout(resumeTimers[m]);
+    resumeTimers[m] = setTimeout(() => {
+        resumeTimers[m] = null;
+        setState(m, reduce(slots[m], { type: "resume" }));
         pump();
-    }, retryDelayMs(state.failures));
+    }, retryDelayMs(slots[m].failures));
 }
 
-// --- the note ----------------------------------------------------------------
+// --- the note (a book's is its flaws) ------------------------------------------
 
-function onNoteInput() {
-    setState(reduce(state, { type: "noteText", text: el.note.value }));
-    clearTimeout(noteTimer);
-    noteTimer = setTimeout(noteDue, NOTE_DEBOUNCE_MS);
+function noteBox(m) {
+    return m === "book" ? el.bookFlaws : el.note;
+}
+
+function onNoteInput(m) {
+    setState(m, reduce(slots[m], { type: "noteText", text: noteBox(m).value }));
+    clearTimeout(noteTimers[m]);
+    noteTimers[m] = setTimeout(() => noteDue(m), NOTE_DEBOUNCE_MS);
 }
 
 /** He stopped typing (or left the box, or pressed a button): send the note. */
-function noteDue() {
-    clearTimeout(noteTimer);
-    noteTimer = null;
-    if (!noteDirty(state) || state.note.due) return;
-    setState(reduce(state, { type: "noteDue" }));
+function noteDue(m) {
+    clearTimeout(noteTimers[m]);
+    noteTimers[m] = null;
+    if (!noteDirty(slots[m]) || slots[m].note.due) return;
+    setState(m, reduce(slots[m], { type: "noteDue" }));
     pump();
 }
 
 /** The note on the PC before a job reads it, or before DONE clears the page. */
-async function noteReady() {
-    noteDue();
-    while (noteDirty(state)) {
-        if (state.stalled || !state.online || !settings()) return false;
+async function noteReady(m) {
+    noteDue(m);
+    while (noteDirty(slots[m])) {
+        if (slots[m].stalled || !slots[m].online || !settings()) return false;
         // eslint-disable-next-line no-await-in-loop
         await changed();
     }
     return true;
 }
 
-// --- the two buttons -------------------------------------------------------
+// --- the venue buttons -------------------------------------------------------
 
-async function send(venue) {
+async function send(m, venue) {
     const pc = settings();
-    if (!pc || !venueButton(state, venue, true).enabled) return;
-    const mine = generation;
-    const reuse = !!state.sku;
-    setState(reduce(state, { type: "jobSending", venue, step: "sending" }));
-    if (!reuse && !(await noteReady())) {
-        if (mine !== generation) return;
+    if (!pc || !venueButton(slots[m], venue, true).enabled) return;
+    const mine = generation[m];
+    // the second goods button reuses the saved row; a book is always sent whole
+    const reuse = m === "goods" && !!slots[m].sku;
+    setState(m, reduce(slots[m], { type: "jobSending", venue, step: "sending" }));
+    if (!reuse && !(await noteReady(m))) {
+        if (mine !== generation[m]) return;
         setState(
-            reduce(state, { type: "jobRefused", venue, error: "the note has not reached the PC" })
+            m,
+            reduce(slots[m], { type: "jobRefused", venue, error: "the note has not reached the PC" })
         );
         return;
     }
-    if (mine !== generation) return;
-    const body = jobRequest({ venue, sku: state.sku, item: state.itemId, photos: state.photos });
+    if (mine !== generation[m]) return;
+    const s = slots[m];
+    const body = jobRequest({
+        venue,
+        sku: s.sku,
+        item: s.itemId,
+        photos: s.photos,
+        book: m === "book" ? bookForm(s) : undefined,
+    });
     try {
         const answer = await postJob(pc, body);
-        if (mine !== generation) return;
-        setState(reduce(state, { type: "jobAccepted", venue, job: answer.job, ahead: answer.ahead }));
-        schedulePoll(venue, mine);
+        if (mine !== generation[m]) return;
+        setState(m, reduce(slots[m], { type: "jobAccepted", venue, job: answer.job, ahead: answer.ahead }));
+        schedulePoll(m, venue, mine);
     } catch (e) {
-        if (mine !== generation) return;
-        setState(reduce(state, { type: "jobRefused", venue, error: e.message }));
+        if (mine !== generation[m]) return;
+        setState(m, reduce(slots[m], { type: "jobRefused", venue, error: e.message }));
     }
 }
 
-function schedulePoll(venue, mine) {
-    clearTimeout(polls.get(venue));
+function schedulePoll(m, venue, mine) {
+    const key = `${m}:${venue}`;
+    clearTimeout(polls.get(key));
     polls.set(
-        venue,
+        key,
         setTimeout(() => {
-            poll(venue, mine).catch(() => {});
+            poll(m, venue, mine).catch(() => {});
         }, POLL_MS)
     );
 }
 
-async function poll(venue, mine) {
+async function poll(m, venue, mine) {
     const pc = settings();
-    const jobId = state.jobs[venue].jobId;
-    if (mine !== generation || !pc || !jobId) return;
+    const jobId = slots[m].jobs[venue].jobId;
+    if (mine !== generation[m] || !pc || !jobId) return;
     try {
         const status = await getJob(pc, jobId);
-        if (mine !== generation) return;
-        setState(reduce(state, { type: "jobStatus", venue, status }));
+        if (mine !== generation[m]) return;
+        setState(m, reduce(slots[m], { type: "jobStatus", venue, status }));
     } catch (e) {
-        if (mine !== generation) return;
+        if (mine !== generation[m]) return;
         if (e.status === 0) {
             // the phone or the PC is off the network for a moment; the job
             // itself is safe on the PC's disk, so keep asking
-            setState(reduce(state, { type: "pollTrouble", venue, error: e.message }));
+            setState(m, reduce(slots[m], { type: "pollTrouble", venue, error: e.message }));
         } else {
             setState(
-                reduce(state, {
+                m,
+                reduce(slots[m], {
                     type: "jobStatus",
                     venue,
                     status: { state: "failed", error: e.message },
@@ -508,7 +766,7 @@ async function poll(venue, mine) {
             );
         }
     }
-    if (isActive(state.jobs[venue])) schedulePoll(venue, mine);
+    if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, mine);
 }
 
 // --- settings --------------------------------------------------------------
@@ -569,11 +827,14 @@ async function checkServer() {
         await checkPc(pc);
         heard(200);
         // the PC is back: waiting photos go now, not after the retry pause
-        if (state.stalled) {
-            clearTimeout(resumeTimer);
-            setState(reduce(state, { type: "resume" }));
-            pump();
+        let stalled = false;
+        for (const m of MODES) {
+            if (!slots[m].stalled) continue;
+            stalled = true;
+            clearTimeout(resumeTimers[m]);
+            setState(m, reduce(slots[m], { type: "resume" }));
         }
+        if (stalled) pump();
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
     } finally {
@@ -608,70 +869,104 @@ async function saveSettings() {
     }
     scheduleHealth();
     // photos taken before the settings were right go now
-    setState(reduce(state, { type: "resume" }));
+    for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
     pump();
+    retryLookup();
 }
 
 // --- a reload: the item back from the PC -----------------------------------------
 
-async function restore() {
-    const saved = readJson("localStorage", ITEM_KEY, null);
+async function restore(m) {
+    const saved = readJson("localStorage", SAVED_KEYS[m], null);
     if (!saved || typeof saved.itemId !== "string" || !saved.itemId) return;
     const itemName = typeof saved.itemName === "string" ? saved.itemName : "";
     const pc = settings();
     if (!pc || !itemName) {
-        keepSaved = true; // read it back once Settings are right and the page is reloaded
+        keepSaved[m] = true; // read it back once Settings are right and the page is reloaded
         return;
     }
-    restoring = true;
-    el.itemInput.value = itemName;
-    setState(reduce(state, { type: "setItem", itemName }));
+    restoring[m] = true;
+    if (m === "goods") el.itemInput.value = itemName;
+    setState(m, reduce(slots[m], { type: "setItem", itemName }));
     try {
         const answer = await getItem(pc, saved.itemId);
-        restoring = false;
+        restoring[m] = false;
         const ai = Array.isArray(saved.ai) ? saved.ai : [];
-        setState(reduce(state, { type: "recovered", itemName, itemId: saved.itemId, ai, answer }));
-        el.note.value = state.note.text;
-        syncCounter();
+        setState(
+            m,
+            reduce(slots[m], { type: "recovered", mode: m, itemName, itemId: saved.itemId, ai, answer, book: saved })
+        );
+        noteBox(m).value = slots[m].note.text;
+        if (m === "book") {
+            el.bookIsbn.value = slots.book.book.isbn;
+            el.bookPrice.value = slots.book.book.price;
+            retryLookup(); // saved before the lookup answered: ask again
+        }
+        syncCounter(m);
         for (const venue of VENUES) {
-            if (isActive(state.jobs[venue])) schedulePoll(venue, generation);
+            if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, generation[m]);
         }
     } catch (e) {
-        restoring = false;
-        el.itemInput.value = "";
+        restoring[m] = false;
+        if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
             say(`${itemName} is no longer on the PC.`, "warn");
-            setState(reduce(state, { type: "reset" }));
+            setState(m, reduce(slots[m], { type: "reset" }));
         } else {
             // leave the saved item alone: a reload once the PC answers brings it back
-            keepSaved = true;
+            keepSaved[m] = true;
             say(`Could not read ${itemName} back from the PC (${e.message}). Its photos are safe there; reload when the PC answers.`, "warn");
-            setState(reduce(state, { type: "reset" }));
+            setState(m, reduce(slots[m], { type: "reset" }));
         }
     }
 }
 
 // --- wiring ----------------------------------------------------------------
 
-async function nextItem() {
-    if (!doneButton(state).enabled) return;
-    if (state.itemId && !(await noteReady())) {
+async function nextItem(m) {
+    if (!doneButton(slots[m]).enabled) return;
+    if (slots[m].itemId && !(await noteReady(m))) {
         say("The note has not reached the PC yet. DONE again once it has.", "warn");
         return;
     }
-    generation += 1;
-    for (const t of polls.values()) clearTimeout(t);
-    polls.clear();
-    clearTimeout(resumeTimer);
-    clearTimeout(noteTimer);
-    for (const held of blobs.values()) URL.revokeObjectURL(held.url);
-    blobs.clear();
-    el.itemInput.value = "";
-    el.note.value = "";
+    generation[m] += 1;
+    for (const venue of VENUES) {
+        clearTimeout(polls.get(`${m}:${venue}`));
+        polls.delete(`${m}:${venue}`);
+    }
+    clearTimeout(resumeTimers[m]);
+    resumeTimers[m] = null;
+    clearTimeout(noteTimers[m]);
+    noteTimers[m] = null;
+    // this item's pictures only: the other kind's item is still in progress
+    for (const p of slots[m].photos) {
+        const held = blobs.get(p.id);
+        if (!held) continue;
+        URL.revokeObjectURL(held.url);
+        blobs.delete(p.id);
+    }
+    noteBox(m).value = "";
+    if (m === "goods") {
+        el.itemInput.value = "";
+    } else {
+        clearTimeout(isbnTimer);
+        isbnTimer = null;
+        scan = "";
+        el.bookIsbn.value = "";
+        el.bookPrice.value = "";
+    }
     say("");
-    keepSaved = false;
-    setState(reduce(state, { type: "reset" }));
-    el.itemInput.focus();
+    keepSaved[m] = false;
+    setState(m, reduce(slots[m], { type: "reset" }));
+    // a book starts with Scan, not the keyboard
+    if (m === "goods") el.itemInput.focus();
+}
+
+function onFiles(handler) {
+    return (e) => {
+        handler(e.target.files);
+        e.target.value = "";
+    };
 }
 
 function main() {
@@ -685,6 +980,9 @@ function main() {
         settingsClose: $("settings-close"),
         settingsServer: $("settings-server"),
         server: $("server"),
+        modeGoods: $("mode-goods"),
+        modeBook: $("mode-book"),
+        work: $("work"),
         itemInput: $("item-name"),
         cleaned: $("cleaned"),
         hint: $("hint"),
@@ -705,13 +1003,42 @@ function main() {
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
+        book: $("book"),
+        bookHint: $("book-hint"),
+        bookScanLabel: $("book-scan-label"),
+        bookScanInput: $("book-scan-input"),
+        bookIsbn: $("book-isbn"),
+        bookFound: $("book-found"),
+        bookLookup: $("book-lookup"),
+        bookTitle: $("book-title"),
+        bookAuthors: $("book-authors"),
+        bookDetails: $("book-details"),
+        bookSnapLabel: $("book-snap-label"),
+        bookSnapInput: $("book-snap-input"),
+        bookGalleryLabel: $("book-gallery-label"),
+        bookGalleryInput: $("book-gallery-input"),
+        bookProgress: $("book-progress"),
+        bookStrip: $("book-strip"),
+        chips: CONDITIONS.map(({ value }) => ({ value, node: $(`book-condition-${value}`) })),
+        bookPrice: $("book-price"),
+        bookPriceNote: $("book-price-note"),
+        bookFlaws: $("book-flaws"),
+        bookNoteStatus: $("book-note-status"),
+        bookEbayBtn: $("book-ebay-btn"),
+        bookEbayStatus: $("book-ebay-status"),
+        bookEbayLink: $("book-ebay-link"),
+        bookVenueHint: $("book-venue-hint"),
+        bookDoneHint: $("book-done-hint"),
+        bookNextBtn: $("book-next-item"),
         offline: $("offline"),
         message: $("message"),
         version: $("version"),
     });
 
     el.version.textContent = VERSION;
-    state = reduce(initialState(""), { type: "online", online: navigator.onLine });
+    // goods unless this phone was last used for books
+    mode = readText("localStorage", MODE_KEY) === "book" ? "book" : "goods";
+    for (const m of MODES) slots[m] = reduce(slots[m], { type: "online", online: navigator.onLine });
     render();
 
     renderServer();
@@ -721,37 +1048,61 @@ function main() {
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});
     });
+    el.modeGoods.addEventListener("click", () => setMode("goods"));
+    el.modeBook.addEventListener("click", () => setMode("book"));
+
     el.itemInput.addEventListener("input", onItemNameChanged);
-    el.note.addEventListener("input", onNoteInput);
-    el.note.addEventListener("blur", noteDue);
-    el.snapInput.addEventListener("change", (e) => {
-        acceptFiles(e.target.files);
-        e.target.value = "";
-    });
-    el.galleryInput.addEventListener("change", (e) => {
-        acceptFiles(e.target.files);
-        e.target.value = "";
-    });
+    el.note.addEventListener("input", () => onNoteInput("goods"));
+    el.note.addEventListener("blur", () => noteDue("goods"));
+    el.snapInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
+    el.galleryInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
     for (const venue of VENUES) {
         el[`${venue}Btn`].addEventListener("click", () => {
-            send(venue).catch(() => {});
+            send("goods", venue).catch(() => {});
         });
     }
     el.nextBtn.addEventListener("click", () => {
-        nextItem().catch(() => {});
+        nextItem("goods").catch(() => {});
+    });
+
+    el.bookScanInput.addEventListener(
+        "change",
+        onFiles((files) => {
+            onScan(files).catch(() => {});
+        })
+    );
+    el.bookIsbn.addEventListener("input", onIsbnInput);
+    el.bookSnapInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
+    el.bookGalleryInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
+    for (const { value, node } of el.chips) {
+        node.addEventListener("click", () =>
+            setState("book", reduce(slots.book, { type: "bookCondition", condition: value }))
+        );
+    }
+    el.bookPrice.addEventListener("input", () =>
+        setState("book", reduce(slots.book, { type: "bookPrice", text: el.bookPrice.value }))
+    );
+    el.bookFlaws.addEventListener("input", () => onNoteInput("book"));
+    el.bookFlaws.addEventListener("blur", () => noteDue("book"));
+    el.bookEbayBtn.addEventListener("click", () => {
+        send("book", "ebay").catch(() => {});
+    });
+    el.bookNextBtn.addEventListener("click", () => {
+        nextItem("book").catch(() => {});
     });
 
     window.addEventListener("online", () => {
-        setState(reduce(state, { type: "online", online: true }));
+        for (const m of MODES) setState(m, reduce(slots[m], { type: "online", online: true }));
         pump();
         checkServer().catch(() => {});
+        retryLookup();
     });
-    window.addEventListener("offline", () =>
-        setState(reduce(state, { type: "online", online: false }))
-    );
+    window.addEventListener("offline", () => {
+        for (const m of MODES) setState(m, reduce(slots[m], { type: "online", online: false }));
+    });
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
-            noteDue();
+            for (const m of MODES) noteDue(m);
             clearTimeout(healthTimer); // no checks while the phone is in a pocket
             healthTimer = null;
         } else {
@@ -759,13 +1110,13 @@ function main() {
         }
     });
     window.addEventListener("beforeunload", (e) => {
-        if (leaveWarning(state)) {
+        if (MODES.some((m) => leaveWarning(slots[m]))) {
             e.preventDefault();
             e.returnValue = "";
         }
     });
 
-    restore().catch(() => {});
+    for (const m of MODES) restore(m).catch(() => {});
     checkServer().catch(() => {});
 }
 

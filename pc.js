@@ -8,8 +8,15 @@
 //   PUT    <pc>/items/<id>/note        {"note"} -> note.txt beside the photos
 //   GET    <pc>/items/<id>             -> {"item", "photos", "note", "sku", "jobs"}
 //                                      (a reloaded page reads the item back)
+// A book (the book mode), as soon as its ISBN is known:
+//   GET    <pc>/books/<isbn13>        -> {"isbn", "title", "subtitle", "authors", "publisher",
+//                                          "year", "format", "pages", "price" (or null),
+//                                          "listings": {"count", "low", "high"} (or null), "route"}
+//                                      404: not in the catalogues; 502: they could not be reached
 // A venue button:
 //   POST   <pc>/jobs                  {"item", "venue", "ai": [n...]} or {"sku", "venue"}
+//                                      or, a book: {"item", "venue": "ebay",
+//                                                   "book": {"isbn", "condition", "price"}}
 //                                      -> {"job": id, "state": "queued", "ahead": n}
 //   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
@@ -17,7 +24,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.6.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.7.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -102,6 +109,16 @@ export function putNote({ pc, key }, item, note) {
 /** The item as the PC has it: photo numbers, note, sku, jobs. */
 export function getItem({ pc, key }, item) {
     return call(itemUrl(pc, item), key);
+}
+
+/**
+ * A book from the catalogues, with eBay's prices for it. Costs no model call.
+ * @param {{pc:string, key:string}} settings
+ * @param {string} isbn 13 digits (normalizeIsbn in book.js)
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function getBook({ pc, key }, isbn) {
+    return call(`${pc}/books/${encodeURIComponent(isbn)}`, key);
 }
 
 /**

@@ -3,7 +3,14 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.6.0";
+import { noteDirty, unsent } from "./queue.js?v=1.7.0";
+import {
+    bookListings,
+    bookPriceValue,
+    bookRecord,
+    CONDITIONS,
+    DEFAULT_CONDITION,
+} from "./book.js?v=1.7.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -194,11 +201,18 @@ export const KEY_HEADER = "X-Crosslister-Key";
  * @param {string} o.venue
  * @param {string} [o.sku]    known once the first job has saved the row
  * @param {string} [o.item]   the item's id on the PC
+ * A book: the item (its photos) and the book itself -- the ISBN, the condition
+ * chip and the price box. No AI marks: the catalogue says what the book is,
+ * so there is no model call, and a book goes to eBay only.
+ *
  * @param {{n:number, ai:boolean}[]} [o.photos]
- * @returns {{sku:string, venue:string} | {item:string, venue:string, ai:number[]}}
+ * @param {{isbn:string, condition:string, price:string}} [o.book]  from bookForm()
+ * @returns {{sku:string, venue:string} | {item:string, venue:string, ai:number[]}
+ *          | {item:string, venue:string, book:{isbn:string, condition:string, price:string}}}
  */
-export function jobRequest({ venue, sku = "", item = "", photos = [] }) {
+export function jobRequest({ venue, sku = "", item = "", photos = [], book = undefined }) {
     if (!VENUES.includes(venue)) throw new RangeError(`unknown venue ${venue}`);
+    if (book) return { item, venue, book: { ...book } };
     if (sku) return { sku, venue };
     return { item, venue, ai: photos.filter((p) => p.ai).map((p) => p.n) };
 }
@@ -294,16 +308,59 @@ export function safeLink(url) {
  * @property {string} problem     the last failure, shown while stalled
  * @property {string} sku   the saved row, once the first job reports it
  * @property {Record<string, VenueJob>} jobs
+ * @property {"goods"|"book"} mode  which kind of item this is; the page keeps one of each
+ * @property {BookSlice} book       the book's own fields (untouched in goods mode)
  */
+
+/**
+ * The book mode's own fields. The item name of a book is "Book <isbn13>", so
+ * the PC's folder is "Book 9780306406157 <date>" and the same book scanned
+ * twice the same day is the same folder, as with goods.
+ * @typedef {Object} BookSlice
+ * @property {string} isbn       13 digits once a valid ISBN was scanned or typed, else ""
+ * @property {BookLookup} lookup the PC's answer to GET /books/<isbn>
+ * @property {string} condition  one of CONDITIONS' values
+ * @property {string} price      the price box as typed (bookPriceValue() reads it)
+ */
+
+/**
+ * @typedef {Object} BookLookup
+ * @property {"idle"|"looking"|"found"|"missing"|"failed"} phase
+ *           missing: not in the catalogues (404); failed: the PC could not look (its words in error)
+ * @property {null|ReturnType<typeof bookRecord>} record  the book, once found
+ * @property {string} price      the PC's suggested price, "" when it has none
+ * @property {null|{count:number, low:string, high:string}} listings  eBay's listings as the PC saw them
+ * @property {string} route      "list", "lot or buyback" or "unknown"
+ * @property {string} error
+ */
+
+/** The kinds of item the switch at the top chooses between. */
+export const MODES = ["goods", "book"];
+
+/** @returns {BookLookup} */
+function idleLookup() {
+    return { phase: "idle", record: null, price: "", listings: null, route: "", error: "" };
+}
+
+/** @returns {BookSlice} */
+function initialBook() {
+    return { isbn: "", lookup: idleLookup(), condition: DEFAULT_CONDITION, price: "" };
+}
 
 /** @returns {VenueJob} */
 export function idleJob() {
     return { phase: "idle", jobId: "", step: "", ahead: 0, link: "", error: "", trouble: "" };
 }
 
-/** @returns {SnapState} */
-export function initialState(itemName = "") {
+/**
+ * @param {string} [itemName]
+ * @param {"goods"|"book"} [mode]
+ * @returns {SnapState}
+ */
+export function initialState(itemName = "", mode = "goods") {
     return {
+        mode: MODES.includes(mode) ? mode : "goods",
+        book: initialBook(),
         itemName,
         itemId: "",
         photos: [],
@@ -362,6 +419,14 @@ export function photosLocked(state) {
  *   {type:"jobRefused", venue, error}     the POST did not become a job
  *   {type:"jobStatus", venue, status}     an answer to GET /jobs/<id>
  *   {type:"pollTrouble", venue, error}    that GET failed; keep asking
+ * The book mode:
+ *   {type:"setMode", mode}                "goods" or "book": what kind of item this state holds
+ *   {type:"bookIsbn", isbn}               a valid ISBN-13 scanned or typed, or "" (fixed once the item is on the PC)
+ *   {type:"bookLookupStart", isbn}        GET /books/<isbn> goes
+ *   {type:"bookLookupDone", isbn, answer} the PC found it
+ *   {type:"bookLookupFailed", isbn, status, error}  404: not in the catalogues; else the PC's words
+ *   {type:"bookCondition", condition}     a condition chip
+ *   {type:"bookPrice", text}              the price box, as typed
  *
  * @param {SnapState} state
  * @param {{type:string}&Record<string,any>} action
@@ -421,7 +486,8 @@ export function reduce(state, action) {
         case "noteDue":
             return { ...state, note: { ...state.note, due: true } };
         case "reset":
-            return { ...initialState(""), online: state.online };
+            // the next item is of the same kind: DONE on a book starts the next book
+            return { ...initialState("", state.mode), online: state.online };
 
         case "taskStart": {
             const next = { ...state, busy: action.task };
@@ -487,9 +553,86 @@ export function reduce(state, action) {
                 ...job,
                 trouble: action.error || "cannot reach the PC",
             }));
+
+        case "setMode":
+            return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;
+        case "bookIsbn":
+            return bookIsbn(state, typeof action.isbn === "string" ? action.isbn : "");
+        case "bookLookupStart":
+            return withLookup(state, action.isbn, () => ({ ...idleLookup(), phase: "looking" }));
+        case "bookLookupDone":
+            return bookFound(state, action.isbn, action.answer || {});
+        case "bookLookupFailed":
+            return withLookup(state, action.isbn, () => ({
+                ...idleLookup(),
+                phase: action.status === 404 ? "missing" : "failed",
+                error: action.error || "the book was not looked up",
+            }));
+        case "bookCondition":
+            return CONDITIONS.some((c) => c.value === action.condition)
+                ? { ...state, book: { ...state.book, condition: action.condition } }
+                : state;
+        case "bookPrice":
+            return {
+                ...state,
+                book: { ...state.book, price: typeof action.text === "string" ? action.text : "" },
+            };
         default:
             return state;
     }
+}
+
+/**
+ * A new ISBN names the book, and so its folder on the PC: "Book <isbn13>".
+ * Once that folder is made the ISBN is fixed until DONE, as the goods item name
+ * is. Before that, photos taken meanwhile (a scan whose barcode could not be
+ * read, a cover snapped first) wait on the page for the name and are relabelled
+ * with it; a different book starts its lookup and price afresh.
+ */
+function bookIsbn(state, isbn) {
+    if (state.itemId || isbn === state.book.isbn) return state;
+    const itemName = isbn ? `Book ${isbn}` : "";
+    return {
+        ...state,
+        itemName,
+        photos: state.photos.map((p) => ({ ...p, name: buildFileName(itemName || "Book", p.n) })),
+        book: { ...state.book, isbn, lookup: idleLookup(), price: "" },
+    };
+}
+
+/** The PC's answer about a book, kept only while it is still the book in the box. */
+function withLookup(state, isbn, fn) {
+    if (!isbn || isbn !== state.book.isbn) return state;
+    return { ...state, book: { ...state.book, lookup: fn(state.book.lookup) } };
+}
+
+/** Found: the card, the listings, and the price box filled with the suggestion unless he typed one. */
+function bookFound(state, isbn, answer) {
+    const price = bookPriceValue(typeof answer.price === "string" ? answer.price : String(answer.price ?? ""));
+    const next = withLookup(state, isbn, () => ({
+        ...idleLookup(),
+        phase: "found",
+        record: bookRecord(answer),
+        price,
+        listings: bookListings(answer.listings),
+        route: typeof answer.route === "string" ? answer.route : "",
+    }));
+    if (next === state || state.book.price.trim() || !price) return next;
+    return { ...next, book: { ...next.book, price } };
+}
+
+/**
+ * What a book's job carries besides the item: the ISBN, the condition chip and
+ * the price as the PC should list it.
+ * @param {SnapState} state
+ * @returns {{isbn:string, condition:string, price:string}}
+ */
+export function bookForm(state) {
+    return {
+        isbn: state.book.isbn,
+        condition: state.book.condition,
+        price: bookPriceValue(state.book.price),
+    };
 }
 
 function taskDone(state, task, answer) {
@@ -552,13 +695,20 @@ function adoptItem(state, answer) {
     return { ...state, itemId, photos: [...there, ...waiting] };
 }
 
-/** A reloaded page takes the item back as the PC has it. */
+/**
+ * A reloaded page takes the item back as the PC has it. A book also takes back
+ * what only the phone knew (action.book, from savedItem): the ISBN, the
+ * condition, the price box and the book the lookup found. Without a found
+ * book the page simply asks the PC again.
+ */
 function recovered(state, action) {
     const answer = action.answer || {};
     const marked = new Set(numbers(action.ai));
     const note = typeof answer.note === "string" ? answer.note : "";
+    const mode = MODES.includes(action.mode) ? action.mode : state.mode;
     let next = {
-        ...initialState(action.itemName),
+        ...initialState(action.itemName, mode),
+        book: mode === "book" ? recoveredBook(action.book) : initialBook(),
         online: state.online,
         itemId: action.itemId,
         photos: numbers(answer.photos).map((n) => photoOnPc(action.itemName, n, marked.has(n))),
@@ -571,6 +721,26 @@ function recovered(state, action) {
         next = reduce(next, { type: "jobStatus", venue: job.venue, status: job });
     }
     return next;
+}
+
+function recoveredBook(saved) {
+    const s = saved && typeof saved === "object" ? saved : {};
+    const book = initialBook();
+    if (typeof s.isbn === "string" && /^\d{13}$/.test(s.isbn)) book.isbn = s.isbn;
+    if (CONDITIONS.some((c) => c.value === s.condition)) book.condition = s.condition;
+    if (typeof s.price === "string") book.price = s.price;
+    const found = s.lookup && typeof s.lookup === "object" ? s.lookup : null;
+    if (book.isbn && found && found.record) {
+        book.lookup = {
+            ...idleLookup(),
+            phase: "found",
+            record: bookRecord(found.record),
+            price: bookPriceValue(typeof found.price === "string" ? found.price : ""),
+            listings: bookListings(found.listings),
+            route: typeof found.route === "string" ? found.route : "",
+        };
+    }
+    return book;
 }
 
 function photoOnPc(itemName, n, ai) {
@@ -632,10 +802,30 @@ export function raiseCount(counters, itemName, n) {
  * What the page keeps in localStorage so a reload can read the item back
  * from the PC: the name, the id, and which photos are marked AI (the PC does
  * not know the marks until a button is pressed).
- * @returns {null|{itemName:string, itemId:string, ai:number[]}}
+ *
+ * A book keeps, besides, what only the phone knows: the ISBN, the condition
+ * chip, the price box and the book the lookup found (so a reload does not
+ * even have to ask the catalogues again). It has no AI marks.
+ * @returns {null|{itemName:string, itemId:string, ai:number[]}
+ *          |{mode:"book", itemName:string, itemId:string, isbn:string, condition:string, price:string, lookup:(null|object)}}
  */
 export function savedItem(state) {
     if (!state.itemId) return null;
+    if (state.mode === "book") {
+        const { isbn, condition, price, lookup } = state.book;
+        return {
+            mode: "book",
+            itemName: state.itemName,
+            itemId: state.itemId,
+            isbn,
+            condition,
+            price,
+            lookup:
+                lookup.phase === "found"
+                    ? { record: lookup.record, price: lookup.price, listings: lookup.listings, route: lookup.route }
+                    : null,
+        };
+    }
     return {
         itemName: state.itemName,
         itemId: state.itemId,
@@ -684,6 +874,7 @@ export const SETTINGS_HINT = "Set the PC address and key in Settings";
  * @returns {{enabled:boolean, hint:string}}
  */
 export function venueButton(state, venue, settingsOk) {
+    if (state.mode === "book") return bookVenueButton(state, venue, settingsOk);
     const job = state.jobs[venue];
     // pressed already: on its way, or posted (the link is right there)
     if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
@@ -711,18 +902,79 @@ export function venueButton(state, venue, settingsOk) {
 }
 
 /**
+ * A book's photos are on the page but it has no ISBN yet (a scan whose
+ * barcode would not read, a cover snapped first). Its folder on the PC is
+ * named by the ISBN, so they cannot go until it is typed: what blocks them is
+ * the ISBN, not the PC, and the lines under ebay and DONE say so.
+ */
+export function waitsForIsbn(state) {
+    return state.mode === "book" && !state.book.isbn && state.photos.length > 0;
+}
+
+export const ISBN_WAIT_HINT =
+    "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x";
+
+/**
+ * The book's one button, ebay. It opens once the book is found in the
+ * catalogues, at least one photo is taken and every photo is on the PC, and
+ * the price box holds a price. A book goes by its catalogue record, not a
+ * model, so there is no AI mark to wait for -- and no second venue: a book
+ * that failed after the PC saved its row is simply sent again whole.
+ * @param {SnapState} state
+ * @param {string} venue
+ * @param {boolean} settingsOk
+ * @returns {{enabled:boolean, hint:string}}
+ */
+function bookVenueButton(state, venue, settingsOk) {
+    const job = state.jobs[venue];
+    if (venue !== "ebay" || !job) return { enabled: false, hint: "" };
+    if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
+    if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
+    const { book } = state;
+    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
+    if (!book.isbn) return { enabled: false, hint: "Scan or type the ISBN first" };
+    switch (book.lookup.phase) {
+        case "found":
+            break;
+        case "missing":
+            return { enabled: false, hint: "Not in the catalogues - post it as goods instead" };
+        case "failed":
+            return { enabled: false, hint: "The book was not looked up - edit the ISBN to try again" };
+        default:
+            return { enabled: false, hint: "Looking the book up..." };
+    }
+    const n = state.photos.length;
+    if (n === 0) return { enabled: false, hint: "Snap the cover first" };
+    if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
+    if (!bookPriceValue(book.price)) return { enabled: false, hint: "Set a price (whole dollars are fine)" };
+    if (state.photos.some((p) => p.status === "failed")) {
+        return { enabled: false, hint: "A photo did not reach the PC - tap its 'failed' to try again" };
+    }
+    if (unsent(state) || !state.itemId) {
+        const sent = state.photos.filter((p) => p.status === "sent").length;
+        return { enabled: false, hint: `Waiting for the photos to reach the PC (${sent} of ${n} sent)` };
+    }
+    return { enabled: true, hint: "" };
+}
+
+/**
  * DONE: needs a photo (as before), waits while a job for this item is on its
  * way or on the PC, and while a photo or a delete has not reached the PC.
+ * A book also opens it with an ISBN and no photo yet, so a book that is not in
+ * the catalogues can be cleared without taking a picture of it.
  * @returns {{enabled:boolean, hint:string}}
  */
 export function doneButton(state) {
     if (anyActive(state)) {
         return { enabled: false, hint: "DONE waits until the listing is finished" };
     }
+    // a book's photos waiting for its ISBN are not waiting for the PC
+    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
     if (unsent(state)) {
         return { enabled: false, hint: "DONE waits until the photos are on the PC" };
     }
-    return { enabled: state.photos.length > 0, hint: "" };
+    const something = state.photos.length > 0 || (state.mode === "book" && !!state.book.isbn);
+    return { enabled: something, hint: "" };
 }
 
 /**
@@ -742,6 +994,9 @@ export function noteStatusText(state) {
 
 /**
  * The running line above the strip: "4 photos, 2 for the AI, 3 on the PC".
+ * A book's photos never go to a model, so its line leaves the AI out:
+ * "2 photos, all on the PC"; or "1 photo, waiting for the ISBN" while there is
+ * none to name its folder, which is not the PC being slow.
  * @param {SnapState} state
  * @returns {string}
  */
@@ -751,12 +1006,17 @@ export function progressLine(state) {
     const ai = state.photos.filter((p) => p.ai).length;
     const sent = state.photos.filter((p) => p.status === "sent").length;
     const photos = total === 1 ? "1 photo" : `${total} photos`;
-    return `${photos}, ${ai} for the AI, ${sent === total ? "all" : sent} on the PC`;
+    if (waitsForIsbn(state)) return `${photos}, waiting for the ISBN`;
+    const where = `${sent === total ? "all" : sent} on the PC`;
+    if (state.mode === "book") return `${photos}, ${where}`;
+    return `${photos}, ${ai} for the AI, ${where}`;
 }
 
 /**
  * Leaving the page now would lose something: a photo, a delete or the note
- * not yet on the PC, or a job on its way.
+ * not yet on the PC, or a job on its way. A book adds nothing of its own: its
+ * ISBN, condition and price are kept for a reload once its item is on the PC,
+ * and before that there is no photo on the PC to lose them from.
  */
 export function leaveWarning(state) {
     return anyActive(state) || unsent(state) || (!!state.itemId && noteDirty(state));

@@ -349,6 +349,70 @@ button.badge.failed {
 }
 .hint-line { margin: 10px 0 0; }
 
+/* goods | book at the top: one control in two halves, the chosen half filled.
+   Quiet next to Snap on purpose: it is chosen once per sitting, not per photo. */
+.modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin: 4px 0 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 3px;
+    gap: 3px;
+}
+.mode {
+    min-height: 44px;
+    padding: 8px 12px;
+    background: none;
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 11px;
+}
+.mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+/* the book the PC found: the title in bold, then the authors, then the small print */
+.book-card { margin-top: 14px; }
+.book-card p { margin: 0; overflow-wrap: anywhere; }
+.book-title { font-weight: 700; font-size: 18px; line-height: 1.3; }
+.book-card .book-authors { margin-top: 4px; }
+.book-card .small { margin-top: 6px; }
+.book-lookup { color: var(--muted); font-size: 15px; }
+.book-lookup.bad { color: var(--bad); }
+.book-lookup:empty { display: none; }
+
+/* the condition: four chips in a row, one chosen; 44 px tall for a thumb */
+.chips {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+.chip {
+    min-height: 44px;
+    padding: 6px 4px;
+    font-size: 14px;
+    line-height: 1.2;
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--line);
+}
+.chip[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+}
+/* on a narrow phone four in a row would squeeze "Acceptable" past its chip: two by two */
+@media (max-width: 380px) {
+    .chips { grid-template-columns: 1fr 1fr; }
+}
+.chip:focus-visible, .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+
+.book-price-note { margin: 0 2px; }
+/* a book goes to eBay only: one full-width button where goods have two */
+.book-venue { margin-top: 18px; }
+
 footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
 footer p { margin: 6px 0; }
 .version-line { color: var(--muted); font-size: 12px; }
