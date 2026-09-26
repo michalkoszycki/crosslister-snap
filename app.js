@@ -1,65 +1,116 @@
-// app.js -- the screen. All the thinking lives in core.js; the network calls
-// live in graph.js; sign-in lives in auth.js. This file only wires them to
-// buttons and paints the result.
+// app.js -- the screen. All the thinking lives in core.js and queue.js; the
+// calls to the PC live in pc.js; shrinking a photo lives in shrink.js. This
+// file only wires them to buttons, runs the upload queue's requests, and
+// paints the result.
 
-import { config } from "./config.js?v=1.2.2";
-import { VERSION } from "./version.js?v=1.2.2";
+import { VERSION } from "./version.js?v=1.4.0";
 import {
+    anyActive,
+    bannerText,
     buildFileName,
+    checkSettings,
     cleanItemName,
+    doneButton,
+    highestNumber,
     initialState,
-    makeDebouncer,
-    MAX_ATTEMPTS,
+    isActive,
+    jobRequest,
+    leaveWarning,
     nextNumber,
-    noteNeedsSave,
-    NOTE_DEBOUNCE_MS,
     noteStatusText,
-    photoExtension,
+    photosLocked,
+    POLL_MS,
     progressLine,
+    raiseCount,
     reduce,
-    retryDelayMs,
-    shouldRetry,
-} from "./core.js?v=1.2.2";
-import { deleteDriveItem, uploadPhoto, uploadTextFile } from "./graph.js?v=1.2.2";
+    savedItem,
+    venueButton,
+    venueLine,
+    VENUES,
+} from "./core.js?v=1.4.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.4.0";
 import {
-    clientIdMissing,
-    currentAccount,
-    getAccessToken,
-    initAuth,
-    signIn,
-    signOut,
-} from "./auth.js?v=1.2.2";
+    checkPc,
+    createItem,
+    deletePhoto,
+    getItem,
+    getJob,
+    PcError,
+    postJob,
+    putNote,
+    putPhoto,
+} from "./pc.js?v=1.4.0";
+import { shrinkPhoto } from "./shrink.js?v=1.4.0";
 
 const COUNTER_KEY = "snap.counters";
-const NOTES_KEY = "snap.notes";
+const PC_KEY = "snap.pc";
+const KEY_KEY = "snap.key";
+const ITEM_KEY = "snap.item";
 
 /** @type {import("./core.js").SnapState} */
 let state = initialState("");
 
-/** id -> { file: File, url: string } -- the bytes never leave memory until done. */
+/** id -> { file: File, url: string } -- the pictures taken on this page, until DONE. */
 const blobs = new Map();
 
-/** id -> AbortController, so the x on a thumbnail can cancel a live upload. */
-const controllers = new Map();
+/** venue -> the timer of its next status poll */
+const polls = new Map();
 
-let queueRunning = false;
-const queue = [];
+/** Bumped on DONE, so a late answer for the previous item is dropped. */
+let generation = 0;
+
+/** The upload queue: one request at a time (queue.js decides which). */
+let pumping = false;
+let resumeTimer = null;
+let noteTimer = null;
+
+/** Resolved on every state change: how an async step waits for the queue. */
+const waiters = [];
+
+/** A saved item is being read back from the PC: no snapping until it is. */
+let restoring = false;
+/** The saved item could not be read back: leave it in storage until a new item starts. */
+let keepSaved = false;
+let lastSaved = null;
 
 const el = {};
-
-const noteSaver = makeDebouncer(NOTE_DEBOUNCE_MS);
-/** The folder the note in the box belongs to, so a rename cannot misfile it. */
-let noteItemName = "";
 
 function $(id) {
     return document.getElementById(id);
 }
 
-// --- storage helpers -------------------------------------------------------
+// --- storage helpers ---------------------------------------------------------
+// Every read and write may throw (private mode, blocked site data, a full
+// quota), and in some browsers so does merely touching `localStorage`, so the
+// store is looked up by name inside the try.
+
+function readText(store, key) {
+    try {
+        return globalThis[store].getItem(key) || "";
+    } catch {
+        return "";
+    }
+}
+
+function writeText(store, key, value) {
+    try {
+        globalThis[store].setItem(key, value);
+    } catch {
+        /* nothing is remembered; the page still works for this visit */
+    }
+}
+
+function removeText(store, key) {
+    try {
+        globalThis[store].removeItem(key);
+    } catch {
+        /* nothing was remembered */
+    }
+}
 
 function readJson(store, key, fallback) {
     try {
-        const raw = store.getItem(key);
+        const raw = readText(store, key);
         return raw ? JSON.parse(raw) : fallback;
     } catch {
         return fallback;
@@ -67,33 +118,37 @@ function readJson(store, key, fallback) {
 }
 
 function writeJson(store, key, value) {
-    try {
-        store.setItem(key, JSON.stringify(value));
-    } catch {
-        /* private mode / full quota: numbering restarts, nothing breaks */
-    }
+    writeText(store, key, JSON.stringify(value));
 }
 
 function takeNumber(itemName) {
-    const counters = readJson(sessionStorage, COUNTER_KEY, {});
+    const counters = readJson("sessionStorage", COUNTER_KEY, {});
     const { n, counters: updated } = nextNumber(counters, itemName);
-    writeJson(sessionStorage, COUNTER_KEY, updated);
+    writeJson("sessionStorage", COUNTER_KEY, updated);
     return n;
 }
 
-/** Notes live in sessionStorage per item, so reopening one today brings it back. */
-function rememberNote(itemName, text) {
-    if (!itemName) return;
-    const notes = readJson(sessionStorage, NOTES_KEY, {});
-    if (text) notes[itemName] = text;
-    else delete notes[itemName];
-    writeJson(sessionStorage, NOTES_KEY, notes);
+/** After the PC told us its photo numbers: never hand one of them out again. */
+function syncCounter() {
+    const counters = readJson("sessionStorage", COUNTER_KEY, {});
+    writeJson("sessionStorage", COUNTER_KEY, raiseCount(counters, state.itemName, highestNumber(state)));
 }
 
-function recallNote(itemName) {
-    const notes = readJson(sessionStorage, NOTES_KEY, {});
-    const v = itemName ? notes[itemName] : "";
-    return typeof v === "string" ? v : "";
+/** The item id and the AI marks, so a reload can read the item back from the PC. */
+function persist() {
+    if (restoring || keepSaved) return;
+    const saved = savedItem(state);
+    const text = saved ? JSON.stringify(saved) : "";
+    if (text === lastSaved) return;
+    lastSaved = text;
+    if (saved) writeText("localStorage", ITEM_KEY, text);
+    else removeText("localStorage", ITEM_KEY);
+}
+
+/** The saved PC address and key, checked; null when either is missing or wrong. */
+function settings() {
+    const s = checkSettings(readText("localStorage", PC_KEY), readText("localStorage", KEY_KEY));
+    return s.ok ? { pc: s.pc, key: s.key } : null;
 }
 
 // --- rendering -------------------------------------------------------------
@@ -101,102 +156,137 @@ function recallNote(itemName) {
 function setState(next) {
     state = next;
     render();
+    persist();
+    for (const wake of waiters.splice(0)) wake();
+}
+
+function changed() {
+    return new Promise((resolve) => waiters.push(resolve));
 }
 
 function render() {
-    const signedIn = !!currentAccount();
-    el.signinBox.hidden = signedIn;
-    el.workBox.hidden = !signedIn;
-    el.signoutLink.hidden = !signedIn;
-    el.who.textContent = signedIn
-        ? currentAccount().username || currentAccount().name || ""
-        : "";
-
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
-    el.cleaned.textContent = state.itemName
-        ? `Folder: ${config.basePath}/${state.itemName}/`
-        : "";
+    el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
+    // the item's folder on the PC is named once, with the first photo
+    el.itemInput.readOnly = restoring || !!state.itemId || state.photos.length > 0;
 
-    const ready = !!state.itemName;
+    const locked = photosLocked(state);
+    const ready = !!state.itemName && !locked && !restoring;
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
-    // DONE is darkened like Snap until this item has its first photo (Michal, 2026-09-21).
-    el.nextBtn.disabled = state.photos.length === 0;
     el.hint.hidden = ready;
-    el.noteStatus.textContent = noteStatusText(state.note, state.online);
+    if (restoring) el.hint.textContent = "Reading this item back from the PC...";
+    else if (locked) el.hint.textContent = "These photos went with the listing. DONE starts the next item.";
+    else el.hint.textContent = "Type the item name to start snapping.";
 
+    el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
-    renderStrip();
-    renderOffline();
+    renderStrip(locked);
+    renderVenues();
+
+    const done = doneButton(state);
+    el.nextBtn.disabled = !done.enabled;
+    el.doneHint.textContent = done.hint;
+    el.doneHint.hidden = !done.hint;
+
+    const banner = bannerText(state);
+    el.offline.textContent = banner;
+    el.offline.hidden = !banner;
 }
 
-function renderOffline() {
-    el.offline.hidden = state.online;
+function renderVenues() {
+    const ok = !!settings();
+    let hint = "";
+    for (const venue of VENUES) {
+        const button = venueButton(state, venue, ok);
+        el[`${venue}Btn`].disabled = !button.enabled;
+        hint ||= button.hint;
+
+        const line = venueLine(state.jobs[venue]);
+        const status = el[`${venue}Status`];
+        status.textContent = line.text;
+        status.className = `venue-status ${line.kind}`;
+        status.hidden = !line.text;
+        const link = el[`${venue}Link`];
+        link.hidden = !line.link;
+        link.textContent = line.link;
+        if (line.link) link.href = line.link;
+    }
+    el.venueHint.textContent = hint;
+    el.venueHint.hidden = !hint;
 }
 
-function renderStrip() {
+function renderStrip(locked) {
     el.strip.replaceChildren();
     for (const p of state.photos) {
         const card = document.createElement("li");
-        card.className = `shot shot-${p.status}`;
+        card.className = p.ai ? "shot shot-ai" : "shot";
 
-        const img = document.createElement("img");
         const held = blobs.get(p.id);
-        if (held) img.src = held.url;
-        img.alt = p.name;
-        card.append(img);
+        if (held) {
+            const img = document.createElement("img");
+            img.src = held.url;
+            img.alt = p.name;
+            card.append(img);
+        } else {
+            // read back from the PC after a reload: the picture itself is there, not here
+            const there = document.createElement("span");
+            there.className = "shot-remote";
+            there.textContent = "on the PC";
+            card.append(there);
+        }
 
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = badgeText(p);
-        card.append(badge);
+        // waiting / sent / failed, top left; a failed one is tapped to try again
+        const word = badgeText(p);
+        if (word === "failed") {
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.className = "badge failed";
+            retry.textContent = "failed";
+            retry.title = p.error;
+            retry.setAttribute("aria-label", `${p.name} did not reach the PC (${p.error}); try again`);
+            retry.addEventListener("click", () => {
+                setState(reduce(state, { type: "retry", id: p.id }));
+                pump();
+            });
+            card.append(retry);
+        } else {
+            const badge = document.createElement("span");
+            badge.className = `badge ${word}`;
+            badge.textContent = word;
+            card.append(badge);
+        }
 
-        // the x: no confirmation, straight to OneDrive. 44 px touch target.
-        const x = document.createElement("button");
-        x.type = "button";
-        x.className = "kill";
-        x.textContent = "×";
-        x.setAttribute("aria-label", `Delete ${p.name}`);
-        x.addEventListener("click", () => removePhoto(p.id));
-        card.append(x);
+        if (!locked) {
+            // the x: no confirmation; the photo leaves the page, and the PC too
+            const x = document.createElement("button");
+            x.type = "button";
+            x.className = "kill";
+            x.textContent = "×";
+            x.setAttribute("aria-label", `Delete ${p.name}`);
+            x.addEventListener("click", () => removePhoto(p.id));
+            card.append(x);
+        }
+
+        // the AI mark, bottom right of the photo: off by default, filled when on
+        const ai = document.createElement("button");
+        ai.type = "button";
+        ai.className = p.ai ? "ai-mark on" : "ai-mark";
+        ai.textContent = "AI";
+        ai.disabled = locked;
+        ai.setAttribute("aria-pressed", p.ai ? "true" : "false");
+        ai.setAttribute("aria-label", `Send ${p.name} to the AI`);
+        ai.addEventListener("click", () => setState(reduce(state, { type: "toggleAi", id: p.id })));
+        card.append(ai);
 
         const label = document.createElement("span");
         label.className = "shot-name";
         label.textContent = p.name;
         card.append(label);
 
-        if (p.status === "failed") {
-            const retry = document.createElement("button");
-            retry.type = "button";
-            retry.className = "retry";
-            retry.textContent = "Retry";
-            retry.addEventListener("click", () => {
-                setState(reduce(state, { type: "progress", id: p.id, progress: 0 }));
-                enqueue(p.id, true);
-            });
-            card.append(retry);
-        }
-        if (p.error) card.title = p.error;
         el.strip.append(card);
-    }
-}
-
-function badgeText(p) {
-    switch (p.status) {
-        case "done":
-            return "done";
-        case "failed":
-            return "failed";
-        case "uploading":
-            return `${Math.round(p.progress * 100)}%`;
-        case "deleting":
-            return "deleting";
-        case "delete-failed":
-            return "delete failed";
-        default:
-            return "waiting";
     }
 }
 
@@ -206,337 +296,339 @@ function say(message, kind = "info") {
     el.message.hidden = !message;
 }
 
-// --- photo intake ----------------------------------------------------------
+// --- photos ----------------------------------------------------------------
 
 function onItemNameChanged() {
+    if (el.itemInput.readOnly) return;
     const cleaned = cleanItemName(el.itemInput.value);
-    if (cleaned !== state.itemName) {
-        setState(reduce(state, { type: "setItem", itemName: cleaned }));
-        adoptNoteFor(cleaned);
-    } else {
-        render();
-    }
-}
-
-/**
- * Keep the note box pointing at the right folder.
- * - reopening an item this session already has a note for: bring the text back;
- * - still typing the name with a note already written: the text follows along,
- *   unsaved, so it lands in the folder he ends up with.
- */
-function adoptNoteFor(itemName) {
-    noteItemName = itemName;
-    if (!itemName) return;
-    const stored = recallNote(itemName);
-    const text = stored || state.note.text;
-    if (el.note.value !== text) el.note.value = text;
-    setState(reduce(state, { type: "noteReset", text }));
-    if (text) rememberNote(itemName, text);
+    if (cleaned !== state.itemName) setState(reduce(state, { type: "setItem", itemName: cleaned }));
+    else render();
 }
 
 function acceptFiles(fileList) {
     const item = state.itemName;
-    if (!item) {
+    if (!item || restoring) {
         say("Type an item name first.", "warn");
         return;
     }
+    keepSaved = false; // a new item starts: it is the one to remember now
     let next = state;
     for (const file of fileList) {
         const n = takeNumber(item);
-        const name = buildFileName(item, n, photoExtension(file.name, file.type));
         const id = `${item}#${n}#${Date.now()}#${Math.random().toString(36).slice(2, 8)}`;
-        blobs.set(id, { file, url: URL.createObjectURL(file), itemName: item });
-        next = reduce(next, { type: "add", id, name, n });
-        queue.push(id);
+        blobs.set(id, { file, url: URL.createObjectURL(file) });
+        next = reduce(next, { type: "add", id, name: buildFileName(item, n), n });
     }
     setState(next);
-    runQueue();
+    pump();
 }
 
-function enqueue(id, front = false) {
-    if (front) queue.unshift(id);
-    else queue.push(id);
-    runQueue();
-}
-
-// --- deleting a photo ------------------------------------------------------
-
-/**
- * The x on a thumbnail. No "are you sure": the card goes at once and the
- * DELETE follows. If Graph says no, the card comes back marked so, with the x
- * still there to try again. OneDrive keeps the file in its recycle bin either
- * way, so nothing here is truly final.
- */
-async function removePhoto(id) {
-    const photo = photoById(id);
-    if (!photo || photo.status === "deleting") return;
-
-    // never let it upload (again) once he has struck it out
-    const at = queue.indexOf(id);
-    if (at >= 0) queue.splice(at, 1);
-
-    const controller = controllers.get(id);
-    if (controller) {
-        // mid-upload: abort the PUT. A half-written upload session expires on
-        // its own and leaves no file, so there is nothing to delete.
-        controller.abort();
-        controllers.delete(id);
-    }
-
-    if (!photo.driveItemId) {
-        // queued, failed, or just cancelled: nothing of it reached OneDrive.
-        // The one odd case is an upload that finished without handing back an
-        // id; say so rather than pretend the file is gone.
-        if (photo.status === "done") {
-            say(
-                `${photo.name} is off this page, but OneDrive gave no id for it - delete it there if it matters.`,
-                "warn"
-            );
-        }
-        forgetPhoto(id);
-        return;
-    }
-
-    setState(reduce(state, { type: "deleting", id }));
-    try {
-        const token = await getAccessToken();
-        await deleteDriveItem({
-            accessToken: token,
-            itemId: photo.driveItemId,
-            graphRoot: config.graphRoot,
-        });
-        forgetPhoto(id);
-    } catch (e) {
-        const status = typeof e?.status === "number" ? e.status : 0;
-        setState(reduce(state, { type: "deleteFailed", id, error: describe(e, status) }));
-        say(`${photo.name}: could not delete - ${describe(e, status)}`, "warn");
-    }
-}
-
-/** Drop a photo from the strip and free its preview. */
-function forgetPhoto(id) {
+/** The x on a thumbnail: off the page, and off the PC when it may be there. */
+function removePhoto(id) {
     const held = blobs.get(id);
     if (held) {
         URL.revokeObjectURL(held.url);
         blobs.delete(id);
     }
-    controllers.delete(id);
     setState(reduce(state, { type: "remove", id }));
+    pump();
 }
 
-// --- the note --------------------------------------------------------------
+// --- the upload queue --------------------------------------------------------
 
-function onNoteInput() {
-    const text = el.note.value;
-    setState(reduce(state, { type: "noteText", text }));
-    rememberNote(noteItemName || state.itemName, text);
-    noteSaver.schedule(() => {
-        saveNote().catch(() => {});
-    });
-}
-
-/**
- * Send the note, if there is anything to send. Empty text deletes the note.txt
- * this session uploaded; empty text with nothing uploaded does nothing at all.
- */
-async function saveNote() {
-    const item = state.itemName;
-    if (!noteNeedsSave(state)) return;
-    const text = state.note.text;
-    const isEmpty = text.trim() === "";
-
-    setState(reduce(state, { type: "noteSaving" }));
-    try {
-        const token = await getAccessToken();
-        if (isEmpty) {
-            if (state.note.driveItemId) {
-                await deleteDriveItem({
-                    accessToken: token,
-                    itemId: state.note.driveItemId,
-                    graphRoot: config.graphRoot,
-                });
-            }
-            if (state.itemName !== item) return; // he moved on mid-flight
-            setState(reduce(state, { type: "noteSaved", text: "", uploaded: false }));
-            return;
+async function runTask(pc, task) {
+    switch (task.kind) {
+        case "item":
+            return createItem(pc, task.name);
+        case "photo": {
+            const held = blobs.get(task.id);
+            if (!held) throw new Error("the photo is no longer on this page");
+            // shrunk right before it goes: one decoded photo in memory at a time
+            return putPhoto(pc, state.itemId, task.n, await shrinkPhoto(held.file));
         }
-        const driveItem = await uploadTextFile({
-            accessToken: token,
-            basePath: config.basePath,
-            itemName: item,
-            fileName: config.noteFileName,
-            text,
-            graphRoot: config.graphRoot,
-        });
-        if (state.itemName !== item) return;
-        setState(
-            reduce(state, {
-                type: "noteSaved",
-                text,
-                uploaded: true,
-                driveItemId: driveItem && driveItem.id ? driveItem.id : undefined,
-            })
-        );
-    } catch (e) {
-        const status = typeof e?.status === "number" ? e.status : 0;
-        setState(reduce(state, { type: "noteFailed", error: describe(e, status) }));
+        case "delete":
+            return deletePhoto(pc, state.itemId, task.n);
+        case "note":
+            return putNote(pc, state.itemId, task.text);
+        default:
+            throw new Error(`unknown task ${task.kind}`);
     }
 }
 
-/** Run a waiting note save now, e.g. on DONE or when the page hides. */
-function flushNote() {
-    noteSaver.cancel();
-    return saveNote().catch(() => {});
-}
-
-// --- the upload queue ------------------------------------------------------
-
-async function runQueue() {
-    if (queueRunning) return;
-    queueRunning = true;
+/** Send what queue.js says is next, one request at a time, until nothing is. */
+async function pump() {
+    if (pumping) return;
+    pumping = true;
     try {
-        while (queue.length > 0) {
-            const id = queue.shift();
-            // eslint-disable-next-line no-await-in-loop
-            await uploadOne(id);
+        for (;;) {
+            const pc = settings();
+            const task = pc ? nextTask(state) : null;
+            if (!task) return;
+            const mine = generation;
+            setState(reduce(state, { type: "taskStart", task }));
+            let answer = null;
+            let failure = null;
+            try {
+                answer = await runTask(pc, task);
+            } catch (e) {
+                failure = e;
+            }
+            if (mine !== generation) continue; // DONE was pressed meanwhile
+            if (failure) {
+                // PcError carries the HTTP status (0: no answer); anything else
+                // (a photo that would not shrink) is this photo's own failure
+                const status = failure instanceof PcError ? failure.status : -1;
+                const error = failure.message || "not sent";
+                setState(reduce(state, { type: "taskFailed", task, status, error }));
+                if (state.stalled) {
+                    scheduleResume();
+                    return;
+                }
+            } else {
+                setState(reduce(state, { type: "taskDone", task, answer }));
+                if (task.kind === "item") syncCounter();
+            }
         }
     } finally {
-        queueRunning = false;
+        pumping = false;
     }
 }
 
-function photoById(id) {
-    return state.photos.find((p) => p.id === id);
+/** The PC did not answer: try again after a growing pause (or when back online). */
+function scheduleResume() {
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+        resumeTimer = null;
+        setState(reduce(state, { type: "resume" }));
+        pump();
+    }, retryDelayMs(state.failures));
 }
 
-async function uploadOne(id) {
-    const held = blobs.get(id);
-    const photo = photoById(id);
-    if (!held || !photo || photo.status === "done") return;
+// --- the note ----------------------------------------------------------------
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-        if (!navigator.onLine) {
-            setState(reduce(state, { type: "online", online: false }));
-            setState(
-                reduce(state, {
-                    type: "fail",
-                    id,
-                    error: "no connection - press Retry when you are back online",
-                })
-            );
-            return;
-        }
-        const wait = retryDelayMs(attempt);
+function onNoteInput() {
+    setState(reduce(state, { type: "noteText", text: el.note.value }));
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(noteDue, NOTE_DEBOUNCE_MS);
+}
+
+/** He stopped typing (or left the box, or pressed a button): send the note. */
+function noteDue() {
+    clearTimeout(noteTimer);
+    noteTimer = null;
+    if (!noteDirty(state) || state.note.due) return;
+    setState(reduce(state, { type: "noteDue" }));
+    pump();
+}
+
+/** The note on the PC before a job reads it, or before DONE clears the page. */
+async function noteReady() {
+    noteDue();
+    while (noteDirty(state)) {
+        if (state.stalled || !state.online || !settings()) return false;
         // eslint-disable-next-line no-await-in-loop
-        if (wait > 0) await sleep(wait);
+        await changed();
+    }
+    return true;
+}
 
-        setState(reduce(state, { type: "start", id }));
-        const controller = new AbortController();
-        controllers.set(id, controller);
-        try {
-            // eslint-disable-next-line no-await-in-loop
-            const token = await getAccessToken();
-            // eslint-disable-next-line no-await-in-loop
-            let shown = 0;
-            const driveItem = await uploadPhoto({
-                accessToken: token,
-                basePath: config.basePath,
-                itemName: held.itemName,
-                fileName: photo.name,
-                file: held.file,
-                graphRoot: config.graphRoot,
-                signal: controller.signal,
-                onProgress: (fraction) => {
-                    // repaint at most every 5% -- the strip is rebuilt on each render
-                    if (fraction - shown < 0.05 && fraction < 1) return;
-                    shown = fraction;
-                    setState(reduce(state, { type: "progress", id, progress: fraction }));
-                },
-            });
-            controllers.delete(id);
-            // the last range's answer is the created driveItem; its id is what
-            // a delete needs later.
+// --- the two buttons -------------------------------------------------------
+
+async function send(venue) {
+    const pc = settings();
+    if (!pc || !venueButton(state, venue, true).enabled) return;
+    const mine = generation;
+    const reuse = !!state.sku;
+    setState(reduce(state, { type: "jobSending", venue, step: "sending" }));
+    if (!reuse && !(await noteReady())) {
+        if (mine !== generation) return;
+        setState(
+            reduce(state, { type: "jobRefused", venue, error: "the note has not reached the PC" })
+        );
+        return;
+    }
+    if (mine !== generation) return;
+    const body = jobRequest({ venue, sku: state.sku, item: state.itemId, photos: state.photos });
+    try {
+        const answer = await postJob(pc, body);
+        if (mine !== generation) return;
+        setState(reduce(state, { type: "jobAccepted", venue, job: answer.job, ahead: answer.ahead }));
+        schedulePoll(venue, mine);
+    } catch (e) {
+        if (mine !== generation) return;
+        setState(reduce(state, { type: "jobRefused", venue, error: e.message }));
+    }
+}
+
+function schedulePoll(venue, mine) {
+    clearTimeout(polls.get(venue));
+    polls.set(
+        venue,
+        setTimeout(() => {
+            poll(venue, mine).catch(() => {});
+        }, POLL_MS)
+    );
+}
+
+async function poll(venue, mine) {
+    const pc = settings();
+    const jobId = state.jobs[venue].jobId;
+    if (mine !== generation || !pc || !jobId) return;
+    try {
+        const status = await getJob(pc, jobId);
+        if (mine !== generation) return;
+        setState(reduce(state, { type: "jobStatus", venue, status }));
+    } catch (e) {
+        if (mine !== generation) return;
+        if (e.status === 0) {
+            // the phone or the PC is off the network for a moment; the job
+            // itself is safe on the PC's disk, so keep asking
+            setState(reduce(state, { type: "pollTrouble", venue, error: e.message }));
+        } else {
             setState(
                 reduce(state, {
-                    type: "done",
-                    id,
-                    driveItemId: driveItem && driveItem.id ? driveItem.id : undefined,
+                    type: "jobStatus",
+                    venue,
+                    status: { state: "failed", error: e.message },
                 })
             );
-            setState(reduce(state, { type: "online", online: true }));
-            say("");
-            return;
-        } catch (e) {
-            controllers.delete(id);
-            // he pressed the x while this was in flight: the photo is already
-            // gone from the list, and an abandoned upload session leaves no file.
-            if (e && e.cancelled) return;
-            const status = typeof e?.status === "number" ? e.status : 0;
-            if (status === 0) setState(reduce(state, { type: "online", online: navigator.onLine }));
-            if (!shouldRetry(attempt, status)) {
-                setState(reduce(state, { type: "fail", id, error: describe(e, status) }));
-                say(`${photo.name}: ${describe(e, status)}`, "warn");
-                return;
-            }
         }
     }
-    setState(reduce(state, { type: "fail", id, error: "gave up after 3 tries" }));
+    if (isActive(state.jobs[venue])) schedulePoll(venue, mine);
 }
 
-function describe(e, status) {
-    if (status === 0) return "network problem";
-    if (status === 401 || status === 403) return "sign-in expired - sign in again";
-    if (status === 507) return "OneDrive is full";
-    return (e && e.message) || `error ${status}`;
+// --- settings --------------------------------------------------------------
+
+function toggleSettings() {
+    const open = el.settings.hidden;
+    el.settings.hidden = !open;
+    el.settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+        el.pcAddress.value = readText("localStorage", PC_KEY);
+        el.pcKey.value = readText("localStorage", KEY_KEY);
+        el.settingsStatus.textContent = "";
+    }
 }
 
-function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
+async function saveSettings() {
+    const s = checkSettings(el.pcAddress.value, el.pcKey.value);
+    if (!s.ok) {
+        el.settingsStatus.textContent = s.error;
+        return;
+    }
+    writeText("localStorage", PC_KEY, s.pc);
+    writeText("localStorage", KEY_KEY, s.key);
+    el.pcAddress.value = s.pc;
+    render();
+    if (!settings()) {
+        el.settingsStatus.textContent =
+            "Could not save on this phone (private mode?). The buttons need it saved.";
+        return;
+    }
+    el.settingsStatus.textContent = "Saved. Checking the PC...";
+    try {
+        await checkPc(s);
+        el.settingsStatus.textContent = "Saved. The PC answers and knows this key.";
+    } catch (e) {
+        el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
+    }
+    // photos taken before the settings were right go now
+    setState(reduce(state, { type: "resume" }));
+    pump();
+}
+
+// --- a reload: the item back from the PC -----------------------------------------
+
+async function restore() {
+    const saved = readJson("localStorage", ITEM_KEY, null);
+    if (!saved || typeof saved.itemId !== "string" || !saved.itemId) return;
+    const itemName = typeof saved.itemName === "string" ? saved.itemName : "";
+    const pc = settings();
+    if (!pc || !itemName) {
+        keepSaved = true; // read it back once Settings are right and the page is reloaded
+        return;
+    }
+    restoring = true;
+    el.itemInput.value = itemName;
+    setState(reduce(state, { type: "setItem", itemName }));
+    try {
+        const answer = await getItem(pc, saved.itemId);
+        restoring = false;
+        const ai = Array.isArray(saved.ai) ? saved.ai : [];
+        setState(reduce(state, { type: "recovered", itemName, itemId: saved.itemId, ai, answer }));
+        el.note.value = state.note.text;
+        syncCounter();
+        for (const venue of VENUES) {
+            if (isActive(state.jobs[venue])) schedulePoll(venue, generation);
+        }
+    } catch (e) {
+        restoring = false;
+        el.itemInput.value = "";
+        if (e.status === 404) {
+            say(`${itemName} is no longer on the PC.`, "warn");
+            setState(reduce(state, { type: "reset" }));
+        } else {
+            // leave the saved item alone: a reload once the PC answers brings it back
+            keepSaved = true;
+            say(`Could not read ${itemName} back from the PC (${e.message}). Its photos are safe there; reload when the PC answers.`, "warn");
+            setState(reduce(state, { type: "reset" }));
+        }
+    }
 }
 
 // --- wiring ----------------------------------------------------------------
 
 async function nextItem() {
-    await flushNote(); // the note he just typed belongs to the item he is leaving
+    if (!doneButton(state).enabled) return;
+    if (state.itemId && !(await noteReady())) {
+        say("The note has not reached the PC yet. DONE again once it has.", "warn");
+        return;
+    }
+    generation += 1;
+    for (const t of polls.values()) clearTimeout(t);
+    polls.clear();
+    clearTimeout(resumeTimer);
+    clearTimeout(noteTimer);
     for (const held of blobs.values()) URL.revokeObjectURL(held.url);
     blobs.clear();
-    controllers.clear();
-    queue.length = 0;
     el.itemInput.value = "";
     el.note.value = "";
-    noteItemName = "";
-    setState(reduce(state, { type: "reset", itemName: "", note: "" }));
+    say("");
+    keepSaved = false;
+    setState(reduce(state, { type: "reset" }));
     el.itemInput.focus();
 }
 
-function retryAllFailed() {
-    for (const p of state.photos) {
-        if (p.status === "failed") enqueue(p.id);
-    }
-    if (state.note.status === "failed") saveNote().catch(() => {});
-}
-
-async function main() {
+function main() {
     Object.assign(el, {
-        signinBox: $("signin-box"),
-        signinBtn: $("signin"),
-        signoutLink: $("signout"),
-        who: $("who"),
-        workBox: $("work"),
+        settingsToggle: $("settings-toggle"),
+        settings: $("settings"),
+        pcAddress: $("pc-address"),
+        pcKey: $("pc-key"),
+        settingsSave: $("settings-save"),
+        settingsStatus: $("settings-status"),
         itemInput: $("item-name"),
         cleaned: $("cleaned"),
+        hint: $("hint"),
         snapInput: $("snap-input"),
         snapLabel: $("snap-label"),
         galleryInput: $("gallery-input"),
         galleryLabel: $("gallery-label"),
-        hint: $("hint"),
-        strip: $("strip"),
         progress: $("progress"),
+        strip: $("strip"),
+        note: $("note"),
+        noteStatus: $("note-status"),
+        ebayBtn: $("ebay-btn"),
+        ebayStatus: $("ebay-status"),
+        ebayLink: $("ebay-link"),
+        craigslistBtn: $("craigslist-btn"),
+        craigslistStatus: $("craigslist-status"),
+        craigslistLink: $("craigslist-link"),
+        venueHint: $("venue-hint"),
+        doneHint: $("done-hint"),
         nextBtn: $("next-item"),
         offline: $("offline"),
         message: $("message"),
-        note: $("note"),
-        noteStatus: $("note-status"),
         version: $("version"),
     });
 
@@ -544,9 +636,13 @@ async function main() {
     state = reduce(initialState(""), { type: "online", online: navigator.onLine });
     render();
 
+    el.settingsToggle.addEventListener("click", toggleSettings);
+    el.settingsSave.addEventListener("click", () => {
+        saveSettings().catch(() => {});
+    });
     el.itemInput.addEventListener("input", onItemNameChanged);
     el.note.addEventListener("input", onNoteInput);
-    el.note.addEventListener("blur", () => flushNote());
+    el.note.addEventListener("blur", noteDue);
     el.snapInput.addEventListener("change", (e) => {
         acceptFiles(e.target.files);
         e.target.value = "";
@@ -555,52 +651,33 @@ async function main() {
         acceptFiles(e.target.files);
         e.target.value = "";
     });
+    for (const venue of VENUES) {
+        el[`${venue}Btn`].addEventListener("click", () => {
+            send(venue).catch(() => {});
+        });
+    }
     el.nextBtn.addEventListener("click", () => {
         nextItem().catch(() => {});
-    });
-    el.signinBtn.addEventListener("click", () => signIn().catch((e) => say(String(e), "warn")));
-    el.signoutLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        signOut().catch((err) => say(String(err), "warn"));
-    });
-
-    // Leaving the page: get the note out before it can be lost.
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") flushNote();
     });
 
     window.addEventListener("online", () => {
         setState(reduce(state, { type: "online", online: true }));
-        say("Back online - picking up where we left off.");
-        retryAllFailed();
+        pump();
     });
-    window.addEventListener("offline", () => {
-        setState(reduce(state, { type: "online", online: false }));
+    window.addEventListener("offline", () =>
+        setState(reduce(state, { type: "online", online: false }))
+    );
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") noteDue();
     });
     window.addEventListener("beforeunload", (e) => {
-        const unfinished =
-            state.photos.some((p) => p.status !== "done") || noteNeedsSave(state);
-        if (unfinished) {
+        if (leaveWarning(state)) {
             e.preventDefault();
             e.returnValue = "";
         }
     });
 
-    if (clientIdMissing()) {
-        say(
-            "This app has no client id yet. Follow docs/SETUP.md step 1 and paste it into config.js.",
-            "warn"
-        );
-        el.signinBtn.disabled = true;
-        return;
-    }
-
-    try {
-        await initAuth();
-    } catch (e) {
-        say(`Sign-in could not start: ${e.message}`, "warn");
-    }
-    render();
+    restore().catch(() => {});
 }
 
 main();
