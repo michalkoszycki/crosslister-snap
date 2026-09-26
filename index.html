@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.4.0">
+<link rel="stylesheet" href="styles.css?v=1.5.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -33,8 +33,11 @@
 <body>
 <header>
   <h1>crosslister snap</h1>
-  <button type="button" id="settings-toggle" class="link" aria-expanded="false"
-          aria-controls="settings">Settings</button>
+  <div class="header-right">
+    <span id="server" class="server" aria-live="polite"></span>
+    <button type="button" id="settings-toggle" class="link" aria-expanded="false"
+            aria-controls="settings">Settings</button>
+  </div>
 </header>
 
 <main>
@@ -44,6 +47,7 @@
   <p id="message" class="message" hidden></p>
 
   <section id="settings" class="card" hidden>
+    <p id="settings-server" class="server server-line"></p>
     <label class="field">
       <span class="field-label">PC address</span>
       <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
@@ -56,6 +60,7 @@
     </label>
     <button type="button" id="settings-save" class="secondary">Save and check</button>
     <p id="settings-status" class="small"></p>
+    <button type="button" id="settings-close" class="secondary">Close</button>
   </section>
 
   <section id="work">
@@ -109,6 +114,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.4.0"></script>
+<script type="module" src="app.js?v=1.5.0"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.4.0";
+import { noteDirty, unsent } from "./queue.js?v=1.5.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -218,6 +218,24 @@ export function errorText(status, detail) {
     if (typeof detail === "string" && detail) return detail;
     if (status === 404) return "the PC does not know this item or job";
     return `the PC answered ${status}`;
+}
+
+/** How often the page asks the PC whether it is there, while the page is on screen. */
+export const HEALTH_MS = 30000;
+
+/**
+ * The server word in the header and in Settings, from the last check the page
+ * made by itself (GET /jobs?limit=1: the PC answers and knows the key).
+ * @param {boolean} settingsOk a PC address and key are saved
+ * @param {number|null} status null: not checked yet; 200: fine; else the PcError status (0 = no answer)
+ * @returns {{text:string, kind:"ok"|"bad"|""}}
+ */
+export function serverLine(settingsOk, status) {
+    if (!settingsOk) return { text: "server not set", kind: "" };
+    if (status === null) return { text: "checking server...", kind: "" };
+    if (status === 200) return { text: "server ok", kind: "ok" };
+    if (status === 401) return { text: "wrong key", kind: "bad" };
+    return { text: "server off", kind: "bad" };
 }
 
 /**

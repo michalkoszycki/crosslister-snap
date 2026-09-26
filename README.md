@@ -59,7 +59,14 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 
 - **Settings** (header, top right): the PC address and the key. **Save and
   check** stores them and asks the PC whether it knows the key (a read of the
-  newest job: no model call, nothing published).
+  newest job: no model call, nothing published). **Close** at the bottom hides
+  them again.
+- **The server word** (header, beside Settings, and at the top of Settings):
+  the page asks the PC by itself, on load, every 30 s while it is on screen,
+  and when the phone is back online or back on screen, the same read as the
+  Settings check. **server ok** in green, **server off** in red (no answer),
+  **wrong key** in red, **server not set** before Settings are saved. When the
+  PC comes back, waiting photos go at once instead of after the retry pause.
 - **Item name**, as before: Snap waits for it, and it names the item's folder
   on the PC, `<item name> <date>` (`Boots 2026-09-24`). Once the first photo is
   taken the name is fixed until **DONE**. The same name on the same day is the
@@ -166,7 +173,7 @@ only means Settings are not remembered.
 GitHub Pages caches every file for ten minutes, which can leave the phone with
 a new `index.html` next to a stale `app.js`. So `version.js` holds one
 `VERSION`, and everything the page loads carries it: the stylesheet, `app.js`,
-and every ES module import inside the app (`./core.js?v=1.4.0`). A new version
+and every ES module import inside the app (`./core.js?v=1.5.0`). A new version
 is a new URL, and a new URL was never in the cache. Node accepts the same query
 on a relative import, so `node --test` is unaffected.
 

@@ -75,6 +75,14 @@ h2 { font-size: 18px; margin: 0 0 8px; }
     font-size: 14px;
 }
 
+.header-right { display: flex; align-items: baseline; gap: 4px; }
+
+/* "server ok" in green, "server off" / "wrong key" in red, checked by the page itself */
+.server { font-size: 13px; font-weight: 600; color: var(--muted); }
+.server.ok { color: var(--ok); }
+.server.bad { color: var(--bad); }
+.server-line { margin: 0 0 4px; font-size: 16px; }
+
 .small { font-size: 13px; color: var(--muted); }
 .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; word-break: break-all; }
 
