@@ -1042,7 +1042,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     nodes.get("book-ebay-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted, [
-        { item, venue: "ebay", book: { isbn: ISBN, condition: "very_good", price: "11" } },
+        { item, venue: "ebay", book: { isbn: ISBN, condition: "very_good", price: "11", main: 1 } },
     ]);
     assert.equal(nodes.get("book-ebay-status").textContent, "queued, 1 ahead");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), true, "the ring turns");

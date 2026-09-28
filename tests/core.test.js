@@ -638,14 +638,78 @@ test("the book's ebay button: ISBN, found, a photo, a price, every photo on the 
     assert.deepEqual(venueButton(going, "ebay", true), { enabled: false, hint: "" });
 });
 
-test("a book's job carries the ISBN, the condition and the price, and no AI marks", () => {
+test("a book's job carries the ISBN, the condition, the price and the main photo, and no AI marks", () => {
     let s = reduce(foundBook(2), { type: "bookCondition", condition: "very_good" });
     s = reduce(s, { type: "bookPrice", text: "$9.5" });
-    assert.deepEqual(jobRequest({ venue: "ebay", sku: "B-1", item: s.itemId, photos: s.photos, book: bookForm(s) }), {
+    const body = () => jobRequest({ venue: "ebay", sku: "B-1", item: s.itemId, photos: s.photos, book: bookForm(s) });
+    // nothing marked: the first photo leads, as it always did
+    assert.deepEqual(body(), {
         item: `Book ${ISBN} 2026-09-24`,
         venue: "ebay",
-        book: { isbn: ISBN, condition: "very_good", price: "9.50" },
+        book: { isbn: ISBN, condition: "very_good", price: "9.50", main: 1 },
     });
+    s = reduce(s, { type: "bookMain", id: "b2" });
+    assert.equal(body().book.main, 2);
+});
+
+// --- books: the main photo ------------------------------------------------------
+
+test("the main photo: none before a photo, then the first by default", () => {
+    assert.equal(bookState().book.main, 0);
+    let s = reduce(bookState(), { type: "add", id: "b1", name: "Book-1.jpg", n: 1 });
+    assert.equal(s.book.main, 1);
+    s = reduce(s, { type: "add", id: "b2", name: "Book-2.jpg", n: 2 });
+    assert.equal(s.book.main, 1, "a later photo does not take it");
+    assert.equal(foundBook(3).book.main, 1);
+    // goods have no main photo
+    const goods = reduce(initialState("Boots"), { type: "add", id: "g1", name: "Boots-1.jpg", n: 1 });
+    assert.equal(goods.book.main, 0);
+    assert.equal(reduce(goods, { type: "bookMain", id: "g1" }), goods);
+});
+
+test("the main photo: a tap moves it; exactly one; a tap on it or on nothing changes nothing", () => {
+    const s = foundBook(3);
+    const moved = reduce(s, { type: "bookMain", id: "b3" });
+    assert.equal(moved.book.main, 3);
+    assert.equal(reduce(moved, { type: "bookMain", id: "b3" }), moved, "no toggling off");
+    assert.equal(reduce(moved, { type: "bookMain", id: "b1" }).book.main, 1, "and back");
+    assert.equal(reduce(s, { type: "bookMain", id: "nope" }), s);
+    // the ebay press fixes it, as it fixes the AI marks
+    const going = reduce(moved, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(reduce(going, { type: "bookMain", id: "b1" }), going);
+    assert.equal(going.book.main, 3);
+});
+
+test("the main photo: deleting it moves the mark back to the first photo left", () => {
+    let s = reduce(foundBook(3), { type: "bookMain", id: "b2" });
+    s = reduce(s, { type: "remove", id: "b2" });
+    assert.equal(s.book.main, 1);
+    // the first one gone as well: the next first
+    s = reduce(s, { type: "remove", id: "b1" });
+    assert.equal(s.book.main, 3);
+    // deleting another photo leaves it alone
+    const kept = reduce(reduce(foundBook(3), { type: "bookMain", id: "b3" }), { type: "remove", id: "b1" });
+    assert.equal(kept.book.main, 3);
+    // none left: none
+    assert.equal(reduce(s, { type: "remove", id: "b3" }).book.main, 0);
+    // DONE: the next book starts with none
+    assert.equal(reduce(foundBook(2), { type: "reset" }).book.main, 0);
+});
+
+test("the main photo follows its photo when the PC's folder renumbers it", () => {
+    // the same book the same day: the PC already holds photos 1 and 2
+    let s = reduce(bookState(), { type: "bookIsbn", isbn: ISBN });
+    s = reduce(s, { type: "add", id: "b1", name: "x", n: 1 });
+    s = reduce(s, { type: "add", id: "b2", name: "x", n: 2 });
+    s = reduce(s, { type: "bookMain", id: "b2" });
+    const item = { kind: "item", name: s.itemName };
+    s = reduce(reduce(s, { type: "taskStart", task: item }), {
+        type: "taskDone",
+        task: item,
+        answer: { item: `Book ${ISBN} 2026-09-24`, photos: [1, 2] },
+    });
+    assert.deepEqual(s.photos.map((p) => p.n), [1, 2, 3, 4]);
+    assert.equal(s.book.main, 4, "still the photo he marked, now number 4");
 });
 
 test("DONE and the progress line know the book mode", () => {
@@ -661,8 +725,9 @@ test("DONE and the progress line know the book mode", () => {
 
 test("a book is kept for a reload with its ISBN, condition, price and found record, and read back", () => {
     assert.equal(savedItem(reduce(bookState(), { type: "bookIsbn", isbn: ISBN })), null, "not on the PC yet");
-    let s = reduce(foundBook(1), { type: "bookCondition", condition: "acceptable" });
+    let s = reduce(foundBook(2), { type: "bookCondition", condition: "acceptable" });
     s = reduce(s, { type: "bookPrice", text: "8" });
+    s = reduce(s, { type: "bookMain", id: "b2" });
     const saved = savedItem(s);
     assert.deepEqual(saved, {
         mode: "book",
@@ -671,6 +736,7 @@ test("a book is kept for a reload with its ISBN, condition, price and found reco
         isbn: ISBN,
         condition: "acceptable",
         price: "8",
+        main: 2,
         lookup: {
             record: s.book.lookup.record,
             price: "11",
@@ -685,10 +751,11 @@ test("a book is kept for a reload with its ISBN, condition, price and found reco
         itemId: saved.itemId,
         ai: [],
         book: JSON.parse(JSON.stringify(saved)),
-        answer: { item: saved.itemId, photos: [1], note: "Spine creased", sku: null, jobs: [] },
+        answer: { item: saved.itemId, photos: [1, 2], note: "Spine creased", sku: null, jobs: [] },
     });
     assert.equal(back.mode, "book");
     assert.deepEqual(back.book, s.book);
+    assert.equal(back.book.main, 2, "the main photo is read back");
     assert.equal(back.note.text, "Spine creased");
     assert.deepEqual(venueButton(back, "ebay", true), { enabled: true, hint: "" });
     // without a found record the page asks the catalogues again
@@ -702,6 +769,17 @@ test("a book is kept for a reload with its ISBN, condition, price and found reco
     });
     assert.equal(again.book.isbn, ISBN);
     assert.equal(again.book.lookup.phase, "idle");
+    // the saved main photo no longer on the PC (or never saved): the first leads
+    assert.equal(again.book.main, 1);
+    const older = reduce(bookState(), {
+        type: "recovered",
+        mode: "book",
+        itemName: saved.itemName,
+        itemId: saved.itemId,
+        book: { ...saved, main: undefined },
+        answer: { photos: [3, 5] },
+    });
+    assert.equal(older.book.main, 3);
 });
 
 test("the line above Scan says what to do, or why the ISBN must be typed", () => {
