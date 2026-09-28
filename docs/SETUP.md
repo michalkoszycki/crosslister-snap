@@ -84,13 +84,24 @@ between them.
 - Tap **book** at the top. The phone remembers it: next time the page opens on
   books. Tapping **goods** goes back; an item half done on either side stays as
   it was, its photos still going to the PC.
-- Tap **Scan** and photograph the barcode on the back cover, close and flat.
-  The ISBN box fills, and a moment later the book's card shows its title,
-  authors, publisher, year, format and pages. That picture is only read for the
-  number: it is not one of the listing's photos, so a close-up of the barcode
-  is all it needs. (No card: see "When something goes wrong".)
+- Tap **ISBN** (the big button; it used to say Scan) and photograph the
+  barcode on the back cover, close and flat. The ISBN box fills, and a moment
+  later the book's card shows its title, authors, publisher, year, format and
+  pages. That picture is only read for the number: it is not one of the
+  listing's photos, so a close-up of the barcode is all it needs. (No card:
+  see "When something goes wrong".)
 - Or type the ISBN printed above or under the barcode into the box (10 or 13
   digits, hyphens fine). It is looked up as soon as the last digit is in.
+- **No ISBN** (an old book, a local print): tap the small **No ISBN** under the
+  ISBN box. Type the **Title** as the cover has it, the **Author** if there is
+  one, the **Year** if it is printed, and tap **Paperback** or **Hardcover**.
+  A moment after you stop typing the PC looks the book up by those: the card
+  shows the catalogue's book with `matched in the catalogues`, or what you
+  typed with `Not in the catalogues: it will be listed as typed`, and the
+  price box fills with eBay's price either way. A catalogue that says
+  hardcover sets the chip, unless you tapped one yourself. The rest is the
+  same as with an ISBN. Tapping **No ISBN** again closes the fields and clears
+  them; an ISBN typed or read meanwhile closes them too.
 - **Snap** the front cover, and anything worth showing (the spine, a flaw).
 - The first photo leads the listing: it wears **main** at its bottom right
   (where goods have **AI**), filled blue. To lead with another, tap its
@@ -145,16 +156,24 @@ The key does not match any in `CROSSLISTER_KEYS`. Re-copy it from `.env`; if
 
 **Books: "This phone cannot read barcodes; type the ISBN"**
 Reading the barcode needs Chrome on Android; iPhones (and Safari) have no
-barcode reader for web pages, so Scan stays grey there. Type the ISBN into
-the box instead.
+barcode reader for web pages, so the ISBN button stays grey there. Type the
+ISBN into the box instead.
 
 **Books: "No barcode found — try again closer, or type the ISBN under the barcode"**
-The picture was too far, blurred or at an angle. Tap **Scan** again closer, or
+The picture was too far, blurred or at an angle. Tap **ISBN** again closer, or
 type the ISBN. Nothing else changes: the missed picture is not kept.
 
 **Books: "Not in the catalogues. Post it as goods instead."**
 The PC's catalogues do not know that ISBN (old, local or self-published books).
-DONE, tap **goods**, and post it as an ordinary item.
+Tap **No ISBN** and type the title instead: a title no catalogue knows is
+still listed, as typed. (No ISBN is grey once a photo of this book is on the
+PC, since the ISBN names its folder until DONE: DONE, then No ISBN.) Or DONE,
+tap **goods**, and post it as an ordinary item.
+
+**Books: "The book was not looked up - edit the title to try again"**
+The PC could not search (its words are on the card; the catalogues or eBay did
+not answer). What you typed is kept: change the title a little (a space at the
+end will do) and it asks again.
 
 **A job fails with a message**
 That is the PC's own reason (a Craigslist form that changed, a missing eBay
