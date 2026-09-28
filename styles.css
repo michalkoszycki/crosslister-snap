@@ -419,6 +419,24 @@ button.badge.failed {
     .chips { grid-template-columns: 1fr 1fr; }
 }
 .chip:focus-visible, .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* paperback | hardcover: two chips, never squeezed */
+.chips.chips-two { grid-template-columns: 1fr 1fr; }
+
+/* No ISBN, under the ISBN box: small on purpose, most books have one
+   (Michal, 2026-09-28: "hidden under one button overall -- a small button under scan") */
+.secondary.no-isbn {
+    display: inline-block;
+    width: auto;
+    min-height: 44px;
+    padding: 8px 18px;
+    margin-top: 4px;
+    font-size: 15px;
+    color: var(--muted);
+}
+.secondary.no-isbn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+/* the fields it opens: no box of their own, they read as part of the screen */
+.manual { border: none; margin: 0; padding: 0; min-width: 0; }
+.manual legend { padding: 0; margin: 12px 0 0; }
 
 .book-price-note { margin: 0 2px; }
 /* a book goes to eBay only: one full-width button where goods have two */
