@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.8.0">
+<link rel="stylesheet" href="styles.css?v=1.9.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -118,24 +118,58 @@
 
   <!-- The book mode: the barcode names the book, the PC finds it in the catalogues
        and prices it from eBay, so there is no item name to type and no AI mark.
-       The Scan picture is only read for the barcode, never kept as a photo; the
-       photos come from Snap, and "main" on one of them leads the listing. -->
+       The ISBN button's picture is only read for the barcode, never kept as a
+       photo; the photos come from Snap, and "main" on one of them leads the listing.
+       A book with no ISBN: the small No ISBN opens its title, author, year and
+       format, and the PC looks it up by those instead. -->
   <section id="book" hidden>
-    <p id="book-hint" class="small">Scan the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
-    <label id="book-scan-label" class="big snap" for="book-scan-input">Scan</label>
+    <p id="book-hint" class="small">Tap ISBN to read the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
+    <label id="book-scan-label" class="big snap" for="book-scan-input"
+           aria-label="ISBN: read the barcode with the camera">ISBN</label>
     <input id="book-scan-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label class="field">
-      <span class="field-label">ISBN</span>
+      <span class="field-label">Or type the ISBN</span>
       <input id="book-isbn" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
              placeholder="the number under the barcode">
     </label>
 
+    <button type="button" id="book-no-isbn" class="secondary no-isbn" aria-expanded="false"
+            aria-controls="book-manual">No ISBN</button>
+    <fieldset id="book-manual" class="manual" hidden>
+      <legend class="field-label">The book as its cover and title page say</legend>
+      <label class="field">
+        <span class="field-label">Title</span>
+        <input id="book-title" type="text" autocomplete="off" autocapitalize="words" spellcheck="false"
+               required placeholder="as on the cover">
+      </label>
+      <label class="field">
+        <span class="field-label">Author</span>
+        <input id="book-author" type="text" autocomplete="off" autocapitalize="words" spellcheck="false"
+               placeholder="if the cover names one">
+      </label>
+      <label class="field">
+        <span class="field-label">Year, if printed</span>
+        <input id="book-year" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
+               maxlength="4" placeholder="e.g. 1972">
+      </label>
+      <div class="field">
+        <span class="field-label">Format</span>
+        <div id="book-format" class="chips chips-two" role="group" aria-label="Format">
+          <button type="button" id="book-format-paperback" class="chip" data-value="paperback"
+                  aria-pressed="true">Paperback</button>
+          <button type="button" id="book-format-hardcover" class="chip" data-value="hardcover"
+                  aria-pressed="false">Hardcover</button>
+        </div>
+      </div>
+    </fieldset>
+
     <div id="book-found" class="card book-card" aria-live="polite" hidden>
       <p id="book-lookup" class="book-lookup"></p>
-      <p id="book-title" class="book-title"></p>
+      <p id="book-card-title" class="book-title"></p>
       <p id="book-authors" class="book-authors"></p>
       <p id="book-details" class="small"></p>
+      <p id="book-match" class="small"></p>
     </div>
 
     <label id="book-snap-label" class="big" for="book-snap-input">Snap</label>
@@ -193,6 +227,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.8.0"></script>
+<script type="module" src="app.js?v=1.9.0"></script>
 </body>
 </html>

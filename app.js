@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.8.0";
+import { VERSION } from "./version.js?v=1.9.0";
 import {
     anyActive,
     bannerText,
@@ -26,6 +26,7 @@ import {
     isActive,
     jobRequest,
     leaveWarning,
+    lookupKey,
     MODES,
     nextNumber,
     noteStatusText,
@@ -40,8 +41,8 @@ import {
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.8.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.8.0";
+} from "./core.js?v=1.9.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.9.0";
 import {
     checkPc,
     createItem,
@@ -53,17 +54,21 @@ import {
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.8.0";
-import { shrinkPhoto } from "./shrink.js?v=1.8.0";
+    searchBook,
+} from "./pc.js?v=1.9.0";
+import { shrinkPhoto } from "./shrink.js?v=1.9.0";
 import {
     bookCard,
+    bookSearch,
     CONDITIONS,
+    FORMATS,
     ISBN_DEBOUNCE_MS,
     normalizeIsbn,
     priceNote,
     scanHint,
-} from "./book.js?v=1.8.0";
-import { canScan, readIsbn } from "./scan.js?v=1.8.0";
+    SEARCH_DEBOUNCE_MS,
+} from "./book.js?v=1.9.0";
+import { canScan, readIsbn } from "./scan.js?v=1.9.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -96,6 +101,8 @@ const noteTimers = { goods: null, book: null };
 
 /** The ISBN box: its lookup waits for him to stop typing. */
 let isbnTimer = null;
+/** No ISBN's title, author and year: the name and the search wait for him to stop typing. */
+let titleTimer = null;
 /** The book's last scan: "" / "reading" (the barcode is being read) / "missed" (none found). */
 let scan = "";
 
@@ -280,26 +287,40 @@ function renderBook() {
     const busy = restoring.book;
     const hasItem = !!state.itemId;
 
-    // Scan names the book, so it is there only while the ISBN may still change,
-    // and only on a phone that can read the barcode: the picture is good for nothing else
+    // The ISBN button names the book, so it is there only while the ISBN may still
+    // change, and only on a phone that can read the barcode: the picture is good for nothing else
     const scanReady = canScan() && !locked && !busy && !hasItem && scan !== "reading";
     el.bookScanLabel.classList.toggle("disabled", !scanReady);
     el.bookScanInput.disabled = !scanReady;
-    const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy });
+    const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy, manual: book.manual });
     el.bookHint.textContent = hint;
     el.bookHint.hidden = !hint;
     el.bookIsbn.readOnly = busy || hasItem;
+
+    // No ISBN: open or closed until the folder is named on the PC, like the ISBN
+    const sending = anyActive(state);
+    el.bookNoIsbn.disabled = busy || hasItem || locked;
+    el.bookNoIsbn.setAttribute("aria-expanded", book.manual ? "true" : "false");
+    el.bookManual.hidden = !book.manual;
+    // the typed book may still be corrected (a typo) until it is being listed
+    for (const node of [el.bookTitleInput, el.bookAuthor, el.bookYear]) node.readOnly = busy || sending;
+    for (const { value, node } of el.formatChips) {
+        node.setAttribute("aria-pressed", book.format === value ? "true" : "false");
+        node.disabled = busy || sending;
+    }
 
     const card = bookCard(book);
     el.bookFound.hidden = card.hidden;
     el.bookLookup.textContent = card.status;
     el.bookLookup.className = card.kind ? `book-lookup ${card.kind}` : "book-lookup";
-    el.bookTitle.textContent = card.title;
-    el.bookTitle.hidden = !card.title;
+    el.bookCardTitle.textContent = card.title;
+    el.bookCardTitle.hidden = !card.title;
     el.bookAuthors.textContent = card.authors;
     el.bookAuthors.hidden = !card.authors;
     el.bookDetails.textContent = card.details;
     el.bookDetails.hidden = !card.details;
+    el.bookMatch.textContent = card.note;
+    el.bookMatch.hidden = !card.note;
 
     // the cover and more: any time until the listing goes (they wait for the ISBN if need be)
     const ready = !locked && !busy;
@@ -311,7 +332,6 @@ function renderBook() {
     renderStrip("book", el.bookStrip, locked);
 
     // what the listing says stays put while it is being posted
-    const sending = anyActive(state);
     for (const { value, node } of el.chips) {
         node.setAttribute("aria-pressed", book.condition === value ? "true" : "false");
         node.disabled = sending;
@@ -521,10 +541,11 @@ function removePhoto(m, id) {
 // --- the book: scan, ISBN, lookup ------------------------------------------------
 
 /**
- * Scan: the picture is read for its barcode and then dropped. It is a close-up
- * of the bars, not a listing photo (Michal, 2026-09-27), so it never joins the
- * strip, never goes to the PC and is not kept here. A barcode that would not
- * read changes nothing but the line above Scan.
+ * The ISBN button (it was called Scan): the picture is read for its barcode
+ * and then dropped. It is a close-up of the bars, not a listing photo (Michal,
+ * 2026-09-27), so it never joins the strip, never goes to the PC and is not
+ * kept here. A barcode that would not read changes nothing but the line above
+ * the button; one that reads closes No ISBN if it was open (takeIsbn).
  */
 async function onScan(files) {
     const file = files && files[0];
@@ -564,44 +585,110 @@ function onIsbnInput() {
 function takeIsbn(isbn) {
     const before = slots.book;
     if (isbn === before.book.isbn) {
-        if (isbn && ["idle", "failed"].includes(before.book.lookup.phase)) lookupBook(isbn).catch(() => {});
+        // the same ISBN again (or, under No ISBN, no valid one: ignored) asks again only after a failure
+        if (isbn && ["idle", "failed"].includes(before.book.lookup.phase)) lookupBook().catch(() => {});
         return;
     }
     setState("book", reduce(before, { type: "bookIsbn", isbn }));
     if (slots.book.book.isbn !== isbn) return; // fixed: the book's item is on the PC already
+    if (before.book.manual) {
+        // a valid ISBN after all: it is the book, and what was typed under No ISBN goes
+        clearTimeout(titleTimer);
+        titleTimer = null;
+        fillManual();
+    }
     if (isbn) scan = "";
     el.bookPrice.value = slots.book.book.price;
     // the book first (the card fills while the photos travel), then the waiting photos
-    if (isbn) lookupBook(isbn).catch(() => {});
+    if (isbn) lookupBook().catch(() => {});
     pump();
 }
 
-/** GET /books/<isbn>: the card, the listings, and the price box filled with the suggestion. */
-async function lookupBook(isbn) {
+/** The No ISBN fields show what the state holds (after a reload, a DONE, or closing them). */
+function fillManual() {
+    const { book } = slots.book;
+    el.bookTitleInput.value = book.title;
+    el.bookAuthor.value = book.author;
+    el.bookYear.value = book.year;
+}
+
+/**
+ * No ISBN, tapped: the title fields open and the ISBN box is set aside (and
+ * emptied, so it cannot look like the book); tapped again, they close and
+ * what was typed in them goes. Until the book's folder is on the PC.
+ */
+function onNoIsbn() {
+    const s = slots.book;
+    if (restoring.book || s.itemId || photosLocked(s)) return;
+    const open = !s.book.manual;
+    clearTimeout(isbnTimer);
+    isbnTimer = null;
+    clearTimeout(titleTimer);
+    titleTimer = null;
+    scan = "";
+    setState("book", reduce(s, { type: "bookManual", open }));
+    fillManual();
+    el.bookIsbn.value = "";
+    el.bookPrice.value = slots.book.book.price;
+    if (open) el.bookTitleInput.focus();
+}
+
+/** A keystroke in the title, author or year: the name and the search wait for him to stop. */
+function onManualInput(field, node) {
+    if (node.readOnly) return;
+    setState("book", reduce(slots.book, { type: "bookField", field, text: node.value }));
+    clearTimeout(titleTimer);
+    titleTimer = setTimeout(() => {
+        titleTimer = null;
+        takeTitle();
+    }, SEARCH_DEBOUNCE_MS);
+}
+
+/**
+ * He stopped typing: the title names the book's folder (the photos that
+ * waited for it go), and the PC is asked about the book by what he typed --
+ * unless it was asked that already and answered.
+ */
+function takeTitle() {
+    setState("book", reduce(slots.book, { type: "bookName" }));
+    const { book } = slots.book;
+    if (lookupKey(book) && ["idle", "failed"].includes(book.lookup.phase)) lookupBook().catch(() => {});
+    pump();
+}
+
+/**
+ * GET /books/<isbn>, or /books/search for a book with no ISBN: the card, the
+ * listings, the price box filled with the suggestion, and (by title) the
+ * format chip. The answer counts only while the book is still what was asked.
+ */
+async function lookupBook() {
+    const { book } = slots.book;
+    const key = lookupKey(book);
+    if (!key) return;
     const pc = settings();
     if (!pc) {
-        setState("book", reduce(slots.book, { type: "bookLookupFailed", isbn, status: -1, error: SETTINGS_HINT }));
+        setState("book", reduce(slots.book, { type: "bookLookupFailed", key, status: -1, error: SETTINGS_HINT }));
         return;
     }
-    setState("book", reduce(slots.book, { type: "bookLookupStart", isbn }));
+    setState("book", reduce(slots.book, { type: "bookLookupStart", key }));
     try {
-        const answer = await getBook(pc, isbn);
+        const answer = book.manual ? await searchBook(pc, bookSearch(book)) : await getBook(pc, book.isbn);
         heard(200);
         const typed = slots.book.book.price;
-        setState("book", reduce(slots.book, { type: "bookLookupDone", isbn, answer }));
+        setState("book", reduce(slots.book, { type: "bookLookupDone", key, answer }));
         if (slots.book.book.price !== typed) el.bookPrice.value = slots.book.book.price;
     } catch (e) {
         const status = e instanceof PcError ? e.status : 0;
         if (status === 0 || status === 401) heard(status);
-        setState("book", reduce(slots.book, { type: "bookLookupFailed", isbn, status, error: e.message }));
+        setState("book", reduce(slots.book, { type: "bookLookupFailed", key, status, error: e.message }));
     }
 }
 
 /** Settings are right now, or the PC is back: a book not yet looked up is asked about again. */
 function retryLookup() {
     const { book } = slots.book;
-    if (book.isbn && ["idle", "failed"].includes(book.lookup.phase)) {
-        lookupBook(book.isbn).catch(() => {});
+    if (lookupKey(book) && ["idle", "failed"].includes(book.lookup.phase)) {
+        lookupBook().catch(() => {});
     }
 }
 
@@ -924,6 +1011,7 @@ async function restore(m) {
         noteBox(m).value = slots[m].note.text;
         if (m === "book") {
             el.bookIsbn.value = slots.book.book.isbn;
+            fillManual();
             el.bookPrice.value = slots.book.book.price;
             retryLookup(); // saved before the lookup answered: ask again
         }
@@ -976,9 +1064,14 @@ async function nextItem(m) {
     } else {
         clearTimeout(isbnTimer);
         isbnTimer = null;
+        clearTimeout(titleTimer);
+        titleTimer = null;
         scan = "";
         el.bookIsbn.value = "";
         el.bookPrice.value = "";
+        el.bookTitleInput.value = "";
+        el.bookAuthor.value = "";
+        el.bookYear.value = "";
     }
     say("");
     keepSaved[m] = false;
@@ -1033,11 +1126,18 @@ function main() {
         bookScanLabel: $("book-scan-label"),
         bookScanInput: $("book-scan-input"),
         bookIsbn: $("book-isbn"),
+        bookNoIsbn: $("book-no-isbn"),
+        bookManual: $("book-manual"),
+        bookTitleInput: $("book-title"),
+        bookAuthor: $("book-author"),
+        bookYear: $("book-year"),
+        formatChips: FORMATS.map(({ value }) => ({ value, node: $(`book-format-${value}`) })),
         bookFound: $("book-found"),
         bookLookup: $("book-lookup"),
-        bookTitle: $("book-title"),
+        bookCardTitle: $("book-card-title"),
         bookAuthors: $("book-authors"),
         bookDetails: $("book-details"),
+        bookMatch: $("book-match"),
         bookSnapLabel: $("book-snap-label"),
         bookSnapInput: $("book-snap-input"),
         bookGalleryLabel: $("book-gallery-label"),
@@ -1097,6 +1197,15 @@ function main() {
         })
     );
     el.bookIsbn.addEventListener("input", onIsbnInput);
+    el.bookNoIsbn.addEventListener("click", onNoIsbn);
+    el.bookTitleInput.addEventListener("input", () => onManualInput("title", el.bookTitleInput));
+    el.bookAuthor.addEventListener("input", () => onManualInput("author", el.bookAuthor));
+    el.bookYear.addEventListener("input", () => onManualInput("year", el.bookYear));
+    for (const { value, node } of el.formatChips) {
+        node.addEventListener("click", () =>
+            setState("book", reduce(slots.book, { type: "bookFormat", format: value }))
+        );
+    }
     el.bookSnapInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
     el.bookGalleryInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
     for (const { value, node } of el.chips) {

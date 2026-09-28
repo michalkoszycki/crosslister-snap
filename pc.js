@@ -13,11 +13,21 @@
 //                                          "year", "format", "pages", "price" (or null),
 //                                          "listings": {"count", "low", "high"} (or null), "route"}
 //                                      404: not in the catalogues; 502: they could not be reached
+// A book with no ISBN (No ISBN, then the title typed), as he stops typing:
+//   GET    <pc>/books/search?title=<t>&author=<a>&year=<y>
+//                                      -> the same as /books/<isbn13>, plus "found": true|false
+//                                         (false: no catalogue match; it is listed as typed, and
+//                                          "price"/"listings" come from eBay's search by title)
+//                                      400: no title; 502: the catalogues could not be reached
 // A venue button:
 //   POST   <pc>/jobs                  {"item", "venue", "ai": [n...]} or {"sku", "venue"}
 //                                      or, a book: {"item", "venue": "ebay",
-//                                                   "book": {"isbn", "condition", "price", "main"}}
-//                                      (main: the number n of the photo the listing leads with;
+//                                                   "book": {"isbn", "title", "author", "year", "format",
+//                                                            "condition", "price", "main"}}
+//                                      (with an ISBN, title/author/year/format are ""; without
+//                                       one, isbn is "", the title is what he typed, and format
+//                                       is "paperback" or "hardcover".
+//                                       main: the number n of the photo the listing leads with;
 //                                       always sent, the first photo unless he moved the mark)
 //                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
@@ -27,7 +37,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.8.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.9.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -122,6 +132,22 @@ export function getItem({ pc, key }, item) {
  */
 export function getBook({ pc, key }, isbn) {
     return call(`${pc}/books/${encodeURIComponent(isbn)}`, key);
+}
+
+/**
+ * A book with no ISBN, found by what he typed: the same answer as getBook(),
+ * plus "found" (false: no catalogue knows it, and it is listed as typed). The
+ * blanks are sent too, as "", so the PC sees one shape of question.
+ * @param {{pc:string, key:string}} settings
+ * @param {{title:string, author:string, year:string}} query  from bookSearch() in core.js
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function searchBook({ pc, key }, { title, author, year }) {
+    // encodeURIComponent, not URLSearchParams: a space is %20, never a "+" a server might keep
+    const q = Object.entries({ title, author, year })
+        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .join("&");
+    return call(`${pc}/books/search?${q}`, key);
 }
 
 /**

@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { canScan, readIsbn } from "../scan.js";
-import { getBook, PcError } from "../pc.js";
+import { getBook, PcError, searchBook } from "../pc.js";
 
 const ISBN = "9780306406157";
 const photo = new Blob(["back cover"], { type: "image/jpeg" });
@@ -79,4 +79,21 @@ test("getBook asks GET /books/<isbn13> with the key; a 404 carries its status", 
         assert.equal(e.status, 404);
         return true;
     });
+});
+
+test("searchBook asks GET /books/search with the title, author and year, each URL-encoded", async () => {
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify({ title: "Dune", found: true }), { status: 200 });
+    };
+    const settings = { pc: "https://pc.tail1234.ts.net", key: "test-key-0123456789" };
+    const answer = await searchBook(settings, { title: "Dune & Sons: #1?", author: "Frank Herbert", year: "" });
+    assert.deepEqual(answer, { title: "Dune", found: true });
+    assert.equal(
+        calls[0].url,
+        "https://pc.tail1234.ts.net/books/search?title=Dune%20%26%20Sons%3A%20%231%3F&author=Frank%20Herbert&year="
+    );
+    assert.equal(calls[0].init.method, "GET");
+    assert.equal(calls[0].init.headers["X-Crosslister-Key"], "test-key-0123456789");
 });
