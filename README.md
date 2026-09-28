@@ -122,11 +122,13 @@ in the catalogues and looks at what it sells for on eBay, so there is no item
 name to type, no AI mark and no model call. Top to bottom:
 
 - **Scan**: the phone's camera, as Snap. The barcode is read on the phone
-  (`scan.js`), the ISBN box fills and the PC is asked about the book. The photo
-  is kept either way as the item's first (the back cover is a fine listing
-  photo). A barcode that would not read says `No barcode found — type the ISBN
-  under the barcode`, and the photo waits on the page for the typed ISBN. A
-  phone that cannot read barcodes at all (iPhones) says so up front. Scan is
+  (`scan.js`), the ISBN box fills and the PC is asked about the book. The
+  picture is only read, never kept: it is not added to the strip, not sent to
+  the PC, and a close-up of the barcode is all it needs to be (the line above
+  Scan says so). A barcode that would not read says `No barcode found — try
+  again closer, or type the ISBN under the barcode` and nothing else changes. A
+  phone that cannot read barcodes at all (iPhones) says so up front, and Scan
+  stays grey there. Scan is
   there until the book's folder is made on the PC; from then its ISBN is fixed
   until **DONE**.
 - **ISBN**: the number typed instead. ISBN-10 or ISBN-13, hyphens and spaces
@@ -136,9 +138,12 @@ name to type, no AI mark and no model call. Top to bottom:
   `publisher · year · format · pages`; or `Not in the catalogues. Post it as
   goods instead.`; or the PC's own words when it could not look (edit the box
   to try again).
-- **Snap** and **Add from gallery**: the front cover and anything else. The
-  photos have the same `waiting` / `sent` / `failed` word and the same **x**,
-  and no AI mark.
+- **Snap** and **Add from gallery**: the front cover and anything else; the
+  first of them makes the book's folder on the PC. The photos have the same
+  `waiting` / `sent` / `failed` word and the same **x**, and no AI mark. A
+  cover snapped before there is an ISBN waits on the page until one is scanned
+  or typed (the progress line says `1 photo, waiting for the ISBN`, and the
+  lines under ebay and DONE say what to do).
 - **Condition**: four chips, Like new, Very good, **Good** (the default),
   Acceptable.
 - **Price**, in dollars, filled with the PC's suggestion when the lookup

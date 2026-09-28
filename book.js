@@ -31,6 +31,9 @@ export const LOW_PRICE = 5;
  */
 export const ISBN_DEBOUNCE_MS = 400;
 
+/** What the line above Scan adds: the scan is for the number, not for the listing. */
+export const SCAN_IS_NOT_A_PHOTO = "A close-up of the barcode is enough; it is not a listing photo.";
+
 // --- the ISBN ------------------------------------------------------------------
 
 /** The EAN-13 check digit of the first twelve digits. */
@@ -210,6 +213,11 @@ export function bookCard(book) {
 
 /**
  * The one line above Scan: what to do first, or why Scan is not there.
+ *
+ * The Scan picture is only read for its barcode and then dropped: it never
+ * joins the listing's photos (Michal, 2026-09-27: "it's just a closeup of the
+ * barcode"). So the line says a close-up is enough, and a miss changes nothing
+ * but this line.
  * @param {object} o
  * @param {boolean} o.canScan   the phone can read a barcode from a photo (scan.js)
  * @param {""|"reading"|"missed"} o.scan  the last scan: being read, or nothing readable in it
@@ -222,8 +230,8 @@ export function scanHint({ canScan, scan, hasItem, locked, restoring }) {
     if (restoring) return "Reading this book back from the PC...";
     if (locked) return "These photos went with the listing. DONE starts the next book.";
     if (scan === "reading") return "Reading the barcode...";
-    if (scan === "missed") return "No barcode found — type the ISBN under the barcode";
+    if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";
     if (!canScan) return "This phone cannot read barcodes; type the ISBN";
-    return "Scan the barcode on the back cover, or type the ISBN.";
+    return `Scan the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;
 }

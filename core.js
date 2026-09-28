@@ -585,9 +585,9 @@ export function reduce(state, action) {
 /**
  * A new ISBN names the book, and so its folder on the PC: "Book <isbn13>".
  * Once that folder is made the ISBN is fixed until DONE, as the goods item name
- * is. Before that, photos taken meanwhile (a scan whose barcode could not be
- * read, a cover snapped first) wait on the page for the name and are relabelled
- * with it; a different book starts its lookup and price afresh.
+ * is. Before that, photos taken meanwhile (a cover snapped before the barcode
+ * was scanned or the ISBN typed) wait on the page for the name and are
+ * relabelled with it; a different book starts its lookup and price afresh.
  */
 function bookIsbn(state, isbn) {
     if (state.itemId || isbn === state.book.isbn) return state;
@@ -902,17 +902,18 @@ export function venueButton(state, venue, settingsOk) {
 }
 
 /**
- * A book's photos are on the page but it has no ISBN yet (a scan whose
- * barcode would not read, a cover snapped first). Its folder on the PC is
- * named by the ISBN, so they cannot go until it is typed: what blocks them is
- * the ISBN, not the PC, and the lines under ebay and DONE say so.
+ * A book's photos are on the page but it has no ISBN yet: the cover was
+ * snapped before the barcode was scanned or the ISBN typed (the Scan picture
+ * itself is never one of them). Its folder on the PC is named by the ISBN, so
+ * they cannot go until there is one: what blocks them is the ISBN, not the PC,
+ * and the lines under ebay and DONE say so.
  */
 export function waitsForIsbn(state) {
     return state.mode === "book" && !state.book.isbn && state.photos.length > 0;
 }
 
 export const ISBN_WAIT_HINT =
-    "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x";
+    "Scan the barcode or type the ISBN so the photos can go to the PC, or remove them with their x";
 
 /**
  * The book's one button, ebay. It opens once the book is found in the

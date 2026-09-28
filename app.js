@@ -280,8 +280,9 @@ function renderBook() {
     const busy = restoring.book;
     const hasItem = !!state.itemId;
 
-    // Scan names the book, so it is there only while the ISBN may still change
-    const scanReady = !locked && !busy && !hasItem && scan !== "reading";
+    // Scan names the book, so it is there only while the ISBN may still change,
+    // and only on a phone that can read the barcode: the picture is good for nothing else
+    const scanReady = canScan() && !locked && !busy && !hasItem && scan !== "reading";
     el.bookScanLabel.classList.toggle("disabled", !scanReady);
     el.bookScanInput.disabled = !scanReady;
     const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy });
@@ -462,7 +463,8 @@ function onItemNameChanged() {
 /**
  * Photos taken or picked: onto the page at once, and into the upload queue.
  * A goods item needs its name first; a book's photos may come before its ISBN
- * (a barcode that would not read) and wait on the page until it names them.
+ * (the cover snapped before the barcode is scanned or the ISBN typed) and wait
+ * on the page until it names them.
  */
 function acceptFiles(m, fileList) {
     const s = slots[m];
@@ -498,10 +500,10 @@ function removePhoto(m, id) {
 // --- the book: scan, ISBN, lookup ------------------------------------------------
 
 /**
- * Scan: the barcode is read first, so the ISBN names the item before its
- * first photo goes; then the photo joins the strip either way -- the back
- * cover is a fine listing photo, and a barcode that would not read leaves it
- * waiting on the page for the typed ISBN.
+ * Scan: the picture is read for its barcode and then dropped. It is a close-up
+ * of the bars, not a listing photo (Michal, 2026-09-27), so it never joins the
+ * strip, never goes to the PC and is not kept here. A barcode that would not
+ * read changes nothing but the line above Scan.
  */
 async function onScan(files) {
     const file = files && files[0];
@@ -512,13 +514,15 @@ async function onScan(files) {
     const isbn = await readIsbn(file);
     if (mine !== generation.book) return;
     scan = isbn ? "" : "missed";
-    if (isbn) {
-        el.bookIsbn.value = isbn;
-        clearTimeout(isbnTimer);
-        isbnTimer = null;
-        takeIsbn(isbn);
+    if (!isbn) {
+        render();
+        return;
     }
-    acceptFiles("book", [file]);
+    el.bookIsbn.value = isbn;
+    clearTimeout(isbnTimer);
+    isbnTimer = null;
+    takeIsbn(isbn);
+    render(); // the same ISBN again changes no state, but "reading" is over
 }
 
 function onIsbnInput() {
