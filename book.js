@@ -6,6 +6,13 @@
 // names it exactly, the PC looks it up in the catalogues (GET /books/<isbn13>)
 // and prices it from eBay's own listings. So the phone's job is to get a right
 // ISBN (from the barcode, or typed), a condition and a price, and the photos.
+//
+// Some books have no ISBN (Michal, 2026-09-28: "Make a least friction pathway
+// ... The extra button will open necessary fields. I want the API to work it
+// through still, suggest price, fill in other info"). For those, No ISBN opens
+// a title, an author, a year and paperback | hardcover; the PC is asked by
+// title (GET /books/search) and answers as for an ISBN, matched or not. A book
+// no catalogue knows is still a book: it is listed as typed.
 
 /**
  * The four conditions eBay's book category takes, in the order the chips show
@@ -31,7 +38,23 @@ export const LOW_PRICE = 5;
  */
 export const ISBN_DEBOUNCE_MS = 400;
 
-/** What the line above Scan adds: the scan is for the number, not for the listing. */
+/**
+ * How long after the last keystroke in the title, author or year the book is
+ * searched for. Longer than the ISBN's: a title is typed in words, with pauses
+ * between them, and each search costs the PC a catalogue call and an eBay one.
+ */
+export const SEARCH_DEBOUNCE_MS = 600;
+
+/** The two chips of a book with no ISBN, in the order they show; the value is what the PC is sent. */
+export const FORMATS = [
+    { value: "paperback", label: "Paperback" },
+    { value: "hardcover", label: "Hardcover" },
+];
+
+/** Most books he sells are paperbacks. */
+export const DEFAULT_FORMAT = "paperback";
+
+/** What the line above the ISBN button adds: the picture is for the number, not for the listing. */
 export const SCAN_IS_NOT_A_PHOTO = "A close-up of the barcode is enough; it is not a listing photo.";
 
 // --- the ISBN ------------------------------------------------------------------
@@ -82,6 +105,55 @@ export function normalizeIsbn(text) {
         return body + ean13Check(body);
     }
     return "";
+}
+
+// --- a book with no ISBN ----------------------------------------------------------
+
+/**
+ * The typed year as the PC is asked it: four digits, or "" while it is half
+ * typed or not a year. So "19", "196" and "" ask the same question, and the
+ * search goes again only once the year is whole.
+ * @param {unknown} text
+ * @returns {string}
+ */
+export function bookYear(text) {
+    if (typeof text !== "string") return "";
+    const bare = text.trim();
+    return /^\d{4}$/.test(bare) ? bare : "";
+}
+
+/**
+ * The chip a catalogue's format word stands for ("Hardcover", "Hardback",
+ * "Mass Market Paperback"...), or "" when it says neither.
+ * @param {unknown} format
+ * @returns {""|"paperback"|"hardcover"}
+ */
+export function formatOf(format) {
+    if (typeof format !== "string") return "";
+    if (/hard\s*(cover|back|bound)|cloth/i.test(format)) return "hardcover";
+    if (/paper\s*back|soft\s*(cover|back)|mass\s*market|trade\s*paper/i.test(format)) return "paperback";
+    return "";
+}
+
+/** Runs of spaces as one, and none at the ends: what was meant, not how it was typed. */
+function words(v) {
+    return typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+}
+
+/**
+ * What a book with no ISBN is searched for (and listed as): the title and the
+ * author as typed, tidied, and the year once it is a year.
+ * @param {{title:string, author:string, year:string}} book
+ * @returns {{title:string, author:string, year:string}}
+ */
+export function bookSearch(book) {
+    return { title: words(book.title), author: words(book.author), year: bookYear(book.year) };
+}
+
+/** "Paperback" for "paperback": what the chip says. */
+function formatLabel(value) {
+    const f = FORMATS.find((x) => x.value === value);
+    return f ? f.label : "";
 }
 
 // --- the price -----------------------------------------------------------------
@@ -178,27 +250,50 @@ export function bookListings(listings) {
     return { count, low: text(listings.low), high: text(listings.high) };
 }
 
+/** The small line under a book found by its title. */
+export const MATCHED = "matched in the catalogues";
+/** ... and under one no catalogue knows: not a dead end, as a missing ISBN is. */
+export const LISTED_AS_TYPED = "Not in the catalogues: it will be listed as typed";
+
 /**
- * The book card: hidden until there is an ISBN; then "looking up", the book
- * (title in bold, the authors, "publisher · year · format · pages"), "not in
- * the catalogues", or the PC's own words for why it could not look.
- * @param {{isbn:string, lookup:{phase:string, record:(null|ReturnType<typeof bookRecord>), error:string}}} book
- * @returns {{hidden:boolean, status:string, kind:""|"busy"|"bad", title:string, authors:string, details:string}}
+ * The book card: hidden until there is an ISBN (or, with No ISBN, a title);
+ * then "looking up", the book (title in bold, the authors, "publisher · year ·
+ * format · pages"), "not in the catalogues", or the PC's own words for why it
+ * could not look.
+ *
+ * A book looked up by its title says under it whether a catalogue matched it;
+ * when none did, the card shows what he typed, since that is what will be listed.
+ * @param {{isbn:string, manual:boolean, title:string, author:string, year:string, format:string,
+ *          lookup:{phase:string, matched:boolean, record:(null|ReturnType<typeof bookRecord>), error:string}}} book
+ * @returns {{hidden:boolean, status:string, kind:""|"busy"|"bad", title:string, authors:string,
+ *            details:string, note:string}}
  */
 export function bookCard(book) {
-    const empty = { hidden: false, status: "", kind: "", title: "", authors: "", details: "" };
-    if (!book.isbn) return { ...empty, hidden: true };
+    const empty = { hidden: false, status: "", kind: "", title: "", authors: "", details: "", note: "" };
+    const typed = book.manual ? bookSearch(book) : null;
+    if (typed ? !typed.title : !book.isbn) return { ...empty, hidden: true };
     const { lookup } = book;
     switch (lookup.phase) {
         case "found": {
+            if (typed && !lookup.matched) {
+                return {
+                    ...empty,
+                    title: typed.title,
+                    authors: typed.author,
+                    details: [typed.year, formatLabel(book.format)].filter(Boolean).join(" · "),
+                    note: LISTED_AS_TYPED,
+                };
+            }
             const r = lookup.record || bookRecord({});
+            const fallback = typed ? typed.title : `ISBN ${book.isbn}`;
             return {
                 ...empty,
-                title: r.subtitle ? `${r.title}: ${r.subtitle}` : r.title || `ISBN ${book.isbn}`,
+                title: r.subtitle ? `${r.title}: ${r.subtitle}` : r.title || fallback,
                 authors: r.authors.join(", "),
                 details: [r.publisher, r.year, r.format, r.pages ? `${r.pages} pages` : ""]
                     .filter(Boolean)
                     .join(" · "),
+                note: typed ? MATCHED : "",
             };
         }
         case "missing":
@@ -206,32 +301,39 @@ export function bookCard(book) {
         case "failed":
             return { ...empty, status: lookup.error || "the book was not looked up", kind: "bad" };
         default:
-            // idle with an ISBN is the moment before the lookup goes
-            return { ...empty, status: `Looking up ${book.isbn}…`, kind: "busy" };
+            // idle with an ISBN (or a title) is the moment before the lookup goes
+            return {
+                ...empty,
+                status: typed ? `Looking up “${typed.title}”…` : `Looking up ${book.isbn}…`,
+                kind: "busy",
+            };
     }
 }
 
 /**
- * The one line above Scan: what to do first, or why Scan is not there.
+ * The one line above the ISBN button (the camera, once called Scan): what to
+ * do first, or why the button is not there.
  *
- * The Scan picture is only read for its barcode and then dropped: it never
- * joins the listing's photos (Michal, 2026-09-27: "it's just a closeup of the
+ * The picture is only read for its barcode and then dropped: it never joins
+ * the listing's photos (Michal, 2026-09-27: "it's just a closeup of the
  * barcode"). So the line says a close-up is enough, and a miss changes nothing
  * but this line.
  * @param {object} o
  * @param {boolean} o.canScan   the phone can read a barcode from a photo (scan.js)
  * @param {""|"reading"|"missed"} o.scan  the last scan: being read, or nothing readable in it
- * @param {boolean} o.hasItem   the book's folder is made on the PC: its ISBN is fixed
+ * @param {boolean} o.hasItem   the book's folder is made on the PC: its ISBN (or title) names it
  * @param {boolean} o.locked    the listing went: the photos are its
  * @param {boolean} o.restoring the book is being read back after a reload
+ * @param {boolean} [o.manual]  No ISBN is open: the title is typed instead
  * @returns {string} "" when there is nothing to say
  */
-export function scanHint({ canScan, scan, hasItem, locked, restoring }) {
+export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false }) {
     if (restoring) return "Reading this book back from the PC...";
     if (locked) return "These photos went with the listing. DONE starts the next book.";
     if (scan === "reading") return "Reading the barcode...";
     if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";
+    if (manual) return "No ISBN: type the title as the cover has it. The PC finds the book and a price.";
     if (!canScan) return "This phone cannot read barcodes; type the ISBN";
-    return `Scan the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;
+    return `Tap ISBN to read the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;
 }

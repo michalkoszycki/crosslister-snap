@@ -8,8 +8,12 @@ import {
     bookListings,
     bookPriceValue,
     bookRecord,
+    bookSearch,
     CONDITIONS,
     DEFAULT_CONDITION,
+    DEFAULT_FORMAT,
+    FORMATS,
+    formatOf,
 } from "./book.js?v=1.8.0";
 
 // --- the item name and photo file names ------------------------------------
@@ -201,15 +205,16 @@ export const KEY_HEADER = "X-Crosslister-Key";
  * @param {string} o.venue
  * @param {string} [o.sku]    known once the first job has saved the row
  * @param {string} [o.item]   the item's id on the PC
- * A book: the item (its photos) and the book itself -- the ISBN, the condition
- * chip, the price box and the number of the photo marked main. No AI marks:
- * the catalogue says what the book is, so there is no model call, and a book
- * goes to eBay only.
+ * A book: the item (its photos) and the book itself -- the ISBN (or, with no
+ * ISBN, the title, author, year and format he typed), the condition chip, the
+ * price box and the number of the photo marked main. No AI marks: the
+ * catalogue says what the book is, so there is no model call, and a book goes
+ * to eBay only.
  *
  * @param {{n:number, ai:boolean}[]} [o.photos]
- * @param {{isbn:string, condition:string, price:string, main:number}} [o.book]  from bookForm()
+ * @param {BookJob} [o.book]  from bookForm()
  * @returns {{sku:string, venue:string} | {item:string, venue:string, ai:number[]}
- *          | {item:string, venue:string, book:{isbn:string, condition:string, price:string, main:number}}}
+ *          | {item:string, venue:string, book:BookJob}}
  */
 export function jobRequest({ venue, sku = "", item = "", photos = [], book = undefined }) {
     if (!VENUES.includes(venue)) throw new RangeError(`unknown venue ${venue}`);
@@ -316,21 +321,36 @@ export function safeLink(url) {
 /**
  * The book mode's own fields. The item name of a book is "Book <isbn13>", so
  * the PC's folder is "Book 9780306406157 <date>" and the same book scanned
- * twice the same day is the same folder, as with goods.
+ * twice the same day is the same folder, as with goods. A book with no ISBN is
+ * named by its title instead, "Book <cleaned title>", so the folder on the PC
+ * still says which book it is.
  * @typedef {Object} BookSlice
  * @property {string} isbn       13 digits once a valid ISBN was scanned or typed, else ""
- * @property {BookLookup} lookup the PC's answer to GET /books/<isbn>
+ * @property {BookLookup} lookup the PC's answer to GET /books/<isbn> (or /books/search)
  * @property {string} condition  one of CONDITIONS' values
  * @property {string} price      the price box as typed (bookPriceValue() reads it)
+ * @property {string} autoPrice  the price the page itself put in the box (a suggestion), ""
+ *                               once he typed one: a later answer may replace only this
  * @property {number} main       the number n of the photo that leads the listing; 0 while
  *                               there is no photo. Always one of the photos once there is
  *                               one: the first by default (settleMain keeps it so)
+ * @property {boolean} manual    No ISBN is open: the book is named by the fields below, and
+ *                               the ISBN box is ignored (a valid ISBN closes it again)
+ * @property {string} title      the fields under No ISBN, as typed
+ * @property {string} author
+ * @property {string} year
+ * @property {string} format     one of FORMATS' values, paperback by default
+ * @property {boolean} formatChosen  he tapped a format chip: a catalogue match no longer sets it
  */
 
 /**
  * @typedef {Object} BookLookup
  * @property {"idle"|"looking"|"found"|"missing"|"failed"} phase
- *           missing: not in the catalogues (404); failed: the PC could not look (its words in error)
+ *           missing: not in the catalogues (404, by ISBN only); failed: the PC could not look
+ *           (its words in error)
+ * @property {""|"isbn"|"title"} by  what the book was looked up by
+ * @property {boolean} matched   a catalogue knows it (always, when found by ISBN); a book found
+ *                               by title that none knows is listed as typed
  * @property {null|ReturnType<typeof bookRecord>} record  the book, once found
  * @property {string} price      the PC's suggested price, "" when it has none
  * @property {null|{count:number, low:string, high:string}} listings  eBay's listings as the PC saw them
@@ -338,17 +358,44 @@ export function safeLink(url) {
  * @property {string} error
  */
 
+/**
+ * What a book's job carries (POST /jobs "book"). With an ISBN the four typed
+ * fields are ""; without one the ISBN is "" and the title is what he typed.
+ * @typedef {Object} BookJob
+ * @property {string} isbn
+ * @property {string} title
+ * @property {string} author
+ * @property {string} year
+ * @property {""|"paperback"|"hardcover"} format
+ * @property {string} condition
+ * @property {string} price
+ * @property {number} main
+ */
+
 /** The kinds of item the switch at the top chooses between. */
 export const MODES = ["goods", "book"];
 
 /** @returns {BookLookup} */
 function idleLookup() {
-    return { phase: "idle", record: null, price: "", listings: null, route: "", error: "" };
+    return { phase: "idle", by: "", matched: false, record: null, price: "", listings: null, route: "", error: "" };
+}
+
+/** The fields under No ISBN, empty. */
+function blankManual() {
+    return { manual: false, title: "", author: "", year: "", format: DEFAULT_FORMAT, formatChosen: false };
 }
 
 /** @returns {BookSlice} */
 function initialBook() {
-    return { isbn: "", lookup: idleLookup(), condition: DEFAULT_CONDITION, price: "", main: 0 };
+    return {
+        isbn: "",
+        lookup: idleLookup(),
+        condition: DEFAULT_CONDITION,
+        price: "",
+        autoPrice: "",
+        main: 0,
+        ...blankManual(),
+    };
 }
 
 /** @returns {VenueJob} */
@@ -426,9 +473,14 @@ export function photosLocked(state) {
  * The book mode:
  *   {type:"setMode", mode}                "goods" or "book": what kind of item this state holds
  *   {type:"bookIsbn", isbn}               a valid ISBN-13 scanned or typed, or "" (fixed once the item is on the PC)
- *   {type:"bookLookupStart", isbn}        GET /books/<isbn> goes
- *   {type:"bookLookupDone", isbn, answer} the PC found it
- *   {type:"bookLookupFailed", isbn, status, error}  404: not in the catalogues; else the PC's words
+ *   {type:"bookManual", open}             No ISBN: open the title fields, or close and clear them
+ *   {type:"bookField", field, text}       "title", "author" or "year" under No ISBN, as typed
+ *   {type:"bookFormat", format}           the paperback | hardcover chip
+ *   {type:"bookName"}                     he stopped typing: the title names the book's folder
+ *   {type:"bookLookupStart", key}         GET /books/<isbn> (or /books/search) goes; key is
+ *                                         lookupKey(book) when it went (an ISBN also as `isbn`)
+ *   {type:"bookLookupDone", key, answer}  the PC answered
+ *   {type:"bookLookupFailed", key, status, error}  404 by ISBN: not in the catalogues; else the PC's words
  *   {type:"bookCondition", condition}     a condition chip
  *   {type:"bookPrice", text}              the price box, as typed
  *   {type:"bookMain", id}                 the "main" mark on a photo: it leads the listing
@@ -571,14 +623,29 @@ export function reduce(state, action) {
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;
         case "bookIsbn":
             return bookIsbn(state, typeof action.isbn === "string" ? action.isbn : "");
+        case "bookManual":
+            return bookManual(state, !!action.open);
+        case "bookField":
+            return bookField(state, action.field, typeof action.text === "string" ? action.text : "");
+        case "bookFormat":
+            if (!state.book.manual || !FORMATS.some((f) => f.value === action.format)) return state;
+            return { ...state, book: { ...state.book, format: action.format, formatChosen: true } };
+        case "bookName":
+            return bookName(state);
         case "bookLookupStart":
-            return withLookup(state, action.isbn, () => ({ ...idleLookup(), phase: "looking" }));
-        case "bookLookupDone":
-            return bookFound(state, action.isbn, action.answer || {});
-        case "bookLookupFailed":
-            return withLookup(state, action.isbn, () => ({
+            return withLookup(state, action.key ?? action.isbn, (book) => ({
                 ...idleLookup(),
-                phase: action.status === 404 ? "missing" : "failed",
+                phase: "looking",
+                by: lookupBy(book),
+            }));
+        case "bookLookupDone":
+            return bookFound(state, action.key ?? action.isbn, action.answer || {});
+        case "bookLookupFailed":
+            return withLookup(state, action.key ?? action.isbn, (book) => ({
+                ...idleLookup(),
+                by: lookupBy(book),
+                // a title no catalogue knows is not a dead end: only an ISBN can be "missing"
+                phase: action.status === 404 && !book.manual ? "missing" : "failed",
                 error: action.error || "the book was not looked up",
             }));
         case "bookCondition":
@@ -586,9 +653,10 @@ export function reduce(state, action) {
                 ? { ...state, book: { ...state.book, condition: action.condition } }
                 : state;
         case "bookPrice":
+            // typed by him: his from now on, whatever a later lookup suggests
             return {
                 ...state,
-                book: { ...state.book, price: typeof action.text === "string" ? action.text : "" },
+                book: { ...state.book, price: typeof action.text === "string" ? action.text : "", autoPrice: "" },
             };
         case "bookMain": {
             // like the AI marks, fixed once the listing is on its way
@@ -626,50 +694,164 @@ function settleMain(state) {
  * relabelled with it; a different book starts its lookup and price afresh.
  */
 function bookIsbn(state, isbn) {
-    if (state.itemId || isbn === state.book.isbn) return state;
-    const itemName = isbn ? `Book ${isbn}` : "";
+    if (state.itemId) return state;
+    let s = state;
+    if (s.book.manual) {
+        // No ISBN is open: the ISBN box is ignored, until a valid ISBN is in it
+        // after all -- then that is the book, and the typed title goes
+        if (!isbn) return state;
+        s = bookManual(s, false);
+    }
+    if (isbn === s.book.isbn) return s;
+    return renamed(
+        { ...s, book: { ...s.book, isbn, lookup: idleLookup(), price: "", autoPrice: "" } },
+        isbn ? `Book ${isbn}` : ""
+    );
+}
+
+/**
+ * The book's item name, and the photos waiting for it relabelled with it
+ * ("Book-1.jpg" while there is none).
+ */
+function renamed(state, itemName) {
     return {
         ...state,
         itemName,
         photos: state.photos.map((p) => ({ ...p, name: buildFileName(itemName || "Book", p.n) })),
-        book: { ...state.book, isbn, lookup: idleLookup(), price: "" },
     };
 }
 
-/** The PC's answer about a book, kept only while it is still the book in the box. */
-function withLookup(state, isbn, fn) {
-    if (!isbn || isbn !== state.book.isbn) return state;
-    return { ...state, book: { ...state.book, lookup: fn(state.book.lookup) } };
+/**
+ * No ISBN, tapped: the title fields open, and the ISBN (if any) is set aside;
+ * tapped again: they close and what was typed in them goes. Either way the
+ * book is a different book now, so its lookup starts afresh and a price the
+ * page suggested goes with the old one (a price he typed stays). Once the
+ * book's folder is on the PC, what names it is fixed until DONE.
+ */
+function bookManual(state, open) {
+    if (state.itemId || open === state.book.manual) return state;
+    const { book } = state;
+    const suggested = book.autoPrice && book.price === book.autoPrice;
+    return renamed(
+        {
+            ...state,
+            book: {
+                ...book,
+                ...blankManual(),
+                manual: open,
+                isbn: "",
+                lookup: idleLookup(),
+                price: suggested ? "" : book.price,
+                autoPrice: "",
+            },
+        },
+        ""
+    );
 }
 
-/** Found: the card, the listings, and the price box filled with the suggestion unless he typed one. */
-function bookFound(state, isbn, answer) {
+const TYPED_FIELDS = ["title", "author", "year"];
+
+/**
+ * A keystroke in the title, author or year. When it changes what the PC would
+ * be asked, the last answer no longer describes the book: the lookup goes back
+ * to idle (the card says it is about to look) until the search goes again.
+ */
+function bookField(state, field, text) {
+    if (!state.book.manual || !TYPED_FIELDS.includes(field) || state.book[field] === text) return state;
+    const before = lookupKey(state.book);
+    const book = { ...state.book, [field]: text };
+    if (lookupKey(book) !== before) book.lookup = idleLookup();
+    return { ...state, book };
+}
+
+/**
+ * He stopped typing: the title names the book's folder on the PC,
+ * "Book <cleaned title>", capped as a goods name is. The photos that waited
+ * for a name go with it. Fixed once the folder is made, as an ISBN is.
+ */
+function bookName(state) {
+    if (state.itemId || !state.book.manual) return state;
+    const title = cleanItemName(bookSearch(state.book).title);
+    const itemName = title ? cleanItemName(`Book ${title}`) : "";
+    return itemName === state.itemName ? state : renamed(state, itemName);
+}
+
+/**
+ * What the book is looked up by, as one string: the ISBN, or (No ISBN) the
+ * title, author and year as they would be sent. "" while there is nothing to
+ * look up. An answer is kept only while this is still the same.
+ * @param {BookSlice} book
+ * @returns {string}
+ */
+export function lookupKey(book) {
+    if (!book.manual) return book.isbn;
+    const q = bookSearch(book);
+    return q.title ? JSON.stringify([q.title, q.author, q.year]) : "";
+}
+
+/** @param {BookSlice} book */
+function lookupBy(book) {
+    return book.manual ? "title" : "isbn";
+}
+
+/** The PC's answer about a book, kept only while it is still the book in the box. */
+function withLookup(state, key, fn) {
+    if (!key || key !== lookupKey(state.book)) return state;
+    return { ...state, book: { ...state.book, lookup: fn(state.book) } };
+}
+
+/**
+ * Found: the card, the listings, and the price box filled with the suggestion
+ * unless he typed one (a suggestion of an earlier answer is replaced: he typed
+ * more of the title and the PC found a better match). A book found by title
+ * that a catalogue matched sets the format chip too, until he taps one himself.
+ */
+function bookFound(state, key, answer) {
     const price = bookPriceValue(typeof answer.price === "string" ? answer.price : String(answer.price ?? ""));
-    const next = withLookup(state, isbn, () => ({
+    const next = withLookup(state, key, (book) => ({
         ...idleLookup(),
         phase: "found",
+        by: lookupBy(book),
+        // by ISBN the catalogue always knows it; by title only when the PC says so
+        matched: !book.manual || answer.found === true,
         record: bookRecord(answer),
         price,
         listings: bookListings(answer.listings),
         route: typeof answer.route === "string" ? answer.route : "",
     }));
-    if (next === state || state.book.price.trim() || !price) return next;
-    return { ...next, book: { ...next.book, price } };
+    if (next === state) return next;
+    const book = { ...next.book };
+    const typed = book.price.trim() !== "" && book.price !== book.autoPrice;
+    if (!typed && (price || book.autoPrice)) {
+        book.price = price;
+        book.autoPrice = price;
+    }
+    const format = book.lookup.matched ? formatOf(book.lookup.record.format) : "";
+    if (book.manual && !book.formatChosen && format) book.format = format;
+    return { ...next, book };
 }
 
 /**
- * What a book's job carries besides the item: the ISBN, the condition chip,
- * the price as the PC should list it, and the number of the main photo (always
- * sent: the ebay button needs a photo, so there is always one).
+ * What a book's job carries besides the item: the ISBN -- or, with No ISBN,
+ * the title, author, year and format he typed (the PC searches and lists by
+ * them) -- the condition chip, the price as the PC should list it, and the
+ * number of the main photo (always sent: the ebay button needs a photo, so
+ * there is always one). The fields that do not apply are sent as "".
  * @param {SnapState} state
- * @returns {{isbn:string, condition:string, price:string, main:number}}
+ * @returns {BookJob}
  */
 export function bookForm(state) {
+    const { book } = state;
+    const typed = book.manual ? bookSearch(book) : { title: "", author: "", year: "" };
     return {
-        isbn: state.book.isbn,
-        condition: state.book.condition,
-        price: bookPriceValue(state.book.price),
-        main: state.book.main,
+        isbn: book.manual ? "" : book.isbn,
+        title: typed.title,
+        author: typed.author,
+        year: typed.year,
+        format: book.manual ? book.format : "",
+        condition: book.condition,
+        price: bookPriceValue(book.price),
+        main: book.main,
     };
 }
 
@@ -738,8 +920,8 @@ function adoptItem(state, answer) {
 
 /**
  * A reloaded page takes the item back as the PC has it. A book also takes back
- * what only the phone knew (action.book, from savedItem): the ISBN, the
- * condition, the price box and the book the lookup found. Without a found
+ * what only the phone knew (action.book, from savedItem): the ISBN or the typed
+ * title, the condition, the price box and the book the lookup found. Without a found
  * book the page simply asks the PC again.
  */
 function recovered(state, action) {
@@ -767,21 +949,32 @@ function recovered(state, action) {
 function recoveredBook(saved) {
     const s = saved && typeof saved === "object" ? saved : {};
     const book = initialBook();
-    if (typeof s.isbn === "string" && /^\d{13}$/.test(s.isbn)) book.isbn = s.isbn;
+    if (s.manual === true) {
+        // a book with no ISBN: its title (and the rest) is what names it
+        book.manual = true;
+        for (const field of TYPED_FIELDS) if (typeof s[field] === "string") book[field] = s[field];
+        if (FORMATS.some((f) => f.value === s.format)) book.format = s.format;
+    } else if (typeof s.isbn === "string" && /^\d{13}$/.test(s.isbn)) {
+        book.isbn = s.isbn;
+    }
     if (CONDITIONS.some((c) => c.value === s.condition)) book.condition = s.condition;
     if (typeof s.price === "string") book.price = s.price;
     // settleMain() then checks it is still one of the photos the PC has
     if (Number.isInteger(s.main) && s.main > 0) book.main = s.main;
     const found = s.lookup && typeof s.lookup === "object" ? s.lookup : null;
-    if (book.isbn && found && found.record) {
+    if (lookupKey(book) && found && found.record) {
         book.lookup = {
             ...idleLookup(),
             phase: "found",
+            by: lookupBy(book),
+            matched: !book.manual || found.matched === true,
             record: bookRecord(found.record),
             price: bookPriceValue(typeof found.price === "string" ? found.price : ""),
             listings: bookListings(found.listings),
             route: typeof found.route === "string" ? found.route : "",
         };
+        // the box still holding the suggestion: a later answer may replace it, as before the reload
+        if (book.lookup.price && book.price === book.lookup.price) book.autoPrice = book.price;
     }
     return book;
 }
@@ -846,28 +1039,42 @@ export function raiseCount(counters, itemName, n) {
  * from the PC: the name, the id, and which photos are marked AI (the PC does
  * not know the marks until a button is pressed).
  *
- * A book keeps, besides, what only the phone knows: the ISBN, the condition
- * chip, the price box, the main photo and the book the lookup found (so a
- * reload does not even have to ask the catalogues again). It has no AI marks.
+ * A book keeps, besides, what only the phone knows: the ISBN (or, with No
+ * ISBN, the title, author, year and format he typed), the condition chip, the
+ * price box, the main photo and the book the lookup found (so a reload does
+ * not even have to ask the catalogues again). It has no AI marks.
  * @returns {null|{itemName:string, itemId:string, ai:number[]}
- *          |{mode:"book", itemName:string, itemId:string, isbn:string, condition:string, price:string,
+ *          |{mode:"book", itemName:string, itemId:string, isbn:string, manual:boolean, title:string,
+ *            author:string, year:string, format:string, condition:string, price:string,
  *            main:number, lookup:(null|object)}}
  */
 export function savedItem(state) {
     if (!state.itemId) return null;
     if (state.mode === "book") {
-        const { isbn, condition, price, main, lookup } = state.book;
+        const { isbn, manual, title, author, year, format, condition, price, main, lookup } = state.book;
         return {
             mode: "book",
             itemName: state.itemName,
             itemId: state.itemId,
             isbn,
+            manual,
+            title,
+            author,
+            year,
+            format,
             condition,
             price,
             main,
             lookup:
                 lookup.phase === "found"
-                    ? { record: lookup.record, price: lookup.price, listings: lookup.listings, route: lookup.route }
+                    ? {
+                          by: lookup.by,
+                          matched: lookup.matched,
+                          record: lookup.record,
+                          price: lookup.price,
+                          listings: lookup.listings,
+                          route: lookup.route,
+                      }
                     : null,
         };
     }
@@ -947,22 +1154,39 @@ export function venueButton(state, venue, settingsOk) {
 }
 
 /**
- * A book's photos are on the page but it has no ISBN yet: the cover was
- * snapped before the barcode was scanned or the ISBN typed (the Scan picture
- * itself is never one of them). Its folder on the PC is named by the ISBN, so
- * they cannot go until there is one: what blocks them is the ISBN, not the PC,
- * and the lines under ebay and DONE say so.
+ * A book's photos are on the page but nothing names it yet: the cover was
+ * snapped before the barcode was scanned, the ISBN typed or (No ISBN) the
+ * title typed (the ISBN button's picture itself is never one of them). Its
+ * folder on the PC is named by the ISBN or the title, so they cannot go until
+ * there is one: what blocks them is the ISBN or the title, not the PC, and the
+ * lines under ebay and DONE say so.
  */
 export function waitsForIsbn(state) {
-    return state.mode === "book" && !state.book.isbn && state.photos.length > 0;
+    return state.mode === "book" && !state.itemName && state.photos.length > 0;
 }
 
+/** The first thing a book needs, said where nothing else is to be said yet. */
+export const NO_BOOK_HINT = "Scan the ISBN, or tap No ISBN and type the title";
+
 export const ISBN_WAIT_HINT =
-    "Scan the barcode or type the ISBN so the photos can go to the PC, or remove them with their x";
+    "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the PC; or remove them with their x";
+
+export const TITLE_WAIT_HINT = "Type the title so the photos can go to the PC, or remove them with their x";
+
+/** The line under ebay and DONE while the photos wait for a name. */
+function waitHint(state) {
+    return state.book.manual ? TITLE_WAIT_HINT : ISBN_WAIT_HINT;
+}
+
+/** The book has what names it: an ISBN, or (No ISBN) a title. */
+function bookNamed(book) {
+    return book.manual ? !!bookSearch(book).title : !!book.isbn;
+}
 
 /**
  * The book's one button, ebay. It opens once the book is found in the
- * catalogues, at least one photo is taken and every photo is on the PC, and
+ * catalogues (by its ISBN; by its title the PC's answer is enough, matched or
+ * not), at least one photo is taken and every photo is on the PC, and
  * the price box holds a price. A book goes by its catalogue record, not a
  * model, so there is no AI mark to wait for -- and no second venue: a book
  * that failed after the PC saved its row is simply sent again whole.
@@ -977,15 +1201,20 @@ function bookVenueButton(state, venue, settingsOk) {
     if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     const { book } = state;
-    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
-    if (!book.isbn) return { enabled: false, hint: "Scan or type the ISBN first" };
+    if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
+    if (!bookNamed(book)) {
+        return { enabled: false, hint: book.manual ? "Type the book's title first" : NO_BOOK_HINT };
+    }
     switch (book.lookup.phase) {
         case "found":
             break;
         case "missing":
             return { enabled: false, hint: "Not in the catalogues - post it as goods instead" };
         case "failed":
-            return { enabled: false, hint: "The book was not looked up - edit the ISBN to try again" };
+            return {
+                enabled: false,
+                hint: `The book was not looked up - edit the ${book.manual ? "title" : "ISBN"} to try again`,
+            };
         default:
             return { enabled: false, hint: "Looking the book up..." };
     }
@@ -1006,20 +1235,20 @@ function bookVenueButton(state, venue, settingsOk) {
 /**
  * DONE: needs a photo (as before), waits while a job for this item is on its
  * way or on the PC, and while a photo or a delete has not reached the PC.
- * A book also opens it with an ISBN and no photo yet, so a book that is not in
- * the catalogues can be cleared without taking a picture of it.
+ * A book also opens it with an ISBN (or a typed title) and no photo yet, so a
+ * book that is not in the catalogues can be cleared without taking a picture of it.
  * @returns {{enabled:boolean, hint:string}}
  */
 export function doneButton(state) {
     if (anyActive(state)) {
         return { enabled: false, hint: "DONE waits until the listing is finished" };
     }
-    // a book's photos waiting for its ISBN are not waiting for the PC
-    if (waitsForIsbn(state)) return { enabled: false, hint: ISBN_WAIT_HINT };
+    // a book's photos waiting for its ISBN or title are not waiting for the PC
+    if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     if (unsent(state)) {
         return { enabled: false, hint: "DONE waits until the photos are on the PC" };
     }
-    const something = state.photos.length > 0 || (state.mode === "book" && !!state.book.isbn);
+    const something = state.photos.length > 0 || (state.mode === "book" && bookNamed(state.book));
     return { enabled: something, hint: "" };
 }
 
@@ -1041,8 +1270,8 @@ export function noteStatusText(state) {
 /**
  * The running line above the strip: "4 photos, 2 for the AI, 3 on the PC".
  * A book's photos never go to a model, so its line leaves the AI out:
- * "2 photos, all on the PC"; or "1 photo, waiting for the ISBN" while there is
- * none to name its folder, which is not the PC being slow.
+ * "2 photos, all on the PC"; or "1 photo, waiting for the ISBN or the title"
+ * while nothing names its folder, which is not the PC being slow.
  * @param {SnapState} state
  * @returns {string}
  */
@@ -1052,7 +1281,9 @@ export function progressLine(state) {
     const ai = state.photos.filter((p) => p.ai).length;
     const sent = state.photos.filter((p) => p.status === "sent").length;
     const photos = total === 1 ? "1 photo" : `${total} photos`;
-    if (waitsForIsbn(state)) return `${photos}, waiting for the ISBN`;
+    if (waitsForIsbn(state)) {
+        return `${photos}, waiting for ${state.book.manual ? "the title" : "the ISBN or the title"}`;
+    }
     const where = `${sent === total ? "all" : sent} on the PC`;
     if (state.mode === "book") return `${photos}, ${where}`;
     return `${photos}, ${ai} for the AI, ${where}`;

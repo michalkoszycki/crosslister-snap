@@ -848,6 +848,9 @@ const BOOK = {
     route: "list",
 };
 
+/** A book with an ISBN sends the No ISBN fields empty. */
+const NO_TYPING = { title: "", author: "", year: "", format: "" };
+
 function fire(nodes, id, count = 1) {
     const files = Array.from({ length: count }, (_, i) => new Blob([`book ${i}`], { type: "image/jpeg" }));
     nodes.get(id).fire("change", { target: { files, value: "" } });
@@ -979,11 +982,11 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(local.getItem("snap.mode"), "book", "remembered on this phone");
     assert.equal(
         nodes.get("book-hint").textContent,
-        "Scan the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo."
+        "Tap ISBN to read the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo."
     );
     assert.equal(nodes.get("book-found").hidden, true);
     assert.equal(nodes.get("book-ebay-btn").disabled, true);
-    assert.equal(nodes.get("book-venue-hint").textContent, "Scan or type the ISBN first");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Scan the ISBN, or tap No ISBN and type the title");
     assert.equal(nodes.get("book-next-item").disabled, true);
     assert.equal(nodes.get("book-condition-good").attrs["aria-pressed"], "true", "good by default");
 
@@ -1055,7 +1058,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     nodes.get("book-ebay-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted, [
-        { item, venue: "ebay", book: { isbn: ISBN, condition: "very_good", price: "11", main: 1 } },
+        { item, venue: "ebay", book: { ...NO_TYPING, isbn: ISBN, condition: "very_good", price: "11", main: 1 } },
     ]);
     assert.equal(nodes.get("book-ebay-status").textContent, "queued, 1 ahead");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), true, "the ring turns");
@@ -1140,7 +1143,7 @@ test("the main mark: the first photo by default, a tap moves it, a delete moves 
     nodes.get("book-ebay-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted, [
-        { item, venue: "ebay", book: { isbn: ISBN, condition: "good", price: "11", main: 2 } },
+        { item, venue: "ebay", book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 2 } },
     ]);
     // on its way: the mark shows, and stays where it is
     assert.equal(bookShot(nodes, 1).main.disabled, true);
@@ -1162,7 +1165,7 @@ test("a typed ISBN: a wrong check digit is not looked up; an ISBN-10 is, as its 
     await settle();
     assert.deepEqual(pc.calls, [], "not an ISBN: nothing asked");
     assert.equal(nodes.get("book-found").hidden, true);
-    assert.equal(nodes.get("book-venue-hint").textContent, "Scan or type the ISBN first");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Scan the ISBN, or tap No ISBN and type the title");
 
     typeIsbn(nodes, "0-306-40615-2");
     t.mock.timers.tick(399);
@@ -1223,7 +1226,7 @@ test("a scan with no readable barcode says so and changes nothing else", async (
     assert.equal(nodes.get("book-progress").textContent, "No photos yet.");
     assert.deepEqual(pc.calls, []);
     assert.equal(nodes.get("book-scan-input").disabled, false, "Scan is there for another try");
-    assert.equal(nodes.get("book-venue-hint").textContent, "Scan or type the ISBN first");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Scan the ISBN, or tap No ISBN and type the title");
     assert.equal(nodes.get("book-next-item").disabled, true, "nothing to clear");
 });
 
@@ -1238,8 +1241,9 @@ test("a cover snapped before the ISBN waits on the page for it, and says so", as
     assert.equal(bookShot(nodes, 0).badge.textContent, "waiting");
     assert.deepEqual(pc.calls, [], "no ISBN, no folder yet");
     // what blocks it is the ISBN, not the PC, and every line says so
-    const blocked = "Scan the barcode or type the ISBN so the photos can go to the PC, or remove them with their x";
-    assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN");
+    const blocked =
+        "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the PC; or remove them with their x";
+    assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN or the title");
     assert.equal(nodes.get("book-done-hint").textContent, blocked);
     assert.equal(nodes.get("book-done-hint").hidden, false);
     assert.equal(nodes.get("book-next-item").disabled, true);
