@@ -92,6 +92,10 @@ between them.
 - Or type the ISBN printed above or under the barcode into the box (10 or 13
   digits, hyphens fine). It is looked up as soon as the last digit is in.
 - **Snap** the front cover, and anything worth showing (the spine, a flaw).
+- The first photo leads the listing: it wears **main** at its bottom right
+  (where goods have **AI**), filled blue. To lead with another, tap its
+  **main**; the mark moves there. Deleting the main photo gives the mark back
+  to the first one left. Once **ebay** is pressed the mark stays put.
 - Tap the **condition**: Like new, Very good, Good (already chosen) or
   Acceptable.
 - Check the **price**. It is filled with the PC's suggestion from eBay's own
@@ -132,7 +136,7 @@ PC). Tap `failed` to send it again, or the x to drop it.
 
 **The page was reloaded or closed**
 It reads the item back from the PC: the photos that were `sent` (shown as "on
-the PC"), the AI marks, the note and the jobs. Photos still `waiting` at that
+the PC"), the AI marks (a book's main mark), the note and the jobs. Photos still `waiting` at that
 moment are gone from the page; take them again.
 
 **"wrong key - check Settings"** (at the top, or under a button)
