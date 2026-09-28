@@ -355,13 +355,17 @@ function renderVenue(state, venue, ok, nodes) {
     return button.hint;
 }
 
-/** The photos. A book's carry no AI mark: its catalogue record says what it is. */
+/**
+ * The photos. A book's carry no AI mark (its catalogue record says what it is);
+ * in its place, "main": the photo the listing leads with.
+ */
 function renderStrip(m, strip, locked) {
     const state = slots[m];
     strip.replaceChildren();
     for (const p of state.photos) {
+        const lead = m === "book" && p.n === state.book.main;
         const card = document.createElement("li");
-        card.className = p.ai ? "shot shot-ai" : "shot";
+        card.className = p.ai ? "shot shot-ai" : lead ? "shot shot-main" : "shot";
 
         const held = blobs.get(p.id);
         if (held) {
@@ -422,6 +426,23 @@ function renderStrip(m, strip, locked) {
                 setState("goods", reduce(slots.goods, { type: "toggleAi", id: p.id }))
             );
             card.append(ai);
+        } else {
+            // the main mark, where goods have the AI mark and looking the same:
+            // exactly one photo wears it (the first unless he moved it), a tap
+            // moves it here, and after the ebay press it shows but stays put
+            const main = document.createElement("button");
+            main.type = "button";
+            main.id = `book-main-${p.n}`;
+            main.className = lead ? "main-mark on" : "main-mark";
+            main.textContent = "main";
+            main.disabled = locked;
+            main.setAttribute("data-value", String(p.n));
+            main.setAttribute("aria-pressed", lead ? "true" : "false");
+            main.setAttribute("aria-label", `Lead the listing with ${p.name}`);
+            main.addEventListener("click", () =>
+                setState("book", reduce(slots.book, { type: "bookMain", id: p.id }))
+            );
+            card.append(main);
         }
 
         const label = document.createElement("span");

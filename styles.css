@@ -201,8 +201,9 @@ button, .big, .secondary {
     padding-bottom: 4px;
 }
 .shot img { display: block; width: 100%; height: 104px; object-fit: cover; background: var(--line); }
-/* a photo marked for the AI wears the accent colour all round */
-.shot-ai { border-color: var(--accent); }
+/* a photo marked for the AI (or a book's main photo) wears the accent colour all round */
+.shot-ai,
+.shot-main { border-color: var(--accent); }
 
 /* the delete x: a small glyph inside a 44 px thumb target */
 .kill {
@@ -222,8 +223,10 @@ button, .big, .secondary {
 .kill:active { background: var(--bad); }
 
 /* the AI mark: bottom right of the photo (the x has the top right), a 44 px
-   touch target. Off: a faint outlined "AI". On: a filled accent chip. */
-.ai-mark {
+   touch target. Off: a faint outlined "AI". On: a filled accent chip.
+   A book's "main" mark sits in the same place and looks the same. */
+.ai-mark,
+.main-mark {
     position: absolute;
     top: 60px; /* the photo is 104 px tall: 104 - 44 */
     right: 0;
@@ -242,7 +245,8 @@ button, .big, .secondary {
     color: rgba(255, 255, 255, 0.85);
     isolation: isolate;
 }
-.ai-mark::before {
+.ai-mark::before,
+.main-mark::before {
     content: "";
     position: absolute;
     inset: 9px 6px 9px 6px;
@@ -251,11 +255,18 @@ button, .big, .secondary {
     background: rgba(0, 0, 0, 0.45);
     z-index: -1;
 }
-.ai-mark.on { color: var(--accent-ink); }
-.ai-mark.on::before { background: var(--accent); border-color: var(--accent); }
-/* after sending, the mark shows what went to the AI but no longer toggles */
-.ai-mark:disabled { opacity: 1; }
-.ai-mark:disabled:not(.on) { visibility: hidden; }
+/* "main" is a longer word than "AI": a touch smaller, the chip a touch wider */
+.main-mark { font-size: 11px; letter-spacing: 0.02em; }
+.main-mark::before { inset: 9px 3px 9px 3px; }
+.ai-mark.on,
+.main-mark.on { color: var(--accent-ink); }
+.ai-mark.on::before,
+.main-mark.on::before { background: var(--accent); border-color: var(--accent); }
+/* after sending, the mark shows what went (to the AI, or first) but no longer toggles */
+.ai-mark:disabled,
+.main-mark:disabled { opacity: 1; }
+.ai-mark:disabled:not(.on),
+.main-mark:disabled:not(.on) { visibility: hidden; }
 /* a photo read back from the PC after a reload: the picture is there, not here */
 .shot-remote {
     display: flex;
