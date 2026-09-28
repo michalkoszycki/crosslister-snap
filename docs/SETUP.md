@@ -102,6 +102,9 @@ between them.
   hardcover sets the chip, unless you tapped one yourself. The rest is the
   same as with an ISBN. Tapping **No ISBN** again closes the fields and clears
   them; an ISBN typed or read meanwhile closes them too.
+- **An ISBN the catalogues do not know**: the card says so and **No ISBN**
+  lights up. Tap it and type the title as above; the ISBN is kept and goes on
+  the listing with what you typed.
 - **Snap** the front cover, and anything worth showing (the spine, a flaw).
 - The first photo leads the listing: it wears **main** at its bottom right
   (where goods have **AI**), filled blue. To lead with another, tap its
@@ -163,12 +166,16 @@ ISBN into the box instead.
 The picture was too far, blurred or at an angle. Tap **ISBN** again closer, or
 type the ISBN. Nothing else changes: the missed picture is not kept.
 
-**Books: "Not in the catalogues. Post it as goods instead."**
-The PC's catalogues do not know that ISBN (old, local or self-published books).
-Tap **No ISBN** and type the title instead: a title no catalogue knows is
-still listed, as typed. (No ISBN is grey once a photo of this book is on the
-PC, since the ISBN names its folder until DONE: DONE, then No ISBN.) Or DONE,
-tap **goods**, and post it as an ordinary item.
+**Books: "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."**
+The PC's catalogues do not know that ISBN (old, local or self-published books);
+the small line under it is the PC's own reason (if it says no Google Books key
+is set, adding one on the PC may find the next such book). Tap **No ISBN**,
+now filled blue: the fields open with the ISBN kept (`ISBN ... kept: it goes on
+the listing` above them), even if a cover is already on the PC. Type the title
+(and the author, year, format) as for a book with no ISBN; the PC finds a price
+by the title, and the listing gets the ISBN and what you typed. A different
+ISBN typed or read replaces the kept one; **No ISBN** again closes the fields
+and asks about the ISBN once more.
 
 **Books: "The book was not looked up - edit the title to try again"**
 The PC could not search (its words are on the card; the catalogues or eBay did

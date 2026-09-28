@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.9.0";
+import { noteDirty, unsent } from "./queue.js?v=1.10.0";
 import {
     bookListings,
     bookPriceValue,
@@ -14,7 +14,7 @@ import {
     DEFAULT_FORMAT,
     FORMATS,
     formatOf,
-} from "./book.js?v=1.9.0";
+} from "./book.js?v=1.10.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -326,6 +326,9 @@ export function safeLink(url) {
  * still says which book it is.
  * @typedef {Object} BookSlice
  * @property {string} isbn       13 digits once a valid ISBN was scanned or typed, else ""
+ * @property {boolean} isbnMiss  the PC answered 404 for that ISBN: no catalogue knows it. No ISBN
+ *                               then keeps it (it still names the folder and goes on the listing)
+ *                               and the typed fields describe the book; a new ISBN clears it
  * @property {BookLookup} lookup the PC's answer to GET /books/<isbn> (or /books/search)
  * @property {string} condition  one of CONDITIONS' values
  * @property {string} price      the price box as typed (bookPriceValue() reads it)
@@ -334,8 +337,9 @@ export function safeLink(url) {
  * @property {number} main       the number n of the photo that leads the listing; 0 while
  *                               there is no photo. Always one of the photos once there is
  *                               one: the first by default (settleMain keeps it so)
- * @property {boolean} manual    No ISBN is open: the book is named by the fields below, and
- *                               the ISBN box is ignored (a valid ISBN closes it again)
+ * @property {boolean} manual    No ISBN is open: the book is looked up by the fields below, and
+ *                               the ISBN box is ignored (a valid ISBN closes it again); it is
+ *                               named by them too, unless it has an ISBN no catalogue knows
  * @property {string} title      the fields under No ISBN, as typed
  * @property {string} author
  * @property {string} year
@@ -360,7 +364,8 @@ export function safeLink(url) {
 
 /**
  * What a book's job carries (POST /jobs "book"). With an ISBN the four typed
- * fields are ""; without one the ISBN is "" and the title is what he typed.
+ * fields are ""; without one the ISBN is "" and the title is what he typed;
+ * with an ISBN no catalogue knows, both: the ISBN, and the title he typed.
  * @typedef {Object} BookJob
  * @property {string} isbn
  * @property {string} title
@@ -389,6 +394,7 @@ function blankManual() {
 function initialBook() {
     return {
         isbn: "",
+        isbnMiss: false,
         lookup: idleLookup(),
         condition: DEFAULT_CONDITION,
         price: "",
@@ -474,13 +480,15 @@ export function photosLocked(state) {
  *   {type:"setMode", mode}                "goods" or "book": what kind of item this state holds
  *   {type:"bookIsbn", isbn}               a valid ISBN-13 scanned or typed, or "" (fixed once the item is on the PC)
  *   {type:"bookManual", open}             No ISBN: open the title fields, or close and clear them
+ *                                         (after an ISBN miss the ISBN is kept either way)
  *   {type:"bookField", field, text}       "title", "author" or "year" under No ISBN, as typed
  *   {type:"bookFormat", format}           the paperback | hardcover chip
  *   {type:"bookName"}                     he stopped typing: the title names the book's folder
  *   {type:"bookLookupStart", key}         GET /books/<isbn> (or /books/search) goes; key is
  *                                         lookupKey(book) when it went (an ISBN also as `isbn`)
  *   {type:"bookLookupDone", key, answer}  the PC answered
- *   {type:"bookLookupFailed", key, status, error}  404 by ISBN: not in the catalogues; else the PC's words
+ *   {type:"bookLookupFailed", key, status, error}  404 by ISBN: not in the catalogues (and
+ *                                         isbnMiss, so No ISBN keeps the ISBN); else the PC's words
  *   {type:"bookCondition", condition}     a condition chip
  *   {type:"bookPrice", text}              the price box, as typed
  *   {type:"bookMain", id}                 the "main" mark on a photo: it leads the listing
@@ -640,14 +648,18 @@ export function reduce(state, action) {
             }));
         case "bookLookupDone":
             return bookFound(state, action.key ?? action.isbn, action.answer || {});
-        case "bookLookupFailed":
-            return withLookup(state, action.key ?? action.isbn, (book) => ({
+        case "bookLookupFailed": {
+            const next = withLookup(state, action.key ?? action.isbn, (book) => ({
                 ...idleLookup(),
                 by: lookupBy(book),
                 // a title no catalogue knows is not a dead end: only an ISBN can be "missing"
                 phase: action.status === 404 && !book.manual ? "missing" : "failed",
                 error: action.error || "the book was not looked up",
             }));
+            // remembered past the card: No ISBN keeps this ISBN for the listing
+            if (next === state || next.book.lookup.phase !== "missing") return next;
+            return { ...next, book: { ...next.book, isbnMiss: true } };
+        }
         case "bookCondition":
             return CONDITIONS.some((c) => c.value === action.condition)
                 ? { ...state, book: { ...state.book, condition: action.condition } }
@@ -698,13 +710,14 @@ function bookIsbn(state, isbn) {
     let s = state;
     if (s.book.manual) {
         // No ISBN is open: the ISBN box is ignored, until a valid ISBN is in it
-        // after all -- then that is the book, and the typed title goes
-        if (!isbn) return state;
+        // after all -- then that is the book, and the typed title goes (the
+        // ISBN kept after a miss is already the book's: it changes nothing)
+        if (!isbn || isbn === s.book.isbn) return state;
         s = bookManual(s, false);
     }
     if (isbn === s.book.isbn) return s;
     return renamed(
-        { ...s, book: { ...s.book, isbn, lookup: idleLookup(), price: "", autoPrice: "" } },
+        { ...s, book: { ...s.book, isbn, isbnMiss: false, lookup: idleLookup(), price: "", autoPrice: "" } },
         isbn ? `Book ${isbn}` : ""
     );
 }
@@ -727,26 +740,27 @@ function renamed(state, itemName) {
  * book is a different book now, so its lookup starts afresh and a price the
  * page suggested goes with the old one (a price he typed stays). Once the
  * book's folder is on the PC, what names it is fixed until DONE.
+ *
+ * After an ISBN no catalogue knows the ISBN is not set aside: it goes on the
+ * listing, and it still names the folder, so the fields open (and close) even
+ * once the folder is on the PC -- they only describe the book. Closed again,
+ * the ISBN is asked about afresh (the lookup is idle).
  */
 function bookManual(state, open) {
-    if (state.itemId || open === state.book.manual) return state;
+    if (open === state.book.manual) return state;
     const { book } = state;
+    if (state.itemId && !book.isbnMiss) return state;
     const suggested = book.autoPrice && book.price === book.autoPrice;
-    return renamed(
-        {
-            ...state,
-            book: {
-                ...book,
-                ...blankManual(),
-                manual: open,
-                isbn: "",
-                lookup: idleLookup(),
-                price: suggested ? "" : book.price,
-                autoPrice: "",
-            },
-        },
-        ""
-    );
+    const next = {
+        ...book,
+        ...blankManual(),
+        manual: open,
+        lookup: idleLookup(),
+        price: suggested ? "" : book.price,
+        autoPrice: "",
+    };
+    if (book.isbnMiss) return { ...state, book: next };
+    return renamed({ ...state, book: { ...next, isbn: "" } }, "");
 }
 
 const TYPED_FIELDS = ["title", "author", "year"];
@@ -767,10 +781,11 @@ function bookField(state, field, text) {
 /**
  * He stopped typing: the title names the book's folder on the PC,
  * "Book <cleaned title>", capped as a goods name is. The photos that waited
- * for a name go with it. Fixed once the folder is made, as an ISBN is.
+ * for a name go with it. Fixed once the folder is made, as an ISBN is. A kept
+ * ISBN (one no catalogue knows) goes on naming it.
  */
 function bookName(state) {
-    if (state.itemId || !state.book.manual) return state;
+    if (state.itemId || !state.book.manual || state.book.isbnMiss) return state;
     const title = cleanItemName(bookSearch(state.book).title);
     const itemName = title ? cleanItemName(`Book ${title}`) : "";
     return itemName === state.itemName ? state : renamed(state, itemName);
@@ -821,6 +836,8 @@ function bookFound(state, key, answer) {
     }));
     if (next === state) return next;
     const book = { ...next.book };
+    // found by its ISBN after all (asked again): a catalogue knows it now
+    if (!book.manual) book.isbnMiss = false;
     const typed = book.price.trim() !== "" && book.price !== book.autoPrice;
     if (!typed && (price || book.autoPrice)) {
         book.price = price;
@@ -837,6 +854,10 @@ function bookFound(state, key, answer) {
  * them) -- the condition chip, the price as the PC should list it, and the
  * number of the main photo (always sent: the ebay button needs a photo, so
  * there is always one). The fields that do not apply are sent as "".
+ *
+ * An ISBN no catalogue knows, with No ISBN opened after it, sends both: the
+ * ISBN (the PC keeps it on the listing) and the typed fields (the PC takes the
+ * title and the rest from them, since the catalogues have nothing).
  * @param {SnapState} state
  * @returns {BookJob}
  */
@@ -844,7 +865,7 @@ export function bookForm(state) {
     const { book } = state;
     const typed = book.manual ? bookSearch(book) : { title: "", author: "", year: "" };
     return {
-        isbn: book.manual ? "" : book.isbn,
+        isbn: book.manual && !book.isbnMiss ? "" : book.isbn,
         title: typed.title,
         author: typed.author,
         year: typed.year,
@@ -949,13 +970,17 @@ function recovered(state, action) {
 function recoveredBook(saved) {
     const s = saved && typeof saved === "object" ? saved : {};
     const book = initialBook();
+    const isbn = typeof s.isbn === "string" && /^\d{13}$/.test(s.isbn) ? s.isbn : "";
     if (s.manual === true) {
         // a book with no ISBN: its title (and the rest) is what names it
         book.manual = true;
         for (const field of TYPED_FIELDS) if (typeof s[field] === "string") book[field] = s[field];
         if (FORMATS.some((f) => f.value === s.format)) book.format = s.format;
-    } else if (typeof s.isbn === "string" && /^\d{13}$/.test(s.isbn)) {
-        book.isbn = s.isbn;
+        // ... or one whose ISBN no catalogue knows: that ISBN is kept for the listing
+        if (isbn && s.isbnMiss === true) Object.assign(book, { isbn, isbnMiss: true });
+    } else if (isbn) {
+        book.isbn = isbn;
+        book.isbnMiss = s.isbnMiss === true;
     }
     if (CONDITIONS.some((c) => c.value === s.condition)) book.condition = s.condition;
     if (typeof s.price === "string") book.price = s.price;
@@ -1040,23 +1065,25 @@ export function raiseCount(counters, itemName, n) {
  * not know the marks until a button is pressed).
  *
  * A book keeps, besides, what only the phone knows: the ISBN (or, with No
- * ISBN, the title, author, year and format he typed), the condition chip, the
+ * ISBN, the title, author, year and format he typed; after an ISBN no
+ * catalogue knows, both, and that it was a miss), the condition chip, the
  * price box, the main photo and the book the lookup found (so a reload does
  * not even have to ask the catalogues again). It has no AI marks.
  * @returns {null|{itemName:string, itemId:string, ai:number[]}
- *          |{mode:"book", itemName:string, itemId:string, isbn:string, manual:boolean, title:string,
+ *          |{mode:"book", itemName:string, itemId:string, isbn:string, isbnMiss:boolean, manual:boolean, title:string,
  *            author:string, year:string, format:string, condition:string, price:string,
  *            main:number, lookup:(null|object)}}
  */
 export function savedItem(state) {
     if (!state.itemId) return null;
     if (state.mode === "book") {
-        const { isbn, manual, title, author, year, format, condition, price, main, lookup } = state.book;
+        const { isbn, isbnMiss, manual, title, author, year, format, condition, price, main, lookup } = state.book;
         return {
             mode: "book",
             itemName: state.itemName,
             itemId: state.itemId,
             isbn,
+            isbnMiss,
             manual,
             title,
             author,
@@ -1178,10 +1205,13 @@ function waitHint(state) {
     return state.book.manual ? TITLE_WAIT_HINT : ISBN_WAIT_HINT;
 }
 
-/** The book has what names it: an ISBN, or (No ISBN) a title. */
+/** The book has what names it: an ISBN (one kept after a miss too), or (No ISBN) a title. */
 function bookNamed(book) {
-    return book.manual ? !!bookSearch(book).title : !!book.isbn;
+    return !!book.isbn || (book.manual && !!bookSearch(book).title);
 }
+
+/** The ebay line after an ISBN no catalogue knows, while No ISBN is closed: the next step. */
+export const ISBN_MISS_HINT = "Tap No ISBN and type the title";
 
 /**
  * The book's one button, ebay. It opens once the book is found in the
@@ -1202,14 +1232,15 @@ function bookVenueButton(state, venue, settingsOk) {
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     const { book } = state;
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
-    if (!bookNamed(book)) {
+    // under No ISBN the title is what is looked up, even with an ISBN kept after a miss
+    if (book.manual ? !bookSearch(book).title : !book.isbn) {
         return { enabled: false, hint: book.manual ? "Type the book's title first" : NO_BOOK_HINT };
     }
     switch (book.lookup.phase) {
         case "found":
             break;
         case "missing":
-            return { enabled: false, hint: "Not in the catalogues - post it as goods instead" };
+            return { enabled: false, hint: ISBN_MISS_HINT };
         case "failed":
             return {
                 enabled: false,

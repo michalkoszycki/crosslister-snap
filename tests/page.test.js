@@ -920,6 +920,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-isbn",
         "book-no-isbn",
         "book-manual",
+        "book-isbn-kept",
         "book-title",
         "book-author",
         "book-year",
@@ -1222,7 +1223,7 @@ test("a typed ISBN: a wrong check digit is not looked up; an ISBN-10 is, as its 
     assert.equal(nodes.get("book-venue-hint").textContent, "Snap the cover first");
 });
 
-test("a book not in the catalogues says to post it as goods; a PC that could not look says why", async (t) => {
+test("a book not in the catalogues points at No ISBN; a PC that could not look says why", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const books = {};
     const pc = fakePc({ books });
@@ -1233,9 +1234,14 @@ test("a book not in the catalogues says to post it as goods; a PC that could not
     t.mock.timers.tick(400);
     await settle();
     assert.equal(nodes.get("book-found").hidden, false);
-    assert.equal(nodes.get("book-lookup").textContent, "Not in the catalogues. Post it as goods instead.");
+    assert.equal(
+        nodes.get("book-lookup").textContent,
+        "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."
+    );
+    assert.equal(nodes.get("book-match").textContent, "9780804429573 is not in the catalogues", "the PC's words");
     assert.equal(nodes.get("book-card-title").hidden, true);
-    assert.equal(nodes.get("book-venue-hint").textContent, "Not in the catalogues - post it as goods instead");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Tap No ISBN and type the title");
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), true, "the next step, lit up");
 
     books[ISBN] = { status: 502, body: { detail: "the catalogues could not be reached" } };
     typeIsbn(nodes, ISBN);
@@ -1244,6 +1250,7 @@ test("a book not in the catalogues says to post it as goods; a PC that could not
     assert.equal(nodes.get("book-lookup").textContent, "the catalogues could not be reached");
     assert.equal(nodes.get("book-isbn").value, ISBN, "the ISBN is kept");
     assert.match(nodes.get("book-venue-hint").textContent, /edit the ISBN to try again/);
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), false, "a new ISBN: no miss to act on");
 
     // editing the box is the retry
     books[ISBN] = BOOK;
@@ -1679,4 +1686,122 @@ test("a reload reads a book with no ISBN back: the fields, the match, the price"
     assert.equal(nodes.get("book-match").textContent, "matched in the catalogues");
     assert.equal(nodes.get("book-price").value, "40");
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
+});
+
+// --- an ISBN no catalogue knows ------------------------------------------------------
+// Michal, 2026-09-28: he scanned 9781926856155; the catalogues did not know it and the
+// card said "Post it as goods instead", a dead end. No ISBN is the next step now, and it
+// keeps the ISBN: the PC lists the book with that ISBN and the title he types.
+
+const MISS = "9781926856155";
+
+test("an ISBN no catalogue knows: No ISBN keeps it, the title is searched, the job carries both", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const detail = `${MISS} is not in the catalogues (no Google Books key is set)`;
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        books: { [MISS]: { status: 404, body: { detail } } },
+        jobs: { j1: () => ({ state: "running", step: "listing the book" }) },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [MISS] });
+    const item = `Book ${MISS} ${TODAY}`;
+    nodes.get("mode-book").fire("click");
+
+    // the scan reads; the catalogues do not know the ISBN
+    fire(nodes, "book-scan-input");
+    await settle();
+    assert.equal(nodes.get("book-isbn").value, MISS);
+    assert.deepEqual(pc.calls, [`GET /books/${MISS}`]);
+    assert.equal(
+        nodes.get("book-lookup").textContent,
+        "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."
+    );
+    assert.equal(nodes.get("book-match").textContent, detail, "the PC's reason, in the small line");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Tap No ISBN and type the title");
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), true);
+
+    // the cover goes to the PC under the ISBN meanwhile; No ISBN still opens after that
+    fire(nodes, "book-snap-input");
+    await settle();
+    assert.deepEqual(pc.calls.slice(1), ["POST /items", `PUT /items/${item}/photos/1`]);
+    assert.equal(nodes.get("book-no-isbn").disabled, false);
+
+    nodes.get("book-no-isbn").fire("click");
+    assert.equal(nodes.get("book-manual").hidden, false);
+    assert.equal(nodes.get("book-no-isbn").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), false, "done: it is open");
+    assert.equal(nodes.get("book-isbn").value, MISS, "the ISBN box is not emptied");
+    assert.equal(nodes.get("book-isbn").classList.contains("kept"), true);
+    assert.equal(nodes.get("book-isbn-kept").hidden, false);
+    assert.equal(nodes.get("book-isbn-kept").textContent, `ISBN ${MISS} kept: it goes on the listing`);
+    assert.equal(nodes.get("book-venue-hint").textContent, "Type the book's title first");
+
+    // the title typed: searched as any book with no ISBN, the folder left as it is
+    typeInto(nodes, "book-title", "Coast Salish recipes");
+    typeInto(nodes, "book-author", "Ann Smith");
+    t.mock.timers.tick(600);
+    await settle();
+    assert.deepEqual(pc.calls.slice(3), ["GET /books/search?title=Coast%20Salish%20recipes&author=Ann%20Smith&year="]);
+    assert.equal(nodes.get("book-lookup").textContent, "");
+    assert.equal(nodes.get("book-card-title").textContent, "Coast Salish recipes");
+    assert.equal(nodes.get("book-match").textContent, "Not in the catalogues: it will be listed as typed");
+    assert.equal(nodes.get("book-price").value, "6", "eBay's price for the title");
+    assert.equal(bookShot(nodes, 0).label.textContent, `Book ${MISS}-1.jpg`);
+    const saved = JSON.parse(local.getItem("snap.book"));
+    assert.deepEqual([saved.isbn, saved.isbnMiss, saved.manual, saved.title], [MISS, true, true, "Coast Salish recipes"]);
+
+    assert.equal(nodes.get("book-ebay-btn").disabled, false);
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [
+        {
+            item,
+            venue: "ebay",
+            book: {
+                isbn: MISS,
+                title: "Coast Salish recipes",
+                author: "Ann Smith",
+                year: "",
+                format: "paperback",
+                condition: "good",
+                price: "6",
+                main: 1,
+            },
+        },
+    ]);
+    assert.equal(nodes.get("book-no-isbn").disabled, true, "fixed while it is being listed");
+});
+
+test("after a miss: No ISBN again asks about the kept ISBN afresh; a new ISBN replaces it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ books: { [ISBN]: BOOK } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("mode-book").fire("click");
+    typeIsbn(nodes, MISS);
+    t.mock.timers.tick(400);
+    await settle();
+    nodes.get("book-no-isbn").fire("click");
+    typeInto(nodes, "book-title", "Coast");
+
+    // closed again: what was typed goes, the ISBN stays and is asked about again
+    nodes.get("book-no-isbn").fire("click");
+    await settle();
+    assert.equal(nodes.get("book-manual").hidden, true);
+    assert.equal(nodes.get("book-title").value, "");
+    assert.equal(nodes.get("book-isbn").value, MISS);
+    assert.equal(nodes.get("book-isbn").classList.contains("kept"), false);
+    assert.deepEqual(pc.calls, [`GET /books/${MISS}`, `GET /books/${MISS}`], "the half-typed title never searched");
+    assert.match(nodes.get("book-lookup").textContent, /^Not in the catalogues\. Tap No ISBN/);
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), true);
+
+    // open, and a valid new ISBN typed over the kept one: it is the book, the fields close
+    nodes.get("book-no-isbn").fire("click");
+    typeIsbn(nodes, ISBN);
+    t.mock.timers.tick(400);
+    await settle();
+    assert.equal(nodes.get("book-manual").hidden, true);
+    assert.equal(nodes.get("book-isbn-kept").hidden, true);
+    assert.equal(nodes.get("book-no-isbn").classList.contains("next"), false);
+    assert.equal(pc.calls.at(-1), `GET /books/${ISBN}`);
+    assert.equal(nodes.get("book-card-title").textContent, "The Art of Computer Programming");
 });

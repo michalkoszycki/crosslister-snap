@@ -34,6 +34,7 @@ import {
     lookupKey,
     NO_BOOK_HINT,
     TITLE_WAIT_HINT,
+    ISBN_MISS_HINT,
 } from "../core.js";
 import {
     bookCard,
@@ -45,6 +46,8 @@ import {
     DEFAULT_FORMAT,
     FORMATS,
     formatOf,
+    ISBN_MISS,
+    isbnKept,
     LISTED_AS_TYPED,
     MATCHED,
     money,
@@ -594,9 +597,21 @@ test("the lookup: looking, found (the card and the price box filled), a late ans
 
 test("the lookup: 404 is not in the catalogues; anything else shows the PC's words", () => {
     const s = reduce(bookState(), { type: "bookIsbn", isbn: ISBN });
+    assert.equal(s.book.isbnMiss, false);
     const missing = reduce(s, { type: "bookLookupFailed", isbn: ISBN, status: 404, error: "no book" });
     assert.equal(missing.book.lookup.phase, "missing");
-    assert.equal(bookCard(missing.book).status, "Not in the catalogues. Post it as goods instead.");
+    assert.equal(missing.book.isbnMiss, true, "remembered past the card: No ISBN keeps it");
+    // not a dead end: No ISBN is the next step, and the PC's words are the small line
+    assert.equal(ISBN_MISS, "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing.");
+    assert.deepEqual(bookCard(missing.book), {
+        hidden: false,
+        status: ISBN_MISS,
+        kind: "bad",
+        title: "",
+        authors: "",
+        details: "",
+        note: "no book",
+    });
     const failed = reduce(s, {
         type: "bookLookupFailed",
         isbn: ISBN,
@@ -628,10 +643,8 @@ test("the book's ebay button: ISBN, found, a photo, a price, every photo on the 
     assert.equal(hint(bookState()), "Scan the ISBN, or tap No ISBN and type the title");
     const isbn = reduce(bookState(), { type: "bookIsbn", isbn: ISBN });
     assert.equal(hint(isbn), "Looking the book up...");
-    assert.match(
-        hint(reduce(isbn, { type: "bookLookupFailed", isbn: ISBN, status: 404, error: "" })),
-        /post it as goods/
-    );
+    assert.equal(ISBN_MISS_HINT, "Tap No ISBN and type the title");
+    assert.equal(hint(reduce(isbn, { type: "bookLookupFailed", isbn: ISBN, status: 404, error: "" })), ISBN_MISS_HINT);
     assert.match(
         hint(reduce(isbn, { type: "bookLookupFailed", isbn: ISBN, status: 502, error: "down" })),
         /edit the ISBN to try again/
@@ -755,6 +768,7 @@ test("a book is kept for a reload with its ISBN, condition, price and found reco
         itemName: `Book ${ISBN}`,
         itemId: `Book ${ISBN} 2026-09-24`,
         isbn: ISBN,
+        isbnMiss: false,
         manual: false,
         title: "",
         author: "",
@@ -823,6 +837,11 @@ test("the line above the ISBN button says what to do, or why the ISBN must be ty
         "No ISBN: type the title as the cover has it. The PC finds the book and a price."
     );
     assert.equal(scanHint({ ...base, manual: true, hasItem: true }), "");
+    // ... opened after an ISBN no catalogue knows: that ISBN stays
+    assert.equal(
+        scanHint({ ...base, manual: true, kept: true }),
+        "Type the title as the cover has it. The PC finds a price; the ISBN stays on the listing."
+    );
     assert.equal(scanHint({ ...base, canScan: false }), "This phone cannot read barcodes; type the ISBN");
     assert.equal(scanHint({ ...base, scan: "reading" }), "Reading the barcode...");
     assert.equal(
@@ -1081,7 +1100,6 @@ test("No ISBN: a title no catalogue knows is listed as typed, not sent to goods"
     });
     assert.equal(LISTED_AS_TYPED, "Not in the catalogues: it will be listed as typed");
     assert.equal(s.book.price, "6", "eBay's price for the title still fills the box");
-    assert.notEqual(venueButton(s, "ebay", true).hint, "Not in the catalogues - post it as goods instead");
     assert.equal(venueButton(s, "ebay", true).hint, "Snap the cover first");
     // a 404 by title is the PC's words, never "post it as goods"
     const k = lookupKey(s.book);
@@ -1211,4 +1229,181 @@ test("No ISBN: the typed book is kept for a reload and read back, fields, match 
         answer: { photos: [1] },
     });
     assert.equal(odd.book.isbn, "");
+});
+
+// --- books: an ISBN no catalogue knows ---------------------------------------------------
+// Michal, 2026-09-28: he scanned 9781926856155, the catalogues did not know it, and the
+// card said "Post it as goods instead" -- a dead end. Now No ISBN is the next step, and
+// it keeps the ISBN: the title is typed and searched, and the job carries both.
+
+const MISS = "9781926856155";
+const MISS_DETAIL = `${MISS} is not in the catalogues (no Google Books key is set)`;
+
+/** An ISBN scanned (n covers snapped meanwhile) and asked about: the PC's 404. */
+function missedBook(n = 0) {
+    let s = reduce(bookState(), { type: "bookIsbn", isbn: MISS });
+    for (let i = 1; i <= n; i += 1) s = reduce(s, { type: "add", id: `m${i}`, name: `Book ${MISS}-${i}.jpg`, n: i });
+    s = reduce(s, { type: "bookLookupStart", key: MISS });
+    return reduce(s, { type: "bookLookupFailed", key: MISS, status: 404, error: MISS_DETAIL });
+}
+
+/** The folder made on the PC and every photo sent. */
+function onPc(s) {
+    const item = { kind: "item", name: s.itemName };
+    let next = reduce(reduce(s, { type: "taskStart", task: item }), {
+        type: "taskDone",
+        task: item,
+        answer: { item: `${s.itemName} 2026-09-28`, photos: [] },
+    });
+    for (const p of next.photos) {
+        const task = { kind: "photo", id: p.id, n: p.n };
+        next = reduce(reduce(next, { type: "taskStart", task }), { type: "taskDone", task, answer: {} });
+    }
+    return next;
+}
+
+test("an ISBN no catalogue knows: No ISBN is the next step, and it keeps the ISBN", () => {
+    const s = missedBook();
+    assert.equal(s.book.isbnMiss, true);
+    assert.equal(bookCard(s.book).status, ISBN_MISS);
+    assert.equal(bookCard(s.book).note, MISS_DETAIL, "the PC's words, in the small line");
+    assert.equal(venueButton(s, "ebay", true).hint, ISBN_MISS_HINT);
+    assert.equal(doneButton(s).enabled, true, "DONE can still clear it");
+
+    const open = reduce(s, { type: "bookManual", open: true });
+    assert.equal(open.book.manual, true);
+    assert.equal(open.book.isbn, MISS, "kept, not set aside");
+    assert.equal(open.book.isbnMiss, true);
+    assert.equal(open.itemName, `Book ${MISS}`, "the ISBN still names the folder");
+    assert.equal(open.book.lookup.phase, "idle", "the next question is the title");
+    assert.equal(isbnKept(open.book), `ISBN ${MISS} kept: it goes on the listing`);
+    assert.equal(isbnKept(s.book), "", "said only once the fields are open");
+    assert.equal(isbnKept(typedBook().book), "", "No ISBN on a book without one keeps nothing");
+    assert.equal(lookupKey(open.book), "", "nothing to search until the title is typed");
+    assert.equal(venueButton(open, "ebay", true).hint, "Type the book's title first");
+    assert.equal(doneButton(open).enabled, true);
+
+    // the title typed: it does not rename the folder, it is what is searched
+    let t = reduce(open, { type: "bookField", field: "title", text: "Coast  Salish recipes" });
+    t = reduce(t, { type: "bookField", field: "author", text: "Ann Smith" });
+    t = reduce(t, { type: "bookName" });
+    assert.equal(t.itemName, `Book ${MISS}`);
+    const key = lookupKey(t.book);
+    assert.equal(key, JSON.stringify(["Coast Salish recipes", "Ann Smith", ""]));
+    t = reduce(t, { type: "bookLookupStart", key });
+    assert.equal(t.book.lookup.by, "title");
+    const answer = { ...MATCH, found: false, title: "", authors: [], publisher: "", year: "", format: "", pages: 0, price: "9" };
+    t = reduce(t, { type: "bookLookupDone", key, answer });
+    assert.equal(t.book.lookup.phase, "found");
+    assert.equal(t.book.isbnMiss, true, "found by title: the ISBN is still one no catalogue knows");
+    assert.equal(t.book.price, "9");
+    assert.equal(bookCard(t.book).title, "Coast Salish recipes");
+    assert.equal(bookCard(t.book).note, LISTED_AS_TYPED);
+    assert.equal(venueButton(t, "ebay", true).hint, "Snap the cover first");
+});
+
+test("an ISBN no catalogue knows: the job carries the ISBN and the typed fields both", () => {
+    // the cover went to the PC under the ISBN before the miss was known: No ISBN still opens
+    let s = onPc(missedBook(2));
+    assert.equal(s.itemId, `Book ${MISS} 2026-09-28`);
+    s = reduce(s, { type: "bookManual", open: true });
+    assert.equal(s.book.manual, true, "the fields only describe the book: the folder stays as it is");
+    for (const [field, text] of [
+        ["title", " Coast Salish  recipes "],
+        ["author", "Ann Smith"],
+        ["year", "1998"],
+    ]) {
+        s = reduce(s, { type: "bookField", field, text });
+    }
+    s = reduce(s, { type: "bookFormat", format: "hardcover" });
+    const key = lookupKey(s.book);
+    s = reduce(s, { type: "bookLookupDone", key, answer: { ...MATCH, found: false, price: "9" } });
+    s = reduce(s, { type: "bookMain", id: "m2" });
+    assert.deepEqual(venueButton(s, "ebay", true), { enabled: true, hint: "" });
+    assert.deepEqual(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, book: bookForm(s) }), {
+        item: `Book ${MISS} 2026-09-28`,
+        venue: "ebay",
+        book: {
+            isbn: MISS,
+            title: "Coast Salish recipes",
+            author: "Ann Smith",
+            year: "1998",
+            format: "hardcover",
+            condition: "good",
+            price: "9",
+            main: 2,
+        },
+    });
+    // without a miss No ISBN is grey once the folder is made, as before
+    const made = foundBook();
+    assert.equal(reduce(made, { type: "bookManual", open: true }), made);
+});
+
+test("an ISBN no catalogue knows: a new ISBN clears the miss; closing the fields keeps the ISBN", () => {
+    const open = reduce(missedBook(), { type: "bookManual", open: true });
+    const typed = reduce(open, { type: "bookField", field: "title", text: "Coast Salish recipes" });
+    // the kept ISBN typed again, or anything not an ISBN: nothing changes
+    assert.equal(reduce(typed, { type: "bookIsbn", isbn: MISS }), typed);
+    assert.equal(reduce(typed, { type: "bookIsbn", isbn: "" }), typed);
+    // a valid new one replaces it and closes the fields, as ever
+    const other = reduce(typed, { type: "bookIsbn", isbn: ISBN });
+    assert.equal(other.book.isbn, ISBN);
+    assert.equal(other.book.isbnMiss, false);
+    assert.equal(other.book.manual, false);
+    assert.equal(other.book.title, "");
+    assert.equal(other.itemName, `Book ${ISBN}`);
+    assert.equal(bookForm(other).title, "");
+    // No ISBN again: the typed fields go, the ISBN stays, and it is asked about afresh
+    const closed = reduce(typed, { type: "bookManual", open: false });
+    assert.equal(closed.book.manual, false);
+    assert.equal(closed.book.title, "");
+    assert.equal(closed.book.isbn, MISS);
+    assert.equal(closed.book.isbnMiss, true);
+    assert.equal(closed.book.lookup.phase, "idle");
+    assert.equal(lookupKey(closed.book), MISS);
+    // ... and should a catalogue know it by then, it is no miss any more
+    const found = reduce(closed, { type: "bookLookupDone", key: MISS, answer: ANSWER });
+    assert.equal(found.book.isbnMiss, false);
+    // a miss by title is no ISBN miss
+    const byTitle = typedBook();
+    const failed = reduce(byTitle, { type: "bookLookupFailed", key: lookupKey(byTitle.book), status: 404, error: "" });
+    assert.equal(failed.book.isbnMiss, false);
+});
+
+test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => {
+    let s = onPc(missedBook(1));
+    s = reduce(s, { type: "bookManual", open: true });
+    s = reduce(s, { type: "bookField", field: "title", text: "Coast Salish recipes" });
+    const key = lookupKey(s.book);
+    s = reduce(s, { type: "bookLookupDone", key, answer: { ...MATCH, found: false, price: "9" } });
+    const saved = savedItem(s);
+    assert.deepEqual(
+        [saved.isbn, saved.isbnMiss, saved.manual, saved.title, saved.lookup.by],
+        [MISS, true, true, "Coast Salish recipes", "title"]
+    );
+    const back = reduce(bookState(), {
+        type: "recovered",
+        mode: "book",
+        itemName: saved.itemName,
+        itemId: saved.itemId,
+        book: JSON.parse(JSON.stringify(saved)),
+        answer: { item: saved.itemId, photos: [1], note: "", sku: null, jobs: [] },
+    });
+    assert.deepEqual(
+        [back.book.isbn, back.book.isbnMiss, back.book.manual, back.book.title, back.book.lookup.phase],
+        [MISS, true, true, "Coast Salish recipes", "found"]
+    );
+    assert.equal(bookForm(back).isbn, MISS);
+    assert.equal(bookForm(back).title, "Coast Salish recipes");
+    // the miss with the fields closed comes back as a miss: the page asks again
+    const shut = savedItem(onPc(missedBook(1)));
+    const again = reduce(bookState(), {
+        type: "recovered",
+        mode: "book",
+        itemName: shut.itemName,
+        itemId: shut.itemId,
+        book: shut,
+        answer: { photos: [1] },
+    });
+    assert.deepEqual([again.book.isbn, again.book.isbnMiss, again.book.lookup.phase], [MISS, true, "idle"]);
 });
