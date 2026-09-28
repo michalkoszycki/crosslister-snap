@@ -63,6 +63,7 @@ import {
     CONDITIONS,
     FORMATS,
     ISBN_DEBOUNCE_MS,
+    isbnKept,
     normalizeIsbn,
     priceNote,
     scanHint,
@@ -292,16 +293,32 @@ function renderBook() {
     const scanReady = canScan() && !locked && !busy && !hasItem && scan !== "reading";
     el.bookScanLabel.classList.toggle("disabled", !scanReady);
     el.bookScanInput.disabled = !scanReady;
-    const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy, manual: book.manual });
+    const kept = isbnKept(book);
+    const hint = scanHint({
+        canScan: canScan(),
+        scan,
+        hasItem,
+        locked,
+        restoring: busy,
+        manual: book.manual,
+        kept: !!kept,
+    });
     el.bookHint.textContent = hint;
     el.bookHint.hidden = !hint;
     el.bookIsbn.readOnly = busy || hasItem;
+    // the ISBN kept after a miss stays in its box, looking set aside: a new one may still replace it
+    el.bookIsbn.classList.toggle("kept", !!kept);
 
-    // No ISBN: open or closed until the folder is named on the PC, like the ISBN
+    // No ISBN: open or closed until the folder is named on the PC, like the ISBN --
+    // except after an ISBN no catalogue knows: that ISBN goes on naming the folder,
+    // the fields only describe the book, and No ISBN is the next step, lit up
     const sending = anyActive(state);
-    el.bookNoIsbn.disabled = busy || hasItem || locked;
+    el.bookNoIsbn.disabled = busy || locked || (hasItem && !book.isbnMiss);
+    el.bookNoIsbn.classList.toggle("next", book.isbnMiss && !book.manual && !locked);
     el.bookNoIsbn.setAttribute("aria-expanded", book.manual ? "true" : "false");
     el.bookManual.hidden = !book.manual;
+    el.bookIsbnKept.textContent = kept;
+    el.bookIsbnKept.hidden = !kept;
     // the typed book may still be corrected (a typo) until it is being listed
     for (const node of [el.bookTitleInput, el.bookAuthor, el.bookYear]) node.readOnly = busy || sending;
     for (const { value, node } of el.formatChips) {
@@ -585,8 +602,10 @@ function onIsbnInput() {
 function takeIsbn(isbn) {
     const before = slots.book;
     if (isbn === before.book.isbn) {
-        // the same ISBN again (or, under No ISBN, no valid one: ignored) asks again only after a failure
-        if (isbn && ["idle", "failed"].includes(before.book.lookup.phase)) lookupBook().catch(() => {});
+        // the same ISBN again (or, under No ISBN, no valid one: ignored) asks again only after a
+        // failure; under No ISBN the ISBN kept after a miss is not the question, the title is
+        const again = isbn && !before.book.manual && ["idle", "failed"].includes(before.book.lookup.phase);
+        if (again) lookupBook().catch(() => {});
         return;
     }
     setState("book", reduce(before, { type: "bookIsbn", isbn }));
@@ -616,10 +635,14 @@ function fillManual() {
  * No ISBN, tapped: the title fields open and the ISBN box is set aside (and
  * emptied, so it cannot look like the book); tapped again, they close and
  * what was typed in them goes. Until the book's folder is on the PC.
+ *
+ * After an ISBN no catalogue knows, the box keeps that ISBN (it goes on the
+ * listing, with the title typed now), and the fields open even with the
+ * folder on the PC; closed again, the ISBN is asked about afresh.
  */
 function onNoIsbn() {
     const s = slots.book;
-    if (restoring.book || s.itemId || photosLocked(s)) return;
+    if (restoring.book || (s.itemId && !s.book.isbnMiss) || photosLocked(s)) return;
     const open = !s.book.manual;
     clearTimeout(isbnTimer);
     isbnTimer = null;
@@ -628,9 +651,10 @@ function onNoIsbn() {
     scan = "";
     setState("book", reduce(s, { type: "bookManual", open }));
     fillManual();
-    el.bookIsbn.value = "";
+    el.bookIsbn.value = slots.book.book.isbn; // "" unless kept after a miss
     el.bookPrice.value = slots.book.book.price;
     if (open) el.bookTitleInput.focus();
+    retryLookup(); // closed again after a miss: the kept ISBN is asked about afresh
 }
 
 /** A keystroke in the title, author or year: the name and the search wait for him to stop. */
@@ -1128,6 +1152,7 @@ function main() {
         bookIsbn: $("book-isbn"),
         bookNoIsbn: $("book-no-isbn"),
         bookManual: $("book-manual"),
+        bookIsbnKept: $("book-isbn-kept"),
         bookTitleInput: $("book-title"),
         bookAuthor: $("book-author"),
         bookYear: $("book-year"),

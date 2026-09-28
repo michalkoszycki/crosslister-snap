@@ -13,6 +13,12 @@
 // a title, an author, a year and paperback | hardcover; the PC is asked by
 // title (GET /books/search) and answers as for an ISBN, matched or not. A book
 // no catalogue knows is still a book: it is listed as typed.
+//
+// Some books have an ISBN no catalogue knows (Michal, 2026-09-28: a scanned
+// 9781926856155 ended at "Post it as goods instead", a dead end). After such a
+// miss No ISBN is the next step, and it keeps the ISBN: the title, author, year
+// and format are typed, the book is searched by title as above, and the job
+// carries the ISBN and the typed fields both, so the ISBN stays on the listing.
 
 /**
  * The four conditions eBay's book category takes, in the order the chips show
@@ -252,14 +258,31 @@ export function bookListings(listings) {
 
 /** The small line under a book found by its title. */
 export const MATCHED = "matched in the catalogues";
-/** ... and under one no catalogue knows: not a dead end, as a missing ISBN is. */
+/** ... and under one no catalogue knows: not a dead end. */
 export const LISTED_AS_TYPED = "Not in the catalogues: it will be listed as typed";
+/**
+ * The card after an ISBN no catalogue knows. Not "post it as goods" any more:
+ * No ISBN takes the title and keeps the ISBN for the listing.
+ */
+export const ISBN_MISS = "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing.";
+
+/**
+ * The small line at the top of the No ISBN fields once they were opened after
+ * an ISBN no catalogue knows: that ISBN is not dropped, as it is when No ISBN
+ * opens on a book that simply has none.
+ * @param {{isbn:string, manual:boolean, isbnMiss:boolean}} book
+ * @returns {string} "" when there is no ISBN to keep
+ */
+export function isbnKept(book) {
+    return book.manual && book.isbnMiss && book.isbn ? `ISBN ${book.isbn} kept: it goes on the listing` : "";
+}
 
 /**
  * The book card: hidden until there is an ISBN (or, with No ISBN, a title);
  * then "looking up", the book (title in bold, the authors, "publisher · year ·
- * format · pages"), "not in the catalogues", or the PC's own words for why it
- * could not look.
+ * format · pages"), "not in the catalogues" (what to do next, and the PC's own
+ * words for it in the small line: they may say why, a catalogue key not set),
+ * or the PC's own words for why it could not look.
  *
  * A book looked up by its title says under it whether a catalogue matched it;
  * when none did, the card shows what he typed, since that is what will be listed.
@@ -297,7 +320,7 @@ export function bookCard(book) {
             };
         }
         case "missing":
-            return { ...empty, status: "Not in the catalogues. Post it as goods instead.", kind: "bad" };
+            return { ...empty, status: ISBN_MISS, kind: "bad", note: lookup.error };
         case "failed":
             return { ...empty, status: lookup.error || "the book was not looked up", kind: "bad" };
         default:
@@ -325,14 +348,16 @@ export function bookCard(book) {
  * @param {boolean} o.locked    the listing went: the photos are its
  * @param {boolean} o.restoring the book is being read back after a reload
  * @param {boolean} [o.manual]  No ISBN is open: the title is typed instead
+ * @param {boolean} [o.kept]    ... after an ISBN no catalogue knows, which it keeps
  * @returns {string} "" when there is nothing to say
  */
-export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false }) {
+export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false, kept = false }) {
     if (restoring) return "Reading this book back from the PC...";
     if (locked) return "These photos went with the listing. DONE starts the next book.";
     if (scan === "reading") return "Reading the barcode...";
     if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";
+    if (manual && kept) return "Type the title as the cover has it. The PC finds a price; the ISBN stays on the listing.";
     if (manual) return "No ISBN: type the title as the cover has it. The PC finds the book and a price.";
     if (!canScan) return "This phone cannot read barcodes; type the ISBN";
     return `Tap ISBN to read the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;

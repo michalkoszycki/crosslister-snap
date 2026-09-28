@@ -434,6 +434,11 @@ button.badge.failed {
     color: var(--muted);
 }
 .secondary.no-isbn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+/* after an ISBN no catalogue knows it is the next step: filled, as a pressed chip is */
+.secondary.no-isbn.next { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* ... and the ISBN it keeps looks set aside, not waiting for more typing (it can still be replaced) */
+input[type="text"].kept { background: transparent; color: var(--muted); }
+.isbn-kept { margin: 12px 0 0; }
 /* the fields it opens: no box of their own, they read as part of the screen */
 .manual { border: none; margin: 0; padding: 0; min-width: 0; }
 .manual legend { padding: 0; margin: 12px 0 0; }
