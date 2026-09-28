@@ -5,10 +5,11 @@
 // Scan is handed to it and the EAN-13 under the bars comes back. iPhones and
 // desktop browsers have no BarcodeDetector; there the answer is simply "" and
 // the page asks for the ISBN to be typed, which is what canScan() lets it say
-// up front. Nothing here throws: an unreadable photo is "", not an error,
-// because the photo itself is still wanted (it is the back cover).
+// up front. Nothing here throws: an unreadable photo is "", not an error; the
+// page then asks for another try or the typed number. The photo is only read
+// here, never kept: the barcode close-up is not a listing photo.
 
-import { normalizeIsbn } from "./book.js?v=1.7.0";
+import { normalizeIsbn } from "./book.js?v=1.8.0";
 
 /** True when this browser can read a barcode from a photo. */
 export function canScan() {

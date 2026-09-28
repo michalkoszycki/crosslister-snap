@@ -86,11 +86,16 @@ between them.
   it was, its photos still going to the PC.
 - Tap **Scan** and photograph the barcode on the back cover, close and flat.
   The ISBN box fills, and a moment later the book's card shows its title,
-  authors, publisher, year, format and pages. That photo is the listing's
-  first. (No card: see "When something goes wrong".)
+  authors, publisher, year, format and pages. That picture is only read for the
+  number: it is not one of the listing's photos, so a close-up of the barcode
+  is all it needs. (No card: see "When something goes wrong".)
 - Or type the ISBN printed above or under the barcode into the box (10 or 13
   digits, hyphens fine). It is looked up as soon as the last digit is in.
 - **Snap** the front cover, and anything worth showing (the spine, a flaw).
+- The first photo leads the listing: it wears **main** at its bottom right
+  (where goods have **AI**), filled blue. To lead with another, tap its
+  **main**; the mark moves there. Deleting the main photo gives the mark back
+  to the first one left. Once **ebay** is pressed the mark stays put.
 - Tap the **condition**: Like new, Very good, Good (already chosen) or
   Acceptable.
 - Check the **price**. It is filled with the PC's suggestion from eBay's own
@@ -131,7 +136,7 @@ PC). Tap `failed` to send it again, or the x to drop it.
 
 **The page was reloaded or closed**
 It reads the item back from the PC: the photos that were `sent` (shown as "on
-the PC"), the AI marks, the note and the jobs. Photos still `waiting` at that
+the PC"), the AI marks (a book's main mark), the note and the jobs. Photos still `waiting` at that
 moment are gone from the page; take them again.
 
 **"wrong key - check Settings"** (at the top, or under a button)
@@ -140,13 +145,12 @@ The key does not match any in `CROSSLISTER_KEYS`. Re-copy it from `.env`; if
 
 **Books: "This phone cannot read barcodes; type the ISBN"**
 Reading the barcode needs Chrome on Android; iPhones (and Safari) have no
-barcode reader for web pages. Type the ISBN into the box instead; Scan still
-takes the back-cover photo.
+barcode reader for web pages, so Scan stays grey there. Type the ISBN into
+the box instead.
 
-**Books: "No barcode found — type the ISBN under the barcode"**
-The photo was too far, blurred or at an angle. Tap **Scan** again closer, or
-type the ISBN. The missed photo is kept (it goes to the PC once the book has
-its ISBN); its **x** drops it if it is not worth keeping.
+**Books: "No barcode found — try again closer, or type the ISBN under the barcode"**
+The picture was too far, blurred or at an angle. Tap **Scan** again closer, or
+type the ISBN. Nothing else changes: the missed picture is not kept.
 
 **Books: "Not in the catalogues. Post it as goods instead."**
 The PC's catalogues do not know that ISBN (old, local or self-published books).

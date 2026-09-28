@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.7.0">
+<link rel="stylesheet" href="styles.css?v=1.8.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -117,9 +117,11 @@
   </section>
 
   <!-- The book mode: the barcode names the book, the PC finds it in the catalogues
-       and prices it from eBay, so there is no item name to type and no AI mark. -->
+       and prices it from eBay, so there is no item name to type and no AI mark.
+       The Scan picture is only read for the barcode, never kept as a photo; the
+       photos come from Snap, and "main" on one of them leads the listing. -->
   <section id="book" hidden>
-    <p id="book-hint" class="small">Scan the barcode on the back cover, or type the ISBN.</p>
+    <p id="book-hint" class="small">Scan the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
     <label id="book-scan-label" class="big snap" for="book-scan-input">Scan</label>
     <input id="book-scan-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
@@ -191,6 +193,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.7.0"></script>
+<script type="module" src="app.js?v=1.8.0"></script>
 </body>
 </html>

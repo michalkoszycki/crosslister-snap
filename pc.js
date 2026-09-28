@@ -16,7 +16,10 @@
 // A venue button:
 //   POST   <pc>/jobs                  {"item", "venue", "ai": [n...]} or {"sku", "venue"}
 //                                      or, a book: {"item", "venue": "ebay",
-//                                                   "book": {"isbn", "condition", "price"}}
+//                                                   "book": {"isbn", "condition", "price", "main"}}
+//                                      (main: the number n of the photo the listing leads with;
+//                                       always sent, the first photo unless he moved the mark)
+//                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
 //   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
@@ -24,7 +27,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.7.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.8.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {

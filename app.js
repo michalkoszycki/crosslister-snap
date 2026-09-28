@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.7.0";
+import { VERSION } from "./version.js?v=1.8.0";
 import {
     anyActive,
     bannerText,
@@ -40,8 +40,8 @@ import {
     venueButton,
     venueLine,
     VENUES,
-} from "./core.js?v=1.7.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.7.0";
+} from "./core.js?v=1.8.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.8.0";
 import {
     checkPc,
     createItem,
@@ -53,8 +53,8 @@ import {
     postJob,
     putNote,
     putPhoto,
-} from "./pc.js?v=1.7.0";
-import { shrinkPhoto } from "./shrink.js?v=1.7.0";
+} from "./pc.js?v=1.8.0";
+import { shrinkPhoto } from "./shrink.js?v=1.8.0";
 import {
     bookCard,
     CONDITIONS,
@@ -62,8 +62,8 @@ import {
     normalizeIsbn,
     priceNote,
     scanHint,
-} from "./book.js?v=1.7.0";
-import { canScan, readIsbn } from "./scan.js?v=1.7.0";
+} from "./book.js?v=1.8.0";
+import { canScan, readIsbn } from "./scan.js?v=1.8.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -280,8 +280,9 @@ function renderBook() {
     const busy = restoring.book;
     const hasItem = !!state.itemId;
 
-    // Scan names the book, so it is there only while the ISBN may still change
-    const scanReady = !locked && !busy && !hasItem && scan !== "reading";
+    // Scan names the book, so it is there only while the ISBN may still change,
+    // and only on a phone that can read the barcode: the picture is good for nothing else
+    const scanReady = canScan() && !locked && !busy && !hasItem && scan !== "reading";
     el.bookScanLabel.classList.toggle("disabled", !scanReady);
     el.bookScanInput.disabled = !scanReady;
     const hint = scanHint({ canScan: canScan(), scan, hasItem, locked, restoring: busy });
@@ -354,13 +355,17 @@ function renderVenue(state, venue, ok, nodes) {
     return button.hint;
 }
 
-/** The photos. A book's carry no AI mark: its catalogue record says what it is. */
+/**
+ * The photos. A book's carry no AI mark (its catalogue record says what it is);
+ * in its place, "main": the photo the listing leads with.
+ */
 function renderStrip(m, strip, locked) {
     const state = slots[m];
     strip.replaceChildren();
     for (const p of state.photos) {
+        const lead = m === "book" && p.n === state.book.main;
         const card = document.createElement("li");
-        card.className = p.ai ? "shot shot-ai" : "shot";
+        card.className = p.ai ? "shot shot-ai" : lead ? "shot shot-main" : "shot";
 
         const held = blobs.get(p.id);
         if (held) {
@@ -421,6 +426,23 @@ function renderStrip(m, strip, locked) {
                 setState("goods", reduce(slots.goods, { type: "toggleAi", id: p.id }))
             );
             card.append(ai);
+        } else {
+            // the main mark, where goods have the AI mark and looking the same:
+            // exactly one photo wears it (the first unless he moved it), a tap
+            // moves it here, and after the ebay press it shows but stays put
+            const main = document.createElement("button");
+            main.type = "button";
+            main.id = `book-main-${p.n}`;
+            main.className = lead ? "main-mark on" : "main-mark";
+            main.textContent = "main";
+            main.disabled = locked;
+            main.setAttribute("data-value", String(p.n));
+            main.setAttribute("aria-pressed", lead ? "true" : "false");
+            main.setAttribute("aria-label", `Lead the listing with ${p.name}`);
+            main.addEventListener("click", () =>
+                setState("book", reduce(slots.book, { type: "bookMain", id: p.id }))
+            );
+            card.append(main);
         }
 
         const label = document.createElement("span");
@@ -462,7 +484,8 @@ function onItemNameChanged() {
 /**
  * Photos taken or picked: onto the page at once, and into the upload queue.
  * A goods item needs its name first; a book's photos may come before its ISBN
- * (a barcode that would not read) and wait on the page until it names them.
+ * (the cover snapped before the barcode is scanned or the ISBN typed) and wait
+ * on the page until it names them.
  */
 function acceptFiles(m, fileList) {
     const s = slots[m];
@@ -498,10 +521,10 @@ function removePhoto(m, id) {
 // --- the book: scan, ISBN, lookup ------------------------------------------------
 
 /**
- * Scan: the barcode is read first, so the ISBN names the item before its
- * first photo goes; then the photo joins the strip either way -- the back
- * cover is a fine listing photo, and a barcode that would not read leaves it
- * waiting on the page for the typed ISBN.
+ * Scan: the picture is read for its barcode and then dropped. It is a close-up
+ * of the bars, not a listing photo (Michal, 2026-09-27), so it never joins the
+ * strip, never goes to the PC and is not kept here. A barcode that would not
+ * read changes nothing but the line above Scan.
  */
 async function onScan(files) {
     const file = files && files[0];
@@ -512,13 +535,15 @@ async function onScan(files) {
     const isbn = await readIsbn(file);
     if (mine !== generation.book) return;
     scan = isbn ? "" : "missed";
-    if (isbn) {
-        el.bookIsbn.value = isbn;
-        clearTimeout(isbnTimer);
-        isbnTimer = null;
-        takeIsbn(isbn);
+    if (!isbn) {
+        render();
+        return;
     }
-    acceptFiles("book", [file]);
+    el.bookIsbn.value = isbn;
+    clearTimeout(isbnTimer);
+    isbnTimer = null;
+    takeIsbn(isbn);
+    render(); // the same ISBN again changes no state, but "reading" is over
 }
 
 function onIsbnInput() {

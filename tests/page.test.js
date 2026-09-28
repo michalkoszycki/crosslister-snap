@@ -861,7 +861,19 @@ function typeIsbn(nodes, text) {
 function bookShot(nodes, i) {
     const li = nodes.get("book-strip").children[i];
     const child = (cls) => li.children.find((c) => c.className && c.className.split(" ")[0] === cls);
-    return { li, x: child("kill"), ai: child("ai-mark"), badge: child("badge"), label: child("shot-name") };
+    return {
+        li,
+        x: child("kill"),
+        ai: child("ai-mark"),
+        main: child("main-mark"),
+        badge: child("badge"),
+        label: child("shot-name"),
+    };
+}
+
+/** Which photos wear the main mark, by number: [false, true, false]. */
+function mains(nodes) {
+    return nodes.get("book-strip").children.map((_, i) => bookShot(nodes, i).main.attrs["aria-pressed"] === "true");
 }
 
 test("the book section is its own, beside the goods one, and reads top to bottom", () => {
@@ -965,19 +977,26 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("mode-book").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("mode-goods").attrs["aria-pressed"], "false");
     assert.equal(local.getItem("snap.mode"), "book", "remembered on this phone");
-    assert.equal(nodes.get("book-hint").textContent, "Scan the barcode on the back cover, or type the ISBN.");
+    assert.equal(
+        nodes.get("book-hint").textContent,
+        "Scan the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo."
+    );
     assert.equal(nodes.get("book-found").hidden, true);
     assert.equal(nodes.get("book-ebay-btn").disabled, true);
     assert.equal(nodes.get("book-venue-hint").textContent, "Scan or type the ISBN first");
     assert.equal(nodes.get("book-next-item").disabled, true);
     assert.equal(nodes.get("book-condition-good").attrs["aria-pressed"], "true", "good by default");
 
-    // Scan: the barcode names the book, the PC looks it up, and the photo is its first
+    // Scan: the barcode names the book and the PC looks it up. The picture is a
+    // close-up of the bars, read and dropped: not in the strip, never sent
     fire(nodes, "book-scan-input");
     await settle();
     assert.equal(nodes.get("book-isbn").value, ISBN);
-    assert.deepEqual(pc.calls, [`GET /books/${ISBN}`, "POST /items", `PUT /items/${item}/photos/1`]);
-    assert.equal(pc.items.get(item).photos.get(1), "jpeg 2000x1500", "shrunk like any photo");
+    assert.deepEqual(pc.calls, [`GET /books/${ISBN}`], "the book asked about; no folder, no PUT");
+    assert.equal(nodes.get("book-strip").children.length, 0, "the scan is not a listing photo");
+    assert.equal(nodes.get("book-progress").textContent, "No photos yet.");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Snap the cover first");
+    assert.equal(nodes.get("book-next-item").disabled, false, "a book with an ISBN can be cleared");
     assert.equal(nodes.get("book-found").hidden, false);
     assert.equal(nodes.get("book-lookup").textContent, "");
     assert.equal(nodes.get("book-title").textContent, "The Art of Computer Programming");
@@ -986,6 +1005,13 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-price").value, "11", "the PC's suggestion");
     assert.equal(nodes.get("book-price-note").textContent, "eBay: 12 listings, $6–$24 · suggested $11");
     assert.equal(nodes.get("book-price-note").hidden, false);
+    assert.equal(local.getItem("snap.book"), null, "nothing on the PC yet, nothing to read back");
+
+    // the front cover is the first photo, and it makes the book's folder
+    fire(nodes, "book-snap-input");
+    await settle();
+    assert.deepEqual(pc.calls.slice(1), ["POST /items", `PUT /items/${item}/photos/1`]);
+    assert.equal(pc.items.get(item).photos.get(1), "jpeg 2000x1500", "shrunk like any photo");
     assert.equal(nodes.get("book-hint").hidden, true, "the book is named: nothing more to say");
     assert.equal(nodes.get("book-scan-input").disabled, true, "its ISBN is fixed until DONE");
     assert.equal(nodes.get("book-isbn").readOnly, true);
@@ -994,6 +1020,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(bookShot(nodes, 0).badge.textContent, "sent");
     assert.ok(bookShot(nodes, 0).x, "the x is there");
     assert.equal(bookShot(nodes, 0).ai, undefined, "no model call for a book");
+    assert.deepEqual(mains(nodes), [true], "in its place, main: the first photo leads");
     assert.equal(bookShot(nodes, 0).label.textContent, `Book ${ISBN}-1.jpg`);
     assert.equal(nodes.get("book-progress").textContent, "1 photo, all on the PC");
     assert.equal(nodes.get("strip").children.length, 0, "the goods strip is not touched");
@@ -1002,7 +1029,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(saved.itemId, item);
     assert.equal(local.getItem("snap.item"), null, "the goods item is its own");
 
-    // the front cover
+    // the spine, say
     fire(nodes, "book-snap-input");
     await settle();
     assert.equal(pc.calls.at(-1), `PUT /items/${item}/photos/2`);
@@ -1028,7 +1055,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     nodes.get("book-ebay-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted, [
-        { item, venue: "ebay", book: { isbn: ISBN, condition: "very_good", price: "11" } },
+        { item, venue: "ebay", book: { isbn: ISBN, condition: "very_good", price: "11", main: 1 } },
     ]);
     assert.equal(nodes.get("book-ebay-status").textContent, "queued, 1 ahead");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), true, "the ring turns");
@@ -1065,12 +1092,70 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(local.getItem("snap.book"), null, "nothing left to read back");
 });
 
+test("the main mark: the first photo by default, a tap moves it, a delete moves it back, the job carries it", async (t) => {
+    // Michal, 2026-09-27: "I need to have a way to choose main (can be like the AI
+    // button on photos for goods)"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        books: { [ISBN]: BOOK },
+        jobs: { j1: () => ({ state: "running", step: "listing the book", sku: "BK-1" }) },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
+    const item = `Book ${ISBN} ${TODAY}`;
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input", 3);
+    await settle();
+    assert.equal(nodes.get("book-strip").children.length, 3, "three photos; the scan is not one");
+
+    // where goods have the AI mark: bottom right, labelled main, the first one on
+    const first = bookShot(nodes, 0).main;
+    assert.equal(first.tag, "button");
+    assert.equal(first.textContent, "main");
+    assert.equal(first.id, "book-main-1");
+    assert.equal(first.attrs["data-value"], "1");
+    assert.equal(first.attrs["aria-label"], `Lead the listing with Book ${ISBN}-1.jpg`);
+    assert.equal(first.className, "main-mark on");
+    assert.equal(bookShot(nodes, 0).li.className, "shot shot-main");
+    assert.equal(bookShot(nodes, 1).main.className, "main-mark");
+    assert.equal(bookShot(nodes, 1).li.className, "shot");
+    assert.deepEqual(mains(nodes), [true, false, false], "doing nothing keeps the first");
+
+    // a tap moves it; tapping it again leaves it on
+    bookShot(nodes, 2).main.fire("click");
+    assert.deepEqual(mains(nodes), [false, false, true]);
+    bookShot(nodes, 2).main.fire("click");
+    assert.deepEqual(mains(nodes), [false, false, true], "exactly one, never none");
+    assert.equal(JSON.parse(local.getItem("snap.book")).main, 3, "kept for a reload");
+
+    // the main photo deleted: back to the first left
+    bookShot(nodes, 2).x.fire("click");
+    await settle();
+    assert.deepEqual(mains(nodes), [true, false]);
+    bookShot(nodes, 1).main.fire("click");
+    assert.deepEqual(mains(nodes), [false, true]);
+
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [
+        { item, venue: "ebay", book: { isbn: ISBN, condition: "good", price: "11", main: 2 } },
+    ]);
+    // on its way: the mark shows, and stays where it is
+    assert.equal(bookShot(nodes, 1).main.disabled, true);
+    assert.equal(bookShot(nodes, 0).main.disabled, true);
+    bookShot(nodes, 0).main.fire("click");
+    assert.deepEqual(mains(nodes), [false, true]);
+});
+
 test("a typed ISBN: a wrong check digit is not looked up; an ISBN-10 is, as its ISBN-13", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ books: { [ISBN]: BOOK } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     nodes.get("mode-book").fire("click");
     assert.equal(nodes.get("book-hint").textContent, "This phone cannot read barcodes; type the ISBN");
+    assert.equal(nodes.get("book-scan-input").disabled, true, "the picture would be good for nothing");
 
     typeIsbn(nodes, "978-0-306-40615-8");
     t.mock.timers.tick(400);
@@ -1122,30 +1207,50 @@ test("a book not in the catalogues says to post it as goods; a PC that could not
     assert.equal(nodes.get("book-title").textContent, "The Art of Computer Programming");
 });
 
-test("a scan with no readable barcode keeps its photo, which waits for the typed ISBN", async (t) => {
+test("a scan with no readable barcode says so and changes nothing else", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ books: { [ISBN]: BOOK } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch, barcodes: [] });
     nodes.get("mode-book").fire("click");
     fire(nodes, "book-scan-input");
     await settle();
-    assert.equal(nodes.get("book-hint").textContent, "No barcode found — type the ISBN under the barcode");
-    assert.equal(nodes.get("book-strip").children.length, 1, "the photo is kept");
+    assert.equal(
+        nodes.get("book-hint").textContent,
+        "No barcode found — try again closer, or type the ISBN under the barcode"
+    );
+    assert.equal(nodes.get("book-hint").hidden, false);
+    assert.equal(nodes.get("book-strip").children.length, 0, "the scan is not a listing photo");
+    assert.equal(nodes.get("book-progress").textContent, "No photos yet.");
+    assert.deepEqual(pc.calls, []);
+    assert.equal(nodes.get("book-scan-input").disabled, false, "Scan is there for another try");
+    assert.equal(nodes.get("book-venue-hint").textContent, "Scan or type the ISBN first");
+    assert.equal(nodes.get("book-next-item").disabled, true, "nothing to clear");
+});
+
+test("a cover snapped before the ISBN waits on the page for it, and says so", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ books: { [ISBN]: BOOK } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch, barcodes: [ISBN] });
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-snap-input");
+    await settle();
+    assert.equal(nodes.get("book-strip").children.length, 1);
     assert.equal(bookShot(nodes, 0).badge.textContent, "waiting");
     assert.deepEqual(pc.calls, [], "no ISBN, no folder yet");
     // what blocks it is the ISBN, not the PC, and every line says so
-    const blocked = "Type the ISBN under the barcode so the photo can go to the PC, or remove the photo with its x";
+    const blocked = "Scan the barcode or type the ISBN so the photos can go to the PC, or remove them with their x";
     assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN");
     assert.equal(nodes.get("book-done-hint").textContent, blocked);
     assert.equal(nodes.get("book-done-hint").hidden, false);
     assert.equal(nodes.get("book-next-item").disabled, true);
     assert.equal(nodes.get("book-venue-hint").textContent, blocked);
 
-    typeIsbn(nodes, ISBN);
-    t.mock.timers.tick(400);
+    // the scan names them; its own picture does not join them
+    fire(nodes, "book-scan-input");
     await settle();
     const item = `Book ${ISBN} ${TODAY}`;
     assert.deepEqual(pc.calls, [`GET /books/${ISBN}`, "POST /items", `PUT /items/${item}/photos/1`]);
+    assert.equal(nodes.get("book-strip").children.length, 1);
     assert.equal(bookShot(nodes, 0).badge.textContent, "sent");
     assert.equal(bookShot(nodes, 0).label.textContent, `Book ${ISBN}-1.jpg`, "named by the ISBN now");
     assert.equal(nodes.get("book-hint").hidden, true);
@@ -1178,8 +1283,10 @@ test("switching mid-item asks nothing and loses nothing: the goods job carries o
     nodes.get("mode-book").fire("click");
     assert.equal(nodes.get("mode-book").disabled, false, "never locked");
     assert.equal(nodes.get("work").hidden, true);
-    // a book, meanwhile
+    // a book, meanwhile: scanned, and its cover
     fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input");
     await settle();
     assert.equal(nodes.get("book-title").textContent, "The Art of Computer Programming");
     // the goods job is still asked about, and finishes, while the book is on screen
@@ -1217,12 +1324,17 @@ test("the mode is remembered per phone, and a reload reads the book back", async
             isbn: ISBN,
             condition: "acceptable",
             price: "9",
+            main: 2,
             lookup: { record: BOOK, price: "11", listings: BOOK.listings, route: "list" },
         }),
     });
+    const photos = new Map([
+        [1, "a"],
+        [2, "b"],
+    ]);
     const pc = fakePc({
         books: { [ISBN]: BOOK },
-        items: { [item]: { photos: new Map([[1, "a"]]), note: "Spine creased", sku: null, jobs: [] } },
+        items: { [item]: { photos, note: "Spine creased", sku: null, jobs: [] } },
     });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(nodes.get("book").hidden, false, "book, as he left it");
@@ -1235,6 +1347,7 @@ test("the mode is remembered per phone, and a reload reads the book back", async
     assert.equal(nodes.get("book-condition-acceptable").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("book-flaws").value, "Spine creased");
     assert.equal(bookShot(nodes, 0).li.children[0].textContent, "on the PC");
+    assert.deepEqual(mains(nodes), [false, true], "his main photo, read back");
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
 
     nodes.get("mode-goods").fire("click");
