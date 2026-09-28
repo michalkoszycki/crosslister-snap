@@ -12,7 +12,8 @@ Books have their own screen: tap **book** at the top, tap **ISBN** to read
 the barcode, and the PC finds the book in the catalogues and prices it from
 eBay. A book with no ISBN: tap the small **No ISBN** and type its title (the
 author, year and paperback | hardcover if known); the PC looks it up by those
-instead. Snap the cover (the barcode picture itself is not a photo), tap
+instead. A book whose ISBN no catalogue knows: the same **No ISBN**, which then
+keeps the ISBN for the listing. Snap the cover (the barcode picture itself is not a photo), tap
 **main** on the photo to lead with if it is not the first, pick the
 condition, check the price, tap **ebay**.
 
@@ -153,10 +154,23 @@ title instead, and the PC does the same work from that. Top to bottom:
   or read closes them and is the book. Tapping No ISBN again closes them and
   clears what was typed. Like the ISBN, it is fixed once the folder is on the
   PC; the fields themselves can still be corrected until **ebay** is pressed.
+- **No ISBN after an ISBN no catalogue knows** (Michal, 2026-09-28: he scanned
+  9781926856155 and the page said to post it as goods, a dead end): the card
+  says so and points at No ISBN, which is filled in blue as the next step.
+  Tapped, it opens the same fields but keeps the ISBN: the box stays filled
+  (greyed, set aside), `ISBN 9781926856155 kept: it goes on the listing` sits
+  above the fields, the folder stays `Book <isbn13> <date>` (so No ISBN opens
+  even with a cover already on the PC), and the title is searched exactly as
+  above. The job then carries the ISBN and the typed fields both
+  (`book.isbnMiss`, kept for a reload). A valid different ISBN typed or read
+  replaces it and closes the fields, as ever; No ISBN again clears the fields,
+  keeps the ISBN and asks the PC about it afresh.
 - **The book card**: `looking up...`, then the title in bold, the authors and
-  `publisher · year · format · pages`; or `Not in the catalogues. Post it as
-  goods instead.`; or the PC's own words when it could not look (edit the box
-  to try again). A book looked up by title says `matched in the catalogues`
+  `publisher · year · format · pages`; or `Not in the catalogues. Tap No ISBN
+  and type the title — the ISBN stays on the listing.` with the PC's own
+  words for the 404 in the small line under it (they may say why, e.g. that no
+  Google Books key is set); or the PC's own words when it could not look (edit
+  the box to try again). A book looked up by title says `matched in the catalogues`
   under the catalogue's book, or, when no catalogue knows it, shows the title,
   author, year and format as typed with `Not in the catalogues: it will be
   listed as typed` (a typed book is a book: ebay still opens). A catalogue
@@ -189,9 +203,10 @@ title instead, and the PC does the same work from that. Top to bottom:
   matched or not), there is a photo (`Snap the cover
   first` when there is none), every photo is on the PC and the price is a
   price; otherwise the line under it says which of those is missing (first of
-  all `Scan the ISBN, or tap No ISBN and type the title`). It sends
+  all `Scan the ISBN, or tap No ISBN and type the title`; after an ISBN no
+  catalogue knows, `Tap No ISBN and type the title`). It sends
   the main photo's number with the book, and for a book with no ISBN what was
-  typed.
+  typed (after a miss, the ISBN too).
 - **DONE**, as for goods; it also clears a book that has an ISBN (or a typed
   title) but no photo.
 
@@ -236,10 +251,10 @@ unknown item or job, 409 while the same item is already being posted.
 | `DELETE <pc>/items/<id>/photos/<n>`, the x | - | `{"item", "n", "deleted"}`; safe to repeat |
 | `PUT <pc>/items/<id>/note` | `{"note": "..."}` (blank removes it) | `{"item", "note"}` |
 | `GET <pc>/items/<id>`, after a reload | - | `{"item", "photos", "note", "sku", "jobs"}` |
-| `GET <pc>/books/<isbn13>`, a book's ISBN known | - | `{"isbn", "title", "subtitle", "authors": [...], "publisher", "year", "format", "pages", "price": "11" or null, "listings": {"count", "low", "high"} or null, "route": "list" / "lot or buyback" / "unknown"}`; 404 not in the catalogues, 400 not an ISBN, 502 the catalogues could not be reached |
+| `GET <pc>/books/<isbn13>`, a book's ISBN known | - | `{"isbn", "title", "subtitle", "authors": [...], "publisher", "year", "format", "pages", "price": "11" or null, "listings": {"count", "low", "high"} or null, "route": "list" / "lot or buyback" / "unknown"}`; 404 not in the catalogues (its `detail` is shown under the card as the reason, e.g. no Google Books key; No ISBN is then the next step and keeps the ISBN), 400 not an ISBN, 502 the catalogues could not be reached |
 | `GET <pc>/books/search?title=<t>&author=<a>&year=<y>`, No ISBN, 0.6 s after the last keystroke | each URL-encoded (`%20` for a space); author and year `""` when not typed, year only once it has four digits | the same as `/books/<isbn13>`, plus `"found": true` (a catalogue matched it) or `false` (none did: it is listed as typed; `price` and `listings` still from eBay); 400 and 502 show the PC's words and keep the fields |
 | `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay" or "craigslist", "ai": [photo numbers]}` | `{"job": id, "state": "queued", "ahead": n}` |
-| `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""` | the same |
+| `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""`. After an ISBN no catalogue knows (the 404 above) and No ISBN: both, `"isbn": "9781926856155"` and the typed `"title"`, `"author"`, `"year"`, `"format"`; the PC keeps the ISBN on the listing and takes the rest from the typed fields | the same |
 | `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only | the same |
 | `GET <pc>/jobs/<id>`, every 3 s | - | `{"state": queued/running/done/failed, "step", "sku", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
@@ -250,8 +265,8 @@ first job's status as soon as the PC has saved the row, so the second button
 can go while the first job is still publishing. The page keeps the item id and
 the sku with the item until **DONE** (the id and the AI marks also in
 `localStorage`, `snap.item`, for a reload; a book's id, ISBN (or, with no
-ISBN, its title, author, year and format), condition, price, main photo and
-found record in `snap.book`). A book's barcode picture (the ISBN button) is
+ISBN, its title, author, year and format; after an ISBN miss, both, and
+`isbnMiss`), condition, price, main photo and found record in `snap.book`). A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
 
 ## Settings
