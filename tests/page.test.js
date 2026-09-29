@@ -579,8 +579,9 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     assert.equal(nodes.get("ebay-btn").attrs["aria-busy"], "true");
     assert.equal(nodes.get("craigslist-btn").classList.contains("busy"), false);
-    assert.equal(nodes.get("next-item").disabled, true);
-    assert.match(nodes.get("done-hint").textContent, /DONE waits/);
+    // NEXT does not wait for the listing: the PC has the job
+    assert.equal(nodes.get("next-item").disabled, false);
+    assert.equal(nodes.get("done-hint").hidden, true);
     assert.equal(nodes.get("snap-input").disabled, true, "posted photos are locked");
     assert.equal(card(nodes, 0).x, undefined, "no x on a posted photo");
 
@@ -1117,8 +1118,8 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-ebay-status").textContent, "queued, 1 ahead");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), true, "the ring turns");
     assert.equal(nodes.get("book-ebay-btn").attrs["aria-busy"], "true");
-    assert.equal(nodes.get("book-next-item").disabled, true);
-    assert.match(nodes.get("book-done-hint").textContent, /DONE waits/);
+    assert.equal(nodes.get("book-next-item").disabled, false, "NEXT does not wait for the listing");
+    assert.equal(nodes.get("book-done-hint").hidden, true);
     assert.equal(nodes.get("book-condition-good").disabled, true, "what is being listed stays put");
     assert.equal(nodes.get("book-price").readOnly, true);
     assert.equal(bookShot(nodes, 0).x, undefined, "no x on a posted photo");

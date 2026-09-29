@@ -353,7 +353,7 @@ export function bookCard(book) {
  */
 export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false, kept = false }) {
     if (restoring) return "Reading this book back from the PC...";
-    if (locked) return "These photos went with the listing. DONE starts the next book.";
+    if (locked) return "These photos went with the listing. NEXT starts the next book.";
     if (scan === "reading") return "Reading the barcode...";
     if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";

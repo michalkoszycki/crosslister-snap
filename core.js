@@ -14,6 +14,7 @@ import {
     DEFAULT_FORMAT,
     FORMATS,
     formatOf,
+    money,
 } from "./book.js?v=1.11.0";
 
 // --- the item name and photo file names ------------------------------------
@@ -402,6 +403,8 @@ export function safeLink(url) {
  * @property {string} link     the posting, once done
  * @property {string} error    why it failed
  * @property {string} trouble  a status poll that failed; the job itself may be fine
+ * @property {string} price    the saved row's price as the PC says it ("14.00"), "" until the
+ *                             row is saved; the pressed button shows it (venueWord)
  */
 
 /**
@@ -514,7 +517,7 @@ function initialBook() {
 
 /** @returns {VenueJob} */
 export function idleJob() {
-    return { phase: "idle", jobId: "", step: "", ahead: 0, link: "", error: "", trouble: "" };
+    return { phase: "idle", jobId: "", step: "", ahead: 0, link: "", error: "", trouble: "", price: "" };
 }
 
 /**
@@ -574,7 +577,7 @@ export function photosLocked(state) {
  *   {type:"online", online}
  *   {type:"noteText", text}
  *   {type:"noteDue"}                      he stopped typing: send the note
- *   {type:"reset"}                        DONE: the next item
+ *   {type:"reset"}                        NEXT (once DONE): the next item
  *   {type:"taskStart", task}              the upload queue (queue.js) sends a request
  *   {type:"taskDone", task, answer}
  *   {type:"taskFailed", task, status, error}  status 0: the PC could not be reached
@@ -729,6 +732,8 @@ export function reduce(state, action) {
                 link: safeLink(s.links ? s.links[action.venue] : ""),
                 error: phase === "failed" ? String(s.error || "failed") : "",
                 trouble: "",
+                // blank until the PC saved the row; once known, a later blank does not unsay it
+                price: priceText(s.price) || job.price,
             }));
             const sku = typeof s.sku === "string" ? s.sku : "";
             return sku && !state.sku ? { ...next, sku } : next;
@@ -1163,6 +1168,12 @@ function toCount(x) {
     return Number.isInteger(x) && x > 0 ? x : 0;
 }
 
+/** A job's price as the PC sent it ("14.00", or a bare 14), or "" when it is not a price above zero. */
+function priceText(x) {
+    const s = typeof x === "number" ? String(x) : typeof x === "string" ? x.trim() : "";
+    return s && Number(s) > 0 ? s : "";
+}
+
 /** The highest photo number the item has, so a new photo never reuses one. */
 export function highestNumber(state) {
     return state.photos.reduce((top, p) => Math.max(top, p.n), 0);
@@ -1269,6 +1280,37 @@ export function venueLine(job, idle = "") {
         default:
             return { text: idle, link: "", kind: "" };
     }
+}
+
+/**
+ * The word on a venue button (Michal, 2026-09-28: "When posting, I want to see
+ * the price designated ... When it is done it should just swap to '$14'
+ * instead of eBay or Craigslist"). Before the press, and after a failure, the
+ * venue itself. While the job is on its way, the venue and the price once one
+ * is known ("ebay · $14", the ring turning beside it). Posted, the price alone
+ * ("$14"): the venue is plain from where the button sits, the price is not.
+ *
+ * The price is the PC's, from the saved row; until the PC has one,
+ * `fallbackPrice` stands in: the book's price box (typed on the page, so known
+ * from the press), or the other button's job for the same goods row. The
+ * aria-label keeps the venue in words either way, so a screen reader still
+ * hears which button it is.
+ * @param {VenueJob} job
+ * @param {string} venue
+ * @param {string} [fallbackPrice]
+ * @returns {{text:string, label:string}}
+ */
+export function venueWord(job, venue, fallbackPrice = "") {
+    const price = money(priceText(job.price) || priceText(fallbackPrice));
+    if (isActive(job)) {
+        return price
+            ? { text: `${venue} · ${price}`, label: `${venue}, posting at ${price}` }
+            : { text: venue, label: `${venue}, posting` };
+    }
+    if (job.phase === "done") {
+        return price ? { text: price, label: `${venue}, posted at ${price}` } : { text: venue, label: `${venue}, posted` };
+    }
+    return { text: venue, label: venue };
 }
 
 export const SETTINGS_HINT = "Set the PC address and key in Settings";
@@ -1395,24 +1437,47 @@ function bookVenueButton(state, venue, settingsOk) {
     return { enabled: true, hint: "" };
 }
 
+/** A press whose POST /jobs has not been taken by the PC yet: only the page knows of it. */
+function anySending(state) {
+    return VENUES.some((v) => state.jobs[v].phase === "sending");
+}
+
 /**
- * DONE: needs a photo (as before), waits while a job for this item is on its
- * way or on the PC, and while a photo or a delete has not reached the PC.
+ * NEXT (it was DONE): needs a photo (as before), and waits while a photo or a
+ * delete has not reached the PC. It does not wait for the listing (Michal,
+ * 2026-09-28: "I want to be able to click NEXT as the things are
+ * loading/posting so I can start working on the following item"): once the PC
+ * has taken the job, the job is the PC's, and the phone only stops watching it.
+ * It waits only for the moment a press is still on its way to the PC, which
+ * clearing the page would lose.
  * A book also opens it with an ISBN (or a typed title) and no photo yet, so a
  * book that is not in the catalogues can be cleared without taking a picture of it.
  * @returns {{enabled:boolean, hint:string}}
  */
 export function doneButton(state) {
-    if (anyActive(state)) {
-        return { enabled: false, hint: "DONE waits until the listing is finished" };
+    if (anySending(state)) {
+        return { enabled: false, hint: "NEXT waits until the listing has reached the PC" };
     }
     // a book's photos waiting for its ISBN or title are not waiting for the PC
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     if (unsent(state)) {
-        return { enabled: false, hint: "DONE waits until the photos are on the PC" };
+        return { enabled: false, hint: "NEXT waits until the photos are on the PC" };
     }
     const something = state.photos.length > 0 || (state.mode === "book" && bookNamed(state.book));
     return { enabled: something, hint: "" };
+}
+
+/** The quiet line under NEXT while a listing is posting on the PC. */
+export const NEXT_NOTE = "A listing is still posting on the PC; NEXT starts the next item without waiting for its link";
+
+/**
+ * The line under NEXT: said once a job is on the PC and not finished, since
+ * NEXT then leaves it unwatched and its link will not show on this page.
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function nextNote(state) {
+    return VENUES.some((v) => ["queued", "running"].includes(state.jobs[v].phase)) ? NEXT_NOTE : "";
 }
 
 /**
@@ -1454,12 +1519,14 @@ export function progressLine(state) {
 
 /**
  * Leaving the page now would lose something: a photo, a delete or the note
- * not yet on the PC, or a job on its way. A book adds nothing of its own: its
- * ISBN, condition and price are kept for a reload once its item is on the PC,
- * and before that there is no photo on the PC to lose them from.
+ * not yet on the PC, or a press not yet taken by the PC. A job the PC has is
+ * not lost by leaving (it posts all the same; NEXT leaves it just as well), so
+ * it no longer warns. A book adds nothing of its own: its ISBN, condition and
+ * price are kept for a reload once its item is on the PC, and before that
+ * there is no photo on the PC to lose them from.
  */
 export function leaveWarning(state) {
-    return anyActive(state) || unsent(state) || (!!state.itemId && noteDirty(state));
+    return anySending(state) || unsent(state) || (!!state.itemId && noteDirty(state));
 }
 
 /**
