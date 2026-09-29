@@ -43,6 +43,10 @@ import {
     quantityValue,
     venueIdleNote,
     venueLine,
+    venueWord,
+    nextNote,
+    NEXT_NOTE,
+    idleJob,
 } from "../core.js";
 import {
     bookCard,
@@ -289,25 +293,117 @@ test("a new item needs a photo, at most 24, and at least one AI mark", () => {
     assert.equal(venueButton(sent(MAX_PHOTOS, [1]), "ebay", true).enabled, true);
 });
 
-test("DONE needs a photo and waits while a job is on its way or on the PC", () => {
+test("NEXT needs a photo and does not wait for a listing the PC has taken", () => {
+    // Michal, 2026-09-28: "I want to be able to click NEXT as the things are
+    // loading/posting so I can start working on the following item"
     assert.equal(doneButton(initialState("x")).enabled, false);
     const s = sent(1, [1]);
     assert.deepEqual(doneButton(s), { enabled: true, hint: "" });
-    for (const [action, busy] of [
-        [{ type: "jobSending", venue: "ebay", step: "sending" }, true],
-        [{ type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 }, true],
-        [{ type: "jobRefused", venue: "ebay", error: "cannot reach the PC" }, false],
+    assert.equal(nextNote(s), "");
+    const accepted = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    const running = reduce(accepted, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
+    const done = reduce(running, { type: "jobStatus", venue: "ebay", status: { state: "done", sku: "B-1" } });
+    for (const [what, state, note] of [
+        ["queued", accepted, NEXT_NOTE],
+        ["running", running, NEXT_NOTE],
+        ["done", done, ""],
+        ["refused", reduce(s, { type: "jobRefused", venue: "ebay", error: "cannot reach the PC" }), ""],
     ]) {
-        const d = doneButton(reduce(s, action));
-        assert.equal(d.enabled, !busy, action.type);
-        if (busy) assert.match(d.hint, /DONE waits/);
+        assert.deepEqual(doneButton(state), { enabled: true, hint: "" }, what);
+        assert.equal(nextNote(state), note, what);
     }
+    assert.equal(
+        NEXT_NOTE,
+        "A listing is still posting on the PC; NEXT starts the next item without waiting for its link"
+    );
+    // only the moment the press is on its way, not yet the PC's: clearing would lose it
+    const sending = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.deepEqual(doneButton(sending), { enabled: false, hint: "NEXT waits until the listing has reached the PC" });
+    // the second button pressed while the first still runs: the same
+    const second = reduce(reduce(running, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1" } }), {
+        type: "jobSending",
+        venue: "craigslist",
+        step: "sending",
+    });
+    assert.equal(doneButton(second).enabled, false);
+    const both = reduce(second, { type: "jobAccepted", venue: "craigslist", job: "j2", ahead: 0 });
+    assert.equal(doneButton(both).enabled, true);
+    assert.equal(nextNote(both), NEXT_NOTE);
 });
 
-test("DONE waits while a photo or a delete has not reached the PC", () => {
+// --- the word on a venue button: the price ------------------------------------------
+
+test("venueWord: the venue, then 'ebay · $14' while posting, then '$14' alone once posted", () => {
+    // Michal, 2026-09-28: "When posting, I want to see the price designated. Maybe as
+    // the button is loading. When it is done it should just swap to '$14'"
+    let s = sent(1, [1]);
+    const word = (venue = "ebay", fallback = "") => venueWord(s.jobs[venue], venue, fallback);
+    assert.deepEqual(word(), { text: "ebay", label: "ebay" }, "before the press");
+    s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.deepEqual(word(), { text: "ebay", label: "ebay, posting" }, "no price known yet");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 1 });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "queued", ahead: 1, price: "" } });
+    assert.deepEqual(word(), { text: "ebay", label: "ebay, posting" }, "blank before the row is saved");
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1", price: "14.00" } });
+    assert.equal(s.jobs.ebay.price, "14.00");
+    assert.deepEqual(word(), { text: "ebay · $14", label: "ebay, posting at $14" }, "whole dollars without cents");
+    // a later answer without it does not unsay it
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "publishing" } });
+    assert.deepEqual(word(), { text: "ebay · $14", label: "ebay, posting at $14" });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done", price: "14.00" } });
+    assert.deepEqual(word(), { text: "$14", label: "ebay, posted at $14" });
+    // the other button keeps its own word until its own job is done
+    assert.deepEqual(word("craigslist"), { text: "craigslist", label: "craigslist" });
+    s = reduce(s, { type: "jobAccepted", venue: "craigslist", job: "j2", ahead: 0 });
+    s = reduce(s, { type: "jobStatus", venue: "craigslist", status: { state: "done", price: "14.00" } });
+    assert.deepEqual(word("craigslist"), { text: "$14", label: "craigslist, posted at $14" });
+});
+
+test("venueWord: cents when the price has them; a failure is the venue again; a fallback price stands in", () => {
+    const job = (phase, price = "") => ({ ...idleJob(), phase, price });
+    assert.deepEqual(venueWord(job("running", "14.50"), "ebay"), { text: "ebay · $14.50", label: "ebay, posting at $14.50" });
+    assert.deepEqual(venueWord(job("done", "7.5"), "craigslist"), { text: "$7.50", label: "craigslist, posted at $7.50" });
+    assert.deepEqual(venueWord(job("failed", "14.00"), "ebay"), { text: "ebay", label: "ebay" }, "back to the venue");
+    assert.deepEqual(venueWord(job("done"), "ebay"), { text: "ebay", label: "ebay, posted" }, "posted, no price said");
+    // a book's price is typed on the page: known from the press, the PC's replaces it
+    assert.deepEqual(venueWord(job("sending"), "ebay", "11"), { text: "ebay · $11", label: "ebay, posting at $11" });
+    assert.deepEqual(venueWord(job("running", "12.00"), "ebay", "11"), { text: "ebay · $12", label: "ebay, posting at $12" });
+    assert.deepEqual(venueWord(job("idle"), "ebay", "11"), { text: "ebay", label: "ebay" }, "not before the press");
+    // nothing that is not a price above zero
+    for (const junk of ["", "0", "0.00", "abc", null, undefined]) {
+        assert.deepEqual(venueWord(job("running", junk), "ebay"), { text: "ebay", label: "ebay, posting" }, String(junk));
+    }
+    // a bare number from the PC is a price too
+    const s = reduce(reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 }), {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "running", price: 9 },
+    });
+    assert.equal(venueWord(s.jobs.ebay, "ebay").text, "ebay · $9");
+    // a new press starts without the old price
+    assert.equal(reduce(s, { type: "jobSending", venue: "ebay", step: "sending" }).jobs.ebay.price, "");
+});
+
+test("a reload reads each job's price back with its status", () => {
+    const s = reduce(initialState(""), {
+        type: "recovered",
+        itemName: "Boots",
+        itemId: ITEM,
+        ai: [1],
+        answer: {
+            photos: [1],
+            note: "",
+            sku: "B-1",
+            jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", price: "14.00", links: {} }],
+        },
+    });
+    assert.deepEqual(venueWord(s.jobs.ebay, "ebay"), { text: "$14", label: "ebay, posted at $14" });
+});
+
+test("NEXT waits while a photo or a delete has not reached the PC", () => {
     assert.deepEqual(doneButton(withPhotos(1)), {
         enabled: false,
-        hint: "DONE waits until the photos are on the PC",
+        hint: "NEXT waits until the photos are on the PC",
     });
     const struck = reduce(sent(2), { type: "remove", id: "p1" });
     assert.equal(doneButton(struck).enabled, false, "the delete has not gone yet");
@@ -359,14 +455,16 @@ test("the note status word: waits for the first photo, sending, sent, offline", 
     assert.equal(noteStatusText(s), "not sent (offline), will retry");
 });
 
-test("leaving warns while something is not on the PC yet or a job is on its way", () => {
+test("leaving warns while something is not on the PC yet, not merely while a job runs there", () => {
     assert.equal(leaveWarning(initialState("x")), false);
     assert.equal(leaveWarning(withPhotos(1, [1])), true, "a photo not sent yet");
     const s = sent(1, [1]);
     assert.equal(leaveWarning(s), false, "everything is on the PC: a reload reads it back");
     assert.equal(leaveWarning(reduce(s, { type: "noteText", text: "x" })), true);
+    const sending = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(leaveWarning(sending), true, "the press has not reached the PC yet");
     const running = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(leaveWarning(running), true);
+    assert.equal(leaveWarning(running), false, "the job is the PC's: it posts whether or not the page watches");
     const done = reduce(running, {
         type: "jobStatus",
         venue: "ebay",
@@ -754,15 +852,19 @@ test("the main photo follows its photo when the PC's folder renumbers it", () =>
     assert.equal(s.book.main, 4, "still the photo he marked, now number 4");
 });
 
-test("DONE and the progress line know the book mode", () => {
+test("NEXT and the progress line know the book mode", () => {
     assert.equal(progressLine(foundBook(2)), "2 photos, all on the PC");
     assert.equal(doneButton(bookState()).enabled, false);
     const isbnOnly = reduce(bookState(), { type: "bookIsbn", isbn: ISBN });
     assert.equal(doneButton(isbnOnly).enabled, true, "a book not worth a photo can be cleared");
     assert.equal(doneButton(foundBook()).enabled, true);
     const going = reduce(foundBook(), { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.match(doneButton(going).hint, /DONE waits/);
+    assert.match(doneButton(going).hint, /NEXT waits until the listing has reached the PC/);
     assert.equal(leaveWarning(going), true);
+    const taken = reduce(going, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 2 });
+    assert.deepEqual(doneButton(taken), { enabled: true, hint: "" }, "the next book while this one posts");
+    assert.equal(nextNote(taken), NEXT_NOTE);
+    assert.equal(leaveWarning(taken), false);
 });
 
 test("a book is kept for a reload with its ISBN, condition, price and found record, and read back", () => {
@@ -857,7 +959,7 @@ test("the line above the ISBN button says what to do, or why the ISBN must be ty
         "No barcode found — try again closer, or type the ISBN under the barcode"
     );
     assert.equal(scanHint({ ...base, hasItem: true }), "");
-    assert.match(scanHint({ ...base, locked: true }), /DONE starts the next book/);
+    assert.match(scanHint({ ...base, locked: true }), /NEXT starts the next book/);
 });
 
 // --- books: photos waiting for the ISBN ---------------------------------------------
@@ -869,7 +971,7 @@ function coverBeforeIsbn(n = 1) {
     return s;
 }
 
-test("photos waiting for the ISBN: DONE and ebay say the ISBN is what blocks them, not the PC", () => {
+test("photos waiting for the ISBN: NEXT and ebay say the ISBN is what blocks them, not the PC", () => {
     const s = coverBeforeIsbn();
     assert.equal(
         ISBN_WAIT_HINT,
@@ -879,13 +981,13 @@ test("photos waiting for the ISBN: DONE and ebay say the ISBN is what blocks the
     assert.deepEqual(venueButton(s, "ebay", true), { enabled: false, hint: ISBN_WAIT_HINT });
     // with the ISBN typed they are ordinary photos on their way to the PC again
     const named = reduce(s, { type: "bookIsbn", isbn: ISBN });
-    assert.equal(doneButton(named).hint, "DONE waits until the photos are on the PC");
+    assert.equal(doneButton(named).hint, "NEXT waits until the photos are on the PC");
     // with the photo struck out there is nothing waiting: back to the first step
     const struck = reduce(s, { type: "remove", id: "b1" });
     assert.equal(venueButton(struck, "ebay", true).hint, "Scan the ISBN, or tap No ISBN and type the title");
     assert.deepEqual(doneButton(struck), { enabled: false, hint: "" });
     // goods photos not yet on the PC keep their own words
-    assert.equal(doneButton(withPhotos(1)).hint, "DONE waits until the photos are on the PC");
+    assert.equal(doneButton(withPhotos(1)).hint, "NEXT waits until the photos are on the PC");
 });
 
 test("photos waiting for the ISBN: the progress line says so", () => {

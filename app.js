@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.11.0";
+import { VERSION } from "./version.js?v=1.12.0";
 import {
     anyActive,
     bannerText,
@@ -29,6 +29,7 @@ import {
     leaveWarning,
     lookupKey,
     MODES,
+    nextNote,
     nextNumber,
     noteStatusText,
     photosLocked,
@@ -42,9 +43,10 @@ import {
     venueButton,
     venueIdleNote,
     venueLine,
+    venueWord,
     VENUES,
-} from "./core.js?v=1.11.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.11.0";
+} from "./core.js?v=1.12.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.12.0";
 import {
     checkPc,
     createItem,
@@ -57,10 +59,11 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.11.0";
-import { shrinkPhoto } from "./shrink.js?v=1.11.0";
+} from "./pc.js?v=1.12.0";
+import { shrinkPhoto } from "./shrink.js?v=1.12.0";
 import {
     bookCard,
+    bookPriceValue,
     bookSearch,
     CONDITIONS,
     FORMATS,
@@ -70,8 +73,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.11.0";
-import { canScan, readIsbn } from "./scan.js?v=1.11.0";
+} from "./book.js?v=1.12.0";
+import { canScan, readIsbn } from "./scan.js?v=1.12.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -262,7 +265,7 @@ function renderGoods() {
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
     if (restoring.goods) el.hint.textContent = "Reading this item back from the PC...";
-    else if (locked) el.hint.textContent = "These photos went with the listing. DONE starts the next item.";
+    else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
     else el.hint.textContent = "Type the item name to start snapping.";
 
     el.noteStatus.textContent = noteStatusText(state);
@@ -273,21 +276,33 @@ function renderGoods() {
     const ok = !!settings();
     let hint = "";
     for (const venue of VENUES) {
+        // both buttons post the one saved row: until this job says its price, the other's stands in
+        const sibling = state.jobs[VENUES.find((v) => v !== venue)].price;
         // painted first, then its hint taken: ||= alone would skip painting the second button
-        const said = renderVenue(state, venue, ok, {
-            btn: el[`${venue}Btn`],
-            status: el[`${venue}Status`],
-            link: el[`${venue}Link`],
-        });
+        const said = renderVenue(
+            state,
+            venue,
+            ok,
+            { btn: el[`${venue}Btn`], status: el[`${venue}Status`], link: el[`${venue}Link`] },
+            sibling
+        );
         hint ||= said;
     }
     el.venueHint.textContent = hint;
     el.venueHint.hidden = !hint;
 
+    renderNext(state, el.nextBtn, el.doneHint, el.nextNote);
+}
+
+/** NEXT, the line above it (why it waits) and the quiet one under it (a listing left posting). */
+function renderNext(state, btn, hintNode, noteNode) {
     const done = doneButton(state);
-    el.nextBtn.disabled = !done.enabled;
-    el.doneHint.textContent = done.hint;
-    el.doneHint.hidden = !done.hint;
+    btn.disabled = !done.enabled;
+    hintNode.textContent = done.hint;
+    hintNode.hidden = !done.hint;
+    const note = nextNote(state);
+    noteNode.textContent = note;
+    noteNode.hidden = !note;
 }
 
 function renderBook() {
@@ -369,18 +384,18 @@ function renderBook() {
     el.bookNoteStatus.textContent = noteStatusText(state);
     renderCustomize("book");
 
-    const venueHint = renderVenue(state, "ebay", !!settings(), {
-        btn: el.bookEbayBtn,
-        status: el.bookEbayStatus,
-        link: el.bookEbayLink,
-    });
+    // the price is typed on the page: on the button from the press, until the PC says its own
+    const venueHint = renderVenue(
+        state,
+        "ebay",
+        !!settings(),
+        { btn: el.bookEbayBtn, status: el.bookEbayStatus, link: el.bookEbayLink },
+        bookPriceValue(book.price)
+    );
     el.bookVenueHint.textContent = venueHint;
     el.bookVenueHint.hidden = !venueHint;
 
-    const done = doneButton(state);
-    el.bookNextBtn.disabled = !done.enabled;
-    el.bookDoneHint.textContent = done.hint;
-    el.bookDoneHint.hidden = !done.hint;
+    renderNext(state, el.bookNextBtn, el.bookDoneHint, el.bookNextNote);
 }
 
 /** The customize nodes of a kind: the toggle, its card, the quantity box and the pickup box. */
@@ -412,14 +427,25 @@ function fillCustomize(m) {
     customizeNodes(m).quantity.value = customizeOf(slots[m]).quantity;
 }
 
-/** One venue button, its status line and its link; returns the button's hint. */
-function renderVenue(state, venue, ok, nodes) {
+/**
+ * One venue button, its status line and its link; returns the button's hint.
+ * The button's word is venueWord's: the venue, "ebay · $14" while posting,
+ * "$14" once posted (fallbackPrice stands in until the PC says the row's).
+ */
+function renderVenue(state, venue, ok, nodes, fallbackPrice = "") {
+    const job = state.jobs[venue];
     const button = venueButton(state, venue, ok);
     nodes.btn.disabled = !button.enabled;
     // the ring in the button, from the press until the link or the error
-    const active = isActive(state.jobs[venue]);
+    const active = isActive(job);
     nodes.btn.classList.toggle("busy", active);
     nodes.btn.setAttribute("aria-busy", active ? "true" : "false");
+    const word = venueWord(job, venue, fallbackPrice);
+    nodes.btn.textContent = word.text;
+    nodes.btn.setAttribute("aria-label", word.label);
+    // "craigslist · $14" is longer than the button was drawn for: a size smaller while it shows
+    nodes.btn.classList.toggle("priced", active && word.text !== venue);
+    nodes.btn.classList.toggle("posted", job.phase === "done");
 
     // before the press, "pickup only" under ebay once ticked: he sees it took
     const line = venueLine(state.jobs[venue], venueIdleNote(state, venue));
@@ -1111,12 +1137,21 @@ async function restore(m) {
 
 // --- wiring ----------------------------------------------------------------
 
+/**
+ * NEXT (it was DONE): the next item of this kind. A listing still posting is
+ * the PC's now: its polls stop here (the generation bump drops any answer
+ * already on its way) and its link is not shown -- he asked not to babysit an
+ * upload. Photos and deletes not yet on the PC keep NEXT shut (doneButton), so
+ * nothing the queue still owes the PC is dropped.
+ */
 async function nextItem(m) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
-        say("The note has not reached the PC yet. DONE again once it has.", "warn");
+        say("The note has not reached the PC yet. NEXT again once it has.", "warn");
         return;
     }
+    // the note's wait may have let something change: check again before clearing
+    if (!doneButton(slots[m]).enabled) return;
     generation[m] += 1;
     for (const venue of VENUES) {
         clearTimeout(polls.get(`${m}:${venue}`));
@@ -1202,6 +1237,7 @@ function main() {
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
+        nextNote: $("next-note"),
         book: $("book"),
         bookHint: $("book-hint"),
         bookScanLabel: $("book-scan-label"),
@@ -1241,6 +1277,7 @@ function main() {
         bookVenueHint: $("book-venue-hint"),
         bookDoneHint: $("book-done-hint"),
         bookNextBtn: $("book-next-item"),
+        bookNextNote: $("book-next-note"),
         offline: $("offline"),
         message: $("message"),
         version: $("version"),
