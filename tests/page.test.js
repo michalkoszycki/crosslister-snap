@@ -106,6 +106,11 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "strip",
         "note-status",
         "note",
+        // Michal, 2026-09-28: "Before the eBay and Craigslist buttons ... a little arrow with the word customize"
+        "customize-toggle",
+        "customize",
+        "quantity",
+        "pickup-only",
         "ebay-btn",
         "ebay-status",
         "ebay-link",
@@ -948,6 +953,10 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-price-note",
         "book-note-status",
         "book-flaws",
+        "book-customize-toggle",
+        "book-customize",
+        "book-quantity",
+        "book-pickup-only",
         "book-ebay-btn",
         "book-ebay-status",
         "book-ebay-link",
@@ -1804,4 +1813,191 @@ test("after a miss: No ISBN again asks about the kept ISBN afresh; a new ISBN re
     assert.equal(nodes.get("book-no-isbn").classList.contains("next"), false);
     assert.equal(pc.calls.at(-1), `GET /books/${ISBN}`);
     assert.equal(nodes.get("book-card-title").textContent, "The Art of Computer Programming");
+});
+
+// --- customize: the quantity and pickup only ---------------------------------------
+// Michal, 2026-09-28: "Before the eBay and Craigslist buttons I would like to have a
+// little arrow with the word customize. If clicked I want to be able to edit
+// quantity. Also I want to be able to check pickup only. And it would be a pickup
+// only item on eBay then."
+
+const QUANTITY_HINT = "Quantity (under customize) must be a whole number, 1 or more";
+
+test("customize sits right above the venue buttons in both modes, folded", () => {
+    for (const [prefix, next] of [
+        ["", "ebay-btn"],
+        ["book-", "book-ebay-btn"],
+    ]) {
+        const toggle = new RegExp(
+            `<button type="button" id="${prefix}customize-toggle" class="link customize-toggle" aria-expanded="false"\\s+aria-controls="${prefix}customize">▸ customize<`
+        );
+        assert.match(html, toggle);
+        assert.match(html, new RegExp(`<div id="${prefix}customize" class="card customize" hidden>`));
+        assert.match(html, new RegExp(`id="${prefix}quantity" class="quantity" type="text" inputmode="numeric"[^>]*value="1"`));
+        assert.match(html, new RegExp(`id="${prefix}pickup-only" type="checkbox">\\s*<span>Pickup only — no shipping on eBay</span>`));
+        assert.ok(html.indexOf(`id="${prefix}pickup-only"`) < html.indexOf(`id="${next}"`), "right above the buttons");
+    }
+});
+
+test("customize, goods: open it, 2 and pickup only, ebay carries both, craigslist by sku too, DONE resets", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        jobs: {
+            j1: () => ({ state: "done", sku: "B-0050", links: { ebay: "https://www.ebay.com/itm/50" } }),
+            j2: () => ({ state: "done", sku: "B-0050", links: { craigslist: "https://sfbay.craigslist.org/x/50.html" } }),
+        },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const item = `Chairs ${TODAY}`;
+    await typeName(nodes, "Chairs");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+
+    // folded until tapped: the arrow points right
+    assert.equal(nodes.get("customize").hidden, true);
+    assert.equal(nodes.get("customize-toggle").textContent, "▸ customize");
+    assert.equal(nodes.get("ebay-status").hidden, true, "nothing under ebay yet");
+    nodes.get("customize-toggle").fire("click");
+    assert.equal(nodes.get("customize").hidden, false);
+    assert.equal(nodes.get("customize-toggle").textContent, "▾ customize");
+    assert.equal(nodes.get("customize-toggle").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("book-customize").hidden, true, "the book's is its own");
+
+    // a quantity that is not one shuts both buttons, and says why
+    nodes.get("quantity").value = "0";
+    nodes.get("quantity").fire("input");
+    assert.equal(nodes.get("ebay-btn").disabled, true);
+    assert.equal(nodes.get("craigslist-btn").disabled, true);
+    assert.equal(nodes.get("venue-hint").textContent, QUANTITY_HINT);
+    assert.equal(nodes.get("venue-hint").hidden, false);
+    nodes.get("quantity").value = "2";
+    nodes.get("quantity").fire("input");
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+    assert.equal(nodes.get("venue-hint").hidden, true);
+
+    // pickup only: a quiet word under ebay, before the press, so he sees it took
+    nodes.get("pickup-only").checked = true;
+    nodes.get("pickup-only").fire("change");
+    assert.equal(nodes.get("ebay-status").textContent, "pickup only");
+    assert.equal(nodes.get("ebay-status").hidden, false);
+    assert.equal(nodes.get("craigslist-status").hidden, true, "craigslist is pickup anyway");
+    assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, { quantity: "2", pickupOnly: true });
+
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 2, pickup_only: true }]);
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+    // fixed while the job is on its way, as the photos are
+    assert.equal(nodes.get("quantity").disabled, true);
+    assert.equal(nodes.get("pickup-only").disabled, true);
+
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/50");
+    assert.equal(nodes.get("quantity").disabled, false, "the job is done: craigslist may still change them");
+    nodes.get("craigslist-btn").fire("click");
+    await settle();
+    // the saved row's job carries them too: the PC updates the row before it posts
+    assert.deepEqual(pc.posted[1], { sku: "B-0050", venue: "craigslist", quantity: 2, pickup_only: true });
+    t.mock.timers.tick(3000);
+    await settle();
+
+    // DONE: the next item starts folded, at one, shipped
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("customize").hidden, true);
+    assert.equal(nodes.get("customize-toggle").textContent, "▸ customize");
+    assert.equal(nodes.get("quantity").value, "1");
+    assert.equal(nodes.get("pickup-only").checked, false);
+    assert.equal(nodes.get("ebay-status").hidden, true);
+});
+
+test("customize left alone sends the body exactly as before", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    // opened and looked at, nothing changed
+    nodes.get("customize-toggle").fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(JSON.stringify(pc.posted[0]), `{"item":"Lamp ${TODAY}","venue":"ebay","ai":[1]}`);
+});
+
+test("customize, book: its own disclosure; a bad quantity shuts ebay; 3 and pickup only go with the book", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        books: { [ISBN]: BOOK },
+        jobs: { j1: () => ({ state: "running", step: "listing the book" }) },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
+    const item = `Book ${ISBN} ${TODAY}`;
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input");
+    await settle();
+    assert.equal(nodes.get("book-ebay-btn").disabled, false);
+
+    assert.equal(nodes.get("book-customize").hidden, true);
+    nodes.get("book-customize-toggle").fire("click");
+    assert.equal(nodes.get("book-customize").hidden, false);
+    assert.equal(nodes.get("book-customize-toggle").textContent, "▾ customize");
+    assert.equal(nodes.get("customize").hidden, true, "the goods one stays folded");
+
+    nodes.get("book-quantity").value = "1.5";
+    nodes.get("book-quantity").fire("input");
+    assert.equal(nodes.get("book-ebay-btn").disabled, true);
+    assert.equal(nodes.get("book-venue-hint").textContent, QUANTITY_HINT);
+    nodes.get("book-quantity").value = "3";
+    nodes.get("book-quantity").fire("input");
+    nodes.get("book-pickup-only").checked = true;
+    nodes.get("book-pickup-only").fire("change");
+    assert.equal(nodes.get("book-ebay-status").textContent, "pickup only");
+    assert.equal(nodes.get("book-ebay-btn").disabled, false);
+    assert.deepEqual(JSON.parse(local.getItem("snap.book")).customize, { quantity: "3", pickupOnly: true });
+
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [
+        {
+            item,
+            venue: "ebay",
+            book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 1 },
+            quantity: 3,
+            pickup_only: true,
+        },
+    ]);
+    assert.equal(nodes.get("book-quantity").disabled, true);
+    assert.equal(nodes.get("book-pickup-only").disabled, true);
+});
+
+test("a reload brings customize back, folded, with pickup only under ebay", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const item = `Chairs ${TODAY}`;
+    const local = memoryStore({
+        ...GOOD,
+        "snap.item": JSON.stringify({
+            itemName: "Chairs",
+            itemId: item,
+            ai: [1],
+            customize: { quantity: "4", pickupOnly: true },
+        }),
+    });
+    const pc = fakePc({ items: { [item]: { photos: new Map([[1, "a"]]), note: "", sku: null, jobs: [] } } });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nodes.get("customize").hidden, true, "folded: the open state is not kept");
+    assert.equal(nodes.get("quantity").value, "4");
+    assert.equal(nodes.get("pickup-only").checked, true);
+    assert.equal(nodes.get("ebay-status").textContent, "pickup only");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 4, pickup_only: true }]);
 });

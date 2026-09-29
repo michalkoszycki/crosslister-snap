@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.10.0">
+<link rel="stylesheet" href="styles.css?v=1.11.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -96,6 +96,22 @@
       <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
                 placeholder="Size, flaws, brand, anything the listing should say."></textarea>
     </label>
+
+    <!-- customize: folded away, most items are one of a kind and shipped
+         (Michal, 2026-09-28: "a little arrow with the word customize") -->
+    <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="customize">▸ customize</button>
+    <div id="customize" class="card customize" hidden>
+      <label class="field">
+        <span class="field-label">Quantity</span>
+        <input id="quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+               spellcheck="false" value="1">
+      </label>
+      <label class="pickup">
+        <input id="pickup-only" type="checkbox">
+        <span>Pickup only — no shipping on eBay</span>
+      </label>
+    </div>
 
     <div class="venues">
       <div class="venue">
@@ -212,6 +228,20 @@
                 placeholder="Wear, marks, writing inside, anything a buyer should know."></textarea>
     </label>
 
+    <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="book-customize">▸ customize</button>
+    <div id="book-customize" class="card customize" hidden>
+      <label class="field">
+        <span class="field-label">Quantity</span>
+        <input id="book-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+               spellcheck="false" value="1">
+      </label>
+      <label class="pickup">
+        <input id="book-pickup-only" type="checkbox">
+        <span>Pickup only — no shipping on eBay</span>
+      </label>
+    </div>
+
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
       <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
@@ -229,6 +259,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.10.0"></script>
+<script type="module" src="app.js?v=1.11.0"></script>
 </body>
 </html>

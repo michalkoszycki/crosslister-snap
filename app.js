@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.10.0";
+import { VERSION } from "./version.js?v=1.11.0";
 import {
     anyActive,
     bannerText,
@@ -19,6 +19,7 @@ import {
     buildFileName,
     checkSettings,
     cleanItemName,
+    customizeOf,
     doneButton,
     HEALTH_MS,
     highestNumber,
@@ -39,10 +40,11 @@ import {
     serverLine,
     SETTINGS_HINT,
     venueButton,
+    venueIdleNote,
     venueLine,
     VENUES,
-} from "./core.js?v=1.10.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.10.0";
+} from "./core.js?v=1.11.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.11.0";
 import {
     checkPc,
     createItem,
@@ -55,8 +57,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.10.0";
-import { shrinkPhoto } from "./shrink.js?v=1.10.0";
+} from "./pc.js?v=1.11.0";
+import { shrinkPhoto } from "./shrink.js?v=1.11.0";
 import {
     bookCard,
     bookSearch,
@@ -68,8 +70,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.10.0";
-import { canScan, readIsbn } from "./scan.js?v=1.10.0";
+} from "./book.js?v=1.11.0";
+import { canScan, readIsbn } from "./scan.js?v=1.11.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -106,6 +108,12 @@ let isbnTimer = null;
 let titleTimer = null;
 /** The book's last scan: "" / "reading" (the barcode is being read) / "missed" (none found). */
 let scan = "";
+
+/**
+ * customize, open or folded, per kind. Only the screen's business: it starts
+ * folded on every load and every DONE; the values themselves live in the state.
+ */
+const customizeOpen = { goods: false, book: false };
 
 /** The server check: what the PC last said (null: not asked yet), the next check, one at a time. */
 let serverStatus = null;
@@ -260,6 +268,7 @@ function renderGoods() {
     el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
     renderStrip("goods", el.strip, locked);
+    renderCustomize("goods");
 
     const ok = !!settings();
     let hint = "";
@@ -358,6 +367,7 @@ function renderBook() {
     el.bookPriceNote.textContent = note;
     el.bookPriceNote.hidden = !note;
     el.bookNoteStatus.textContent = noteStatusText(state);
+    renderCustomize("book");
 
     const venueHint = renderVenue(state, "ebay", !!settings(), {
         btn: el.bookEbayBtn,
@@ -373,6 +383,35 @@ function renderBook() {
     el.bookDoneHint.hidden = !done.hint;
 }
 
+/** The customize nodes of a kind: the toggle, its card, the quantity box and the pickup box. */
+function customizeNodes(m) {
+    return m === "book"
+        ? { toggle: el.bookCustomizeToggle, card: el.bookCustomize, quantity: el.bookQuantity, pickup: el.bookPickupOnly }
+        : { toggle: el.customizeToggle, card: el.customize, quantity: el.quantity, pickup: el.pickupOnly };
+}
+
+/**
+ * customize: the arrow and the card follow the open flag; the boxes lock once a
+ * job is on its way (as the photos do). The quantity box is not rewritten here,
+ * so a half-typed number stays as typed; DONE and a reload fill it (fillCustomize).
+ */
+function renderCustomize(m) {
+    const nodes = customizeNodes(m);
+    const open = customizeOpen[m];
+    nodes.toggle.textContent = open ? "▾ customize" : "▸ customize";
+    nodes.toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    nodes.card.hidden = !open;
+    const fixed = restoring[m] || anyActive(slots[m]);
+    nodes.quantity.disabled = fixed;
+    nodes.pickup.disabled = fixed;
+    nodes.pickup.checked = customizeOf(slots[m]).pickupOnly;
+}
+
+/** The customize boxes show what the state holds (after a reload or a DONE). */
+function fillCustomize(m) {
+    customizeNodes(m).quantity.value = customizeOf(slots[m]).quantity;
+}
+
 /** One venue button, its status line and its link; returns the button's hint. */
 function renderVenue(state, venue, ok, nodes) {
     const button = venueButton(state, venue, ok);
@@ -382,7 +421,8 @@ function renderVenue(state, venue, ok, nodes) {
     nodes.btn.classList.toggle("busy", active);
     nodes.btn.setAttribute("aria-busy", active ? "true" : "false");
 
-    const line = venueLine(state.jobs[venue]);
+    // before the press, "pickup only" under ebay once ticked: he sees it took
+    const line = venueLine(state.jobs[venue], venueIdleNote(state, venue));
     nodes.status.textContent = line.text;
     nodes.status.className = `venue-status ${line.kind}`;
     nodes.status.hidden = !line.text;
@@ -854,6 +894,7 @@ async function send(m, venue) {
         item: s.itemId,
         photos: s.photos,
         book: m === "book" ? bookForm(s) : undefined,
+        customize: customizeOf(s),
     });
     try {
         const answer = await postJob(pc, body);
@@ -1030,9 +1071,19 @@ async function restore(m) {
         const ai = Array.isArray(saved.ai) ? saved.ai : [];
         setState(
             m,
-            reduce(slots[m], { type: "recovered", mode: m, itemName, itemId: saved.itemId, ai, answer, book: saved })
+            reduce(slots[m], {
+                type: "recovered",
+                mode: m,
+                itemName,
+                itemId: saved.itemId,
+                ai,
+                answer,
+                book: saved,
+                customize: saved.customize,
+            })
         );
         noteBox(m).value = slots[m].note.text;
+        fillCustomize(m);
         if (m === "book") {
             el.bookIsbn.value = slots.book.book.isbn;
             fillManual();
@@ -1099,7 +1150,9 @@ async function nextItem(m) {
     }
     say("");
     keepSaved[m] = false;
+    customizeOpen[m] = false; // the next item starts folded, at one, shipped
     setState(m, reduce(slots[m], { type: "reset" }));
+    fillCustomize(m);
     // a book starts with Scan, not the keyboard
     if (m === "goods") el.itemInput.focus();
 }
@@ -1142,6 +1195,10 @@ function main() {
         craigslistBtn: $("craigslist-btn"),
         craigslistStatus: $("craigslist-status"),
         craigslistLink: $("craigslist-link"),
+        customizeToggle: $("customize-toggle"),
+        customize: $("customize"),
+        quantity: $("quantity"),
+        pickupOnly: $("pickup-only"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -1174,6 +1231,10 @@ function main() {
         bookPriceNote: $("book-price-note"),
         bookFlaws: $("book-flaws"),
         bookNoteStatus: $("book-note-status"),
+        bookCustomizeToggle: $("book-customize-toggle"),
+        bookCustomize: $("book-customize"),
+        bookQuantity: $("book-quantity"),
+        bookPickupOnly: $("book-pickup-only"),
         bookEbayBtn: $("book-ebay-btn"),
         bookEbayStatus: $("book-ebay-status"),
         bookEbayLink: $("book-ebay-link"),
@@ -1249,6 +1310,20 @@ function main() {
     el.bookNextBtn.addEventListener("click", () => {
         nextItem("book").catch(() => {});
     });
+
+    for (const m of MODES) {
+        const nodes = customizeNodes(m);
+        nodes.toggle.addEventListener("click", () => {
+            customizeOpen[m] = !customizeOpen[m];
+            render();
+        });
+        nodes.quantity.addEventListener("input", () =>
+            setState(m, reduce(slots[m], { type: "setQuantity", text: nodes.quantity.value }))
+        );
+        nodes.pickup.addEventListener("change", () =>
+            setState(m, reduce(slots[m], { type: "setPickupOnly", on: nodes.pickup.checked }))
+        );
+    }
 
     window.addEventListener("online", () => {
         for (const m of MODES) setState(m, reduce(slots[m], { type: "online", online: true }));

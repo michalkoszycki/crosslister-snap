@@ -70,6 +70,10 @@ between them.
   listing.
 - Write the note, if any. It goes to the PC a moment after you stop typing
   (`sent` next to the label).
+- More than one of it, or pickup only? Tap the small **▸ customize** right
+  above the buttons: set the **Quantity**, tick **Pickup only** (no shipping
+  on eBay; `pickup only` then shows under ebay). Left alone it is one,
+  shipped, as always, and the next item starts that way again.
 - Tap **ebay** or **craigslist** (they open once every photo says `sent`). The
   line under it goes `sending`, `queued`, then the PC's steps, then the link.
   **Every press publishes for real** and a new item costs one model call.
@@ -117,6 +121,7 @@ between them.
   Under $5 the line says a lot or a buyback site may be better.
 - Write the **flaws**, if any: wear, marks, writing inside. They go to the PC
   as the goods note does.
+- Several copies, or pickup only: **▸ customize** above ebay, as for goods.
 - Tap **ebay** (it opens once every photo says `sent`). The line under it goes
   `sending`, `queued`, the PC's steps, then the link. No model call; **the
   press publishes for real**.

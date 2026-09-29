@@ -53,7 +53,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Settings, the two buttons, polling, a reload |
+| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Settings, customize, the two buttons, polling, a reload |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
 | `pc.js` | every call to the PC |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
@@ -101,6 +101,18 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   moment and a half after you stop typing, or when you leave the box. The small
   word next to the label says `sending...`, `sent`, `not sent (offline), will
   retry`, or `goes with the first photo` before there is an item.
+- **▸ customize**, small, left aligned, right above the buttons (Michal,
+  2026-09-28: "a little arrow with the word customize. If clicked I want to be
+  able to edit quantity. Also I want to be able to check pickup only"). Folded
+  until tapped (the arrow turns ▾); it opens a small card with **Quantity** (1
+  unless changed; a whole number, 1 or more, or the buttons stay shut and the
+  line under them says `Quantity (under customize) must be a whole number, 1
+  or more`) and **Pickup only — no shipping on eBay**. Once ticked, the line
+  under ebay says `pickup only` until the press, so it is plain it took. Both
+  go with either button, the second one's too (the PC updates the saved row
+  first), and lock while a job is on its way. Folded again on every load and
+  every **DONE**; the values themselves are kept for a reload and reset by
+  DONE.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
@@ -198,6 +210,9 @@ title instead, and the PC does the same work from that. Top to bottom:
   · suggested $11`, or `no eBay listings found — set a price`, with `under $5:
   a lot or a buyback site may be better` when the suggestion is that low.
 - **Flaws**: the item's note, sent to the PC exactly as the goods note is.
+- **▸ customize**, right above ebay: the same disclosure as for goods, the
+  book's own (open or folded, and its values, apart from the goods item's):
+  **Quantity** (several copies of one book) and **Pickup only**.
 - **ebay**, one full-width button with the same status line, turning ring and
   link. It opens once the book is found (by title: once the PC answered,
   matched or not), there is a photo (`Snap the cover
@@ -255,7 +270,8 @@ unknown item or job, 409 while the same item is already being posted.
 | `GET <pc>/books/search?title=<t>&author=<a>&year=<y>`, No ISBN, 0.6 s after the last keystroke | each URL-encoded (`%20` for a space); author and year `""` when not typed, year only once it has four digits | the same as `/books/<isbn13>`, plus `"found": true` (a catalogue matched it) or `false` (none did: it is listed as typed; `price` and `listings` still from eBay); 400 and 502 show the PC's words and keep the fields |
 | `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay" or "craigslist", "ai": [photo numbers]}` | `{"job": id, "state": "queued", "ahead": n}` |
 | `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""`. After an ISBN no catalogue knows (the 404 above) and No ISBN: both, `"isbn": "9781926856155"` and the typed `"title"`, `"author"`, `"year"`, `"format"`; the PC keeps the ISBN on the listing and takes the rest from the typed fields | the same |
-| `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only | the same |
+| `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only (plus customize's two, below); the PC updates the saved row with them before it posts | the same |
+| customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | `GET <pc>/jobs/<id>`, every 3 s | - | `{"state": queued/running/done/failed, "step", "sku", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 
@@ -266,7 +282,9 @@ can go while the first job is still publishing. The page keeps the item id and
 the sku with the item until **DONE** (the id and the AI marks also in
 `localStorage`, `snap.item`, for a reload; a book's id, ISBN (or, with no
 ISBN, its title, author, year and format; after an ISBN miss, both, and
-`isbnMiss`), condition, price, main photo and found record in `snap.book`). A book's barcode picture (the ISBN button) is
+`isbnMiss`), condition, price, main photo and found record in `snap.book`;
+either one's customize, `{"quantity", "pickupOnly"}`, once it is not the
+default). A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
 
 ## Settings
