@@ -76,12 +76,18 @@ between them.
   shipped, as always, and the next item starts that way again.
 - Tap **ebay** or **craigslist** (they open once every photo says `sent`). The
   line under it goes `sending`, `queued`, then the PC's steps, then the link.
+  The button itself turns a ring and, once the PC has saved the listing, shows
+  its price (`ebay · $14`); when it is posted the button reads just `$14`.
   **Every press publishes for real** and a new item costs one model call.
 - Tap the other button for the same item on the other site: it sends only the
   item's sku, so no second model call.
 - Not pressing either is fine: the photos and the note are already in the PC's
   inbox, where `crosslister post` (nothing named) offers the folder.
-- **DONE** when both links are there (or one is all you want).
+- **NEXT** (it used to say DONE) for the next item. No need to wait for the
+  link: once a button is pressed and the PC has the job, NEXT clears the
+  screen and the listing finishes on the PC by itself (the line under NEXT
+  says one is still posting; its link is then not shown on the phone). NEXT
+  waits only while a photo is still on its way.
 
 ### Books
 
@@ -123,9 +129,10 @@ between them.
   as the goods note does.
 - Several copies, or pickup only: **▸ customize** above ebay, as for goods.
 - Tap **ebay** (it opens once every photo says `sent`). The line under it goes
-  `sending`, `queued`, the PC's steps, then the link. No model call; **the
-  press publishes for real**.
-- **DONE** for the next book.
+  `sending`, `queued`, the PC's steps, then the link. The button shows the
+  price you set from the press (`ebay · $11`), then just `$11` once posted.
+  No model call; **the press publishes for real**.
+- **NEXT** for the next book, as for goods: no need to wait for the link.
 
 ---
 

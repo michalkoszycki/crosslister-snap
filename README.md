@@ -5,8 +5,10 @@ photos. Each photo goes to the home PC the moment it is taken, into the item's
 own folder there, whether or not a button is ever pressed. Tap the small **AI**
 at the bottom right of the photos the model should look at. Tap **ebay** (or
 **craigslist**): the home PC drafts the listing from that folder, posts it, and
-the link appears under the button. Tap the other button and the same item goes
-up there too, with no second model call. **DONE** starts the next item.
+the link appears under the button; the button itself shows the price while it
+posts (`ebay · $14`) and the price alone once it is up (`$14`). Tap the other
+button and the same item goes up there too, with no second model call. **NEXT**
+starts the next item, without waiting for the listing to finish.
 
 Books have their own screen: tap **book** at the top, tap **ISBN** to read
 the barcode, and the PC finds the book in the catalogues and prices it from
@@ -87,7 +89,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   PC comes back, waiting photos go at once instead of after the retry pause.
 - **Item name**, as before: Snap waits for it, and it names the item's folder
   on the PC, `<item name> <date>` (`Boots 2026-09-24`). Once the first photo is
-  taken the name is fixed until **DONE**. The same name on the same day is the
+  taken the name is fixed until **NEXT**. The same name on the same day is the
   same folder: its photos join the strip and new ones are numbered after them.
 - **Snap** and **Add from gallery**, as before.
 - **The photos.** Top left, each photo says where it is: `waiting` (on the
@@ -111,15 +113,32 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   under ebay says `pickup only` until the press, so it is plain it took. Both
   go with either button, the second one's too (the PC updates the saved row
   first), and lock while a job is on its way. Folded again on every load and
-  every **DONE**; the values themselves are kept for a reload and reset by
-  DONE.
+  every **NEXT**; the values themselves are kept for a reload and reset by
+  NEXT.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
   button shows a turning ring beside its word until the link or the error comes.
-- **DONE**, at the very bottom: clears the item. It waits while a photo or a
-  delete has not reached the PC, and while a job for this item is on its way or
-  on the PC; it sends a note still being typed first.
+  Its word carries the price (Michal, 2026-09-28: "When posting, I want to see
+  the price designated ... When it is done it should just swap to '$14'"):
+  `ebay` before the press and until the PC has saved the row, then
+  `ebay · $14` beside the ring (`$14.50` when the price has cents), then just
+  `$14` once posted, in green; a failure puts the venue word back. The price
+  is the PC's (`price` in the job's status). The other button, pressed after
+  the row is saved, shows the same price from its press and `$14` once its own
+  job is done. A screen reader hears the venue either way (`ebay, posting at
+  $14`, `ebay, posted at $14`).
+- **NEXT** (it was DONE; Michal, 2026-09-28: "I want the final done button to
+  be NEXT"), at the very bottom: clears the item and starts the next one. It
+  waits while a photo or a delete has not reached the PC (`NEXT waits until
+  the photos are on the PC`), and for the moment a press is on its way to the
+  PC; it sends a note still being typed first. It does **not** wait for the
+  listing ("I want to be able to click NEXT as the things are loading/posting
+  ... I know that does not allow seeing the returned link, and that is fine"):
+  the job is the PC's, it posts all the same, and the page just stops asking
+  about it, so its link is not shown. While a listing is posting, a quiet line
+  under NEXT says so: `A listing is still posting on the PC; NEXT starts the
+  next item without waiting for its link`.
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
 toggles) because the PC's saved row is what the second button uses. If the
@@ -150,7 +169,7 @@ title instead, and the PC does the same work from that. Top to bottom:
   phone that cannot read barcodes at all (iPhones) says so up front, and the
   button stays grey there. It is
   there until the book's folder is made on the PC; from then its ISBN is fixed
-  until **DONE**.
+  until **NEXT**.
 - **Or type the ISBN**: the number typed instead. ISBN-10 or ISBN-13, hyphens and spaces
   fine; the check digit must be right. It is looked up 0.4 s after the last
   keystroke. The book's folder on the PC is `Book <isbn13> <date>`.
@@ -194,7 +213,7 @@ title instead, and the PC does the same work from that. Top to bottom:
   cover snapped before there is an ISBN or a title waits on the page until one
   is scanned or typed (the progress line says `1 photo, waiting for the ISBN or
   the title` -- `for the title` once No ISBN is open -- and the lines under
-  ebay and DONE say what to do).
+  ebay and NEXT say what to do).
 - **main**, at the bottom right of each photo, where goods have the AI mark
   and looking the same (a faint outlined `main` when off, a filled blue chip
   and a blue frame when on): the photo the listing leads with. Exactly one
@@ -221,15 +240,18 @@ title instead, and the PC does the same work from that. Top to bottom:
   all `Scan the ISBN, or tap No ISBN and type the title`; after an ISBN no
   catalogue knows, `Tap No ISBN and type the title`). It sends
   the main photo's number with the book, and for a book with no ISBN what was
-  typed (after a miss, the ISBN too).
-- **DONE**, as for goods; it also clears a book that has an ISBN (or a typed
-  title) but no photo.
+  typed (after a miss, the ISBN too). Its word carries the price as for
+  goods, but from the press: the price is typed on the page, so it reads
+  `ebay · $11` at once, and the PC's `price` replaces it when it says one;
+  `$11` once posted.
+- **NEXT**, as for goods (it does not wait for the listing either); it also
+  clears a book that has an ISBN (or a typed title) but no photo.
 
 ## The upload queue, and being offline
 
 One request at a time, in this order: the item itself (with the first photo),
 deletes, the photos in the order they were taken, then the note once it is due.
-The photos stay in the page's memory until **DONE**, so nothing is lost while
+The photos stay in the page's memory until **NEXT**, so nothing is lost while
 the PC cannot be reached:
 
 - **The PC does not answer** (phone offline, PC asleep, Funnel off): the photo
@@ -246,7 +268,11 @@ the PC cannot be reached:
   Photo numbers are never reused, so a delete leaves a gap and the AI marks keep
   naming the right photos.
 - **Leaving the page** asks first while a photo, a delete or the note has not
-  reached the PC, or a job is on its way.
+  reached the PC, or a venue press has not reached it yet. A listing the PC
+  has taken is no reason to ask: it posts whether or not the page watches.
+- **NEXT** never drops what the queue still owes the PC: it stays shut while a
+  photo or a delete of this item is on its way. The other kind's item (goods
+  or book) keeps its own photos going, as ever.
 - **A reload** (or the phone closing the tab) reads the item back from the PC:
   its photos (shown as "on the PC"; the pictures themselves are there), the AI
   marks, the note, the sku and the jobs, whose status lines carry on. Photos
@@ -272,14 +298,14 @@ unknown item or job, 409 while the same item is already being posted.
 | `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""`. After an ISBN no catalogue knows (the 404 above) and No ISBN: both, `"isbn": "9781926856155"` and the typed `"title"`, `"author"`, `"year"`, `"format"`; the PC keeps the ISBN on the listing and takes the rest from the typed fields | the same |
 | `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only (plus customize's two, below); the PC updates the saved row with them before it posts | the same |
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
-| `GET <pc>/jobs/<id>`, every 3 s | - | `{"state": queued/running/done/failed, "step", "sku", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}` |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the note is sent first if it is still being typed. The `sku` comes from the
 first job's status as soon as the PC has saved the row, so the second button
 can go while the first job is still publishing. The page keeps the item id and
-the sku with the item until **DONE** (the id and the AI marks also in
+the sku with the item until **NEXT** (the id and the AI marks also in
 `localStorage`, `snap.item`, for a reload; a book's id, ISBN (or, with no
 ISBN, its title, author, year and format; after an ISBN miss, both, and
 `isbnMiss`), condition, price, main photo and found record in `snap.book`;
