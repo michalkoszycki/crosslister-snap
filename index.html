@@ -129,7 +129,9 @@
 
     <p id="done-hint" class="small hint-line"></p>
     <button type="button" id="next-item" class="big done"
-            aria-label="Done with this item, start the next one">DONE</button>
+            aria-label="Next: start the next item">NEXT</button>
+    <!-- NEXT leaves a listing still posting to the PC: said here, since its link will not show -->
+    <p id="next-note" class="small hint-line" aria-live="polite" hidden></p>
   </section>
 
   <!-- The book mode: the barcode names the book, the PC finds it in the catalogues
@@ -251,7 +253,8 @@
 
     <p id="book-done-hint" class="small hint-line"></p>
     <button type="button" id="book-next-item" class="big done"
-            aria-label="Done with this book, start the next one">DONE</button>
+            aria-label="Next: start the next book">NEXT</button>
+    <p id="book-next-note" class="small hint-line" aria-live="polite" hidden></p>
   </section>
 </main>
 

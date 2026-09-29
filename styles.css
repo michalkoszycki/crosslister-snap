@@ -151,12 +151,13 @@ button, .big, .secondary {
     text-align: center;
     margin-top: 14px;
 }
-/* Snap, and DONE below the notes: the same button, same height, same corners,
-   same word size. DONE is green and nothing else (Michal, 2026-09-21: "the same
-   style just different color. not round"). */
+/* Snap, and NEXT (once DONE; Michal, 2026-09-28: "I want the final done button to
+   be NEXT") below the notes: the same button, same height, same corners, same word
+   size. NEXT is green and nothing else (Michal, 2026-09-21: "the same style just
+   different color. not round"). */
 .snap, .done { padding: 34px 22px; font-size: 26px; letter-spacing: 0.02em; }
 .done { background: var(--done); color: var(--done-ink); }
-/* Until the item has its first photo DONE is plain grey, not a faded green: nothing to
+/* Until the item has its first photo NEXT is plain grey, not a faded green: nothing to
    finish yet (Michal, 2026-09-21). Overrides the shared 0.45 opacity of disabled buttons. */
 .done:disabled { background: var(--line); color: var(--muted); opacity: 1; }
 
@@ -343,6 +344,13 @@ button.badge.failed {
     animation: turn 0.8s linear infinite;
 }
 @keyframes turn { to { transform: rotate(360deg); } }
+/* The price beside the venue while it posts ("craigslist · $14"): a size smaller, so it
+   fits half a phone's width with the ring, wrapping before the price if it must
+   (Michal, 2026-09-28: "When posting, I want to see the price designated"). */
+.venue-btn.priced { font-size: 18px; line-height: 1.2; }
+/* Posted: the button's word is the price alone ("$14"), at full strength in the
+   done colour rather than faded like a button that cannot be pressed yet. */
+.venue-btn.posted { opacity: 1; color: var(--ok); border-color: var(--ok); }
 @media (prefers-reduced-motion: reduce) {
     .venue-btn.busy::after { animation: none; }
 }
