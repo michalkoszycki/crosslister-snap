@@ -97,6 +97,22 @@
                 placeholder="Size, flaws, brand, anything the listing should say."></textarea>
     </label>
 
+    <!-- customize: folded away, most items are one of a kind and shipped
+         (Michal, 2026-09-28: "a little arrow with the word customize") -->
+    <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="customize">▸ customize</button>
+    <div id="customize" class="card customize" hidden>
+      <label class="field">
+        <span class="field-label">Quantity</span>
+        <input id="quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+               spellcheck="false" value="1">
+      </label>
+      <label class="pickup">
+        <input id="pickup-only" type="checkbox">
+        <span>Pickup only — no shipping on eBay</span>
+      </label>
+    </div>
+
     <div class="venues">
       <div class="venue">
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
@@ -211,6 +227,20 @@
       <textarea id="book-flaws" rows="3" autocomplete="off" autocapitalize="sentences"
                 placeholder="Wear, marks, writing inside, anything a buyer should know."></textarea>
     </label>
+
+    <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="book-customize">▸ customize</button>
+    <div id="book-customize" class="card customize" hidden>
+      <label class="field">
+        <span class="field-label">Quantity</span>
+        <input id="book-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+               spellcheck="false" value="1">
+      </label>
+      <label class="pickup">
+        <input id="book-pickup-only" type="checkbox">
+        <span>Pickup only — no shipping on eBay</span>
+      </label>
+    </div>
 
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>

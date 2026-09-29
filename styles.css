@@ -443,6 +443,39 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
 .manual { border: none; margin: 0; padding: 0; min-width: 0; }
 .manual legend { padding: 0; margin: 12px 0 0; }
 
+/* customize, right above the venue buttons: a quiet link-style disclosure, left
+   aligned, 44 px tall for a thumb; the arrow turns down when open. What it opens
+   is a small card: the quantity and pickup only (Michal, 2026-09-28). */
+.link.customize-toggle {
+    display: block;
+    min-height: 44px;
+    padding: 10px 0;
+    margin-top: 14px;
+    text-align: left;
+    font-size: 15px;
+}
+.customize { padding: 2px 14px 14px; margin-bottom: 4px; }
+.customize .field { margin-top: 10px; }
+input[type="text"].quantity { width: 7em; }
+input[type="text"]:disabled { color: var(--muted); }
+/* pickup only: the checkbox in a chip-like row, the whole row the target */
+.pickup {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-size: 15px;
+    cursor: pointer;
+}
+.pickup input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+.pickup:has(input:checked) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.pickup:has(input:disabled) { opacity: 0.45; pointer-events: none; }
+.pickup input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
 .book-price-note { margin: 0 2px; }
 /* a book goes to eBay only: one full-width button where goods have two */
 .book-venue { margin-top: 18px; }
