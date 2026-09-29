@@ -35,6 +35,14 @@ import {
     NO_BOOK_HINT,
     TITLE_WAIT_HINT,
     ISBN_MISS_HINT,
+    customizeBody,
+    customizeOf,
+    initialCustomize,
+    PICKUP_NOTE,
+    QUANTITY_HINT,
+    quantityValue,
+    venueIdleNote,
+    venueLine,
 } from "../core.js";
 import {
     bookCard,
@@ -1406,4 +1414,148 @@ test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => 
         answer: { photos: [1] },
     });
     assert.deepEqual([again.book.isbn, again.book.isbnMiss, again.book.lookup.phase], [MISS, true, "idle"]);
+});
+
+// --- customize: the quantity and pickup only ---------------------------------------
+// Michal, 2026-09-28: a little arrow with the word customize before the buttons,
+// to edit the quantity and tick pickup only ("a pickup only item on eBay then").
+
+test("customize starts at one, shipped, for goods and books alike", () => {
+    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false });
+    assert.deepEqual(initialState("x").customize, initialCustomize());
+    assert.deepEqual(bookState().book.customize, initialCustomize());
+    const goods = initialState("x");
+    assert.equal(customizeOf(goods), goods.customize);
+    // a book's is its own, in the book slice
+    const book = reduce(bookState(), { type: "setQuantity", text: "3" });
+    assert.equal(customizeOf(book).quantity, "3");
+    assert.equal(book.book.customize.quantity, "3");
+    assert.equal(book.customize.quantity, "1", "the goods customize is not the book's");
+});
+
+test("the quantity: a whole number, 1 or more; anything else is 0", () => {
+    for (const [typed, n] of [
+        ["1", 1],
+        ["2", 2],
+        [" 12 ", 12],
+        ["02", 2],
+        [3, 3],
+    ]) {
+        assert.equal(quantityValue(typed), n, JSON.stringify(typed));
+    }
+    for (const bad of ["", " ", "0", "00", "-1", "1.5", "2,0", "two", "1e3", null, undefined, 2.5]) {
+        assert.equal(quantityValue(bad), 0, JSON.stringify(bad));
+    }
+});
+
+test("a bad quantity shuts the venue buttons with the hint, in both modes", () => {
+    assert.equal(QUANTITY_HINT, "Quantity (under customize) must be a whole number, 1 or more");
+    const goods = reduce(sent(2, [1]), { type: "setQuantity", text: "0" });
+    for (const venue of ["ebay", "craigslist"]) {
+        assert.deepEqual(venueButton(goods, venue, true), { enabled: false, hint: QUANTITY_HINT });
+    }
+    // the second button too: the quantity goes with it
+    const saved = reduce(goods, { type: "jobStatus", venue: "ebay", status: { state: "done", sku: "B-1" } });
+    assert.deepEqual(venueButton(saved, "craigslist", true), { enabled: false, hint: QUANTITY_HINT });
+    assert.equal(venueButton(reduce(goods, { type: "setQuantity", text: "2" }), "ebay", true).enabled, true);
+    const book = reduce(foundBook(), { type: "setQuantity", text: "x" });
+    assert.deepEqual(venueButton(book, "ebay", true), { enabled: false, hint: QUANTITY_HINT });
+    assert.equal(venueButton(reduce(book, { type: "setQuantity", text: "4" }), "ebay", true).enabled, true);
+});
+
+test("the job body carries quantity and pickup_only only when they are not the default", () => {
+    assert.deepEqual(customizeBody(undefined), {});
+    assert.deepEqual(customizeBody(initialCustomize()), {});
+    assert.deepEqual(customizeBody({ quantity: "2", pickupOnly: false }), { quantity: 2 });
+    assert.deepEqual(customizeBody({ quantity: "1", pickupOnly: true }), { pickup_only: true });
+
+    let s = sent(2, [2]);
+    const body = (x) => jobRequest({ venue: "ebay", sku: x.sku, item: x.itemId, photos: x.photos, customize: customizeOf(x) });
+    // left alone: the body is exactly what it always was
+    assert.equal(JSON.stringify(body(s)), `{"item":"${ITEM}","venue":"ebay","ai":[2]}`);
+    s = reduce(s, { type: "setQuantity", text: "2" });
+    s = reduce(s, { type: "setPickupOnly", on: true });
+    assert.deepEqual(body(s), { item: ITEM, venue: "ebay", ai: [2], quantity: 2, pickup_only: true });
+    // the saved row's job carries them too: the PC updates the row before it posts
+    const saved = { ...s, sku: "B-9" };
+    assert.deepEqual(
+        jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(saved) }),
+        { sku: "B-9", venue: "craigslist", quantity: 2, pickup_only: true }
+    );
+    // a book: top-level, beside the book
+    let b = reduce(foundBook(), { type: "setPickupOnly", on: true });
+    b = reduce(b, { type: "setQuantity", text: "3" });
+    const bookBody = jobRequest({ venue: "ebay", item: b.itemId, photos: b.photos, book: bookForm(b), customize: customizeOf(b) });
+    assert.equal(bookBody.quantity, 3);
+    assert.equal(bookBody.pickup_only, true);
+    assert.equal(bookBody.book.isbn, ISBN);
+    assert.equal("quantity" in bookBody.book, false);
+});
+
+test("pickup only shows under ebay while idle, and only there", () => {
+    const s = reduce(sent(1, [1]), { type: "setPickupOnly", on: true });
+    assert.equal(PICKUP_NOTE, "pickup only");
+    assert.equal(venueIdleNote(s, "ebay"), "pickup only");
+    assert.equal(venueIdleNote(s, "craigslist"), "", "craigslist is pickup anyway");
+    assert.equal(venueIdleNote(sent(1, [1]), "ebay"), "");
+    assert.deepEqual(venueLine(s.jobs.ebay, venueIdleNote(s, "ebay")), { text: "pickup only", link: "", kind: "" });
+    // pressed: the job's own line takes over
+    const going = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(venueLine(going.jobs.ebay, venueIdleNote(going, "ebay")).text, "sending");
+    const book = reduce(foundBook(), { type: "setPickupOnly", on: true });
+    assert.equal(venueIdleNote(book, "ebay"), "pickup only");
+});
+
+test("customize is fixed while a job is on its way, free again after, and reset by DONE", () => {
+    const s = reduce(sent(1, [1]), { type: "setQuantity", text: "2" });
+    const going = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(reduce(going, { type: "setQuantity", text: "5" }), going);
+    assert.equal(reduce(going, { type: "setPickupOnly", on: true }), going);
+    // the row saved and the job done: craigslist may still go with a new quantity
+    const done = reduce(going, { type: "jobStatus", venue: "ebay", status: { state: "done", sku: "B-1" } });
+    assert.equal(reduce(done, { type: "setQuantity", text: "3" }).customize.quantity, "3");
+    assert.deepEqual(reduce(done, { type: "reset" }).customize, initialCustomize());
+    const book = reduce(reduce(foundBook(), { type: "setPickupOnly", on: true }), { type: "reset" });
+    assert.deepEqual(book.book.customize, initialCustomize());
+    const bookGoing = reduce(foundBook(), { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(reduce(bookGoing, { type: "setPickupOnly", on: true }), bookGoing);
+});
+
+test("customize is kept for a reload once it is not the default, and read back", () => {
+    let s = reduce(sent(2, [1]), { type: "setQuantity", text: "2" });
+    s = reduce(s, { type: "setPickupOnly", on: true });
+    const saved = savedItem(s);
+    assert.deepEqual(saved, {
+        itemName: "Boots",
+        itemId: ITEM,
+        ai: [1],
+        customize: { quantity: "2", pickupOnly: true },
+    });
+    const back = reduce(initialState(""), {
+        type: "recovered",
+        mode: "goods",
+        itemName: saved.itemName,
+        itemId: saved.itemId,
+        ai: saved.ai,
+        customize: JSON.parse(JSON.stringify(saved.customize)),
+        answer: { item: ITEM, photos: [1, 2] },
+    });
+    assert.deepEqual(back.customize, { quantity: "2", pickupOnly: true });
+    // nothing saved (an item from before customize): the default
+    const old = reduce(initialState(""), { type: "recovered", itemName: "Boots", itemId: ITEM, answer: { photos: [1] } });
+    assert.deepEqual(old.customize, initialCustomize());
+
+    const book = reduce(foundBook(), { type: "setPickupOnly", on: true });
+    const bookSaved = savedItem(book);
+    assert.deepEqual(bookSaved.customize, { quantity: "1", pickupOnly: true });
+    const bookBack = reduce(bookState(), {
+        type: "recovered",
+        mode: "book",
+        itemName: bookSaved.itemName,
+        itemId: bookSaved.itemId,
+        book: JSON.parse(JSON.stringify(bookSaved)),
+        answer: { photos: [1] },
+    });
+    assert.deepEqual(bookBack.book.customize, { quantity: "1", pickupOnly: true });
+    assert.equal("customize" in savedItem(foundBook()), false, "left alone: saved as it always was");
 });

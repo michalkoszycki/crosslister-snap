@@ -213,14 +213,119 @@ export const KEY_HEADER = "X-Crosslister-Key";
  *
  * @param {{n:number, ai:boolean}[]} [o.photos]
  * @param {BookJob} [o.book]  from bookForm()
- * @returns {{sku:string, venue:string} | {item:string, venue:string, ai:number[]}
- *          | {item:string, venue:string, book:BookJob}}
+ * @param {Customize} [o.customize]  from customizeOf(): the quantity and pickup only ride
+ *        along, top-level, in every one of the three bodies -- the sku's too, since the PC
+ *        updates the saved row before it posts it again (customizeBody says when)
+ * @returns {({sku:string, venue:string} | {item:string, venue:string, ai:number[]}
+ *          | {item:string, venue:string, book:BookJob}) & {quantity?:number, pickup_only?:true}}
  */
-export function jobRequest({ venue, sku = "", item = "", photos = [], book = undefined }) {
+export function jobRequest({ venue, sku = "", item = "", photos = [], book = undefined, customize = undefined }) {
     if (!VENUES.includes(venue)) throw new RangeError(`unknown venue ${venue}`);
-    if (book) return { item, venue, book: { ...book } };
-    if (sku) return { sku, venue };
-    return { item, venue, ai: photos.filter((p) => p.ai).map((p) => p.n) };
+    const extra = customizeBody(customize);
+    if (book) return { item, venue, book: { ...book }, ...extra };
+    if (sku) return { sku, venue, ...extra };
+    return { item, venue, ai: photos.filter((p) => p.ai).map((p) => p.n), ...extra };
+}
+
+// --- customize: the quantity and pickup only -----------------------------------
+// Michal, 2026-09-28: "Before the eBay and Craigslist buttons I would like to
+// have a little arrow with the word customize. If clicked I want to be able to
+// edit quantity. Also I want to be able to check pickup only. And it would be a
+// pickup only item on eBay then." Nearly everything he lists is one of a kind
+// and shipped, so both sit folded away, and left alone they send nothing new:
+// the body is exactly what it was before customize existed.
+
+/**
+ * What customize holds, per item (goods: state.customize; a book: state.book.customize).
+ * @typedef {Object} Customize
+ * @property {string} quantity   the box as typed ("1" until he changes it); quantityValue() reads it
+ * @property {boolean} pickupOnly  no shipping on eBay: the buyer collects it
+ */
+
+/** @returns {Customize} */
+export function initialCustomize() {
+    return { quantity: "1", pickupOnly: false };
+}
+
+/**
+ * The quantity box as a number: a whole number, 1 or more; 0 when it is not
+ * one ("", "0", "1.5", "two"), which keeps the venue buttons shut. Kept as
+ * typed in the state (as the book's price is) so a half-typed box is not
+ * rewritten under his thumb.
+ * @param {unknown} text
+ * @returns {number}
+ */
+export function quantityValue(text) {
+    const bare = typeof text === "number" ? String(text) : typeof text === "string" ? text.trim() : "";
+    if (!/^\d+$/.test(bare)) return 0;
+    const n = Number(bare);
+    return Number.isSafeInteger(n) && n >= 1 ? n : 0;
+}
+
+/** The line under the buttons while the quantity is not a quantity. */
+export const QUANTITY_HINT = "Quantity (under customize) must be a whole number, 1 or more";
+
+/** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
+export const PICKUP_NOTE = "pickup only";
+
+/**
+ * This item's customize: a book keeps its own in the book slice, goods at the top.
+ * @param {SnapState} state
+ * @returns {Customize}
+ */
+export function customizeOf(state) {
+    return state.mode === "book" ? state.book.customize : state.customize;
+}
+
+/**
+ * What customize adds to a job's body: `quantity` only when it is not 1 and
+ * `pickup_only` only when ticked, so an item left alone sends the same body
+ * as ever (and the PC's defaults, 1 and shipped, apply).
+ * @param {Customize} [customize]
+ * @returns {{quantity?:number, pickup_only?:true}}
+ */
+export function customizeBody(customize) {
+    if (!customize) return {};
+    const out = {};
+    const quantity = quantityValue(customize.quantity);
+    if (quantity > 1) out.quantity = quantity;
+    if (customize.pickupOnly === true) out.pickup_only = true;
+    return out;
+}
+
+/**
+ * The line under a venue button before it is pressed: "pickup only" under
+ * ebay once ticked (craigslist is pickup anyway), else nothing.
+ * @param {SnapState} state
+ * @param {string} venue
+ * @returns {string}
+ */
+export function venueIdleNote(state, venue) {
+    return venue === "ebay" && customizeOf(state).pickupOnly ? PICKUP_NOTE : "";
+}
+
+/** Customize read back from storage after a reload; anything odd is the default. */
+function recoveredCustomize(saved) {
+    const c = initialCustomize();
+    if (!saved || typeof saved !== "object") return c;
+    if (typeof saved.quantity === "string") c.quantity = saved.quantity;
+    else if (typeof saved.quantity === "number") c.quantity = String(saved.quantity);
+    c.pickupOnly = saved.pickupOnly === true;
+    return c;
+}
+
+/** Customize as savedItem keeps it: nothing at all while it is the default. */
+function savedCustomize(c) {
+    return c.quantity === "1" && !c.pickupOnly ? {} : { customize: { quantity: c.quantity, pickupOnly: c.pickupOnly } };
+}
+
+/** Customize changed, in the right place for the item's kind; fixed while a job is on its way. */
+function withCustomize(state, fn) {
+    if (anyActive(state)) return state;
+    if (state.mode === "book") {
+        return { ...state, book: { ...state.book, customize: fn(state.book.customize) } };
+    }
+    return { ...state, customize: fn(state.customize) };
 }
 
 /**
@@ -316,6 +421,7 @@ export function safeLink(url) {
  * @property {Record<string, VenueJob>} jobs
  * @property {"goods"|"book"} mode  which kind of item this is; the page keeps one of each
  * @property {BookSlice} book       the book's own fields (untouched in goods mode)
+ * @property {Customize} customize  goods' quantity and pickup only (a book's is in its slice)
  */
 
 /**
@@ -345,6 +451,7 @@ export function safeLink(url) {
  * @property {string} year
  * @property {string} format     one of FORMATS' values, paperback by default
  * @property {boolean} formatChosen  he tapped a format chip: a catalogue match no longer sets it
+ * @property {Customize} customize   the book's quantity and pickup only
  */
 
 /**
@@ -401,6 +508,7 @@ function initialBook() {
         autoPrice: "",
         main: 0,
         ...blankManual(),
+        customize: initialCustomize(),
     };
 }
 
@@ -430,6 +538,7 @@ export function initialState(itemName = "", mode = "goods") {
         problem: "",
         sku: "",
         jobs: Object.fromEntries(VENUES.map((v) => [v, idleJob()])),
+        customize: initialCustomize(),
     };
 }
 
@@ -476,6 +585,9 @@ export function photosLocked(state) {
  *   {type:"jobRefused", venue, error}     the POST did not become a job
  *   {type:"jobStatus", venue, status}     an answer to GET /jobs/<id>
  *   {type:"pollTrouble", venue, error}    that GET failed; keep asking
+ *   {type:"setQuantity", text}            the quantity box under customize, as typed
+ *   {type:"setPickupOnly", on}            the pickup only box under customize
+ *                                         (both: this item's kind's own; fixed while a job is on its way)
  * The book mode:
  *   {type:"setMode", mode}                "goods" or "book": what kind of item this state holds
  *   {type:"bookIsbn", isbn}               a valid ISBN-13 scanned or typed, or "" (fixed once the item is on the PC)
@@ -626,6 +738,12 @@ export function reduce(state, action) {
                 ...job,
                 trouble: action.error || "cannot reach the PC",
             }));
+        case "setQuantity": {
+            const quantity = typeof action.text === "string" ? action.text : String(action.text ?? "");
+            return withCustomize(state, (c) => ({ ...c, quantity }));
+        }
+        case "setPickupOnly":
+            return withCustomize(state, (c) => ({ ...c, pickupOnly: action.on === true }));
 
         case "setMode":
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;
@@ -958,6 +1076,8 @@ function recovered(state, action) {
         photos: numbers(answer.photos).map((n) => photoOnPc(action.itemName, n, marked.has(n))),
         note: { text: note, sentText: note, due: false },
         sku: typeof answer.sku === "string" ? answer.sku : "",
+        // only the phone knows it until a button is pressed (a book's is in its slice)
+        customize: mode === "goods" ? recoveredCustomize(action.customize) : initialCustomize(),
     };
     for (const job of Array.isArray(answer.jobs) ? answer.jobs : []) {
         if (!job || !VENUES.includes(job.venue)) continue;
@@ -984,6 +1104,7 @@ function recoveredBook(saved) {
     }
     if (CONDITIONS.some((c) => c.value === s.condition)) book.condition = s.condition;
     if (typeof s.price === "string") book.price = s.price;
+    book.customize = recoveredCustomize(s.customize);
     // settleMain() then checks it is still one of the photos the PC has
     if (Number.isInteger(s.main) && s.main > 0) book.main = s.main;
     const found = s.lookup && typeof s.lookup === "object" ? s.lookup : null;
@@ -1069,15 +1190,19 @@ export function raiseCount(counters, itemName, n) {
  * catalogue knows, both, and that it was a miss), the condition chip, the
  * price box, the main photo and the book the lookup found (so a reload does
  * not even have to ask the catalogues again). It has no AI marks.
- * @returns {null|{itemName:string, itemId:string, ai:number[]}
+ *
+ * Either kind also keeps customize (the quantity and pickup only), but only
+ * once it is not the default: an item left alone is saved as it always was.
+ * @returns {null|{itemName:string, itemId:string, ai:number[], customize?:Customize}
  *          |{mode:"book", itemName:string, itemId:string, isbn:string, isbnMiss:boolean, manual:boolean, title:string,
  *            author:string, year:string, format:string, condition:string, price:string,
- *            main:number, lookup:(null|object)}}
+ *            main:number, lookup:(null|object), customize?:Customize}}
  */
 export function savedItem(state) {
     if (!state.itemId) return null;
     if (state.mode === "book") {
-        const { isbn, isbnMiss, manual, title, author, year, format, condition, price, main, lookup } = state.book;
+        const { isbn, isbnMiss, manual, title, author, year, format, condition, price, main, lookup, customize } =
+            state.book;
         return {
             mode: "book",
             itemName: state.itemName,
@@ -1103,23 +1228,27 @@ export function savedItem(state) {
                           route: lookup.route,
                       }
                     : null,
+            ...savedCustomize(customize),
         };
     }
     return {
         itemName: state.itemName,
         itemId: state.itemId,
         ai: state.photos.filter((p) => p.ai).map((p) => p.n),
+        ...savedCustomize(state.customize),
     };
 }
 
 // --- what the screen says ------------------------------------------------------
 
 /**
- * The line under a venue button, and the link when there is one.
+ * The line under a venue button, and the link when there is one. Before the
+ * press it says `idle`, if anything (venueIdleNote: "pickup only").
  * @param {VenueJob} job
+ * @param {string} [idle]
  * @returns {{text:string, link:string, kind:""|"busy"|"ok"|"bad"}}
  */
-export function venueLine(job) {
+export function venueLine(job, idle = "") {
     switch (job.phase) {
         case "sending":
             return { text: job.step || "sending", link: "", kind: "busy" };
@@ -1138,7 +1267,7 @@ export function venueLine(job) {
         case "failed":
             return { text: job.error || "failed", link: "", kind: "bad" };
         default:
-            return { text: "", link: "", kind: "" };
+            return { text: idle, link: "", kind: "" };
     }
 }
 
@@ -1158,6 +1287,8 @@ export function venueButton(state, venue, settingsOk) {
     // pressed already: on its way, or posted (the link is right there)
     if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
+    // a quantity he typed wrong is his to fix first: it goes with either button
+    if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
     // the second button: the row is saved, nothing more is needed
     if (state.sku) return { enabled: true, hint: "" };
     // the other button's job is on its way but has not saved the row yet
@@ -1231,6 +1362,7 @@ function bookVenueButton(state, venue, settingsOk) {
     if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     const { book } = state;
+    if (!quantityValue(book.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     // under No ISBN the title is what is looked up, even with an ISBN kept after a miss
     if (book.manual ? !bookSearch(book).title : !book.isbn) {
