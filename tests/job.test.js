@@ -218,12 +218,17 @@ test("ebay: sending, queued with jobs ahead, running steps, then the link", () =
     assert.equal(venueButton(s, "ebay", true).enabled, false, "posted once is enough");
 });
 
-test("the other button waits for the row, then sends the sku only", () => {
+test("the other button opens at once; before the row it sends the item, after it the sku only", () => {
+    // Michal, 2026-09-30: "I seem not to be able to click craigslist while ebay is loading".
+    // The PC runs jobs one at a time and a job for a folder that already made a row reuses
+    // it, so the second press is safe before the row exists: it goes with the item.
     let s = reduce(newItem(), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(venueButton(s, "craigslist", true).enabled, false);
-    assert.match(venueButton(s, "craigslist", true).hint, /goes first/);
+    assert.deepEqual(venueButton(s, "craigslist", true), { enabled: true, hint: "" });
+    const early = jobRequest({ venue: "craigslist", sku: s.sku, item: s.itemId, photos: s.photos });
+    assert.equal(early.sku, undefined);
+    assert.equal(early.item, s.itemId);
 
-    // the sku arrives while the first job is still running: the second may go now
+    // the sku arrives while the first job is still running: the second goes by sku alone
     s = reduce(s, {
         type: "jobStatus",
         venue: "ebay",

@@ -5,9 +5,9 @@ photos. Each photo goes to the home PC the moment it is taken, into the item's
 own folder there, whether or not a button is ever pressed. Tap the small **AI**
 at the bottom right of the photos the model should look at. Tap **ebay** (or
 **craigslist**): the home PC drafts the listing from that folder, posts it, and
-the link appears under the button; the button itself shows the price while it
-posts (`ebay · $14`) and the price alone once it is up (`$14`). Tap the other
-button and the same item goes up there too, with no second model call. **NEXT**
+the link appears under the button; the price shows above the buttons (`$14`)
+as soon as the PC has saved the item. Tap the other button, right away or
+later, and the same item goes up there too, with no second model call. **NEXT**
 starts the next item, without waiting for the listing to finish.
 
 Books have their own screen: tap **book** at the top, tap **ISBN** to read
@@ -89,8 +89,16 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   PC comes back, waiting photos go at once instead of after the retry pause.
 - **Item name**, as before: Snap waits for it, and it names the item's folder
   on the PC, `<item name> <date>` (`Boots 2026-09-24`). Once the first photo is
-  taken the name is fixed until **NEXT**. The same name on the same day is the
-  same folder: its photos join the strip and new ones are numbered after them.
+  taken the name is fixed until **NEXT**. A name already started today on the
+  PC is refused (Michal, 2026-09-30: "if I put a name for an item and it is
+  the same as another, just flag it and don't accept it"): half a second after
+  he stops typing the page asks the PC for today's folder of that name, and if
+  it is there the box turns red, the line under it says `"Lamp" is already an
+  item on the PC today with 3 photos. Use a different name.`, and Snap waits
+  for another name. (Until then the same name on the same day was silently the
+  same folder, and its photos came back into the strip.) A PC that does not
+  answer cannot refuse a name; the folder it then lands in is still the one
+  the PC names.
 - **Snap** and **Add from gallery**, as before.
 - **The photos.** Top left, each photo says where it is: `waiting` (on the
   page, on its way), `sent` (on the PC), or `failed` (the PC refused it; tap
@@ -118,16 +126,19 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
-  button shows a turning ring beside its word until the link or the error comes.
-  Its word carries the price (Michal, 2026-09-28: "When posting, I want to see
-  the price designated ... When it is done it should just swap to '$14'"):
-  `ebay` before the press and until the PC has saved the row, then
-  `ebay · $14` beside the ring (`$14.50` when the price has cents), then just
-  `$14` once posted, in green; a failure puts the venue word back. The price
-  is the PC's (`price` in the job's status). The other button, pressed after
-  the row is saved, shows the same price from its press and `$14` once its own
-  job is done. A screen reader hears the venue either way (`ebay, posting at
-  $14`, `ebay, posted at $14`).
+  button shows a turning ring beside its word until the link or the error comes;
+  posted, it turns green. The price is a line above the two buttons (Michal,
+  2026-09-28: "When posting, I want to see the price designated"; 2026-09-30:
+  "show the chosen price for the item above the buttons instead of replacing
+  button text"): nothing before a press and until the PC has saved the row,
+  then `$14` (`$14.50` when the price has cents) while it posts and after. The
+  price is the PC's (`price` in the job's status), the row's, so it stands for
+  both buttons; a failure with nothing else running takes it away. The other
+  button can be pressed at any time after the first (Michal, 2026-09-30: "I
+  seem not to be able to click craigslist while ebay is loading"): the PC runs
+  jobs one at a time, so it queues behind (`queued, 1 ahead`) and, by then, the
+  row the first job saved is there to reuse; no second model call. A screen
+  reader hears the venue and its state (`ebay, posting`, `ebay, posted`).
 - **NEXT** (it was DONE; Michal, 2026-09-28: "I want the final done button to
   be NEXT"), at the very bottom: clears the item and starts the next one. It
   waits while a photo or a delete has not reached the PC (`NEXT waits until
@@ -240,10 +251,9 @@ title instead, and the PC does the same work from that. Top to bottom:
   all `Scan the ISBN, or tap No ISBN and type the title`; after an ISBN no
   catalogue knows, `Tap No ISBN and type the title`). It sends
   the main photo's number with the book, and for a book with no ISBN what was
-  typed (after a miss, the ISBN too). Its word carries the price as for
+  typed (after a miss, the ISBN too). The price line above it is as for
   goods, but from the press: the price is typed on the page, so it reads
-  `ebay · $11` at once, and the PC's `price` replaces it when it says one;
-  `$11` once posted.
+  `$11` at once, and the PC's `price` replaces it when it says one.
 - **NEXT**, as for goods (it does not wait for the listing either); it also
   clears a book that has an ISBN (or a typed title) but no photo.
 

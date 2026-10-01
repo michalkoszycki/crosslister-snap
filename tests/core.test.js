@@ -43,7 +43,11 @@ import {
     quantityValue,
     venueIdleNote,
     venueLine,
-    venueWord,
+    priceLine,
+    venueLabel,
+    itemIdFor,
+    nameTakenHint,
+    NAME_CHECK_MS,
     nextNote,
     NEXT_NOTE,
     idleJob,
@@ -331,47 +335,52 @@ test("NEXT needs a photo and does not wait for a listing the PC has taken", () =
     assert.equal(nextNote(both), NEXT_NOTE);
 });
 
-// --- the word on a venue button: the price ------------------------------------------
+// --- the price line above the venue buttons -----------------------------------------
 
-test("venueWord: the venue, then 'ebay · $14' while posting, then '$14' alone once posted", () => {
-    // Michal, 2026-09-28: "When posting, I want to see the price designated. Maybe as
-    // the button is loading. When it is done it should just swap to '$14'"
+test("priceLine: nothing before the press, '$14' once the PC has saved the row, for both buttons", () => {
+    // Michal, 2026-09-28: "When posting, I want to see the price designated"; 2026-09-30:
+    // "show the chosen price for the item above the buttons instead of replacing button text"
     let s = sent(1, [1]);
-    const word = (venue = "ebay", fallback = "") => venueWord(s.jobs[venue], venue, fallback);
-    assert.deepEqual(word(), { text: "ebay", label: "ebay" }, "before the press");
+    assert.equal(priceLine(s), "", "before the press");
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay");
     s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.deepEqual(word(), { text: "ebay", label: "ebay, posting" }, "no price known yet");
+    assert.equal(priceLine(s), "", "no price known yet");
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, posting");
     s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 1 });
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "queued", ahead: 1, price: "" } });
-    assert.deepEqual(word(), { text: "ebay", label: "ebay, posting" }, "blank before the row is saved");
+    assert.equal(priceLine(s), "", "blank before the row is saved");
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1", price: "14.00" } });
     assert.equal(s.jobs.ebay.price, "14.00");
-    assert.deepEqual(word(), { text: "ebay · $14", label: "ebay, posting at $14" }, "whole dollars without cents");
+    assert.equal(priceLine(s), "$14", "whole dollars without cents");
     // a later answer without it does not unsay it
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "publishing" } });
-    assert.deepEqual(word(), { text: "ebay · $14", label: "ebay, posting at $14" });
+    assert.equal(priceLine(s), "$14");
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done", price: "14.00" } });
-    assert.deepEqual(word(), { text: "$14", label: "ebay, posted at $14" });
-    // the other button keeps its own word until its own job is done
-    assert.deepEqual(word("craigslist"), { text: "craigslist", label: "craigslist" });
+    assert.equal(priceLine(s), "$14");
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, posted");
+    // the other button's word is the venue throughout; the line is the row's, so it serves it too
+    assert.equal(venueLabel(s.jobs.craigslist, "craigslist"), "craigslist");
     s = reduce(s, { type: "jobAccepted", venue: "craigslist", job: "j2", ahead: 0 });
+    assert.equal(priceLine(s), "$14", "the ebay job's price, while craigslist has not said one");
     s = reduce(s, { type: "jobStatus", venue: "craigslist", status: { state: "done", price: "14.00" } });
-    assert.deepEqual(word("craigslist"), { text: "$14", label: "craigslist, posted at $14" });
+    assert.equal(priceLine(s), "$14");
+    assert.equal(venueLabel(s.jobs.craigslist, "craigslist"), "craigslist, posted");
 });
 
-test("venueWord: cents when the price has them; a failure is the venue again; a fallback price stands in", () => {
+test("priceLine: cents when the price has them; gone after a failure; a fallback price stands in", () => {
     const job = (phase, price = "") => ({ ...idleJob(), phase, price });
-    assert.deepEqual(venueWord(job("running", "14.50"), "ebay"), { text: "ebay · $14.50", label: "ebay, posting at $14.50" });
-    assert.deepEqual(venueWord(job("done", "7.5"), "craigslist"), { text: "$7.50", label: "craigslist, posted at $7.50" });
-    assert.deepEqual(venueWord(job("failed", "14.00"), "ebay"), { text: "ebay", label: "ebay" }, "back to the venue");
-    assert.deepEqual(venueWord(job("done"), "ebay"), { text: "ebay", label: "ebay, posted" }, "posted, no price said");
+    const withJob = (venue, j) => ({ ...sent(1, [1]), jobs: { ...sent(1, [1]).jobs, [venue]: j } });
+    assert.equal(priceLine(withJob("ebay", job("running", "14.50"))), "$14.50");
+    assert.equal(priceLine(withJob("craigslist", job("done", "7.5"))), "$7.50");
+    assert.equal(priceLine(withJob("ebay", job("failed", "14.00"))), "", "a failure takes the line away");
+    assert.equal(priceLine(withJob("ebay", job("done"))), "", "posted, no price said");
     // a book's price is typed on the page: known from the press, the PC's replaces it
-    assert.deepEqual(venueWord(job("sending"), "ebay", "11"), { text: "ebay · $11", label: "ebay, posting at $11" });
-    assert.deepEqual(venueWord(job("running", "12.00"), "ebay", "11"), { text: "ebay · $12", label: "ebay, posting at $12" });
-    assert.deepEqual(venueWord(job("idle"), "ebay", "11"), { text: "ebay", label: "ebay" }, "not before the press");
+    assert.equal(priceLine(withJob("ebay", job("sending")), "11"), "$11");
+    assert.equal(priceLine(withJob("ebay", job("running", "12.00")), "11"), "$12");
+    assert.equal(priceLine(withJob("ebay", job("idle")), "11"), "", "not before the press");
     // nothing that is not a price above zero
     for (const junk of ["", "0", "0.00", "abc", null, undefined]) {
-        assert.deepEqual(venueWord(job("running", junk), "ebay"), { text: "ebay", label: "ebay, posting" }, String(junk));
+        assert.equal(priceLine(withJob("ebay", job("running", junk))), "", String(junk));
     }
     // a bare number from the PC is a price too
     const s = reduce(reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 }), {
@@ -379,9 +388,47 @@ test("venueWord: cents when the price has them; a failure is the venue again; a 
         venue: "ebay",
         status: { state: "running", price: 9 },
     });
-    assert.equal(venueWord(s.jobs.ebay, "ebay").text, "ebay · $9");
+    assert.equal(priceLine(s), "$9");
     // a new press starts without the old price
     assert.equal(reduce(s, { type: "jobSending", venue: "ebay", step: "sending" }).jobs.ebay.price, "");
+});
+
+test("the second button opens as soon as the first job is on its way: the PC queues it behind", () => {
+    // Michal, 2026-09-30: "I seem not to be able to click craigslist while ebay is loading"
+    let s = reduce(sent(1, [1]), { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.deepEqual(venueButton(s, "craigslist", true), { enabled: true, hint: "" }, "while sending");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
+    assert.deepEqual(venueButton(s, "craigslist", true), { enabled: true, hint: "" }, "while drafting, no row yet");
+    assert.deepEqual(venueButton(s, "ebay", true), { enabled: false, hint: "" }, "the pressed one waits");
+});
+
+// --- an item name the PC already has today ------------------------------------------
+
+test("a name the PC already has today is flagged and refused; retyping clears it", () => {
+    // Michal, 2026-09-30: "if I put a name for an item and it is the same as another,
+    // just flag it and don't accept it. I see that that pulls back the cached photos"
+    let s = reduce(initialState(""), { type: "setItem", itemName: "Lamp" });
+    assert.equal(s.nameTaken, null);
+    assert.equal(nameTakenHint(s), "");
+    s = reduce(s, { type: "nameTaken", itemName: "Lamp", photos: 3 });
+    assert.deepEqual(s.nameTaken, { photos: 3 });
+    assert.equal(nameTakenHint(s), '"Lamp" is already an item on the PC today with 3 photos. Use a different name.');
+    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 1 } }), '"Lamp" is already an item on the PC today with 1 photo. Use a different name.');
+    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 0 } }), '"Lamp" is already an item on the PC today. Use a different name.');
+    // typing on clears the flag; an answer about an older name is ignored
+    s = reduce(s, { type: "setItem", itemName: "Lamp two" });
+    assert.equal(s.nameTaken, null);
+    assert.equal(reduce(s, { type: "nameTaken", itemName: "Lamp", photos: 3 }).nameTaken, null, "a stale answer");
+    // once the folder exists the name is fixed: nothing to flag
+    const made = sent(1, [1]);
+    assert.equal(reduce(made, { type: "nameTaken", itemName: "Boots", photos: 2 }).nameTaken, null);
+    assert.ok(NAME_CHECK_MS >= 300 && NAME_CHECK_MS <= 1000, "a pause after the last keystroke");
+});
+
+test("itemIdFor names today's folder the way serve/items.py does", () => {
+    assert.equal(itemIdFor("Lamp", new Date(2026, 8, 30, 23, 59)), "Lamp 2026-09-30");
+    assert.equal(itemIdFor("Blue Levi jacket", new Date(2026, 0, 5)), "Blue Levi jacket 2026-01-05");
 });
 
 test("a reload reads each job's price back with its status", () => {
@@ -397,7 +444,8 @@ test("a reload reads each job's price back with its status", () => {
             jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", price: "14.00", links: {} }],
         },
     });
-    assert.deepEqual(venueWord(s.jobs.ebay, "ebay"), { text: "$14", label: "ebay, posted at $14" });
+    assert.equal(priceLine(s), "$14");
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, posted");
 });
 
 test("NEXT waits while a photo or a delete has not reached the PC", () => {

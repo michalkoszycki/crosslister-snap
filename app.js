@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.12.0";
+import { VERSION } from "./version.js?v=1.13.0";
 import {
     anyActive,
     bannerText,
@@ -40,13 +40,17 @@ import {
     savedItem,
     serverLine,
     SETTINGS_HINT,
+    priceLine,
+    itemIdFor,
+    NAME_CHECK_MS,
+    nameTakenHint,
     venueButton,
     venueIdleNote,
+    venueLabel,
     venueLine,
-    venueWord,
     VENUES,
-} from "./core.js?v=1.12.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.12.0";
+} from "./core.js?v=1.13.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.13.0";
 import {
     checkPc,
     createItem,
@@ -59,8 +63,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.12.0";
-import { shrinkPhoto } from "./shrink.js?v=1.12.0";
+} from "./pc.js?v=1.13.0";
+import { shrinkPhoto } from "./shrink.js?v=1.13.0";
 import {
     bookCard,
     bookPriceValue,
@@ -73,8 +77,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.12.0";
-import { canScan, readIsbn } from "./scan.js?v=1.12.0";
+} from "./book.js?v=1.13.0";
+import { canScan, readIsbn } from "./scan.js?v=1.13.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -258,7 +262,9 @@ function renderGoods() {
     el.itemInput.readOnly = restoring.goods || !!state.itemId || state.photos.length > 0;
 
     const locked = photosLocked(state);
-    const ready = !!state.itemName && !locked && !restoring.goods;
+    const taken = nameTakenHint(state);
+    el.itemInput.classList.toggle("taken", !!taken);
+    const ready = !!state.itemName && !locked && !restoring.goods && !taken;
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
@@ -266,6 +272,7 @@ function renderGoods() {
     el.hint.hidden = ready;
     if (restoring.goods) el.hint.textContent = "Reading this item back from the PC...";
     else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
+    else if (taken) el.hint.textContent = taken;
     else el.hint.textContent = "Type the item name to start snapping.";
 
     el.noteStatus.textContent = noteStatusText(state);
@@ -274,18 +281,16 @@ function renderGoods() {
     renderCustomize("goods");
 
     const ok = !!settings();
+    // the row's price, above both buttons: one job's answer serves the other too
+    renderPriceLine(el.priceLine, priceLine(state));
     let hint = "";
     for (const venue of VENUES) {
-        // both buttons post the one saved row: until this job says its price, the other's stands in
-        const sibling = state.jobs[VENUES.find((v) => v !== venue)].price;
         // painted first, then its hint taken: ||= alone would skip painting the second button
-        const said = renderVenue(
-            state,
-            venue,
-            ok,
-            { btn: el[`${venue}Btn`], status: el[`${venue}Status`], link: el[`${venue}Link`] },
-            sibling
-        );
+        const said = renderVenue(state, venue, ok, {
+            btn: el[`${venue}Btn`],
+            status: el[`${venue}Status`],
+            link: el[`${venue}Link`],
+        });
         hint ||= said;
     }
     el.venueHint.textContent = hint;
@@ -384,14 +389,13 @@ function renderBook() {
     el.bookNoteStatus.textContent = noteStatusText(state);
     renderCustomize("book");
 
-    // the price is typed on the page: on the button from the press, until the PC says its own
-    const venueHint = renderVenue(
-        state,
-        "ebay",
-        !!settings(),
-        { btn: el.bookEbayBtn, status: el.bookEbayStatus, link: el.bookEbayLink },
-        bookPriceValue(book.price)
-    );
+    // the price is typed on the page: above the button from the press, until the PC says its own
+    renderPriceLine(el.bookPriceLine, priceLine(state, bookPriceValue(book.price)));
+    const venueHint = renderVenue(state, "ebay", !!settings(), {
+        btn: el.bookEbayBtn,
+        status: el.bookEbayStatus,
+        link: el.bookEbayLink,
+    });
     el.bookVenueHint.textContent = venueHint;
     el.bookVenueHint.hidden = !venueHint;
 
@@ -427,12 +431,17 @@ function fillCustomize(m) {
     customizeNodes(m).quantity.value = customizeOf(slots[m]).quantity;
 }
 
+/** The price line above the venue buttons: the price, or nothing. */
+function renderPriceLine(node, text) {
+    node.textContent = text;
+    node.hidden = !text;
+}
+
 /**
  * One venue button, its status line and its link; returns the button's hint.
- * The button's word is venueWord's: the venue, "ebay · $14" while posting,
- * "$14" once posted (fallbackPrice stands in until the PC says the row's).
+ * The button's word is always the venue; the price is the line above the buttons.
  */
-function renderVenue(state, venue, ok, nodes, fallbackPrice = "") {
+function renderVenue(state, venue, ok, nodes) {
     const job = state.jobs[venue];
     const button = venueButton(state, venue, ok);
     nodes.btn.disabled = !button.enabled;
@@ -440,11 +449,8 @@ function renderVenue(state, venue, ok, nodes, fallbackPrice = "") {
     const active = isActive(job);
     nodes.btn.classList.toggle("busy", active);
     nodes.btn.setAttribute("aria-busy", active ? "true" : "false");
-    const word = venueWord(job, venue, fallbackPrice);
-    nodes.btn.textContent = word.text;
-    nodes.btn.setAttribute("aria-label", word.label);
-    // "craigslist · $14" is longer than the button was drawn for: a size smaller while it shows
-    nodes.btn.classList.toggle("priced", active && word.text !== venue);
+    nodes.btn.textContent = venue;
+    nodes.btn.setAttribute("aria-label", venueLabel(job, venue));
     nodes.btn.classList.toggle("posted", job.phase === "done");
 
     // before the press, "pickup only" under ebay once ticked: he sees it took
@@ -581,7 +587,40 @@ function onItemNameChanged() {
     const cleaned = cleanItemName(el.itemInput.value);
     if (cleaned !== slots.goods.itemName) {
         setState("goods", reduce(slots.goods, { type: "setItem", itemName: cleaned }));
+        scheduleNameCheck();
     } else render();
+}
+
+let nameCheck = 0;
+
+/**
+ * A moment after he stops typing, the PC is asked whether an item of that name
+ * was already started today; if so the name is flagged and refused (Michal,
+ * 2026-09-30: "just flag it and don't accept it"). No answer, or a 404, is a
+ * free name as far as the page can tell. Nothing is asked once the item's
+ * folder exists: the name is fixed then anyway.
+ */
+function scheduleNameCheck() {
+    clearTimeout(nameCheck);
+    const s = slots.goods;
+    if (!s.itemName || s.itemId || s.photos.length > 0) return;
+    nameCheck = setTimeout(() => {
+        checkName(s.itemName).catch(() => {});
+    }, NAME_CHECK_MS);
+}
+
+async function checkName(itemName) {
+    const pc = settings();
+    const s = slots.goods;
+    if (!pc || s.itemName !== itemName || s.itemId || s.photos.length > 0) return;
+    let answer;
+    try {
+        answer = await getItem(pc, itemIdFor(itemName, new Date()));
+    } catch {
+        return; // 404: the name is free; no answer: nothing to say
+    }
+    const photos = Array.isArray(answer.photos) ? answer.photos.length : 0;
+    setState("goods", reduce(slots.goods, { type: "nameTaken", itemName, photos }));
 }
 
 /**
@@ -594,6 +633,10 @@ function acceptFiles(m, fileList) {
     const s = slots[m];
     if (m === "goods" && (!s.itemName || restoring.goods)) {
         say("Type an item name first.", "warn");
+        return;
+    }
+    if (m === "goods" && s.nameTaken) {
+        say(nameTakenHint(s), "warn");
         return;
     }
     if (restoring[m] || photosLocked(s)) return;
@@ -1224,7 +1267,8 @@ function main() {
         strip: $("strip"),
         note: $("note"),
         noteStatus: $("note-status"),
-        ebayBtn: $("ebay-btn"),
+        priceLine: $("price-line"),
+    ebayBtn: $("ebay-btn"),
         ebayStatus: $("ebay-status"),
         ebayLink: $("ebay-link"),
         craigslistBtn: $("craigslist-btn"),
@@ -1271,7 +1315,8 @@ function main() {
         bookCustomize: $("book-customize"),
         bookQuantity: $("book-quantity"),
         bookPickupOnly: $("book-pickup-only"),
-        bookEbayBtn: $("book-ebay-btn"),
+        bookPriceLine: $("book-price-line"),
+    bookEbayBtn: $("book-ebay-btn"),
         bookEbayStatus: $("book-ebay-status"),
         bookEbayLink: $("book-ebay-link"),
         bookVenueHint: $("book-venue-hint"),
