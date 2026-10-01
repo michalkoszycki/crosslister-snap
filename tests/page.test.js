@@ -448,6 +448,13 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
                 const deleted = item.photos.delete(Number(parts[3]));
                 return json({ item: parts[1], n: Number(parts[3]), deleted });
             }
+            if (!parts[2] && method === "DELETE") {
+                if (item.sku || item.jobs.some((j) => ["queued", "running"].includes(j.state))) {
+                    return json({ detail: `${parts[1]} is being posted` }, 409);
+                }
+                pc.items.delete(parts[1]);
+                return json({ item: parts[1], deleted: true, photos: item.photos.size });
+            }
             if (parts[2] === "note") {
                 item.note = body.note.trim();
                 return json({ item: parts[1], note: item.note });
@@ -2228,4 +2235,52 @@ test("after the first photo the button says Snap Again and scrolls to where the 
     nodes.get("next-item").fire("click");
     await settle();
     assert.equal(nodes.get("snap-label").textContent, "Snap", "a new item starts over");
+});
+
+test("NEXT on an item nothing was posted from deletes it on the PC and says so", async (t) => {
+    // Michal, 2026-09-30: "when I snap some photos and don't make a posting, assume that
+    // thing is trash - delete the photos ... if I click NEXT, that is"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 2);
+    await settle();
+    assert.equal(pc.items.has(item), true);
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), `DELETE /items/${item}`);
+    assert.equal(pc.items.has(item), false, "folder, photos and note are gone");
+    assert.equal(nodes.get("message").textContent, '"Lamp" was not posted: its 2 photos were deleted from the PC.');
+    assert.equal(nodes.get("strip").children.length, 0);
+    assert.equal(nodes.get("item-name").value, "");
+
+    // one the PC will not give up (a row was made from it after all): said, not hidden
+    const kept = `Vase ${TODAY}`;
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    pc.items.get(kept).sku = "B-0099";
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(pc.items.has(kept), true);
+    assert.match(nodes.get("message").textContent, /^"Vase" was not posted and could not be deleted on the PC: /);
+});
+
+test("NEXT keeps an item a button was pressed for", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.ok(!pc.calls.some((c) => c === `DELETE /items/${item}`), "the job needs the folder");
+    assert.equal(pc.items.has(item), true);
 });

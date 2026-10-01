@@ -157,6 +157,14 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   about it, so its link is not shown. While a listing is posting, a quiet line
   under NEXT says so: `A listing is still posting on the PC; NEXT starts the
   next item without waiting for its link`.
+  An item nothing was posted from is trash (Michal, 2026-09-30: "when I snap
+  some photos and don't make a posting, assume that thing is trash - delete the
+  photos ... if I click NEXT, that is"): NEXT asks the PC to delete its folder,
+  photos and note and all (`DELETE /items/<id>`), and says so once it is gone:
+  `"Lamp" was not posted: its 2 photos were deleted from the PC.` An item with
+  a saved row, a job on its way or on the PC, or a job that finished is kept;
+  the PC refuses (409) to delete an item a row was made from or a job still
+  holds, whatever the page thinks, and the line then says it could not.
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
 toggles) because the PC's saved row is what the second button uses. If the
@@ -261,7 +269,8 @@ title instead, and the PC does the same work from that. Top to bottom:
   typed (after a miss, the ISBN too). The price line above it is as for
   goods, but from the press: the price is typed on the page, so it reads
   `$11` at once, and the PC's `price` replaces it when it says one.
-- **NEXT**, as for goods (it does not wait for the listing either); it also
+- **NEXT**, as for goods (it does not wait for the listing either, and a book
+  nothing was posted from is deleted on the PC the same way); it also
   clears a book that has an ISBN (or a typed title) but no photo.
 
 ## The upload queue, and being offline

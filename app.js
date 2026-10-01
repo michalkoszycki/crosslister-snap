@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.14.0";
+import { VERSION } from "./version.js?v=1.15.0";
 import {
     anyActive,
     bannerText,
@@ -41,6 +41,8 @@ import {
     serverLine,
     SETTINGS_HINT,
     priceLine,
+    givenUp,
+    trashedNote,
     snapScrollTop,
     snapWord,
     itemIdFor,
@@ -51,11 +53,12 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.14.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.14.0";
+} from "./core.js?v=1.15.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.15.0";
 import {
     checkPc,
     createItem,
+    deleteItem,
     deletePhoto,
     getBook,
     getItem,
@@ -65,8 +68,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.14.0";
-import { shrinkPhoto } from "./shrink.js?v=1.14.0";
+} from "./pc.js?v=1.15.0";
+import { shrinkPhoto } from "./shrink.js?v=1.15.0";
 import {
     bookCard,
     bookPriceValue,
@@ -79,8 +82,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.14.0";
-import { canScan, readIsbn } from "./scan.js?v=1.14.0";
+} from "./book.js?v=1.15.0";
+import { canScan, readIsbn } from "./scan.js?v=1.15.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -1211,6 +1214,9 @@ async function nextItem(m) {
     }
     // the note's wait may have let something change: check again before clearing
     if (!doneButton(slots[m]).enabled) return;
+    // nothing posted from it: trash, on the PC too (Michal, 2026-09-30); the answer
+    // comes after the page has moved on, as one quiet line
+    const trash = givenUp(slots[m]) ? slots[m] : null;
     generation[m] += 1;
     for (const venue of VENUES) {
         clearTimeout(polls.get(`${m}:${venue}`));
@@ -1249,6 +1255,18 @@ async function nextItem(m) {
     fillCustomize(m);
     // a book starts with Scan, not the keyboard
     if (m === "goods") el.itemInput.focus();
+    if (trash) trashItem(trash);
+}
+
+/** The folder of an item given up, off the PC; what happened in one line. */
+function trashItem(state) {
+    const pc = settings();
+    if (!pc) return;
+    const name = state.itemName || state.itemId;
+    deleteItem(pc, state.itemId).then(
+        (answer) => say(trashedNote(name, answer.photos)),
+        (e) => say(`"${name}" was not posted and could not be deleted on the PC: ${e.message}`, "warn")
+    );
 }
 
 function onFiles(handler) {

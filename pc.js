@@ -8,6 +8,10 @@
 //   PUT    <pc>/items/<id>/note        {"note"} -> note.txt beside the photos
 //   GET    <pc>/items/<id>             -> {"item", "photos", "note", "sku", "jobs"}
 //                                      (a reloaded page reads the item back)
+//   DELETE <pc>/items/<id>             -> {"item", "deleted": true, "photos": n}: the folder
+//                                      removed whole (NEXT on an item nothing was posted
+//                                      from); 409 when a row was made from it or a job
+//                                      for it is unfinished
 // A book (the book mode), as soon as its ISBN is known:
 //   GET    <pc>/books/<isbn13>        -> {"isbn", "title", "subtitle", "authors", "publisher",
 //                                          "year", "format", "pages", "price" (or null),
@@ -40,7 +44,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.14.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.15.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -115,6 +119,11 @@ export function putPhoto({ pc, key }, item, n, jpeg) {
 /** Photo number n off the PC too (the x). */
 export function deletePhoto({ pc, key }, item, n) {
     return call(`${itemUrl(pc, item)}/photos/${n}`, key, { method: "DELETE" });
+}
+
+/** The whole item off the PC, folder and all: NEXT on one nothing was posted from. */
+export function deleteItem({ pc, key }, item) {
+    return call(itemUrl(pc, item), key, { method: "DELETE" });
 }
 
 /** The note, as note.txt beside the photos ("" removes it). */
