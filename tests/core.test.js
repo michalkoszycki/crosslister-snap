@@ -48,6 +48,9 @@ import {
     itemIdFor,
     nameTakenHint,
     NAME_CHECK_MS,
+    snapScrollTop,
+    snapWord,
+    SNAP_SPOT,
     nextNote,
     NEXT_NOTE,
     idleJob,
@@ -424,6 +427,17 @@ test("a name the PC already has today is flagged and refused; retyping clears it
     const made = sent(1, [1]);
     assert.equal(reduce(made, { type: "nameTaken", itemName: "Boots", photos: 2 }).nameTaken, null);
     assert.ok(NAME_CHECK_MS >= 300 && NAME_CHECK_MS <= 1000, "a pause after the last keystroke");
+});
+
+test("the Snap button says Snap Again once there is a photo, and lands three quarters down", () => {
+    assert.equal(snapWord(initialState("Lamp")), "Snap");
+    assert.equal(snapWord(withPhotos(1)), "Snap Again");
+    assert.equal(snapWord(sent(3, [1])), "Snap Again");
+    assert.equal(SNAP_SPOT, 0.75);
+    // scrolled 100 down, the button 1000 below the top of the viewport and 100 tall: its middle
+    // (1150 from the page top) goes to 600, three quarters of an 800 viewport
+    assert.equal(snapScrollTop({ scrollY: 100, innerHeight: 800 }, { top: 1000, height: 100 }), 550);
+    assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {

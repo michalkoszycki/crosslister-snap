@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.13.0";
+import { noteDirty, unsent } from "./queue.js?v=1.14.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.13.0";
+} from "./book.js?v=1.14.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -190,6 +190,36 @@ export const MAX_PHOTOS = 24;
 
 /** How often a running job is asked for its status. */
 export const POLL_MS = 3000;
+
+/**
+ * The word on the Snap button: "Snap", and "Snap Again" once the item has a
+ * photo (Michal, 2026-09-30: "after the first snap it should say 'Snap Again'
+ * on that button. That will be cute").
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function snapWord(state) {
+    return state.photos.length > 0 ? "Snap Again" : "Snap";
+}
+
+/**
+ * Where the Snap button should sit when the page comes back from the camera:
+ * the camera's shutter is about three quarters of the way down the screen,
+ * and his thumb is still there (Michal, 2026-09-30: "I want the snap button to
+ * be right there, so I can click quickly").
+ */
+export const SNAP_SPOT = 0.75;
+
+/**
+ * The page scroll that puts the button's middle at `SNAP_SPOT` of the viewport.
+ * The browser clamps a value the page is too short for.
+ * @param {{scrollY:number, innerHeight:number}} view
+ * @param {{top:number, height:number}} rect  the button, relative to the viewport
+ * @returns {number}
+ */
+export function snapScrollTop(view, rect) {
+    return Math.max(0, Math.round(view.scrollY + rect.top + rect.height / 2 - view.innerHeight * SNAP_SPOT));
+}
 
 /** The header the key travels in. */
 export const KEY_HEADER = "X-Crosslister-Key";

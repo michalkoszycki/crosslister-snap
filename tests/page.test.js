@@ -99,12 +99,13 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "item-name",
         "cleaned",
         "hint",
+        // Michal, 2026-09-30: the photos first, Snap under them where the camera's shutter was
+        "progress",
+        "strip",
         "snap-label",
         "snap-input",
         "gallery-label",
         "gallery-input",
-        "progress",
-        "strip",
         "note-status",
         "note",
         // Michal, 2026-09-28: "Before the eBay and Craigslist buttons ... a little arrow with the word customize"
@@ -2200,4 +2201,31 @@ test("a name is not held against him when the PC cannot be reached", async (t) =
     await settle();
     assert.equal(nodes.get("snap-input").disabled, false);
     assert.equal(nodes.get("hint").hidden, true);
+});
+
+test("after the first photo the button says Snap Again and scrolls to where the shutter was", async (t) => {
+    // Michal, 2026-09-30: "when the website comes back I want the snap button to be right
+    // there ... after the first snap it should say 'Snap Again' on that button"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes, win } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const scrolls = [];
+    win.scrollTo = (opts) => scrolls.push(opts);
+    win.innerHeight = 800;
+    win.scrollY = 100;
+    nodes.get("snap-label").getBoundingClientRect = () => ({ top: 1000, height: 100 });
+    await typeName(nodes, "Lamp");
+    assert.equal(nodes.get("snap-label").textContent, "Snap");
+    snap(nodes, 1);
+    await settle();
+    assert.equal(nodes.get("snap-label").textContent, "Snap Again");
+    // the button's middle (100 + 1000 + 50) at three quarters of 800
+    assert.deepEqual(scrolls, [{ top: 550, left: 0, behavior: "instant" }]);
+    // a gallery pick is not a return from the camera: no scroll
+    nodes.get("gallery-input").fire("change", { target: { files: [new Blob(["g"], { type: "image/jpeg" })], value: "" } });
+    await settle();
+    assert.equal(scrolls.length, 1);
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("snap-label").textContent, "Snap", "a new item starts over");
 });
