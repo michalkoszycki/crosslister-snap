@@ -99,7 +99,14 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   same folder, and its photos came back into the strip.) A PC that does not
   answer cannot refuse a name; the folder it then lands in is still the one
   the PC names.
-- **Snap** and **Add from gallery**, as before.
+- **The photos**, then **Snap** and **Add from gallery** under them (Michal,
+  2026-09-30: "when I snap a photo I confirm it with a round white button 3/4
+  of the screen length down. When the website comes back I want the snap
+  button to be right there, so I can click quickly"). Each photo taken with
+  Snap scrolls the page so the button's middle sits three quarters down the
+  screen, where the camera's shutter was; the browser stops short when the
+  page is not long enough yet. After the first photo the button says **Snap
+  Again**.
 - **The photos.** Top left, each photo says where it is: `waiting` (on the
   page, on its way), `sent` (on the PC), or `failed` (the PC refused it; tap
   the word to send it again). The **x** at the top right takes a photo off the

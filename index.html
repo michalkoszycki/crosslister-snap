@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.13.0">
+<link rel="stylesheet" href="styles.css?v=1.14.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -79,14 +79,16 @@
     <p id="cleaned" class="small mono" hidden></p>
     <p id="hint" class="small">Type the item name to start snapping.</p>
 
+    <!-- the photos first, Snap under them (Michal, 2026-09-30: back from the camera, the
+         button should sit where the shutter was, about three quarters down the screen) -->
+    <p id="progress" class="progress"></p>
+    <ul id="strip" class="strip"></ul>
+
     <label id="snap-label" class="big snap" for="snap-input">Snap</label>
     <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
     <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
-
-    <p id="progress" class="progress"></p>
-    <ul id="strip" class="strip"></ul>
 
     <label class="field">
       <span class="field-label">
@@ -265,6 +267,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.13.0"></script>
+<script type="module" src="app.js?v=1.14.0"></script>
 </body>
 </html>

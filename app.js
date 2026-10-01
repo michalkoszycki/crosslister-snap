@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.13.0";
+import { VERSION } from "./version.js?v=1.14.0";
 import {
     anyActive,
     bannerText,
@@ -41,6 +41,8 @@ import {
     serverLine,
     SETTINGS_HINT,
     priceLine,
+    snapScrollTop,
+    snapWord,
     itemIdFor,
     NAME_CHECK_MS,
     nameTakenHint,
@@ -49,8 +51,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.13.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.13.0";
+} from "./core.js?v=1.14.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.14.0";
 import {
     checkPc,
     createItem,
@@ -63,8 +65,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.13.0";
-import { shrinkPhoto } from "./shrink.js?v=1.13.0";
+} from "./pc.js?v=1.14.0";
+import { shrinkPhoto } from "./shrink.js?v=1.14.0";
 import {
     bookCard,
     bookPriceValue,
@@ -77,8 +79,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.13.0";
-import { canScan, readIsbn } from "./scan.js?v=1.13.0";
+} from "./book.js?v=1.14.0";
+import { canScan, readIsbn } from "./scan.js?v=1.14.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -265,6 +267,7 @@ function renderGoods() {
     const taken = nameTakenHint(state);
     el.itemInput.classList.toggle("taken", !!taken);
     const ready = !!state.itemName && !locked && !restoring.goods && !taken;
+    el.snapLabel.textContent = snapWord(state);
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
@@ -621,6 +624,19 @@ async function checkName(itemName) {
     }
     const photos = Array.isArray(answer.photos) ? answer.photos.length : 0;
     setState("goods", reduce(slots.goods, { type: "nameTaken", itemName, photos }));
+}
+
+/**
+ * Back from the camera, the Snap button is scrolled to where the shutter was,
+ * three quarters down the screen, so the next photo is one tap away. A browser
+ * (or test) without the measurements is left alone.
+ */
+function snapUnderThumb() {
+    const view = globalThis.window;
+    if (!view || typeof view.scrollTo !== "function" || typeof el.snapLabel.getBoundingClientRect !== "function") return;
+    if (!(view.innerHeight > 0)) return;
+    const top = snapScrollTop({ scrollY: view.scrollY || 0, innerHeight: view.innerHeight }, el.snapLabel.getBoundingClientRect());
+    view.scrollTo({ top, left: 0, behavior: "instant" });
 }
 
 /**
@@ -1347,7 +1363,13 @@ function main() {
     el.itemInput.addEventListener("input", onItemNameChanged);
     el.note.addEventListener("input", () => onNoteInput("goods"));
     el.note.addEventListener("blur", () => noteDue("goods"));
-    el.snapInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
+    el.snapInput.addEventListener(
+        "change",
+        onFiles((files) => {
+            acceptFiles("goods", files);
+            snapUnderThumb();
+        })
+    );
     el.galleryInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
     for (const venue of VENUES) {
         el[`${venue}Btn`].addEventListener("click", () => {
