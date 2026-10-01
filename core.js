@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.12.0";
+import { noteDirty, unsent } from "./queue.js?v=1.13.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.12.0";
+} from "./book.js?v=1.13.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -404,7 +404,7 @@ export function safeLink(url) {
  * @property {string} error    why it failed
  * @property {string} trouble  a status poll that failed; the job itself may be fine
  * @property {string} price    the saved row's price as the PC says it ("14.00"), "" until the
- *                             row is saved; the pressed button shows it (venueWord)
+ *                             row is saved; the line above the buttons shows it (priceLine)
  */
 
 /**
@@ -542,6 +542,7 @@ export function initialState(itemName = "", mode = "goods") {
         sku: "",
         jobs: Object.fromEntries(VENUES.map((v) => [v, idleJob()])),
         customize: initialCustomize(),
+        nameTaken: null,
     };
 }
 
@@ -619,7 +620,11 @@ export function photosLocked(state) {
 export function reduce(state, action) {
     switch (action.type) {
         case "setItem":
-            return { ...state, itemName: action.itemName };
+            return { ...state, itemName: action.itemName, nameTaken: null };
+        case "nameTaken":
+            // the PC's answer to a name typed earlier means nothing for the one typed since
+            if (action.itemName !== state.itemName || state.itemId) return state;
+            return { ...state, nameTaken: { photos: toCount(action.photos) } };
         case "add":
             return settleMain({
                 ...state,
@@ -1283,41 +1288,78 @@ export function venueLine(job, idle = "") {
 }
 
 /**
- * The word on a venue button (Michal, 2026-09-28: "When posting, I want to see
- * the price designated ... When it is done it should just swap to '$14'
- * instead of eBay or Craigslist"). Before the press, and after a failure, the
- * venue itself. While the job is on its way, the venue and the price once one
- * is known ("ebay · $14", the ring turning beside it). Posted, the price alone
- * ("$14"): the venue is plain from where the button sits, the price is not.
- *
- * The price is the PC's, from the saved row; until the PC has one,
- * `fallbackPrice` stands in: the book's price box (typed on the page, so known
- * from the press), or the other button's job for the same goods row. The
- * aria-label keeps the venue in words either way, so a screen reader still
- * hears which button it is.
+ * The price line above the venue buttons (Michal, 2026-09-30: "show the chosen
+ * price for the item above the buttons instead of replacing button text"; the
+ * 2026-09-28 wish for the price while posting and once posted stands, it just
+ * moved off the button). Blank before any press and when nothing has gone;
+ * from a press on, the row's price as the PC says it ("$14", "$14.50"). The
+ * price is the row's, so one job's answer serves both buttons; until the PC
+ * has one, `fallbackPrice` stands in: the book's price box, typed on the page
+ * and so known from the press.
+ * @param {SnapState} state
+ * @param {string} [fallbackPrice]
+ * @returns {string}
+ */
+export function priceLine(state, fallbackPrice = "") {
+    const jobs = VENUES.map((v) => state.jobs[v]).filter((j) => j && (isActive(j) || j.phase === "done"));
+    if (jobs.length === 0) return "";
+    const said = jobs.map((j) => priceText(j.price)).find(Boolean) || priceText(fallbackPrice);
+    return said ? money(said) : "";
+}
+
+/**
+ * What a screen reader hears for a venue button: the venue, and whether its
+ * job is on its way or posted. The button's visible word is always the venue.
  * @param {VenueJob} job
  * @param {string} venue
- * @param {string} [fallbackPrice]
- * @returns {{text:string, label:string}}
+ * @returns {string}
  */
-export function venueWord(job, venue, fallbackPrice = "") {
-    const price = money(priceText(job.price) || priceText(fallbackPrice));
-    if (isActive(job)) {
-        return price
-            ? { text: `${venue} · ${price}`, label: `${venue}, posting at ${price}` }
-            : { text: venue, label: `${venue}, posting` };
-    }
-    if (job.phase === "done") {
-        return price ? { text: price, label: `${venue}, posted at ${price}` } : { text: venue, label: `${venue}, posted` };
-    }
-    return { text: venue, label: venue };
+export function venueLabel(job, venue) {
+    if (isActive(job)) return `${venue}, posting`;
+    if (job.phase === "done") return `${venue}, posted`;
+    return venue;
 }
 
 export const SETTINGS_HINT = "Set the PC address and key in Settings";
 
+/** How long after the last keystroke the item name is checked against the PC. */
+export const NAME_CHECK_MS = 500;
+
+/**
+ * The id the PC gives an item started today under `itemName`: its folder,
+ * `<item name> <YYYY-MM-DD>` (`serve/items.py`), in the phone's local date.
+ * @param {string} itemName  already cleaned
+ * @param {Date} date
+ * @returns {string}
+ */
+export function itemIdFor(itemName, date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${itemName} ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * The line under the name once the PC says an item of that name was already
+ * started today (Michal, 2026-09-30: "if I put a name for an item and it is
+ * the same as another, just flag it and don't accept it. I see that that pulls
+ * back the cached photos"). Before this, the same name on the same day was
+ * silently the same folder, and its photos joined the strip.
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function nameTakenHint(state) {
+    if (!state.nameTaken) return "";
+    const { photos } = state.nameTaken;
+    const held = photos > 0 ? ` with ${photos} photo${photos === 1 ? "" : "s"}` : "";
+    return `"${state.itemName}" is already an item on the PC today${held}. Use a different name.`;
+}
+
 /**
  * Whether a venue button can be pressed, and if not, the one-line reason.
  * A new item goes once every photo is on the PC and at least one is marked AI.
+ * The second button does not wait for the first job (Michal, 2026-09-30: "I
+ * seem not to be able to click craigslist while ebay is loading"): the PC runs
+ * jobs one at a time and a job for an item whose folder already made a row
+ * reuses that row, so the model is still paid once.
  * @param {SnapState} state
  * @param {string} venue
  * @param {boolean} settingsOk
@@ -1333,10 +1375,6 @@ export function venueButton(state, venue, settingsOk) {
     if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
     // the second button: the row is saved, nothing more is needed
     if (state.sku) return { enabled: true, hint: "" };
-    // the other button's job is on its way but has not saved the row yet
-    if (anyActive(state)) {
-        return { enabled: false, hint: "The other button goes first; this one opens when it has saved the item" };
-    }
     const n = state.photos.length;
     if (n === 0) return { enabled: false, hint: "Snap a photo first" };
     if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };

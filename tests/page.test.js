@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { itemIdFor, NAME_CHECK_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -111,6 +112,8 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "customize",
         "quantity",
         "pickup-only",
+        // Michal, 2026-09-30: the price above the buttons, not on them
+        "price-line",
         "ebay-btn",
         "ebay-status",
         "ebay-link",
@@ -607,9 +610,11 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "drafting the listing");
-    // the row is saved: its price beside the venue, the ring still turning
-    assert.equal(nodes.get("ebay-btn").textContent, "ebay · $14");
-    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting at $14");
+    // the row is saved: its price above the buttons, the button's word unchanged, the ring still turning
+    assert.equal(nodes.get("price-line").hidden, false);
+    assert.equal(nodes.get("price-line").textContent, "$14");
+    assert.equal(nodes.get("ebay-btn").textContent, "ebay");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     // the sku is known: craigslist may go now, by sku alone
     assert.equal(nodes.get("craigslist-btn").disabled, false);
@@ -624,9 +629,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-btn").disabled, true, "posted once is enough");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false, "the ring stops with the link");
     assert.equal(nodes.get("ebay-btn").attrs["aria-busy"], "false");
-    // posted: the price alone
-    assert.equal(nodes.get("ebay-btn").textContent, "$14");
-    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posted at $14");
+    // posted: the venue stays on the button, the price stays above
+    assert.equal(nodes.get("ebay-btn").textContent, "ebay");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posted");
+    assert.equal(nodes.get("price-line").textContent, "$14");
     assert.equal(nodes.get("ebay-btn").classList.contains("posted"), true);
     assert.equal(nodes.get("next-item").disabled, false);
     assert.equal(nodes.get("next-note").hidden, true, "nothing is posting any more");
@@ -634,13 +640,15 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     nodes.get("craigslist-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted[1], { sku: "B-0042", venue: "craigslist" });
-    // the same row: its price is known from the press
-    assert.equal(nodes.get("craigslist-btn").textContent, "craigslist · $14");
+    // the same row: the price line stands, the button's word is the venue
+    assert.equal(nodes.get("craigslist-btn").textContent, "craigslist");
+    assert.equal(nodes.get("price-line").textContent, "$14");
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("craigslist-link").href, "https://sfbay.craigslist.org/x/1.html");
-    assert.equal(nodes.get("craigslist-btn").textContent, "$14");
-    assert.equal(nodes.get("craigslist-btn").attrs["aria-label"], "craigslist, posted at $14");
+    assert.equal(nodes.get("craigslist-btn").textContent, "craigslist");
+    assert.equal(nodes.get("craigslist-btn").attrs["aria-label"], "craigslist, posted");
+    assert.equal(nodes.get("price-line").textContent, "$14");
 
     // no more calls once both are done
     const quiet = pc.calls.length;
@@ -678,7 +686,8 @@ test("NEXT while the listing still posts: the screen clears, the next item start
     await settle();
     t.mock.timers.tick(3000);
     await settle();
-    assert.equal(nodes.get("ebay-btn").textContent, "ebay · $14.50", "cents kept");
+    assert.equal(nodes.get("price-line").textContent, "$14.50", "cents kept");
+    assert.equal(nodes.get("ebay-btn").textContent, "ebay");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     assert.equal(nodes.get("next-item").disabled, false);
     assert.equal(nodes.get("next-note").hidden, false);
@@ -1063,6 +1072,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-customize",
         "book-quantity",
         "book-pickup-only",
+        "book-price-line",
         "book-ebay-btn",
         "book-ebay-status",
         "book-ebay-link",
@@ -1220,9 +1230,11 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-venue-hint").hidden, true);
     assert.equal(nodes.get("book-ebay-btn").textContent, "ebay", "before the press: the venue");
     nodes.get("book-ebay-btn").fire("click");
-    // the price is typed on the page: on the button from the press itself, before the PC answers
-    assert.equal(nodes.get("book-ebay-btn").textContent, "ebay · $11");
-    assert.equal(nodes.get("book-ebay-btn").attrs["aria-label"], "ebay, posting at $11");
+    // the price is typed on the page: above the button from the press itself, before the PC answers
+    assert.equal(nodes.get("book-price-line").hidden, false);
+    assert.equal(nodes.get("book-price-line").textContent, "$11");
+    assert.equal(nodes.get("book-ebay-btn").textContent, "ebay");
+    assert.equal(nodes.get("book-ebay-btn").attrs["aria-label"], "ebay, posting");
     // ... while the press is on its way NEXT waits for it: clearing now would lose it
     assert.equal(nodes.get("book-next-item").disabled, true);
     assert.equal(nodes.get("book-done-hint").textContent, "NEXT waits until the listing has reached the PC");
@@ -1233,7 +1245,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-ebay-status").textContent, "queued, 1 ahead");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), true, "the ring turns");
     assert.equal(nodes.get("book-ebay-btn").attrs["aria-busy"], "true");
-    assert.equal(nodes.get("book-ebay-btn").textContent, "ebay · $11");
+    assert.equal(nodes.get("book-price-line").textContent, "$11");
     assert.equal(nodes.get("book-next-item").disabled, false, "NEXT does not wait for the listing");
     assert.equal(nodes.get("book-done-hint").hidden, true);
     assert.equal(nodes.get("book-next-note").hidden, false, "the line under NEXT says one is posting");
@@ -1244,7 +1256,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("book-ebay-status").textContent, "listing the book");
-    assert.equal(nodes.get("book-ebay-btn").textContent, "ebay · $11", "the PC said no price yet: the box's");
+    assert.equal(nodes.get("book-price-line").textContent, "$11", "the PC said no price yet: the box's");
     ebayState = "done";
     t.mock.timers.tick(3000);
     await settle();
@@ -1252,9 +1264,10 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-ebay-link").href, "https://www.ebay.com/itm/777");
     assert.equal(nodes.get("book-ebay-btn").classList.contains("busy"), false, "the ring stops with the link");
     assert.equal(nodes.get("book-ebay-btn").disabled, true, "posted once is enough");
-    // posted: the price alone, and the PC's own when it says one
-    assert.equal(nodes.get("book-ebay-btn").textContent, "$12");
-    assert.equal(nodes.get("book-ebay-btn").attrs["aria-label"], "ebay, posted at $12");
+    // posted: the venue on the button, and above it the PC's own price once it says one
+    assert.equal(nodes.get("book-ebay-btn").textContent, "ebay");
+    assert.equal(nodes.get("book-ebay-btn").attrs["aria-label"], "ebay, posted");
+    assert.equal(nodes.get("book-price-line").textContent, "$12");
     assert.equal(nodes.get("book-next-item").disabled, false);
     assert.equal(nodes.get("book-next-note").hidden, true);
 
@@ -2124,4 +2137,67 @@ test("a reload brings customize back, folded, with pickup only under ebay", asyn
     nodes.get("ebay-btn").fire("click");
     await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 4, pickup_only: true }]);
+});
+
+test("a name the PC already has today is flagged after a pause and Snap waits for another", async (t) => {
+    // Michal, 2026-09-30: "if I put a name for an item and it is the same as another, just
+    // flag it and don't accept it. I see that that pulls back the cached photos"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const taken = itemIdFor("Lamp", new Date()); // the page asks by the phone's own date
+    const pc = fakePc({
+        items: {
+            [taken]: { photos: new Map([[1, "a"], [2, "b"], [3, "c"]]), note: "", sku: null, jobs: [] },
+        },
+    });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    assert.equal(nodes.get("snap-input").disabled, false, "nothing known yet: typing is not blocked");
+    assert.deepEqual(pc.calls, [], "not asked on every keystroke");
+    t.mock.timers.tick(NAME_CHECK_MS);
+    await settle();
+    assert.deepEqual(pc.calls, [`GET /items/${taken}`]);
+    assert.equal(
+        nodes.get("hint").textContent,
+        '"Lamp" is already an item on the PC today with 3 photos. Use a different name.'
+    );
+    assert.equal(nodes.get("hint").hidden, false);
+    assert.equal(nodes.get("item-name").classList.contains("taken"), true);
+    assert.equal(nodes.get("snap-input").disabled, true);
+    assert.equal(nodes.get("item-name").readOnly, false, "the name is his to change");
+    snap(nodes, 1);
+    await settle();
+    assert.equal(nodes.get("strip").children.length, 0, "no photo under a refused name");
+    assert.match(nodes.get("message").textContent, /already an item on the PC today/);
+    assert.deepEqual(pc.calls, [`GET /items/${taken}`], "nothing went to the PC");
+
+    // another name: free, and the strip opens
+    await typeName(nodes, "Lamp brass");
+    assert.equal(nodes.get("hint").textContent, "Type the item name to start snapping.", "cleared as he types");
+    assert.equal(nodes.get("item-name").classList.contains("taken"), false);
+    t.mock.timers.tick(NAME_CHECK_MS);
+    await settle();
+    assert.deepEqual(pc.calls.at(-1), `GET /items/${itemIdFor("Lamp brass", new Date())}`);
+    assert.equal(nodes.get("snap-input").disabled, false);
+    snap(nodes, 1);
+    await settle();
+    assert.equal(nodes.get("strip").children.length, 1);
+    assert.equal(pc.calls.at(-2), "POST /items");
+
+    // once the folder exists the name is fixed and never asked about again
+    const asked = pc.calls.length;
+    t.mock.timers.tick(NAME_CHECK_MS * 2);
+    await settle();
+    assert.equal(pc.calls.length, asked);
+});
+
+test("a name is not held against him when the PC cannot be reached", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    pc.down = true;
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    t.mock.timers.tick(NAME_CHECK_MS);
+    await settle();
+    assert.equal(nodes.get("snap-input").disabled, false);
+    assert.equal(nodes.get("hint").hidden, true);
 });
