@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.16.1";
+import { VERSION } from "./version.js?v=1.17.0";
 import {
     anyActive,
     bannerText,
@@ -41,6 +41,9 @@ import {
     serverLine,
     SETTINGS_HINT,
     priceLine,
+    cancelButton,
+    SEND_DELAY_MS,
+    STOPPING_STEP,
     givenUp,
     trashedNote,
     snapScrollTop,
@@ -53,9 +56,10 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.16.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.16.1";
+} from "./core.js?v=1.17.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.17.0";
 import {
+    cancelJob,
     checkPc,
     createItem,
     deleteItem,
@@ -68,8 +72,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.16.1";
-import { shrinkPhoto } from "./shrink.js?v=1.16.1";
+} from "./pc.js?v=1.17.0";
+import { shrinkPhoto } from "./shrink.js?v=1.17.0";
 import {
     bookCard,
     bookPriceValue,
@@ -82,8 +86,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.16.1";
-import { canScan, readIsbn } from "./scan.js?v=1.16.1";
+} from "./book.js?v=1.17.0";
+import { canScan, readIsbn } from "./scan.js?v=1.17.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -300,6 +304,7 @@ function renderGoods() {
         const said = renderVenue(state, venue, ok, {
             btn: el[`${venue}Btn`],
             status: el[`${venue}Status`],
+            cancel: el[`${venue}Cancel`],
             link: el[`${venue}Link`],
         });
         hint ||= said;
@@ -405,6 +410,7 @@ function renderBook() {
     const venueHint = renderVenue(state, "ebay", !!settings(), {
         btn: el.bookEbayBtn,
         status: el.bookEbayStatus,
+        cancel: el.bookEbayCancel,
         link: el.bookEbayLink,
     });
     el.bookVenueHint.textContent = venueHint;
@@ -463,6 +469,9 @@ function renderVenue(state, venue, ok, nodes) {
     nodes.btn.textContent = venue;
     nodes.btn.setAttribute("aria-label", venueLabel(job, venue));
     nodes.btn.classList.toggle("posted", job.phase === "done");
+    // the red cancel under it, from the press until the link or the error
+    nodes.cancel.hidden = !cancelButton(state, venue);
+    nodes.cancel.disabled = job.step === STOPPING_STEP;
 
     // before the press, "pickup only" under ebay once ticked: he sees it took
     const line = venueLine(state.jobs[venue], venueIdleNote(state, venue));
@@ -1038,22 +1047,35 @@ async function noteReady(m) {
 
 // --- the venue buttons -------------------------------------------------------
 
+/** "<mode>:<venue>" -> the press on its way (a token) and the timer of its one-second wait */
+const presses = new Map();
+const sendTimers = new Map();
+
 async function send(m, venue) {
     const pc = settings();
     if (!pc || !venueButton(slots[m], venue, true).enabled) return;
     const mine = generation[m];
+    const key = `${m}:${venue}`;
+    const press = {};
+    presses.set(key, press);
+    const taken = () => mine !== generation[m] || presses.get(key) !== press;
     // the second goods button reuses the saved row; a book is always sent whole
     const reuse = m === "goods" && !!slots[m].sku;
     setState(m, reduce(slots[m], { type: "jobSending", venue, step: "sending" }));
     if (!reuse && !(await noteReady(m))) {
-        if (mine !== generation[m]) return;
+        if (taken()) return;
         setState(
             m,
             reduce(slots[m], { type: "jobRefused", venue, error: "the note has not reached the PC" })
         );
         return;
     }
-    if (mine !== generation[m]) return;
+    if (taken()) return;
+    // the second he asked for: the ring turns, nothing has left the phone yet
+    await new Promise((resolve) => {
+        sendTimers.set(key, setTimeout(resolve, SEND_DELAY_MS));
+    });
+    if (taken()) return;
     const s = slots[m];
     const body = jobRequest({
         venue,
@@ -1071,6 +1093,40 @@ async function send(m, venue) {
     } catch (e) {
         if (mine !== generation[m]) return;
         setState(m, reduce(slots[m], { type: "jobRefused", venue, error: e.message }));
+    }
+}
+
+/**
+ * The red cancel under a pressed venue button (Michal, 2026-10-02). Within the
+ * first second the press is simply taken back: nothing was sent, nothing paid.
+ * After that the PC is told (DELETE /jobs/<id>): a job still queued is dropped
+ * at once, the one in hand stops at its next step and saves the draft instead
+ * of publishing; the status polls show which.
+ */
+async function cancelPress(m, venue) {
+    const mine = generation[m];
+    const key = `${m}:${venue}`;
+    const job = slots[m].jobs[venue];
+    if (job.phase === "sending") {
+        presses.delete(key);
+        clearTimeout(sendTimers.get(key));
+        sendTimers.delete(key);
+        setState(m, reduce(slots[m], { type: "jobCancelled", venue }));
+        return;
+    }
+    if (!["queued", "running"].includes(job.phase) || !job.jobId) return;
+    const pc = settings();
+    if (!pc) return;
+    setState(m, reduce(slots[m], { type: "jobStopping", venue }));
+    try {
+        const answer = await cancelJob(pc, job.jobId);
+        if (mine !== generation[m]) return;
+        if (answer.state === "cancelled") {
+            setState(m, reduce(slots[m], { type: "jobCancelled", venue }));
+        }
+    } catch (e) {
+        if (mine !== generation[m]) return;
+        say(`Could not cancel: ${e.message}`, "warn");
     }
 }
 
@@ -1382,6 +1438,8 @@ function main() {
         noteStatus: $("note-status"),
         priceLine: $("price-line"),
     ebayBtn: $("ebay-btn"),
+    ebayCancel: $("ebay-cancel"),
+    craigslistCancel: $("craigslist-cancel"),
         ebayStatus: $("ebay-status"),
         ebayLink: $("ebay-link"),
         craigslistBtn: $("craigslist-btn"),
@@ -1430,6 +1488,7 @@ function main() {
         bookPickupOnly: $("book-pickup-only"),
         bookPriceLine: $("book-price-line"),
     bookEbayBtn: $("book-ebay-btn"),
+    bookEbayCancel: $("book-ebay-cancel"),
         bookEbayStatus: $("book-ebay-status"),
         bookEbayLink: $("book-ebay-link"),
         bookVenueHint: $("book-venue-hint"),
@@ -1508,6 +1567,14 @@ function main() {
     el.bookEbayBtn.addEventListener("click", () => {
         send("book", "ebay").catch(() => {});
     });
+    el.bookEbayCancel.addEventListener("click", () => {
+        cancelPress("book", "ebay").catch(() => {});
+    });
+    for (const venue of VENUES) {
+        el[`${venue}Cancel`].addEventListener("click", () => {
+            cancelPress("goods", venue).catch(() => {});
+        });
+    }
     el.bookNextBtn.addEventListener("click", () => {
         nextItem("book").catch(() => {});
     });

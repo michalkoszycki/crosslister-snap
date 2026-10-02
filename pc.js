@@ -39,12 +39,16 @@
 //                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
 //   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
+//   DELETE <pc>/jobs/<id>             the cancel button -> {"job", "state": "cancelled" | "stopping"}:
+//                                      a queued job is dropped (nothing paid), the running one
+//                                      stops at its next step and keeps its draft unpublished;
+//                                      409 once done or failed
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
 //
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.16.1";
+import { errorText, KEY_HEADER } from "./core.js?v=1.17.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -119,6 +123,11 @@ export function putPhoto({ pc, key }, item, n, jpeg) {
 /** Photo number n off the PC too (the x). */
 export function deletePhoto({ pc, key }, item, n) {
     return call(`${itemUrl(pc, item)}/photos/${n}`, key, { method: "DELETE" });
+}
+
+/** The cancel button, once the job is the PC's: dropped if still queued, stopped at its next step if running. */
+export function cancelJob({ pc, key }, job) {
+    return call(`${pc}/jobs/${encodeURIComponent(job)}`, key, { method: "DELETE" });
 }
 
 /** The whole item off the PC, folder and all: NEXT on one nothing was posted from. */

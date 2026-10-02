@@ -140,7 +140,17 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   button text"): nothing before a press and until the PC has saved the row,
   then `$14` (`$14.50` when the price has cents) while it posts and after. The
   price is the PC's (`price` in the job's status), the row's, so it stands for
-  both buttons; a failure with nothing else running takes it away. The other
+  both buttons; a failure with nothing else running takes it away. A press
+  waits one second before anything leaves the phone (Michal, 2026-10-02:
+  "delay sending by 1 second, but show loading, so that if one cancels within
+  1 sec there is no call money spent"): the ring turns at once, and a red
+  **cancel** sits under the button from the press until the link or the error.
+  Within that second cancel takes the press back for free (the line says
+  `cancelled`). After it the PC is told (`DELETE /jobs/<id>`): a job still
+  queued is dropped before it runs, nothing paid; the job in hand stops at its
+  next step, saving the draft instead of publishing it, and the line reads
+  `cancelled from the phone` ("it will be a double charge but oh well"; it is
+  not, since the next press posts the saved row without drafting again). The other
   button can be pressed at any time after the first (Michal, 2026-09-30: "I
   seem not to be able to click craigslist while ebay is loading"): the PC runs
   jobs one at a time, so it queues behind (`queued, 1 ahead`) and, by then, the

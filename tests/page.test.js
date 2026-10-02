@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { itemIdFor, NAME_CHECK_MS } from "../core.js";
+import { itemIdFor, NAME_CHECK_MS, SEND_DELAY_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -117,9 +117,12 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "price-line",
         "ebay-btn",
         "ebay-status",
+        // Michal, 2026-10-02: a red cancel under the pressed button
+        "ebay-cancel",
         "ebay-link",
         "craigslist-btn",
         "craigslist-status",
+        "craigslist-cancel",
         "craigslist-link",
         "venue-hint",
         "done-hint",
@@ -417,6 +420,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
     const pc = {
         items: new Map(Object.entries(items)),
         calls: [],
+        cancelled: new Set(), // jobs the cancel button told the PC about
         posted: [],
         checks: 0,
         down: false,
@@ -472,8 +476,20 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             if (refuseJob) return json({ detail: refuseJob }, 400);
             return json({ job: body.venue === "ebay" ? "j1" : "j2", state: "queued", ahead: 1 });
         }
+        if (parts[0] === "jobs" && parts[1] && method === "DELETE") {
+            // the cancel button: a job the test holds "queued" is dropped, a running one is told
+            const answer = jobs[parts[1]];
+            if (!answer) return json({ detail: "no such job" }, 404);
+            const state = answer().state;
+            if (!["queued", "running"].includes(state)) return json({ detail: "finished" }, 409);
+            pc.cancelled.add(parts[1]);
+            return json({ job: parts[1], state: state === "queued" ? "cancelled" : "stopping" });
+        }
         if (parts[0] === "jobs" && parts[1]) {
             const answer = jobs[parts[1]];
+            if (answer && pc.cancelled.has(parts[1])) {
+                return json({ price: "", ...answer(), state: "failed", error: "cancelled from the phone", links: {} });
+            }
             // the row's price, "" until the PC has saved the row (the contract since 1.12.0)
             return answer ? json({ price: "", ...answer() }) : json({ detail: "no such job" }, 404);
         }
@@ -595,6 +611,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
 
     nodes.get("ebay-btn").fire("click");
     await settle();
+
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+
+    await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [3] }], "the item, the venue, the marks");
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
     // the ring turns in the pressed button from the press on; the other button has none
@@ -647,6 +667,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
 
     nodes.get("craigslist-btn").fire("click");
     await settle();
+
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+
+    await settle();
     assert.deepEqual(pc.posted[1], { sku: "B-0042", venue: "craigslist" });
     // the same row: the price line stands, the button's word is the venue
     assert.equal(nodes.get("craigslist-btn").textContent, "craigslist");
@@ -691,6 +715,8 @@ test("NEXT while the listing still posts: the screen clears, the next item start
     await settle();
     card(nodes, 0).ai.fire("click");
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     t.mock.timers.tick(3000);
     await settle();
@@ -975,6 +1001,8 @@ test("a refusal from the PC shows its own words", async (t) => {
     card(nodes, 0).ai.fire("click");
     nodes.get("ebay-btn").fire("click");
     await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+    await settle();
     assert.equal(nodes.get("ebay-status").textContent, "mark at least one photo for the AI");
     assert.equal(nodes.get("ebay-btn").disabled, false);
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false, "the ring stops with the error");
@@ -1083,6 +1111,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-price-line",
         "book-ebay-btn",
         "book-ebay-status",
+        "book-ebay-cancel",
         "book-ebay-link",
         "book-venue-hint",
         "book-done-hint",
@@ -1247,6 +1276,9 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-next-item").disabled, true);
     assert.equal(nodes.get("book-done-hint").textContent, "NEXT waits until the listing has reached the PC");
     await settle();
+    assert.equal(nodes.get("book-ebay-cancel").hidden, false, "the red cancel, for the second and after");
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+    await settle();
     assert.deepEqual(pc.posted, [
         { item, venue: "ebay", book: { ...NO_TYPING, isbn: ISBN, condition: "very_good", price: "11", main: 1 } },
     ]);
@@ -1340,6 +1372,10 @@ test("the main mark: the first photo by default, a tap moves it, a delete moves 
     assert.deepEqual(mains(nodes), [false, true]);
 
     nodes.get("book-ebay-btn").fire("click");
+    await settle();
+
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+
     await settle();
     assert.deepEqual(pc.posted, [
         { item, venue: "ebay", book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 2 } },
@@ -1486,6 +1522,8 @@ test("switching mid-item asks nothing and loses nothing: the goods job carries o
     await settle();
     card(nodes, 0).ai.fire("click");
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
 
@@ -1671,6 +1709,8 @@ test("no ISBN end to end: No ISBN, the title typed, the book and its price found
     nodes.get("book-condition-very_good").fire("click");
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
     nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.deepEqual(pc.posted, [
         {
@@ -1907,6 +1947,8 @@ test("an ISBN no catalogue knows: No ISBN keeps it, the title is searched, the j
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
     nodes.get("book-ebay-btn").fire("click");
     await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+    await settle();
     assert.deepEqual(pc.posted, [
         {
             item,
@@ -2033,6 +2075,10 @@ test("customize, goods: open it, 2 and pickup only, ebay carries both, craigslis
 
     nodes.get("ebay-btn").fire("click");
     await settle();
+
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+
+    await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 2, pickup_only: true }]);
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
     // fixed while the job is on its way, as the photos are
@@ -2044,6 +2090,8 @@ test("customize, goods: open it, 2 and pickup only, ebay carries both, craigslis
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/50");
     assert.equal(nodes.get("quantity").disabled, false, "the job is done: craigslist may still change them");
     nodes.get("craigslist-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     // the saved row's job carries them too: the PC updates the row before it posts
     assert.deepEqual(pc.posted[1], { sku: "B-0050", venue: "craigslist", quantity: 2, pickup_only: true });
@@ -2071,6 +2119,8 @@ test("customize left alone sends the body exactly as before", async (t) => {
     // opened and looked at, nothing changed
     nodes.get("customize-toggle").fire("click");
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.equal(JSON.stringify(pc.posted[0]), `{"item":"Lamp ${TODAY}","venue":"ebay","ai":[1]}`);
 });
@@ -2111,6 +2161,10 @@ test("customize, book: its own disclosure; a bad quantity shuts ebay; 3 and pick
 
     nodes.get("book-ebay-btn").fire("click");
     await settle();
+
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+
+    await settle();
     assert.deepEqual(pc.posted, [
         {
             item,
@@ -2143,6 +2197,8 @@ test("a reload brings customize back, folded, with pickup only under ebay", asyn
     assert.equal(nodes.get("pickup-only").checked, true);
     assert.equal(nodes.get("ebay-status").textContent, "pickup only");
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 4, pickup_only: true }]);
 });
@@ -2333,6 +2389,84 @@ test("a photo the phone cannot read shows failed with the reason, and a tap trie
     assert.equal(pc.calls.at(-1), `PUT /items/${item}/photos/1`);
 });
 
+test("a press waits a second with the ring turning; cancel within it sends nothing", async (t) => {
+    // Michal, 2026-10-02: "below in red there should be a cancel button ... delay sending by
+    // 1 second (but show loading) so that if one cancels within 1 sec there is no call money spent"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    assert.equal(nodes.get("ebay-cancel").hidden, true, "nothing to cancel before the press");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true, "loading from the press");
+    assert.equal(nodes.get("ebay-status").textContent, "sending");
+    assert.equal(nodes.get("ebay-cancel").hidden, false, "the red cancel under the pressed button");
+    assert.equal(nodes.get("craigslist-cancel").hidden, true);
+    assert.deepEqual(pc.posted, [], "nothing has left the phone yet");
+    t.mock.timers.tick(SEND_DELAY_MS - 1);
+    await settle();
+    assert.deepEqual(pc.posted, [], "not for a whole second");
+    nodes.get("ebay-cancel").fire("click");
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "cancelled");
+    assert.equal(nodes.get("ebay-status").className, "venue-status bad");
+    assert.equal(nodes.get("ebay-cancel").hidden, true);
+    assert.equal(nodes.get("ebay-btn").disabled, false, "the button comes back");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.deepEqual(pc.posted, [], "the taken-back press never goes, however long we wait");
+    assert.ok(!pc.calls.some((c) => c.startsWith("POST /jobs")));
+
+    // pressed again: a fresh second, then it goes
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(pc.posted.length, 1);
+    assert.equal(nodes.get("ebay-cancel").hidden, false, "still cancellable once the PC has it");
+});
+
+test("cancel after the second tells the PC; the job stops at its next step and the draft's sku is kept", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({
+        jobs: { j1: () => ({ state: "running", step: "drafting the listing", sku: "B-0042" }) },
+    });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "drafting the listing");
+    nodes.get("ebay-cancel").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "DELETE /jobs/j1");
+    assert.equal(nodes.get("ebay-status").textContent, "cancelling: the PC stops at its next step");
+    assert.equal(nodes.get("ebay-cancel").disabled, true, "told once");
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "cancelled from the phone");
+    assert.equal(nodes.get("ebay-status").className, "venue-status bad");
+    assert.equal(nodes.get("ebay-cancel").hidden, true);
+    assert.equal(nodes.get("ebay-btn").disabled, false, "the saved row can be posted again");
+    // the next press goes by the saved row's sku: no second draft
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { sku: "B-0042", venue: "ebay" });
+});
+
 test("NEXT keeps an item a button was pressed for", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
@@ -2343,6 +2477,8 @@ test("NEXT keeps an item a button was pressed for", async (t) => {
     await settle();
     card(nodes, 0).ai.fire("click");
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     nodes.get("next-item").fire("click");
     await settle();
