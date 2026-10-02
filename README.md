@@ -134,7 +134,11 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
   button shows a turning ring beside its word until the link or the error comes;
-  posted, it turns green. The price is a line above the two buttons (Michal,
+  posted, it turns green. Above the price, in small print, the listing's title
+  as the PC saved it, from whichever job said it first (Michal, 2026-10-02:
+  "add the title of the post ... above the price, once generated, small font,
+  just for verification"; `title` in the job's status, read from the row).
+  The price is a line above the two buttons (Michal,
   2026-09-28: "When posting, I want to see the price designated"; 2026-09-30:
   "show the chosen price for the item above the buttons instead of replacing
   button text"): nothing before a press and until the PC has saved the row,
@@ -175,6 +179,16 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   a saved row, a job on its way or on the PC, or a job that finished is kept;
   the PC refuses (409) to delete an item a row was made from or a job still
   holds, whatever the page thinks, and the line then says it could not.
+  What NEXT leaves behind is not gone: the page keeps the last 30 finished
+  items (`snap.history`), and **the browser's back button** brings the latest
+  one of the shown kind up as it was left, read back from the PC like a reload
+  (its photos "on the PC", the note, the title and price, the links; Michal,
+  2026-10-02: "when I press next but then want to go back and see how much
+  that other thing posted for"). The line under the photos says which item is
+  up and what NEXT does now: an item that was in hand is parked, and NEXT
+  returns to it; from a fresh screen NEXT starts a new item. The page always
+  keeps one history entry to go back from, so back never leaves it; on an
+  empty history it says so. Back again goes one item further.
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
 toggles) because the PC's saved row is what the second button uses. If the

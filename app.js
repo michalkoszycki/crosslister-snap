@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.17.0";
+import { VERSION } from "./version.js?v=1.18.0";
 import {
     anyActive,
     bannerText,
@@ -41,6 +41,9 @@ import {
     serverLine,
     SETTINGS_HINT,
     priceLine,
+    titleLine,
+    remembered,
+    backNote,
     cancelButton,
     SEND_DELAY_MS,
     STOPPING_STEP,
@@ -56,8 +59,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.17.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.17.0";
+} from "./core.js?v=1.18.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.18.0";
 import {
     cancelJob,
     checkPc,
@@ -72,8 +75,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.17.0";
-import { shrinkPhoto } from "./shrink.js?v=1.17.0";
+} from "./pc.js?v=1.18.0";
+import { shrinkPhoto } from "./shrink.js?v=1.18.0";
 import {
     bookCard,
     bookPriceValue,
@@ -86,8 +89,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.17.0";
-import { canScan, readIsbn } from "./scan.js?v=1.17.0";
+} from "./book.js?v=1.18.0";
+import { canScan, readIsbn } from "./scan.js?v=1.18.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -149,6 +152,10 @@ const restoring = { goods: false, book: false };
 /** The saved item could not be read back: leave it in storage until a new item starts. */
 const keepSaved = { goods: false, book: false };
 const lastSaved = { goods: null, book: null };
+/** True while the screen shows an earlier item brought up with back, not the one in hand. */
+const viewing = { goods: false, book: false };
+const HISTORY_KEY = "snap.history";
+const FORWARD_KEYS = { goods: "snap.forward.goods", book: "snap.forward.book" };
 
 const el = {};
 
@@ -297,6 +304,7 @@ function renderGoods() {
 
     const ok = !!settings();
     // the row's price, above both buttons: one job's answer serves the other too
+    renderPriceLine(el.titleLine, titleLine(state));
     renderPriceLine(el.priceLine, priceLine(state));
     let hint = "";
     for (const venue of VENUES) {
@@ -406,6 +414,7 @@ function renderBook() {
     renderCustomize("book");
 
     // the price is typed on the page: above the button from the press, until the PC says its own
+    renderPriceLine(el.bookTitleLine, titleLine(state));
     renderPriceLine(el.bookPriceLine, priceLine(state, bookPriceValue(book.price)));
     const venueHint = renderVenue(state, "ebay", !!settings(), {
         btn: el.bookEbayBtn,
@@ -1352,6 +1361,31 @@ async function nextItem(m) {
     // nothing posted from it: trash, on the PC too (Michal, 2026-09-30); the answer
     // comes after the page has moved on, as one quiet line
     const trash = givenUp(slots[m]) ? slots[m] : null;
+    // what was posted stays reachable with the browser's back button
+    const record = trash ? null : savedItem(slots[m]);
+    if (record) writeJson("localStorage", HISTORY_KEY, remembered(readJson("localStorage", HISTORY_KEY, []), record));
+    clearItem(m);
+    say("");
+    keepSaved[m] = false;
+    customizeOpen[m] = false; // the next item starts folded, at one, shipped
+    setState(m, reduce(slots[m], { type: "reset" }));
+    fillCustomize(m);
+    if (trash) trashItem(trash);
+    // back had brought an earlier item up: NEXT returns to the one he left
+    const parked = viewing[m] ? readJson("localStorage", FORWARD_KEYS[m], null) : null;
+    viewing[m] = false;
+    if (parked && parked.itemId) {
+        removeText("localStorage", FORWARD_KEYS[m]);
+        await bringUp(m, parked);
+        say(`Back on "${parked.itemName || parked.itemId}", the item you were on.`);
+        return;
+    }
+    // a book starts with Scan, not the keyboard
+    if (m === "goods") el.itemInput.focus();
+}
+
+/** Everything of the shown item that lives in this page's memory, let go. */
+function clearItem(m) {
     generation[m] += 1;
     for (const venue of VENUES) {
         clearTimeout(polls.get(`${m}:${venue}`));
@@ -1383,14 +1417,61 @@ async function nextItem(m) {
         el.bookAuthor.value = "";
         el.bookYear.value = "";
     }
-    say("");
-    keepSaved[m] = false;
-    customizeOpen[m] = false; // the next item starts folded, at one, shipped
+}
+
+/**
+ * The browser's back button brings the last finished item of the shown kind
+ * up, as it was left: its photos (on the PC), note, price, title, the links
+ * (Michal, 2026-10-02: "when I press next but then want to go back and see
+ * how much that other thing posted for"). An item in hand is parked first, and
+ * NEXT returns to it; a fresh screen is simply left. Back on an empty history
+ * says so and changes nothing.
+ */
+async function goBack(m) {
+    const list = readJson("localStorage", HISTORY_KEY, []);
+    const entries = Array.isArray(list) ? list : [];
+    let at = -1;
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+        const kind = entries[i] && entries[i].mode === "book" ? "book" : "goods";
+        if (entries[i] && entries[i].itemId && kind === m) {
+            at = i;
+            break;
+        }
+    }
+    if (at < 0) {
+        say("No earlier item to go back to.");
+        return;
+    }
+    const [record] = entries.splice(at, 1);
+    writeJson("localStorage", HISTORY_KEY, entries);
+    const current = viewing[m] ? null : savedItem(slots[m]);
+    if (current) writeJson("localStorage", FORWARD_KEYS[m], current);
+    const resumes = !!current || !!readJson("localStorage", FORWARD_KEYS[m], null);
+    clearItem(m);
+    viewing[m] = true;
     setState(m, reduce(slots[m], { type: "reset" }));
-    fillCustomize(m);
-    // a book starts with Scan, not the keyboard
-    if (m === "goods") el.itemInput.focus();
-    if (trash) trashItem(trash);
+    await bringUp(m, record);
+    say(backNote(record, resumes));
+}
+
+/** `record` (a saved item) read back from the PC onto the screen, as a reload does. */
+async function bringUp(m, record) {
+    keepSaved[m] = false;
+    lastSaved[m] = null;
+    writeText("localStorage", SAVED_KEYS[m], JSON.stringify(record));
+    await restore(m);
+}
+
+/** One entry to go back from, always, so back reaches the page and never leaves it. */
+function keepBackEntry() {
+    const nav = globalThis.history;
+    if (nav && typeof nav.pushState === "function") {
+        try {
+            nav.pushState({ snap: true }, "");
+        } catch {
+            // a browser that refuses: back then leaves the page, as before
+        }
+    }
 }
 
 /** The folder of an item given up, off the PC; what happened in one line. */
@@ -1436,7 +1517,8 @@ function main() {
         strip: $("strip"),
         note: $("note"),
         noteStatus: $("note-status"),
-        priceLine: $("price-line"),
+        titleLine: $("title-line"),
+    priceLine: $("price-line"),
     ebayBtn: $("ebay-btn"),
     ebayCancel: $("ebay-cancel"),
     craigslistCancel: $("craigslist-cancel"),
@@ -1486,7 +1568,8 @@ function main() {
         bookCustomize: $("book-customize"),
         bookQuantity: $("book-quantity"),
         bookPickupOnly: $("book-pickup-only"),
-        bookPriceLine: $("book-price-line"),
+        bookTitleLine: $("book-title-line"),
+    bookPriceLine: $("book-price-line"),
     bookEbayBtn: $("book-ebay-btn"),
     bookEbayCancel: $("book-ebay-cancel"),
         bookEbayStatus: $("book-ebay-status"),
@@ -1618,8 +1701,14 @@ function main() {
         }
     });
 
+    window.addEventListener("popstate", () => {
+        goBack(mode).catch(() => {});
+        keepBackEntry();
+    });
+
     for (const m of MODES) restore(m).catch(() => {});
     checkServer().catch(() => {});
+    keepBackEntry();
 }
 
 main();

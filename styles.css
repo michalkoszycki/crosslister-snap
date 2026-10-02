@@ -363,6 +363,8 @@ button.badge.failed {
 /* The row's price above the venue buttons, from the press on (Michal, 2026-09-30: "show
    the chosen price for the item above the buttons instead of replacing button text"). */
 .price-line { margin: 0 2px 10px; text-align: center; font-size: 22px; font-weight: 600; color: var(--ink); }
+/* the listing's title above the price, small: a glance to check it (Michal, 2026-10-02) */
+.title-line { margin: 0 2px 4px; text-align: center; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 /* An item name the PC already has today: refused, and the box says so. */
 #item-name.taken { border-color: var(--bad); }
 /* Posted: the button's word is the price alone ("$14"), at full strength in the

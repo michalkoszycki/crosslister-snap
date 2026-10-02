@@ -25,7 +25,7 @@
 <meta name="theme-color" content="#101418">
 <meta name="referrer" content="no-referrer">
 <title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.17.0">
+<link rel="stylesheet" href="styles.css?v=1.18.0">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -116,6 +116,8 @@
     </div>
 
     <!-- the row's price, once a press has one, above both buttons -->
+    <!-- the listing's title as the PC saved it, small, for a look (Michal, 2026-10-02) -->
+    <p id="title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="price-line" class="price-line" aria-live="polite" hidden></p>
     <div class="venues">
       <div class="venue">
@@ -250,6 +252,7 @@
       </label>
     </div>
 
+    <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="book-price-line" class="price-line" aria-live="polite" hidden></p>
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
@@ -270,6 +273,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.17.0"></script>
+<script type="module" src="app.js?v=1.18.0"></script>
 </body>
 </html>

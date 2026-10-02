@@ -57,6 +57,10 @@ import {
     CANCELLED,
     SEND_DELAY_MS,
     STOPPING_STEP,
+    titleLine,
+    remembered,
+    backNote,
+    HISTORY_LIMIT,
     nextNote,
     NEXT_NOTE,
     idleJob,
@@ -498,6 +502,40 @@ test("the red cancel shows from the press until the link or the error; a cancell
     s = reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
     assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }).jobs.ebay.phase, "done");
     assert.equal(cancelButton(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }), "ebay"), false);
+});
+
+test("the title line is the saved row's title, from whichever job said it first", () => {
+    // Michal, 2026-10-02: "add the title of the post, from the first venue clicked, above the price"
+    let s = sent(1, [1]);
+    assert.equal(titleLine(s), "");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
+    assert.equal(titleLine(s), "", "nothing until the row is saved");
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1", title: " Brass Lamp 1970s " } });
+    assert.equal(titleLine(s), "Brass Lamp 1970s");
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done", title: "" } });
+    assert.equal(titleLine(s), "Brass Lamp 1970s", "a later blank does not unsay it");
+    for (const junk of [7, null, undefined, "  "]) {
+        const j = reduce(sent(1, [1]), { type: "jobStatus", venue: "ebay", status: { state: "running", title: junk } });
+        assert.equal(titleLine(j), "", String(junk));
+    }
+});
+
+test("history keeps the last items for back, newest last, one entry per item", () => {
+    // Michal, 2026-10-02: "when I press next but then want to go back and see how much that
+    // other thing posted for"
+    const a = { itemName: "Lamp", itemId: "Lamp 2026-09-24", ai: [1] };
+    const b = { itemName: "Vase", itemId: "Vase 2026-09-24", ai: [] };
+    assert.deepEqual(remembered(null, a), [a]);
+    assert.deepEqual(remembered([a], b), [a, b]);
+    assert.deepEqual(remembered([a, b], { ...a, ai: [2] }), [b, { ...a, ai: [2] }], "the same item moves to the end");
+    assert.deepEqual(remembered(["junk", null, a], b), [a, b], "whatever is not a record is dropped");
+    const many = Array.from({ length: HISTORY_LIMIT + 5 }, (_, i) => ({ itemId: `x${i}` }));
+    const kept = many.reduce((list, r) => remembered(list, r), []);
+    assert.equal(kept.length, HISTORY_LIMIT);
+    assert.equal(kept.at(-1).itemId, `x${HISTORY_LIMIT + 4}`);
+    assert.equal(backNote(a, true), 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(backNote({ itemId: "Book 978 2026-09-24" }, false), 'Back to "Book 978 2026-09-24", as it was left. NEXT starts a new item.');
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {

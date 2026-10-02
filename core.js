@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.17.0";
+import { noteDirty, unsent } from "./queue.js?v=1.18.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.17.0";
+} from "./book.js?v=1.18.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -464,6 +464,8 @@ export function safeLink(url) {
  * @property {string} trouble  a status poll that failed; the job itself may be fine
  * @property {string} price    the saved row's price as the PC says it ("14.00"), "" until the
  *                             row is saved; the line above the buttons shows it (priceLine)
+ * @property {string} title    the saved row's title as the PC says it, "" until the row is
+ *                             saved; the small line above the price shows it (titleLine)
  */
 
 /**
@@ -576,7 +578,17 @@ function initialBook() {
 
 /** @returns {VenueJob} */
 export function idleJob() {
-    return { phase: "idle", jobId: "", step: "", ahead: 0, link: "", error: "", trouble: "", price: "" };
+    return {
+        phase: "idle",
+        jobId: "",
+        step: "",
+        ahead: 0,
+        link: "",
+        error: "",
+        trouble: "",
+        price: "",
+        title: "",
+    };
 }
 
 /**
@@ -839,6 +851,7 @@ export function reduce(state, action) {
                 trouble: "",
                 // blank until the PC saved the row; once known, a later blank does not unsay it
                 price: priceText(s.price) || job.price,
+                title: (typeof s.title === "string" && s.title.trim()) || job.title || "",
             }));
             const sku = typeof s.sku === "string" ? s.sku : "";
             return sku && !state.sku ? { ...next, sku } : next;
@@ -1405,6 +1418,50 @@ export function priceLine(state, fallbackPrice = "") {
     if (jobs.length === 0) return "";
     const said = jobs.map((j) => priceText(j.price)).find(Boolean) || priceText(fallbackPrice);
     return said ? money(said) : "";
+}
+
+/**
+ * The small line above the price: the listing's title as the PC saved it,
+ * from whichever job said it first (Michal, 2026-10-02: "add the title of the
+ * post, from the first venue clicked, above the price, once generated, small
+ * font, just for verification"). "" until a job has one.
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function titleLine(state) {
+    return VENUES.map((v) => state.jobs[v]).map((j) => (j && j.title) || "").find(Boolean) || "";
+}
+
+/** How many finished items the page keeps for the browser's back button. */
+export const HISTORY_LIMIT = 30;
+
+/**
+ * `list` with `record` as its newest entry (an earlier entry for the same item
+ * replaced), at most `HISTORY_LIMIT` long. What NEXT leaves behind, so back
+ * can bring it up (Michal, 2026-10-02: "when I press next but then want to go
+ * back and see how much that other thing posted for").
+ * @param {unknown} list
+ * @param {{itemId:string}} record
+ * @returns {object[]}
+ */
+export function remembered(list, record) {
+    const kept = (Array.isArray(list) ? list : []).filter(
+        (r) => r && typeof r === "object" && r.itemId !== record.itemId
+    );
+    return [...kept, record].slice(-HISTORY_LIMIT);
+}
+
+/**
+ * The line said when back brings an earlier item up: which, and what NEXT
+ * does now (returns to the item he left, or starts a new one).
+ * @param {{itemName?:string, itemId:string}} record
+ * @param {boolean} resumes
+ * @returns {string}
+ */
+export function backNote(record, resumes) {
+    const name = record.itemName || record.itemId;
+    const next = resumes ? "returns to the item you were on" : "starts a new item";
+    return `Back to "${name}", as it was left. NEXT ${next}.`;
 }
 
 /**
