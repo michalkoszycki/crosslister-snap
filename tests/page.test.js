@@ -2268,6 +2268,67 @@ test("NEXT on an item nothing was posted from deletes it on the PC and says so",
     assert.match(nodes.get("message").textContent, /^"Vase" was not posted and could not be deleted on the PC: /);
 });
 
+test("photos are shrunk one after another as they come; only the shrunk JPEG is kept and shown", async (t) => {
+    // Michal, 2026-10-02: several photos from the camera roll at once: the first went, the
+    // rest showed failed however often he tapped them (the phone ran out of picture memory)
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    let decoding = 0;
+    let atOnce = 0;
+    globalThis.createImageBitmap = async () => {
+        decoding += 1;
+        atOnce = Math.max(atOnce, decoding);
+        await new Promise((r) => setImmediate(r));
+        decoding -= 1;
+        return { width: 4032, height: 3024, close() {} };
+    };
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 4);
+    await settle();
+    assert.equal(atOnce, 1, "one original decoded at a time");
+    assert.deepEqual(badges(nodes), ["sent", "sent", "sent", "sent"]);
+    assert.equal(pc.items.get(item).photos.size, 4);
+    for (let i = 0; i < 4; i += 1) {
+        assert.equal(card(nodes, i).li.children.find((c) => c.tag === "img").src, "blob:stub", "the shrunk one");
+    }
+});
+
+test("a photo the phone cannot read shows failed with the reason, and a tap tries it again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const good = globalThis.createImageBitmap;
+    globalThis.createImageBitmap = async () => {
+        throw new Error("no bitmap");
+    };
+    globalThis.Image = class {
+        set src(_url) {
+            queueMicrotask(() => this.onerror && this.onerror());
+        }
+    };
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 2);
+    await settle();
+    assert.deepEqual(badges(nodes), ["failed", "failed"]);
+    assert.equal(
+        nodes.get("message").textContent,
+        "Lamp-2.jpg: could not read the photo (image/jpeg, 0.0 MB)",
+        "the last failure, said where he can read it"
+    );
+    assert.ok(!pc.calls.some((c) => c.startsWith("PUT")), "nothing was sent");
+    assert.equal(nodes.get("ebay-btn").disabled, true);
+
+    // the phone can read again: a tap on failed shrinks and sends it
+    globalThis.createImageBitmap = good;
+    card(nodes, 0).badge.fire("click");
+    await settle();
+    assert.deepEqual(badges(nodes), ["sent", "failed"]);
+    assert.equal(pc.calls.at(-1), `PUT /items/${item}/photos/1`);
+});
+
 test("NEXT keeps an item a button was pressed for", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });

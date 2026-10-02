@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.15.0";
+import { VERSION } from "./version.js?v=1.16.0";
 import {
     anyActive,
     bannerText,
@@ -53,8 +53,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.15.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.15.0";
+} from "./core.js?v=1.16.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.16.0";
 import {
     checkPc,
     createItem,
@@ -68,8 +68,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.15.0";
-import { shrinkPhoto } from "./shrink.js?v=1.15.0";
+} from "./pc.js?v=1.16.0";
+import { shrinkPhoto } from "./shrink.js?v=1.16.0";
 import {
     bookCard,
     bookPriceValue,
@@ -82,8 +82,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.15.0";
-import { canScan, readIsbn } from "./scan.js?v=1.15.0";
+} from "./book.js?v=1.16.0";
+import { canScan, readIsbn } from "./scan.js?v=1.16.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -100,7 +100,12 @@ const slots = { goods: initialState(""), book: initialState("", "book") };
 /** @type {"goods"|"book"} */
 let mode = "goods";
 
-/** id -> { file: File, url: string } -- the pictures taken on this page, until DONE. */
+/**
+ * id -> { file, url, shrunk, ready } -- the pictures taken on this page, until NEXT.
+ * `file` is the camera's original until the photo is shrunk, then null: only the
+ * shrunk JPEG (`shrunk`) is kept, and `url` shows it. `ready` is the shrink in
+ * progress, shared by the thumbnail and the upload.
+ */
 const blobs = new Map();
 
 /** "<mode>:<venue>" -> the timer of its next status poll */
@@ -484,8 +489,10 @@ function renderStrip(m, strip, locked) {
 
         const held = blobs.get(p.id);
         if (held) {
+            // the shrunk picture, once there is one: a full-size original is never
+            // shown, so the phone decodes one picture at a time, not every one
             const img = document.createElement("img");
-            img.src = held.url;
+            if (held.shrunk) img.src = held.url;
             img.alt = p.name;
             card.append(img);
         } else {
@@ -662,14 +669,68 @@ function acceptFiles(m, fileList) {
     keepSaved[m] = false; // a new item starts: it is the one to remember now
     const item = s.itemName || "Book";
     let next = s;
+    const ids = [];
     for (const file of fileList) {
         const n = takeNumber(item, next);
         const id = `${item}#${n}#${Date.now()}#${Math.random().toString(36).slice(2, 8)}`;
-        blobs.set(id, { file, url: URL.createObjectURL(file) });
+        blobs.set(id, { file, url: "", shrunk: null, ready: null });
+        ids.push(id);
         next = reduce(next, { type: "add", id, name: buildFileName(item, n), n });
     }
     setState(m, next);
+    prepareAll(m, ids).catch(() => {});
     pump();
+}
+
+/**
+ * Each new photo is shrunk right away, one after another, and only the shrunk
+ * JPEG is kept: the phone then holds one decoded original at a time instead of
+ * every full-size picture at once (Michal, 2026-10-02: several photos from the
+ * camera roll, the first went, the rest showed failed however often he tapped
+ * them). The thumbnail is the shrunk picture too. One that will not shrink
+ * shows failed with the reason, here and in the line under the photos.
+ */
+async function prepareAll(m, ids) {
+    for (const id of ids) {
+        try {
+            await prepared(id);
+        } catch (e) {
+            photoFailed(m, id, e.message || "could not read the photo");
+        }
+    }
+}
+
+/** The photo's shrunk JPEG: made once, shared by the thumbnail and the upload. */
+function prepared(id) {
+    const held = blobs.get(id);
+    if (!held) return Promise.reject(new Error("the photo is no longer on this page"));
+    if (held.shrunk) return Promise.resolve(held.shrunk);
+    if (!held.ready) {
+        held.ready = shrinkPhoto(held.file).then(
+            (blob) => {
+                held.shrunk = blob;
+                held.file = null; // the original is not needed any more: let it go
+                if (held.url) URL.revokeObjectURL(held.url);
+                held.url = URL.createObjectURL(blob);
+                held.ready = null;
+                render();
+                return blob;
+            },
+            (e) => {
+                held.ready = null;
+                throw e;
+            }
+        );
+    }
+    return held.ready;
+}
+
+/** A photo this phone could not shrink: failed on its card, and said once. */
+function photoFailed(m, id, error) {
+    const photo = slots[m].photos.find((p) => p.id === id);
+    if (!photo || photo.status === "failed") return;
+    setState(m, reduce(slots[m], { type: "taskFailed", task: { kind: "photo", id }, status: -1, error }));
+    say(`${photo.name}: ${error}`, "warn");
 }
 
 /** The x on a thumbnail: off the page, and off the PC when it may be there. */
@@ -852,10 +913,8 @@ async function runTask(pc, m, task) {
         case "item":
             return createItem(pc, task.name);
         case "photo": {
-            const held = blobs.get(task.id);
-            if (!held) throw new Error("the photo is no longer on this page");
-            // shrunk right before it goes: one decoded photo in memory at a time
-            return putPhoto(pc, itemId, task.n, await shrinkPhoto(held.file));
+            // the shrunk JPEG, made when the photo was taken (or now, after a retry)
+            return putPhoto(pc, itemId, task.n, await prepared(task.id));
         }
         case "delete":
             return deletePhoto(pc, itemId, task.n);
@@ -901,6 +960,11 @@ async function pump() {
                 const status = failure instanceof PcError ? failure.status : -1;
                 if (status === 0 || status === 401) heard(status);
                 const error = failure.message || "not sent";
+                if (task.kind === "photo" && status !== 0) {
+                    // the phone could not shrink it, or the PC refused it: say which and why
+                    const photo = slots[m].photos.find((p) => p.id === task.id);
+                    if (photo) say(`${photo.name}: ${error}`, "warn");
+                }
                 setState(m, reduce(slots[m], { type: "taskFailed", task, status, error }));
                 // a stalled item waits out its pause; the other one may still go
                 if (slots[m].stalled) scheduleResume(m);

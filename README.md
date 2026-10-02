@@ -285,10 +285,20 @@ the PC cannot be reached:
   9 s, 27 s, then every 30 s before trying again, from where it stopped. When
   the phone says it is back online the queue goes at once. New photos taken
   meanwhile join the line.
-- **The PC answers with an error** for a photo (not a JPEG, too big): that
-  photo shows `failed`; the others carry on. Tap `failed` to send it again. An
-  error for the item, a delete or the note (a wrong key, say) is shown in the
-  banner and tried again on the same schedule.
+- **The PC answers with an error** for a photo (not a JPEG, too big), or **the
+  phone cannot shrink it** (a picture the browser will not decode, a canvas
+  that gives no JPEG): that photo shows `failed`, the line under the photos
+  says which and why (`Lamp-3.jpg: could not read the photo (image/heic, 4.2
+  MB)`), and the others carry on. Tap `failed` to try it again. An error for
+  the item, a delete or the note (a wrong key, say) is shown in the banner and
+  tried again on the same schedule.
+- **Memory on the phone.** Each photo is shrunk the moment it is taken or
+  picked, one after another, and only the shrunk JPEG is kept and shown as its
+  thumbnail; the camera's original is let go at once. The phone therefore
+  decodes one full-size picture at a time, never every one of a gallery pick
+  together (Michal, 2026-10-02: several photos from the camera roll at once,
+  the first went, the rest showed `failed` however often he tapped them). A
+  retry re-shrinks only a photo whose shrink failed.
 - **The x on a photo still waiting** takes it off the page and nothing is sent.
   On a photo that is on the PC, or on its way, or failed, the PC deletes it too.
   Photo numbers are never reused, so a delete leaves a gap and the AI marks keep
