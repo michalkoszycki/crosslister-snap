@@ -329,7 +329,7 @@ the PC cannot be reached:
 
 Every call carries the header `X-Crosslister-Key: <key>`. Errors are JSON
 `{"detail": "..."}`: 400 with a message, 401 for a wrong key, 404 for an
-unknown item or job, 409 while the same item is already being posted.
+unknown item or job, 409 while the same item is already being posted on that venue (the other venue queues behind it).
 
 | Call | Sent | Answer |
 | --- | --- | --- |
