@@ -113,7 +113,8 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "customize",
         "quantity",
         "pickup-only",
-        // Michal, 2026-09-30: the price above the buttons, not on them
+        // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
+        "title-line",
         "price-line",
         "ebay-btn",
         "ebay-status",
@@ -463,18 +464,27 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
                 item.note = body.note.trim();
                 return json({ item: parts[1], note: item.note });
             }
+            // a job recorded by a press is answered as GET /jobs/<id> would; one the test wrote whole stays
+            const views = item.jobs.map((j) =>
+                j.state || !jobs[j.job] ? j : { price: "", ...jobs[j.job](), job: j.job, venue: j.venue }
+            );
+            const sku = item.sku || views.map((j) => j.sku).find(Boolean) || null;
             return json({
                 item: parts[1],
                 photos: [...item.photos.keys()].sort((a, b) => a - b),
                 note: item.note,
-                sku: item.sku,
-                jobs: item.jobs,
+                sku,
+                jobs: views,
             });
         }
         if (parts[0] === "jobs" && method === "POST") {
             pc.posted.push(body);
             if (refuseJob) return json({ detail: refuseJob }, 400);
-            return json({ job: body.venue === "ebay" ? "j1" : "j2", state: "queued", ahead: 1 });
+            const id = body.venue === "ebay" ? "j1" : "j2";
+            // the item remembers its jobs, as the PC's GET /items/<id> lists them
+            const owner = pc.items.get(body.item) || [...pc.items.values()].find((it) => it.sku && it.sku === body.sku);
+            if (owner) owner.jobs.push({ job: id, venue: body.venue });
+            return json({ job: id, state: "queued", ahead: 1 });
         }
         if (parts[0] === "jobs" && parts[1] && method === "DELETE") {
             // the cancel button: a job the test holds "queued" is dropped, a running one is told
@@ -543,8 +553,9 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
                 state: ebayState,
                 step: ebayState === "running" ? "drafting the listing" : "posted",
                 sku: "B-0042",
-                // the row is saved with the sku: its price comes with it
+                // the row is saved with the sku: its price and title come with it
                 price: "14.00",
+                title: "Brown Leather Boots Size 10",
                 links: ebayState === "done" ? { ebay: "https://www.ebay.com/itm/123" } : {},
                 error: "",
                 ahead: 0,
@@ -557,7 +568,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
             }),
         },
     });
-    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
     const item = `Boots ${TODAY}`;
 
     await typeName(nodes, "Boots");
@@ -698,6 +709,87 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("item-name").value, "");
     assert.equal(nodes.get("item-name").readOnly, false);
     assert.equal(local.getItem("snap.item"), null, "nothing left to read back");
+    assert.equal(nodes.get("title-line").hidden, true);
+    assert.equal(nodes.get("price-line").hidden, true);
+
+    // the browser's back button brings the boots up again, as they were left
+    // (Michal, 2026-10-02: "see how much that other thing posted for")
+    assert.equal(JSON.parse(local.getItem("snap.history")).length, 1);
+    win.fire("popstate");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Boots");
+    assert.equal(nodes.get("item-name").readOnly, true);
+    assert.equal(nodes.get("title-line").textContent, "Brown Leather Boots Size 10");
+    assert.equal(nodes.get("price-line").textContent, "$14");
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
+    assert.equal(nodes.get("craigslist-link").href, "https://sfbay.craigslist.org/x/1.html");
+    assert.equal(nodes.get("note").value, "Size 10, scuffed toe");
+    assert.equal(nodes.get("strip").children.length, 2, "the photos, on the PC");
+    assert.equal(card(nodes, 0).remote.textContent, "on the PC");
+    assert.equal(nodes.get("message").textContent, 'Back to "Boots", as it was left. NEXT starts a new item.');
+    assert.equal(JSON.parse(local.getItem("snap.history")).length, 0, "brought up: off the list");
+    // NEXT from there: a fresh item, the boots not deleted (they were posted)
+    const calls = pc.calls.length;
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "");
+    assert.ok(!pc.calls.slice(calls).some((c) => c.startsWith("DELETE /items/")));
+    assert.equal(JSON.parse(local.getItem("snap.history")).length, 1, "and back on the list for next time");
+    win.fire("popstate");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Boots");
+    win.fire("popstate");
+    await settle();
+    assert.equal(nodes.get("message").textContent, "No earlier item to go back to.");
+    assert.equal(nodes.get("item-name").value, "Boots", "nothing changed");
+});
+
+test("back parks the item in hand; NEXT returns to it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const lamp = `Lamp ${TODAY}`;
+    local.setItem(
+        "snap.history",
+        JSON.stringify([{ itemName: "Lamp", itemId: lamp, ai: [1] }])
+    );
+    const pc = fakePc({
+        items: {
+            [lamp]: {
+                photos: new Map([[1, "a"]]),
+                note: "brass",
+                sku: "B-7",
+                jobs: [{ job: "j9", venue: "ebay", state: "done", sku: "B-7", price: "9.00", title: "Brass Lamp", links: { ebay: "https://www.ebay.com/itm/9" } }],
+            },
+        },
+    });
+    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    await typeName(nodes, "Vase");
+    snap(nodes, 2);
+    await settle();
+    card(nodes, 1).ai.fire("click");
+    nodes.get("note").value = "chipped";
+    nodes.get("note").fire("input");
+    t.mock.timers.tick(1500);
+    await settle();
+
+    win.fire("popstate");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Lamp");
+    assert.equal(nodes.get("title-line").textContent, "Brass Lamp");
+    assert.equal(nodes.get("price-line").textContent, "$9");
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/9");
+    assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(nodes.get("snap-input").disabled, true, "what was posted stays as it is");
+
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Vase", "the vase is back, with its note and mark");
+    assert.equal(nodes.get("note").value, "chipped");
+    assert.equal(nodes.get("strip").children.length, 2);
+    assert.equal(card(nodes, 1).ai.attrs["aria-pressed"], "true");
+    assert.equal(nodes.get("message").textContent, 'Back on "Vase", the item you were on.');
+    assert.equal(local.getItem("snap.forward.goods"), null);
+    assert.equal(nodes.get("snap-input").disabled, false, "and can go on");
 });
 
 test("NEXT while the listing still posts: the screen clears, the next item starts, its polls stop", async (t) => {
@@ -1108,6 +1200,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-customize",
         "book-quantity",
         "book-pickup-only",
+        "book-title-line",
         "book-price-line",
         "book-ebay-btn",
         "book-ebay-status",
