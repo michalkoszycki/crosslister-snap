@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.16.1";
+import { noteDirty, unsent } from "./queue.js?v=1.17.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.16.1";
+} from "./book.js?v=1.17.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -190,6 +190,35 @@ export const MAX_PHOTOS = 24;
 
 /** How often a running job is asked for its status. */
 export const POLL_MS = 3000;
+
+/**
+ * How long a venue press waits before it is sent (Michal, 2026-10-02: "delay
+ * sending by 1 second, but show loading, so that if one cancels within 1 sec
+ * there is no call money spent"): the ring turns at once, the request goes
+ * after this, and the red cancel under the button takes the press back for
+ * free until then.
+ */
+export const SEND_DELAY_MS = 1000;
+
+/** The line under a venue button whose press was taken back, or dropped by the PC before it ran. */
+export const CANCELLED = "cancelled";
+
+/** The step shown while the PC has been told to stop and has not yet. */
+export const STOPPING_STEP = "cancelling: the PC stops at its next step";
+
+/**
+ * Whether the red cancel under a venue button shows: from the press until the
+ * link or the error. Within the first second it costs nothing; after that the
+ * PC is told, and it stops at its next step ("it will be a double charge but
+ * oh well").
+ * @param {SnapState} state
+ * @param {string} venue
+ * @returns {boolean}
+ */
+export function cancelButton(state, venue) {
+    const job = state.jobs[venue];
+    return !!job && isActive(job);
+}
 
 /**
  * The word on the Snap button: "Snap", and "Snap Again" once the item has a
@@ -785,6 +814,16 @@ export function reduce(state, action) {
                 phase: "failed",
                 error: action.error || "not sent",
             }));
+        case "jobCancelled":
+            // the press taken back before it was sent, or dropped by the PC before it ran
+            return withJob(state, action.venue, () => ({
+                ...idleJob(),
+                phase: "failed",
+                error: CANCELLED,
+            }));
+        case "jobStopping":
+            // the PC has been told; its status says when it stopped
+            return withJob(state, action.venue, (job) => ({ ...job, step: STOPPING_STEP }));
         case "jobStatus": {
             const s = action.status || {};
             const phase = ["queued", "running", "done", "failed"].includes(s.state)

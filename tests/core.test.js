@@ -53,6 +53,10 @@ import {
     SNAP_SPOT,
     givenUp,
     trashedNote,
+    cancelButton,
+    CANCELLED,
+    SEND_DELAY_MS,
+    STOPPING_STEP,
     nextNote,
     NEXT_NOTE,
     idleJob,
@@ -461,6 +465,39 @@ test("an item nothing was posted from is given up at NEXT; a press, a row or a f
     assert.equal(trashedNote("Lamp", 2), '"Lamp" was not posted: its 2 photos were deleted from the PC.');
     assert.equal(trashedNote("Lamp", 1), '"Lamp" was not posted: its photo was deleted from the PC.');
     assert.equal(trashedNote("Lamp", 0), '"Lamp" was not posted: its 0 photos were deleted from the PC.');
+});
+
+test("the red cancel shows from the press until the link or the error; a cancelled press reads cancelled", () => {
+    // Michal, 2026-10-02: "below in red there should be a cancel button ... delay sending by
+    // 1 second (but show loading) so that if one cancels within 1 sec there is no call money spent"
+    assert.equal(SEND_DELAY_MS, 1000);
+    let s = sent(1, [1]);
+    assert.equal(cancelButton(s, "ebay"), false, "before the press");
+    s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(cancelButton(s, "ebay"), true);
+    assert.equal(cancelButton(s, "craigslist"), false, "only under the pressed one");
+    const takenBack = reduce(s, { type: "jobCancelled", venue: "ebay" });
+    assert.equal(takenBack.jobs.ebay.phase, "failed");
+    assert.equal(venueLine(takenBack.jobs.ebay).text, CANCELLED);
+    assert.equal(cancelButton(takenBack, "ebay"), false);
+    assert.equal(venueButton(takenBack, "ebay", true).enabled, true, "the button comes back");
+    // once the PC has it: told, then its status says when it stopped
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
+    assert.equal(cancelButton(s, "ebay"), true);
+    s = reduce(s, { type: "jobStopping", venue: "ebay" });
+    assert.equal(venueLine(s.jobs.ebay).text, STOPPING_STEP);
+    s = reduce(s, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "failed", error: "cancelled from the phone", sku: "B-1" },
+    });
+    assert.equal(venueLine(s.jobs.ebay).text, "cancelled from the phone");
+    assert.equal(s.sku, "B-1", "the saved draft's sku is kept: the next press posts it");
+    assert.equal(cancelButton(s, "ebay"), false);
+    s = reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }).jobs.ebay.phase, "done");
+    assert.equal(cancelButton(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }), "ebay"), false);
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {
