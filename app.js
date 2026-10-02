@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.16.0";
+import { VERSION } from "./version.js?v=1.16.1";
 import {
     anyActive,
     bannerText,
@@ -53,8 +53,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.16.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.16.0";
+} from "./core.js?v=1.16.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.16.1";
 import {
     checkPc,
     createItem,
@@ -68,8 +68,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.16.0";
-import { shrinkPhoto } from "./shrink.js?v=1.16.0";
+} from "./pc.js?v=1.16.1";
+import { shrinkPhoto } from "./shrink.js?v=1.16.1";
 import {
     bookCard,
     bookPriceValue,
@@ -82,8 +82,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.16.0";
-import { canScan, readIsbn } from "./scan.js?v=1.16.0";
+} from "./book.js?v=1.16.1";
+import { canScan, readIsbn } from "./scan.js?v=1.16.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -700,13 +700,27 @@ async function prepareAll(m, ids) {
     }
 }
 
-/** The photo's shrunk JPEG: made once, shared by the thumbnail and the upload. */
+/**
+ * One shrink at a time, whoever asks: a second gallery pick while the first is
+ * still being shrunk, or the upload reaching a photo before its turn, joins the
+ * line instead of decoding a second original beside the first (Michal,
+ * 2026-10-02: "definitely be prepared for a situation where many are dropped
+ * from the phone camera gallery at once").
+ */
+let shrinking = Promise.resolve();
+
+/** The photo's shrunk JPEG: made once, in turn, shared by the thumbnail and the upload. */
 function prepared(id) {
     const held = blobs.get(id);
     if (!held) return Promise.reject(new Error("the photo is no longer on this page"));
     if (held.shrunk) return Promise.resolve(held.shrunk);
     if (!held.ready) {
-        held.ready = shrinkPhoto(held.file).then(
+        held.ready = shrinking
+            .then(() => {
+                if (!blobs.has(id)) throw new Error("the photo is no longer on this page");
+                return shrinkPhoto(held.file);
+            })
+            .then(
             (blob) => {
                 held.shrunk = blob;
                 held.file = null; // the original is not needed any more: let it go
@@ -721,6 +735,7 @@ function prepared(id) {
                 throw e;
             }
         );
+        shrinking = held.ready.catch(() => {});
     }
     return held.ready;
 }

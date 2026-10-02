@@ -2286,11 +2286,15 @@ test("photos are shrunk one after another as they come; only the shrunk JPEG is 
     const item = `Lamp ${TODAY}`;
     await typeName(nodes, "Lamp");
     snap(nodes, 4);
+    // a second pick while the first is still being shrunk joins the same line
+    nodes.get("gallery-input").fire("change", {
+        target: { files: [new Blob(["g1"], { type: "image/jpeg" }), new Blob(["g2"], { type: "image/jpeg" })], value: "" },
+    });
     await settle();
-    assert.equal(atOnce, 1, "one original decoded at a time");
-    assert.deepEqual(badges(nodes), ["sent", "sent", "sent", "sent"]);
-    assert.equal(pc.items.get(item).photos.size, 4);
-    for (let i = 0; i < 4; i += 1) {
+    assert.equal(atOnce, 1, "one original decoded at a time, across both picks");
+    assert.deepEqual(badges(nodes), ["sent", "sent", "sent", "sent", "sent", "sent"]);
+    assert.equal(pc.items.get(item).photos.size, 6);
+    for (let i = 0; i < 6; i += 1) {
         assert.equal(card(nodes, i).li.children.find((c) => c.tag === "img").src, "blob:stub", "the shrunk one");
     }
 });
