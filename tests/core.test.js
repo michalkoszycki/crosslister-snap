@@ -479,6 +479,14 @@ test("the red cancel shows from the press until the link or the error; a cancell
     s = reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
     assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }).jobs.ebay.phase, "done");
     assert.equal(cancelButton(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }), "ebay"), false);
+    // Michal, 2026-10-03: "after a posting is published ... can't cancel it now": gone from
+    // the PC's publishing step on, before the link arrives
+    const status = (step) => reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step } });
+    assert.equal(cancelButton(status("drafting the listing"), "ebay"), true);
+    assert.equal(cancelButton(status("filling craigslist for B-1"), "ebay"), true);
+    assert.equal(cancelButton(status("publishing B-1 on ebay"), "ebay"), false);
+    assert.equal(cancelButton(status("publishing on craigslist for B-1"), "ebay"), false);
+    assert.equal(venueLine(status("publishing B-1 on ebay").jobs.ebay).kind, "busy", "the ring still turns");
 });
 
 test("the title line is the saved row's title, from whichever job said it first", () => {

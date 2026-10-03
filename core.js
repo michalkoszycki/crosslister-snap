@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.19.0";
+import { noteDirty, unsent } from "./queue.js?v=1.19.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.19.0";
+} from "./book.js?v=1.19.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -206,18 +206,28 @@ export const CANCELLED = "cancelled";
 /** The step shown while the PC has been told to stop and has not yet. */
 export const STOPPING_STEP = "cancelling: the PC stops at its next step";
 
+/** How the PC's step reads once a posting is going up ("publishing B-1 on ebay", "publishing on craigslist for B-1"). */
+export const PUBLISHING_PREFIX = "publishing";
+
 /**
  * Whether the red cancel under a venue button shows: from the press until the
- * link or the error. Within the first second it costs nothing; after that the
- * PC is told, and it stops at its next step ("it will be a double charge but
- * oh well").
+ * publish begins, the link or the error. Within the first second it costs
+ * nothing; after that the PC is told, and it stops at its next step ("it will
+ * be a double charge but oh well"). From the PC's publishing step on there is
+ * nothing left to stop (Michal, 2026-10-03: "after a posting is published ...
+ * can't cancel it now. cancel only makes sense in mid-load").
  * @param {SnapState} state
  * @param {string} venue
  * @returns {boolean}
  */
 export function cancelButton(state, venue) {
     const job = state.jobs[venue];
-    return !!job && isActive(job);
+    return !!job && isActive(job) && !publishing(job);
+}
+
+/** @param {VenueJob} job */
+function publishing(job) {
+    return job.phase === "running" && job.step.startsWith(PUBLISHING_PREFIX);
 }
 
 /**

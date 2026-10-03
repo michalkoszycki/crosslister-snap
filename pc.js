@@ -48,7 +48,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.19.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.19.1";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
