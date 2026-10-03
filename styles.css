@@ -316,20 +316,23 @@ button.badge.failed {
     margin-top: 18px;
 }
 .venue { min-width: 0; }
-/* The red cancel under a pressed venue button (Michal, 2026-10-02): from the press until
-   the link or the error. The first second takes the press back for free. */
+/* The cancel under a pressed venue button (Michal, 2026-10-02): from the press until the
+   link or the error; the first second takes the press back for free. Just red text, not
+   a button (Michal, 2026-10-03: "low profile red text ... just like the settings text"):
+   the Settings link's shape and size in the bad colour, still 44 px tall for a thumb. */
 .cancel {
     display: block;
     width: 100%;
-    margin: 8px 0 0;
+    margin: 0;
     min-height: 44px;
-    padding: 8px 12px;
+    padding: 10px 0;
     border: none;
-    border-radius: 12px;
-    background: var(--bad);
-    color: #ffffff;
-    font-size: 16px;
-    font-weight: 600;
+    border-radius: 0;
+    background: none;
+    color: var(--bad);
+    font-size: 14px;
+    font-weight: 400;
+    text-align: center;
 }
 .cancel:disabled { opacity: 0.6; }
 .venue-btn {

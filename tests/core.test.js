@@ -51,8 +51,6 @@ import {
     snapScrollTop,
     snapWord,
     SNAP_SPOT,
-    givenUp,
-    trashedNote,
     cancelButton,
     CANCELLED,
     SEND_DELAY_MS,
@@ -448,27 +446,6 @@ test("the Snap button says Snap Again once there is a photo, and lands three qua
     // (1150 from the page top) goes to 600, three quarters of an 800 viewport
     assert.equal(snapScrollTop({ scrollY: 100, innerHeight: 800 }, { top: 1000, height: 100 }), 550);
     assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
-});
-
-test("an item nothing was posted from is given up at NEXT; a press, a row or a finished job keeps it", () => {
-    // Michal, 2026-09-30: "assume that thing is trash - delete the photos ... if I click NEXT"
-    assert.equal(givenUp(initialState("Lamp")), false, "nothing on the PC yet");
-    assert.equal(givenUp(withPhotos(2)), false, "photos still on the page only");
-    const made = sent(2, [1]);
-    assert.equal(givenUp(made), true);
-    assert.equal(givenUp(reduce(made, { type: "jobSending", venue: "ebay", step: "sending" })), false);
-    const accepted = reduce(made, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(givenUp(accepted), false);
-    const done = reduce(accepted, { type: "jobStatus", venue: "ebay", status: { state: "done" } });
-    assert.equal(givenUp(done), false, "posted, even with no sku heard");
-    const refused = reduce(made, { type: "jobRefused", venue: "ebay", error: "cannot reach the PC" });
-    assert.equal(givenUp(refused), true, "never reached the PC: still trash");
-    const failed = reduce(accepted, { type: "jobStatus", venue: "ebay", status: { state: "failed", error: "x" } });
-    assert.equal(givenUp(failed), true, "failed before a row: trash");
-    assert.equal(givenUp({ ...failed, sku: "B-1" }), false, "a row was saved: kept");
-    assert.equal(trashedNote("Lamp", 2), '"Lamp" was not posted: its 2 photos were deleted from the PC.');
-    assert.equal(trashedNote("Lamp", 1), '"Lamp" was not posted: its photo was deleted from the PC.');
-    assert.equal(trashedNote("Lamp", 0), '"Lamp" was not posted: its 0 photos were deleted from the PC.');
 });
 
 test("the red cancel shows from the press until the link or the error; a cancelled press reads cancelled", () => {

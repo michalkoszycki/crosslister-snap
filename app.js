@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.18.0";
+import { VERSION } from "./version.js?v=1.19.0";
 import {
     anyActive,
     bannerText,
@@ -47,8 +47,6 @@ import {
     cancelButton,
     SEND_DELAY_MS,
     STOPPING_STEP,
-    givenUp,
-    trashedNote,
     snapScrollTop,
     snapWord,
     itemIdFor,
@@ -59,24 +57,24 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.18.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.18.0";
+} from "./core.js?v=1.19.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.19.0";
 import {
     cancelJob,
     checkPc,
     createItem,
-    deleteItem,
     deletePhoto,
     getBook,
     getItem,
     getJob,
+    getPhoto,
     PcError,
     postJob,
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.18.0";
-import { shrinkPhoto } from "./shrink.js?v=1.18.0";
+} from "./pc.js?v=1.19.0";
+import { shrinkPhoto } from "./shrink.js?v=1.19.0";
 import {
     bookCard,
     bookPriceValue,
@@ -89,8 +87,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.18.0";
-import { canScan, readIsbn } from "./scan.js?v=1.18.0";
+} from "./book.js?v=1.19.0";
+import { canScan, readIsbn } from "./scan.js?v=1.19.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -514,7 +512,8 @@ function renderStrip(m, strip, locked) {
             img.alt = p.name;
             card.append(img);
         } else {
-            // read back from the PC after a reload: the picture itself is there, not here
+            // read back from the PC: its picture is on its way here (fetchPictures), or
+            // the PC could not give it
             const there = document.createElement("span");
             there.className = "shot-remote";
             there.textContent = "on the PC";
@@ -1326,6 +1325,7 @@ async function restore(m) {
         for (const venue of VENUES) {
             if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, generation[m]);
         }
+        fetchPictures(m, pc).catch(() => {});
     } catch (e) {
         restoring[m] = false;
         if (m === "goods") el.itemInput.value = "";
@@ -1338,6 +1338,31 @@ async function restore(m) {
             say(`Could not read ${itemName} back from the PC (${e.message}). Its photos are safe there; reload when the PC answers.`, "warn");
             setState(m, reduce(slots[m], { type: "reset" }));
         }
+    }
+}
+
+/**
+ * The pictures of an item read back from the PC (a reload, back), fetched one
+ * at a time into the strip: the phone keeps none past NEXT, and he wants to
+ * "go back and see same photos" (Michal, 2026-10-03). A picture the PC cannot
+ * give (a 404) stays "on the PC"; no answer at all stops the rest, as would
+ * NEXT or back meanwhile.
+ */
+async function fetchPictures(m, pc) {
+    const mine = generation[m];
+    const itemId = slots[m].itemId;
+    for (const p of slots[m].photos.filter((photo) => !photo.local && !blobs.has(photo.id))) {
+        let blob;
+        try {
+            blob = await getPhoto(pc, itemId, p.n);
+        } catch (e) {
+            if (e.status === 0) return;
+            continue;
+        }
+        if (mine !== generation[m]) return;
+        if (!slots[m].photos.some((photo) => photo.id === p.id)) continue; // the x took it meanwhile
+        blobs.set(p.id, { file: null, url: URL.createObjectURL(blob), shrunk: blob, ready: null });
+        render();
     }
 }
 
@@ -1358,11 +1383,10 @@ async function nextItem(m) {
     }
     // the note's wait may have let something change: check again before clearing
     if (!doneButton(slots[m]).enabled) return;
-    // nothing posted from it: trash, on the PC too (Michal, 2026-09-30); the answer
-    // comes after the page has moved on, as one quiet line
-    const trash = givenUp(slots[m]) ? slots[m] : null;
-    // what was posted stays reachable with the browser's back button
-    const record = trash ? null : savedItem(slots[m]);
+    // every item with a folder on the PC stays reachable with the browser's back button,
+    // posted or not (Michal, 2026-10-03: "go back and see same photos, even if I did not
+    // post yet"; until then one nothing was posted from was deleted on the PC)
+    const record = savedItem(slots[m]);
     if (record) writeJson("localStorage", HISTORY_KEY, remembered(readJson("localStorage", HISTORY_KEY, []), record));
     clearItem(m);
     say("");
@@ -1370,7 +1394,6 @@ async function nextItem(m) {
     customizeOpen[m] = false; // the next item starts folded, at one, shipped
     setState(m, reduce(slots[m], { type: "reset" }));
     fillCustomize(m);
-    if (trash) trashItem(trash);
     // back had brought an earlier item up: NEXT returns to the one he left
     const parked = viewing[m] ? readJson("localStorage", FORWARD_KEYS[m], null) : null;
     viewing[m] = false;
@@ -1420,10 +1443,11 @@ function clearItem(m) {
 }
 
 /**
- * The browser's back button brings the last finished item of the shown kind
- * up, as it was left: its photos (on the PC), note, price, title, the links
- * (Michal, 2026-10-02: "when I press next but then want to go back and see
- * how much that other thing posted for"). An item in hand is parked first, and
+ * The browser's back button brings the last item of the shown kind that NEXT
+ * left up, as it was left: its photos (fetched back from the PC), note, price,
+ * title, the links (Michal, 2026-10-02: "when I press next but then want to go
+ * back and see how much that other thing posted for"; 2026-10-03: the photos
+ * too, posted or not). An item in hand is parked first, and
  * NEXT returns to it; a fresh screen is simply left. Back on an empty history
  * says so and changes nothing.
  */
@@ -1472,17 +1496,6 @@ function keepBackEntry() {
             // a browser that refuses: back then leaves the page, as before
         }
     }
-}
-
-/** The folder of an item given up, off the PC; what happened in one line. */
-function trashItem(state) {
-    const pc = settings();
-    if (!pc) return;
-    const name = state.itemName || state.itemId;
-    deleteItem(pc, state.itemId).then(
-        (answer) => say(trashedNote(name, answer.photos)),
-        (e) => say(`"${name}" was not posted and could not be deleted on the PC: ${e.message}`, "warn")
-    );
 }
 
 function onFiles(handler) {

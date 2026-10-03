@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.18.0";
+import { noteDirty, unsent } from "./queue.js?v=1.19.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.18.0";
+} from "./book.js?v=1.19.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -624,37 +624,6 @@ export function isActive(job) {
     return ACTIVE.has(job.phase);
 }
 
-/**
- * An item NEXT leaves behind with nothing posted from it is trash (Michal,
- * 2026-09-30: "when I snap some photos and don't make a posting, assume that
- * thing is trash - delete the photos ... if I click NEXT, that is"): its
- * folder on the PC goes with it. Not trash: a row was saved from it (a sku), a
- * job for it is on its way or on the PC, or one finished (its row may be there
- * under a sku the page never heard; the PC refuses the delete then anyway).
- * Nothing on the PC yet (no folder) is nothing to delete.
- * @param {SnapState} state
- * @returns {boolean}
- */
-export function givenUp(state) {
-    if (!state.itemId || state.sku) return false;
-    return VENUES.every((v) => {
-        const job = state.jobs[v];
-        return !job || (!isActive(job) && job.phase !== "done");
-    });
-}
-
-/**
- * The quiet line after NEXT threw an item away on the PC.
- * @param {string} itemName
- * @param {number} photos  how many photos went with it
- * @returns {string}
- */
-export function trashedNote(itemName, photos) {
-    const n = toCount(photos);
-    const held = n === 1 ? "its photo" : `its ${n} photos`;
-    return `"${itemName}" was not posted: ${held} ${n === 1 ? "was" : "were"} deleted from the PC.`;
-}
-
 /** True while any button's job is on its way or on the PC. */
 export function anyActive(state) {
     return VENUES.some((v) => isActive(state.jobs[v]));
@@ -1176,7 +1145,7 @@ function adoptItem(state, answer) {
         if (p.n === state.book.main) main = next;
         return { ...p, n: next, name: buildFileName(state.itemName, next) };
     });
-    const there = existing.map((n) => photoOnPc(state.itemName, n, false));
+    const there = existing.map((n) => photoOnPc(state.mode, state.itemName, n, false));
     return { ...state, itemId, photos: [...there, ...waiting], book: { ...state.book, main } };
 }
 
@@ -1196,7 +1165,7 @@ function recovered(state, action) {
         book: mode === "book" ? recoveredBook(action.book) : initialBook(),
         online: state.online,
         itemId: action.itemId,
-        photos: numbers(answer.photos).map((n) => photoOnPc(action.itemName, n, marked.has(n))),
+        photos: numbers(answer.photos).map((n) => photoOnPc(mode, action.itemName, n, marked.has(n))),
         note: { text: note, sentText: note, due: false },
         sku: typeof answer.sku === "string" ? answer.sku : "",
         // only the phone knows it until a button is pressed (a book's is in its slice)
@@ -1248,9 +1217,14 @@ function recoveredBook(saved) {
     return book;
 }
 
-function photoOnPc(itemName, n, ai) {
+/**
+ * A photo the PC holds and the page did not take: its picture is fetched back
+ * (app.js fetchPictures). The id names the kind too, since the goods item and
+ * the book both read back and their pictures share one map on the page.
+ */
+function photoOnPc(mode, itemName, n, ai) {
     return {
-        id: `pc#${n}`,
+        id: `pc#${mode}#${n}`,
         name: buildFileName(itemName, n),
         n,
         ai,
