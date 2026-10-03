@@ -150,7 +150,10 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   1 sec there is no call money spent"): the ring turns at once, and a small red
   **cancel**, plain text in the Settings link's shape rather than a button
   (Michal, 2026-10-03: "low profile red text"), sits under the button from the
-  press until the link or the error.
+  press until the PC's step says `publishing ...`, the link or the error: once a
+  posting is going up there is nothing left to cancel (Michal, 2026-10-03:
+  "cancel only makes sense in mid-load"), and a cancel that reaches the PC after
+  its publish anyway lets the job finish with its link.
   Within that second cancel takes the press back for free (the line says
   `cancelled`). After it the PC is told (`DELETE /jobs/<id>`): a job still
   queued is dropped before it runs, nothing paid; the job in hand stops at its
