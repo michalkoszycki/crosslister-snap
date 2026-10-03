@@ -252,7 +252,43 @@ function fakeBarcodes(values) {
     };
 }
 
-function installDom({ local = memoryStore(), fetchImpl, barcodes } = {}) {
+/**
+ * The browser's history for one tab: its entries, the current one, and
+ * popstate on the page's window (a moment later, as a browser fires it).
+ * Back from the first entry, or forward from the last, leaves the page or does
+ * nothing: `left` counts the times the page was left. Kept across loadPage
+ * calls with the same object, as a reload keeps a tab's entries.
+ */
+function fakeHistory() {
+    const nav = {
+        entries: [{ state: null }],
+        index: 0,
+        left: 0,
+        get state() {
+            return nav.entries[nav.index].state;
+        },
+        pushState(state) {
+            nav.entries.splice(nav.index + 1, Infinity, { state: structuredClone(state) });
+            nav.index += 1;
+        },
+        replaceState(state) {
+            nav.entries[nav.index] = { state: structuredClone(state) };
+        },
+        go(n) {
+            assert.notEqual(n, 0, "go(0) would reload the page");
+            const to = nav.index + n;
+            if (to < 0) nav.left += 1;
+            if (to < 0 || to >= nav.entries.length) return;
+            nav.index = to;
+            setImmediate(() => globalThis.window.fire("popstate", { state: nav.state }));
+        },
+        back: () => nav.go(-1),
+        forward: () => nav.go(1),
+    };
+    return nav;
+}
+
+function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHistory() } = {}) {
     delete globalThis.BarcodeDetector;
     if (barcodes) fakeBarcodes(barcodes);
     const ids = idsIn(html);
@@ -273,6 +309,7 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes } = {}) {
     };
     const win = fakeElement("window");
     globalThis.window = win;
+    Object.defineProperty(globalThis, "history", { value: nav, configurable: true, writable: true });
     Object.defineProperty(globalThis, "navigator", {
         value: { onLine: true },
         configurable: true,
@@ -302,7 +339,7 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes } = {}) {
         (async () => {
             throw new Error("this test must not reach the network");
         });
-    return { nodes, asked, win };
+    return { nodes, asked, win, nav };
 }
 
 let loads = 0;
@@ -581,7 +618,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
             }),
         },
     });
-    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
     const item = `Boots ${TODAY}`;
 
     await typeName(nodes, "Boots");
@@ -728,7 +765,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     // the browser's back button brings the boots up again, as they were left
     // (Michal, 2026-10-02: "see how much that other thing posted for")
     assert.equal(JSON.parse(local.getItem("snap.history")).length, 1);
-    win.fire("popstate");
+    nav.back();
     await settle();
     assert.equal(nodes.get("item-name").value, "Boots");
     assert.equal(nodes.get("item-name").readOnly, true);
@@ -742,21 +779,22 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(card(nodes, 1).img.src, "blob:stub");
     assert.equal(card(nodes, 0).remote, undefined);
     assert.equal(nodes.get("message").textContent, 'Back to "Boots", as it was left. NEXT starts a new item.');
-    assert.equal(JSON.parse(local.getItem("snap.history")).length, 0, "brought up: off the list");
-    // NEXT from there: a fresh item, the boots not deleted (they were posted)
+    assert.equal(JSON.parse(local.getItem("snap.history")).length, 1, "brought up: still in its place");
+    // NEXT from there: back to the fresh item in hand, the boots not deleted (they were posted)
     const calls = pc.calls.length;
     nodes.get("next-item").fire("click");
     await settle();
     assert.equal(nodes.get("item-name").value, "");
     assert.ok(!pc.calls.slice(calls).some((c) => c.startsWith("DELETE /items/")));
-    assert.equal(JSON.parse(local.getItem("snap.history")).length, 1, "and back on the list for next time");
-    win.fire("popstate");
+    assert.equal(JSON.parse(local.getItem("snap.history")).length, 1);
+    nav.back();
     await settle();
     assert.equal(nodes.get("item-name").value, "Boots");
-    win.fire("popstate");
+    nav.back();
     await settle();
-    assert.equal(nodes.get("message").textContent, "No earlier item to go back to.");
+    assert.equal(nodes.get("message").textContent, "End of the item history: see the inventory list on the PC.");
     assert.equal(nodes.get("item-name").value, "Boots", "nothing changed");
+    assert.equal(nav.left, 0, "back never leaves the page");
 });
 
 test("back parks the item in hand; NEXT returns to it", async (t) => {
@@ -777,7 +815,7 @@ test("back parks the item in hand; NEXT returns to it", async (t) => {
             },
         },
     });
-    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
     await typeName(nodes, "Vase");
     snap(nodes, 2);
     await settle();
@@ -787,7 +825,7 @@ test("back parks the item in hand; NEXT returns to it", async (t) => {
     t.mock.timers.tick(1500);
     await settle();
 
-    win.fire("popstate");
+    nav.back();
     await settle();
     assert.equal(nodes.get("item-name").value, "Lamp");
     assert.equal(nodes.get("title-line").textContent, "Brass Lamp");
@@ -803,8 +841,12 @@ test("back parks the item in hand; NEXT returns to it", async (t) => {
     assert.equal(nodes.get("strip").children.length, 2);
     assert.equal(card(nodes, 1).ai.attrs["aria-pressed"], "true");
     assert.equal(nodes.get("message").textContent, 'Back on "Vase", the item you were on.');
-    assert.equal(local.getItem("snap.forward.goods"), null);
     assert.equal(nodes.get("snap-input").disabled, false, "and can go on");
+    // the vase stayed the item in hand throughout; the lamp stays in the history
+    assert.equal(JSON.parse(local.getItem("snap.item")).itemName, "Vase");
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")).map((r) => r.itemName), ["Lamp"]);
+    assert.equal(nav.entries.length, 3, "the floor, the lamp, the vase");
+    assert.equal(nav.index, 2);
 });
 
 test("NEXT while the listing still posts: the screen clears, the next item starts, its polls stop", async (t) => {
@@ -2418,7 +2460,7 @@ test("NEXT keeps an item nothing was posted from, and back brings it up with its
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const local = memoryStore(GOOD);
     const pc = fakePc();
-    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
     const item = `Lamp ${TODAY}`;
     await typeName(nodes, "Lamp");
     snap(nodes, 2);
@@ -2440,7 +2482,7 @@ test("NEXT keeps an item nothing was posted from, and back brings it up with its
 
     // back: the lamp as it was left, its pictures fetched from the PC, and it can go on
     const calls = pc.calls.length;
-    win.fire("popstate");
+    nav.back();
     await settle();
     assert.equal(nodes.get("item-name").value, "Lamp");
     assert.equal(nodes.get("note").value, "brass");
@@ -2451,6 +2493,243 @@ test("NEXT keeps an item nothing was posted from, and back brings it up with its
     assert.equal(card(nodes, 1).ai.attrs["aria-pressed"], "true", "the AI mark as it was left");
     assert.equal(nodes.get("snap-input").disabled, false, "nothing was posted: it can go on");
     assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT starts a new item.');
+
+    // worked on again: its place in the history is kept current, the item in hand (none) untouched
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    assert.deepEqual(pc.calls.at(-1), `PUT /items/${item}/photos/3`);
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")), [{ itemName: "Lamp", itemId: item, ai: [1, 2] }]);
+    assert.equal(local.getItem("snap.item"), null);
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "", "NEXT: back to the fresh screen in hand");
+    assert.equal(nav.index, 2);
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("strip").children.length, 3, "the lamp with its third photo");
+    assert.equal(card(nodes, 0).ai.attrs["aria-pressed"], "true");
+});
+
+// --- back and forward ----------------------------------------------------------------
+// Michal, 2026-10-03: "so the going back and forth on the browser is good. worked back.
+// but when i wanted to go forward again it died. so... the back and forward on browser is
+// like a cache of a session - it should work in both directions and should, actually work
+// for lets say, 10 items back and then 10 items forward. beyond that it should say
+// something like - 'end of item history - see inventory lists' - instead of just quitting
+// and loosing all cache."
+
+/** Name an item, snap `count` photos, NEXT: one more item left for back to walk to. */
+async function leaveItem(nodes, name, count = 2) {
+    await typeName(nodes, name);
+    snap(nodes, count);
+    await settle();
+    nodes.get("next-item").fire("click");
+    await settle();
+}
+
+/** A finished eBay job, as GET /items/<id> lists it, so the item brought up shows its title and price. */
+function postedJob(name, i) {
+    return { job: `j-${name}`, venue: "ebay", state: "done", sku: `B-${i}`, price: `${10 + i}.00`, title: `${name} listing`, links: { ebay: `https://www.ebay.com/itm/${i}` } };
+}
+
+const END = "End of the item history: see the inventory list on the PC.";
+
+test("back and forward walk the items NEXT left, both ways, and never leave the page", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc();
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    const names = ["Lamp", "Vase", "Boots"];
+    for (const [i, name] of names.entries()) {
+        await leaveItem(nodes, name);
+        pc.items.get(`${name} ${TODAY}`).jobs = [postedJob(name, i)];
+    }
+    // the browser's entries mirror the walk: the floor, the three items, the screen in hand
+    assert.deepEqual(nav.entries.map((e) => e.state), [0, 1, 2, 3, 4].map((snap) => ({ snap })));
+    assert.equal(nav.index, 4);
+
+    async function shows(move, name, line) {
+        const calls = pc.calls.length;
+        move();
+        await settle();
+        const item = `${name} ${TODAY}`;
+        assert.equal(nodes.get("item-name").value, name);
+        assert.equal(nodes.get("title-line").textContent, `${name} listing`);
+        assert.equal(nodes.get("price-line").textContent, `$${10 + names.indexOf(name)}`);
+        assert.deepEqual(pc.calls.slice(calls), [`GET /items/${item}`, `GET /items/${item}/photos/1`, `GET /items/${item}/photos/2`]);
+        assert.equal(card(nodes, 0).img.src, "blob:stub", "the pictures, fetched back");
+        assert.equal(card(nodes, 1).img.src, "blob:stub");
+        assert.equal(nodes.get("message").textContent, line);
+    }
+    await shows(nav.back, "Boots", 'Back to "Boots", as it was left. NEXT starts a new item.');
+    await shows(nav.back, "Vase", 'Back to "Vase", as it was left. NEXT starts a new item.');
+    await shows(nav.forward, "Boots", 'Forward to "Boots", as it was left. NEXT starts a new item.');
+    nav.forward();
+    await settle();
+    assert.equal(nodes.get("item-name").value, "", "the fresh screen in hand again");
+    assert.equal(nodes.get("strip").children.length, 0);
+    assert.equal(nodes.get("message").hidden, true);
+    // forward past the newest: the browser has no entry to go to, nothing happens
+    const calls = pc.calls.length;
+    nav.forward();
+    await settle();
+    assert.equal(nav.index, 4);
+    assert.equal(pc.calls.length, calls);
+    assert.equal(nodes.get("item-name").value, "");
+
+    // back past the oldest: the end of the history is said, the oldest stays, the page stays
+    await shows(nav.back, "Boots", 'Back to "Boots", as it was left. NEXT starts a new item.');
+    await shows(nav.back, "Vase", 'Back to "Vase", as it was left. NEXT starts a new item.');
+    await shows(nav.back, "Lamp", 'Back to "Lamp", as it was left. NEXT starts a new item.');
+    const before = pc.calls.length;
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("message").textContent, END);
+    assert.equal(nodes.get("item-name").value, "Lamp");
+    assert.equal(nodes.get("strip").children.length, 2);
+    assert.equal(pc.calls.length, before, "nothing read again");
+    assert.equal(nav.index, 1, "stepped forward off the floor, onto the oldest");
+    assert.equal(nav.left, 0, "back never leaves the page");
+    // and forward again from there
+    await shows(nav.forward, "Vase", 'Forward to "Vase", as it was left. NEXT starts a new item.');
+
+    // NEXT on an earlier item returns to the newest place: the screen in hand
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nav.index, 4);
+    assert.equal(nodes.get("item-name").value, "");
+    assert.equal(nodes.get("item-name").readOnly, false);
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")).map((r) => r.itemName), names, "the list as it was");
+    assert.equal(nav.entries.length, 5, "no entry was added by the walk");
+});
+
+test("a reload on an earlier item comes back on it, and the walk goes on from there", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc();
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    await leaveItem(nodes, "Lamp");
+    await leaveItem(nodes, "Vase");
+    await typeName(nodes, "Boots"); // in hand, one photo on the PC
+    snap(nodes, 1);
+    await settle();
+    nav.back();
+    await settle();
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Lamp");
+    assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+
+    // the tab reloads: its entries stay, the page finds its place in them
+    const again = await loadPage({ local, fetchImpl: pc.fetch, nav });
+    const page = again.nodes;
+    assert.equal(nav.entries.length, 4, "the floor, the lamp, the vase, the boots in hand: none added");
+    assert.equal(nav.index, 1);
+    assert.equal(page.get("item-name").value, "Lamp");
+    assert.equal(page.get("strip").children.length, 2);
+    assert.equal(card(page, 0).img.src, "blob:stub");
+    assert.equal(page.get("message").textContent, 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(JSON.parse(local.getItem("snap.item")).itemName, "Boots", "the boots still in hand");
+
+    nav.forward();
+    await settle();
+    assert.equal(page.get("item-name").value, "Vase");
+    assert.equal(page.get("message").textContent, 'Forward to "Vase", as it was left. NEXT returns to the item you were on.');
+    nav.forward();
+    await settle();
+    assert.equal(page.get("item-name").value, "Boots");
+    assert.equal(page.get("strip").children.length, 1);
+    assert.equal(page.get("message").textContent, 'Back on "Boots", the item you were on.');
+    assert.equal(page.get("snap-input").disabled, false, "and it goes on");
+});
+
+test("the history keeps 10 items: the oldest falls off, and back stops at the tenth with the end", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const ids = Array.from({ length: 10 }, (_, i) => `Item ${i + 1} ${TODAY}`);
+    const local = memoryStore({
+        ...GOOD,
+        "snap.history": JSON.stringify(ids.map((itemId, i) => ({ itemName: `Item ${i + 1}`, itemId, ai: [] }))),
+    });
+    const items = Object.fromEntries(ids.map((id) => [id, { photos: new Map(), note: "", sku: null, jobs: [] }]));
+    const pc = fakePc({ items });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nav.entries.length, 12, "the floor, ten items, the screen in hand");
+    await leaveItem(nodes, "Lamp", 1); // the eleventh: Item 1 falls off
+    const kept = JSON.parse(local.getItem("snap.history")).map((r) => r.itemName);
+    assert.deepEqual(kept, [...ids.slice(1).map((_, i) => `Item ${i + 2}`), "Lamp"]);
+    assert.equal(nav.entries.length, 12, "the places are the same; each names the next item along");
+    assert.equal(nav.index, 11);
+
+    const seen = [];
+    for (let i = 0; i < 10; i += 1) {
+        nav.back();
+        await settle();
+        seen.push(nodes.get("item-name").value);
+    }
+    assert.deepEqual(seen, [...kept].reverse(), "ten back, newest first");
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("message").textContent, END);
+    assert.equal(nodes.get("item-name").value, "Item 2", "the oldest kept stays on screen");
+    assert.equal(nav.left, 0);
+    assert.ok(!pc.calls.includes(`GET /items/Item 1 ${TODAY}`), "the item that fell off is not reached");
+});
+
+test("one walk for both kinds: an item of the other kind shows its kind; the item in hand comes back on the kind chosen", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const book = `Book ${ISBN} ${TODAY}`;
+    const lamp = `Lamp ${TODAY}`;
+    const local = memoryStore({
+        ...GOOD,
+        "snap.history": JSON.stringify([
+            { itemName: "Lamp", itemId: lamp, ai: [1] },
+            {
+                mode: "book",
+                itemName: `Book ${ISBN}`,
+                itemId: book,
+                isbn: ISBN,
+                condition: "good",
+                price: "9",
+                main: 1,
+                lookup: { record: BOOK, price: "11", listings: BOOK.listings, route: "list" },
+            },
+        ]),
+    });
+    const pc = fakePc({
+        books: { [ISBN]: BOOK },
+        items: {
+            [lamp]: { photos: new Map([[1, "a"]]), note: "", sku: null, jobs: [] },
+            [book]: { photos: new Map([[1, "c"]]), note: "", sku: null, jobs: [] },
+        },
+    });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    await typeName(nodes, "Vase"); // goods in hand
+    snap(nodes, 1);
+    await settle();
+
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("book").hidden, false, "the book shows on the book screen");
+    assert.equal(nodes.get("book-isbn").value, ISBN);
+    assert.equal(nodes.get("message").textContent, `Back to "Book ${ISBN}", as it was left. NEXT returns to the item you were on.`);
+    assert.equal(local.getItem("snap.mode"), null, "his choice of kind is untouched");
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("item-name").value, "Lamp");
+    assert.equal(nodes.get("book-isbn").value, "", "the book screen is back on its own item in hand (none)");
+    nav.forward();
+    await settle();
+    assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("item-name").value, "Vase", "the goods screen is back on the vase in hand");
+    // NEXT on the book: back to the vase, on the goods screen he was on
+    nodes.get("book-next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("item-name").value, "Vase");
+    assert.equal(nodes.get("message").textContent, 'Back on "Vase", the item you were on.');
+    assert.equal(nav.index, 3);
 });
 
 test("a picture the PC cannot give stays on the PC; a PC that does not answer stops the fetching", async (t) => {

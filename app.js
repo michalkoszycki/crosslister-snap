@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.19.1";
+import { VERSION } from "./version.js?v=1.20.0";
 import {
     anyActive,
     bannerText,
@@ -42,8 +42,14 @@ import {
     SETTINGS_HINT,
     priceLine,
     titleLine,
+    historyList,
+    HISTORY_END,
+    presentNote,
+    recordKind,
+    refreshed,
     remembered,
-    backNote,
+    walkNote,
+    walkPosition,
     cancelButton,
     SEND_DELAY_MS,
     STOPPING_STEP,
@@ -57,8 +63,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.19.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.19.1";
+} from "./core.js?v=1.20.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.20.0";
 import {
     cancelJob,
     checkPc,
@@ -73,8 +79,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.19.1";
-import { shrinkPhoto } from "./shrink.js?v=1.19.1";
+} from "./pc.js?v=1.20.0";
+import { shrinkPhoto } from "./shrink.js?v=1.20.0";
 import {
     bookCard,
     bookPriceValue,
@@ -87,8 +93,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.19.1";
-import { canScan, readIsbn } from "./scan.js?v=1.19.1";
+} from "./book.js?v=1.20.0";
+import { canScan, readIsbn } from "./scan.js?v=1.20.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -150,10 +156,14 @@ const restoring = { goods: false, book: false };
 /** The saved item could not be read back: leave it in storage until a new item starts. */
 const keepSaved = { goods: false, book: false };
 const lastSaved = { goods: null, book: null };
-/** True while the screen shows an earlier item brought up with back, not the one in hand. */
-const viewing = { goods: false, book: false };
+/**
+ * What each kind's screen shows: "" the item in hand, or the id of an item from
+ * the history that back or forward brought up (kept current in its place there).
+ */
+const viewing = { goods: "", book: "" };
 const HISTORY_KEY = "snap.history";
-const FORWARD_KEYS = { goods: "snap.forward.goods", book: "snap.forward.book" };
+/** Where the walk is, as walkPosition counts: the items in hand until back is pressed. */
+let cursor = 0;
 
 const el = {};
 
@@ -235,8 +245,27 @@ function persist(m) {
     const text = saved ? JSON.stringify(saved) : "";
     if (text === lastSaved[m]) return;
     lastSaved[m] = text;
-    if (saved) writeText("localStorage", SAVED_KEYS[m], text);
+    // an item back brought up is kept current where it stands in the history;
+    // the item in hand stays saved as it was left, for the walk to return to
+    if (viewing[m]) {
+        if (saved) writeJson("localStorage", HISTORY_KEY, refreshed(readHistory(), saved));
+    } else if (saved) writeText("localStorage", SAVED_KEYS[m], text);
     else removeText("localStorage", SAVED_KEYS[m]);
+}
+
+/** The items NEXT left, oldest first: the walk back and forward goes through them. */
+function readHistory() {
+    return historyList(readJson("localStorage", HISTORY_KEY, []));
+}
+
+/** The item in hand of a kind, as saved for a reload (null: a fresh screen). */
+function inHand(m) {
+    return historyList([readJson("localStorage", SAVED_KEYS[m], null)])[0] || null;
+}
+
+/** The kind last chosen with the switch: the screen the items in hand come back on. */
+function chosenMode() {
+    return readText("localStorage", MODE_KEY) === "book" ? "book" : "goods";
 }
 
 /** The saved PC address and key, checked; null when either is missing or wrong. */
@@ -601,11 +630,17 @@ function say(message, kind = "info") {
 
 // --- the mode switch -----------------------------------------------------------
 
-/** goods | book: only which item is on screen changes; both carry on. */
+/** goods | book, chosen with the switch: remembered, and where the items in hand come back. */
 function setMode(m) {
-    if (!MODES.includes(m) || m === mode) return;
-    mode = m;
+    if (!MODES.includes(m)) return;
     writeText("localStorage", MODE_KEY, m);
+    showMode(m);
+}
+
+/** Only which item is on screen changes; both carry on. */
+function showMode(m) {
+    if (m === mode) return;
+    mode = m;
     render();
     pump(); // the shown item's photos go first from now on
 }
@@ -1284,8 +1319,8 @@ async function saveSettings() {
 
 // --- a reload: the item back from the PC -----------------------------------------
 
-async function restore(m) {
-    const saved = readJson("localStorage", SAVED_KEYS[m], null);
+/** `saved` (an item as savedItem keeps it) read back from the PC onto its kind's screen. */
+async function restore(m, saved) {
     if (!saved || typeof saved.itemId !== "string" || !saved.itemId) return;
     const itemName = typeof saved.itemName === "string" ? saved.itemName : "";
     const pc = settings();
@@ -1296,8 +1331,10 @@ async function restore(m) {
     restoring[m] = true;
     if (m === "goods") el.itemInput.value = itemName;
     setState(m, reduce(slots[m], { type: "setItem", itemName }));
+    const mine = generation[m];
     try {
         const answer = await getItem(pc, saved.itemId);
+        if (mine !== generation[m]) return; // back or forward moved on meanwhile
         restoring[m] = false;
         const ai = Array.isArray(saved.ai) ? saved.ai : [];
         setState(
@@ -1327,6 +1364,7 @@ async function restore(m) {
         }
         fetchPictures(m, pc).catch(() => {});
     } catch (e) {
+        if (mine !== generation[m]) return;
         restoring[m] = false;
         if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
@@ -1346,7 +1384,7 @@ async function restore(m) {
  * at a time into the strip: the phone keeps none past NEXT, and he wants to
  * "go back and see same photos" (Michal, 2026-10-03). A picture the PC cannot
  * give (a 404) stays "on the PC"; no answer at all stops the rest, as would
- * NEXT or back meanwhile.
+ * NEXT, back or forward meanwhile.
  */
 async function fetchPictures(m, pc) {
     const mine = generation[m];
@@ -1383,26 +1421,27 @@ async function nextItem(m) {
     }
     // the note's wait may have let something change: check again before clearing
     if (!doneButton(slots[m]).enabled) return;
+    // back had brought an earlier item up (kept current in its place already):
+    // NEXT returns to the items in hand, the newest place in the walk
+    if (viewing[m]) {
+        globalThis.history.go(readHistory().length + 1 - cursor);
+        return;
+    }
     // every item with a folder on the PC stays reachable with the browser's back button,
     // posted or not (Michal, 2026-10-03: "go back and see same photos, even if I did not
     // post yet"; until then one nothing was posted from was deleted on the PC)
     const record = savedItem(slots[m]);
-    if (record) writeJson("localStorage", HISTORY_KEY, remembered(readJson("localStorage", HISTORY_KEY, []), record));
+    if (record) writeJson("localStorage", HISTORY_KEY, remembered(readHistory(), record));
     clearItem(m);
     say("");
     keepSaved[m] = false;
     customizeOpen[m] = false; // the next item starts folded, at one, shipped
     setState(m, reduce(slots[m], { type: "reset" }));
     fillCustomize(m);
-    // back had brought an earlier item up: NEXT returns to the one he left
-    const parked = viewing[m] ? readJson("localStorage", FORWARD_KEYS[m], null) : null;
-    viewing[m] = false;
-    if (parked && parked.itemId) {
-        removeText("localStorage", FORWARD_KEYS[m]);
-        await bringUp(m, parked);
-        say(`Back on "${parked.itemName || parked.itemId}", the item you were on.`);
-        return;
-    }
+    // the walk is at the items in hand again, one place further when the list grew;
+    // the other kind's screen leaves an earlier item it was showing
+    pushTo(readHistory().length + 1);
+    for (const k of MODES) if (viewing[k]) bringUp(k, null).catch(() => {});
     // a book starts with Scan, not the keyboard
     if (m === "goods") el.itemInput.focus();
 }
@@ -1442,60 +1481,102 @@ function clearItem(m) {
     }
 }
 
-/**
- * The browser's back button brings the last item of the shown kind that NEXT
- * left up, as it was left: its photos (fetched back from the PC), note, price,
- * title, the links (Michal, 2026-10-02: "when I press next but then want to go
- * back and see how much that other thing posted for"; 2026-10-03: the photos
- * too, posted or not). An item in hand is parked first, and
- * NEXT returns to it; a fresh screen is simply left. Back on an empty history
- * says so and changes nothing.
- */
-async function goBack(m) {
-    const list = readJson("localStorage", HISTORY_KEY, []);
-    const entries = Array.isArray(list) ? list : [];
-    let at = -1;
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-        const kind = entries[i] && entries[i].mode === "book" ? "book" : "goods";
-        if (entries[i] && entries[i].itemId && kind === m) {
-            at = i;
-            break;
-        }
+// --- back and forward: the walk through the items NEXT left ----------------------
+//
+// Michal, 2026-10-03: "the back and forward on browser is like a cache of a
+// session - it should work in both directions and should, actually work for lets
+// say, 10 items back and then 10 items forward. beyond that it should say
+// something like - 'end of item history - see inventory lists' - instead of just
+// quitting and loosing all cache". (Until then the page kept a single entry to go
+// back from, so forward found none of its own and left the page.)
+//
+// The browser's own entries mirror the walk, one per place (walkPosition): the
+// floor, each item NEXT left (oldest first), the items in hand last. Back and
+// forward are the browser's, both ways, and a reload keeps the place
+// (history.state). Back onto the floor says the history ends and steps forward
+// again: back never leaves the page.
+//
+// One walk for both kinds, in the order NEXT left them, not one per kind: the
+// browser has one line of entries, and rebuilding it on every mode switch would
+// mean navigating it. An item brought up shows on its kind's screen; the items
+// in hand come back on the kind last chosen with the switch, which leaves the
+// entries alone. An entry names a place, not an item: when the oldest item falls
+// off the list, every entry names the next one along and the floor still ends it.
+
+/** Entries for the places after the current one up to `at`, which becomes current. */
+function pushTo(at) {
+    for (let j = cursor + 1; j <= at; j += 1) globalThis.history.pushState({ snap: j }, "");
+    cursor = at;
+}
+
+/** On load: the entries a reload left (their place), or the walk mirrored afresh with the items in hand current. */
+function startWalk() {
+    const list = readHistory();
+    const at = walkPosition(globalThis.history.state, list.length);
+    if (at > 0) {
+        cursor = at;
+        return list[at - 1] || null;
     }
-    if (at < 0) {
-        say("No earlier item to go back to.");
+    globalThis.history.replaceState({ snap: 0 }, "");
+    cursor = 0;
+    pushTo(list.length + 1);
+    return null;
+}
+
+function onPopState(e) {
+    const list = readHistory();
+    const at = walkPosition(e.state, list.length);
+    if (at < 0 || at === cursor) return; // not the walk's, or the step back off the floor
+    if (at === 0) {
+        say(HISTORY_END);
+        globalThis.history.go(1);
         return;
     }
-    const [record] = entries.splice(at, 1);
-    writeJson("localStorage", HISTORY_KEY, entries);
-    const current = viewing[m] ? null : savedItem(slots[m]);
-    if (current) writeJson("localStorage", FORWARD_KEYS[m], current);
-    const resumes = !!current || !!readJson("localStorage", FORWARD_KEYS[m], null);
-    clearItem(m);
-    viewing[m] = true;
-    setState(m, reduce(slots[m], { type: "reset" }));
-    await bringUp(m, record);
-    say(backNote(record, resumes));
+    walkTo(at, list).catch(() => {});
 }
 
-/** `record` (a saved item) read back from the PC onto the screen, as a reload does. */
+/**
+ * Place `at` on screen: an item NEXT left, as it was left, read back from the
+ * PC like a reload (its photos fetched back, note, price, title, the links;
+ * Michal, 2026-10-02: "when I press next but then want to go back and see how
+ * much that other thing posted for"), or the items in hand. Whichever screen
+ * does not show the item shows its own item in hand.
+ */
+async function walkTo(at, list) {
+    const forward = at > cursor;
+    cursor = at;
+    const record = list[at - 1] || null;
+    const kind = record ? recordKind(record) : chosenMode();
+    showMode(kind);
+    say(record ? walkLine(record, forward) : presentNote(inHand(kind)));
+    const changing = MODES.filter((m) => {
+        const shown = shownAt(m, record);
+        return viewing[m] !== (shown ? shown.itemId : "");
+    });
+    await Promise.all(changing.map((m) => bringUp(m, shownAt(m, record))));
+}
+
+/** What a kind's screen shows at a place holding `record`: the item, when of its kind; null, the item in hand. */
+function shownAt(m, record) {
+    return record && recordKind(record) === m ? record : null;
+}
+
+/** The line for an item the walk brought up; NEXT then returns to the item in hand of the kind last chosen. */
+function walkLine(record, forward) {
+    return walkNote(record, forward, !!inHand(chosenMode()));
+}
+
+/** `record` (an item from the history; null: the item in hand) read back from the PC onto its kind's screen. */
 async function bringUp(m, record) {
+    const saved = record || inHand(m);
+    clearItem(m);
+    viewing[m] = record ? record.itemId : "";
+    restoring[m] = false; // a read back still on its way is dropped (the generation moved on)
+    keepSaved[m] = true; // the screen clears without dropping the item in hand from storage
+    setState(m, reduce(slots[m], { type: "reset" }));
     keepSaved[m] = false;
     lastSaved[m] = null;
-    writeText("localStorage", SAVED_KEYS[m], JSON.stringify(record));
-    await restore(m);
-}
-
-/** One entry to go back from, always, so back reaches the page and never leaves it. */
-function keepBackEntry() {
-    const nav = globalThis.history;
-    if (nav && typeof nav.pushState === "function") {
-        try {
-            nav.pushState({ snap: true }, "");
-        } catch {
-            // a browser that refuses: back then leaves the page, as before
-        }
-    }
+    await restore(m, saved);
 }
 
 function onFiles(handler) {
@@ -1597,8 +1678,9 @@ function main() {
     });
 
     el.version.textContent = VERSION;
-    // goods unless this phone was last used for books
-    mode = readText("localStorage", MODE_KEY) === "book" ? "book" : "goods";
+    // goods unless this phone was last used for books; a reload on an item back brought up shows its kind
+    const walked = startWalk();
+    mode = walked ? recordKind(walked) : chosenMode();
     for (const m of MODES) slots[m] = reduce(slots[m], { type: "online", online: navigator.onLine });
     render();
 
@@ -1714,14 +1796,15 @@ function main() {
         }
     });
 
-    window.addEventListener("popstate", () => {
-        goBack(mode).catch(() => {});
-        keepBackEntry();
-    });
+    window.addEventListener("popstate", onPopState);
 
-    for (const m of MODES) restore(m).catch(() => {});
+    if (walked) say(walkLine(walked, false));
+    for (const m of MODES) {
+        const record = shownAt(m, walked);
+        viewing[m] = record ? record.itemId : "";
+        restore(m, record || inHand(m)).catch(() => {});
+    }
     checkServer().catch(() => {});
-    keepBackEntry();
 }
 
 main();

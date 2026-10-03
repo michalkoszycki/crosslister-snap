@@ -57,8 +57,14 @@ import {
     STOPPING_STEP,
     titleLine,
     remembered,
-    backNote,
+    refreshed,
+    historyList,
+    recordKind,
+    walkPosition,
+    walkNote,
+    presentNote,
     HISTORY_LIMIT,
+    HISTORY_END,
     nextNote,
     NEXT_NOTE,
     idleJob,
@@ -515,12 +521,50 @@ test("history keeps the last items for back, newest last, one entry per item", (
     assert.deepEqual(remembered([a], b), [a, b]);
     assert.deepEqual(remembered([a, b], { ...a, ai: [2] }), [b, { ...a, ai: [2] }], "the same item moves to the end");
     assert.deepEqual(remembered(["junk", null, a], b), [a, b], "whatever is not a record is dropped");
+    // Michal, 2026-10-03: "lets say, 10 items back and then 10 items forward"
+    assert.equal(HISTORY_LIMIT, 10);
     const many = Array.from({ length: HISTORY_LIMIT + 5 }, (_, i) => ({ itemId: `x${i}` }));
     const kept = many.reduce((list, r) => remembered(list, r), []);
     assert.equal(kept.length, HISTORY_LIMIT);
+    assert.equal(kept[0].itemId, "x5", "the oldest fall off");
     assert.equal(kept.at(-1).itemId, `x${HISTORY_LIMIT + 4}`);
-    assert.equal(backNote(a, true), 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
-    assert.equal(backNote({ itemId: "Book 978 2026-09-24" }, false), 'Back to "Book 978 2026-09-24", as it was left. NEXT starts a new item.');
+    // a list an older page kept (up to 30) is read as its newest ten
+    assert.deepEqual(historyList(many).map((r) => r.itemId), kept.map((r) => r.itemId));
+    assert.deepEqual(historyList([a, { itemName: "no id" }, { itemId: "" }, 7, null]), [a]);
+    assert.deepEqual(historyList("junk"), []);
+});
+
+test("an item back brought up and worked on is kept current where it stands", () => {
+    const a = { itemName: "Lamp", itemId: "Lamp 2026-09-24", ai: [1] };
+    const b = { itemName: "Vase", itemId: "Vase 2026-09-24", ai: [] };
+    assert.deepEqual(refreshed([a, b], { ...a, ai: [1, 3] }), [{ ...a, ai: [1, 3] }, b], "in its place, not moved to the end");
+    assert.deepEqual(refreshed([a], b), [a], "an item not in the list is not added");
+    assert.deepEqual(refreshed(null, a), []);
+    assert.equal(recordKind({ mode: "book", itemId: "x" }), "book");
+    assert.equal(recordKind(a), "goods", "goods were saved before there were kinds");
+});
+
+test("the walk's places, as the browser's entries name them", () => {
+    // 0 the floor, 1..length the items NEXT left, length + 1 the items in hand
+    assert.equal(walkPosition({ snap: 0 }, 3), 0);
+    assert.equal(walkPosition({ snap: 2 }, 3), 2);
+    assert.equal(walkPosition({ snap: 4 }, 3), 4);
+    assert.equal(walkPosition({ snap: 9 }, 3), 4, "past a list that has since shrunk: the items in hand");
+    // not the walk's: no state, someone else's, the single entry an older page kept
+    for (const state of [null, undefined, "x", {}, { snap: true }, { snap: -1 }, { snap: 1.5 }, { snap: "2" }]) {
+        assert.equal(walkPosition(state, 3), -1, JSON.stringify(state));
+    }
+});
+
+test("the lines the walk says", () => {
+    const a = { itemName: "Lamp", itemId: "Lamp 2026-09-24", ai: [1] };
+    assert.equal(walkNote(a, false, true), 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(walkNote(a, true, true), 'Forward to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(walkNote({ itemId: "Book 978 2026-09-24" }, false, false), 'Back to "Book 978 2026-09-24", as it was left. NEXT starts a new item.');
+    assert.equal(presentNote(a), 'Back on "Lamp", the item you were on.');
+    assert.equal(presentNote(null), "", "a fresh screen: nothing to say");
+    // Michal, 2026-10-03: "beyond that it should say something like - 'end of item history - see inventory lists'"
+    assert.equal(HISTORY_END, "End of the item history: see the inventory list on the PC.");
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {
