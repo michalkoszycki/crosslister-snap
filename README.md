@@ -55,7 +55,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Settings, customize, the two buttons, polling, a reload |
+| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Settings, customize, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
 | `pc.js` | every call to the PC |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
@@ -181,18 +181,32 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   photos. Even if I did not post yet"; until then an item nothing was posted
   from was deleted on the PC, his 2026-09-30 wish, and the PC's
   `DELETE /items/<id>` stays but is no longer called).
-  What NEXT leaves behind is not gone: the page keeps the last 30 items it
-  left (`snap.history`), and **the browser's back button** brings the latest
-  one of the shown kind up as it was left, read back from the PC like a reload
-  (its photos, their pictures fetched back one at a time, the note, the title
-  and price, the links; Michal, 2026-10-02: "when I press next but then want
-  to go back and see how much that other thing posted for"). An item nothing
-  was posted from comes back open: more photos, the note, the buttons, as if
-  NEXT had not been pressed. The line under the photos says which item is
-  up and what NEXT does now: an item that was in hand is parked, and NEXT
-  returns to it; from a fresh screen NEXT starts a new item. The page always
-  keeps one history entry to go back from, so back never leaves it; on an
-  empty history it says so. Back again goes one item further.
+  What NEXT leaves behind is not gone: the page keeps the last 10 items it
+  left, goods and books in the order he left them (`snap.history`), and **the
+  browser's back and forward buttons** walk through them both ways (Michal,
+  2026-10-03: "the back and forward on browser is like a cache of a session -
+  it should work in both directions and should, actually work for lets say,
+  10 items back and then 10 items forward. beyond that it should say
+  something like - 'end of item history - see inventory lists' - instead of
+  just quitting and loosing all cache"; until then forward left the page).
+  Each item comes up as it was left, read back from the PC like a reload (its
+  photos, their pictures fetched back one at a time, the note, the title and
+  price, the links; Michal, 2026-10-02: "when I press next but then want to go
+  back and see how much that other thing posted for"), on its own kind's
+  screen. An item nothing was posted from comes back open: more photos, the
+  note, the buttons, as if NEXT had not been pressed, and what is done to it
+  is kept with it in the history. The line under the photos says which item
+  is up, which way (`Back to "Lamp", as it was left.` / `Forward to ...`), and
+  what NEXT does there: return to the item in hand (the newest place in the
+  walk), or start a new one from a fresh screen. Forward past the newest item
+  comes back to the item in hand (`Back on "Vase", the item you were on.`),
+  on the kind last chosen with the switch; there is nothing further forward.
+  Back past the oldest says `End of the item history: see the inventory list
+  on the PC.` and stays on the oldest: back never leaves the page. The page
+  mirrors the walk into the browser's own history, one entry per item plus
+  one for the items in hand, so a reload keeps the place: on an earlier item
+  it comes back on that item, and the walk goes on from there. When an 11th
+  item is left the oldest falls off, and back stops one item sooner.
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
 toggles) because the PC's saved row is what the second button uses. If the
@@ -342,7 +356,9 @@ the PC cannot be reached:
   `GET /items/<id>/photos/<n>`, one at a time; one the PC cannot give keeps
   saying so), the AI marks, the note, the sku and the jobs, whose status lines
   carry on. Photos that had not reached the PC before the reload are lost from
-  the page (they were only in its memory); everything sent is safe.
+  the page (they were only in its memory); everything sent is safe. A reload
+  while back shows an earlier item reads that item back, and the item in hand
+  waits for forward or NEXT, as before the reload.
 
 ## The service contract (as this page uses it)
 
@@ -354,7 +370,7 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | --- | --- | --- |
 | `POST <pc>/items`, with the first photo | `{"name": "Boots"}` | `{"item": "Boots 2026-09-24", "photos": [n...]}` (what that folder already holds) |
 | `PUT <pc>/items/<id>/photos/<n>`, each photo | the shrunk JPEG itself, `Content-Type: image/jpeg` | `{"item", "n", "bytes"}`; a retry overwrites |
-| `GET <pc>/items/<id>/photos/<n>`, each photo of an item read back (a reload, back) | - | the JPEG itself, `Content-Type: image/jpeg`; 404 for a photo the item does not hold |
+| `GET <pc>/items/<id>/photos/<n>`, each photo of an item read back (a reload, back or forward) | - | the JPEG itself, `Content-Type: image/jpeg`; 404 for a photo the item does not hold |
 | `DELETE <pc>/items/<id>/photos/<n>`, the x | - | `{"item", "n", "deleted"}`; safe to repeat |
 | `PUT <pc>/items/<id>/note` | `{"note": "..."}` (blank removes it) | `{"item", "note"}` |
 | `GET <pc>/items/<id>`, after a reload | - | `{"item", "photos", "note", "sku", "jobs"}` |
@@ -376,7 +392,12 @@ the sku with the item until **NEXT** (the id and the AI marks also in
 ISBN, its title, author, year and format; after an ISBN miss, both, and
 `isbnMiss`), condition, price, main photo and found record in `snap.book`;
 either one's customize, `{"quantity", "pickupOnly"}`, once it is not the
-default). A book's barcode picture (the ISBN button) is
+default). What NEXT left is in `snap.history`, the same records, oldest first,
+at most 10; the walk's place is not in `localStorage` but in the browser's own
+history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
+the last the items in hand), which a reload keeps and a new tab starts afresh
+on the items in hand. (`snap.forward.<kind>`, the one item back parked, is gone.)
+A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
 
 ## Settings

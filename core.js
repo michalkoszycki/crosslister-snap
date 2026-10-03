@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=1.19.1";
+import { noteDirty, unsent } from "./queue.js?v=1.20.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=1.19.1";
+} from "./book.js?v=1.20.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1416,8 +1416,27 @@ export function titleLine(state) {
     return VENUES.map((v) => state.jobs[v]).map((j) => (j && j.title) || "").find(Boolean) || "";
 }
 
-/** How many finished items the page keeps for the browser's back button. */
-export const HISTORY_LIMIT = 30;
+/**
+ * How many items NEXT left the browser's back button walks through (Michal,
+ * 2026-10-03: "it should work in both directions and should, actually work
+ * for lets say, 10 items back and then 10 items forward").
+ */
+export const HISTORY_LIMIT = 10;
+
+/** Said by back beyond the oldest item kept, instead of leaving the page. */
+export const HISTORY_END = "End of the item history: see the inventory list on the PC.";
+
+/**
+ * The items NEXT left, oldest first, as stored: only what is a saved item,
+ * at most `HISTORY_LIMIT` (a list kept by an older page could be longer).
+ * @param {unknown} list
+ * @returns {{itemId:string, itemName?:string, mode?:string}[]}
+ */
+export function historyList(list) {
+    return (Array.isArray(list) ? list : [])
+        .filter((r) => r && typeof r === "object" && typeof r.itemId === "string" && r.itemId)
+        .slice(-HISTORY_LIMIT);
+}
 
 /**
  * `list` with `record` as its newest entry (an earlier entry for the same item
@@ -1429,23 +1448,69 @@ export const HISTORY_LIMIT = 30;
  * @returns {object[]}
  */
 export function remembered(list, record) {
-    const kept = (Array.isArray(list) ? list : []).filter(
-        (r) => r && typeof r === "object" && r.itemId !== record.itemId
-    );
-    return [...kept, record].slice(-HISTORY_LIMIT);
+    return [...historyList(list).filter((r) => r.itemId !== record.itemId), record].slice(-HISTORY_LIMIT);
 }
 
 /**
- * The line said when back brings an earlier item up: which, and what NEXT
- * does now (returns to the item he left, or starts a new one).
+ * `list` with `record`'s entry brought up to date where it stands: an item
+ * back brought up and worked on stays in its place in the walk.
+ * @param {unknown} list
+ * @param {{itemId:string}} record
+ * @returns {object[]}
+ */
+export function refreshed(list, record) {
+    return historyList(list).map((r) => (r.itemId === record.itemId ? record : r));
+}
+
+/**
+ * Which screen a saved item belongs on: a book's record says so; goods were
+ * saved before there were kinds.
+ * @param {{mode?:string}} record
+ * @returns {"goods"|"book"}
+ */
+export function recordKind(record) {
+    return record.mode === "book" ? "book" : "goods";
+}
+
+/**
+ * The place in the walk a browser history entry names. The page mirrors the
+ * walk into the browser's entries, one each: 0 is the floor (back beyond the
+ * oldest item), 1..length the items in `historyList` oldest first, length + 1
+ * the items in hand. An entry names a place, not an item, so one past the end
+ * of a list that has since shrunk is the items in hand.
+ * @param {unknown} state `history.state`, or a popstate's `state`
+ * @param {number} length how many items the walk holds
+ * @returns {number} -1 for an entry that is not the walk's
+ */
+export function walkPosition(state, length) {
+    const at = state && typeof state === "object" ? state.snap : undefined;
+    if (!Number.isInteger(at) || at < 0) return -1;
+    return Math.min(at, length + 1);
+}
+
+/**
+ * The line said when back or forward brings an item from the history up:
+ * which, which way, and what NEXT does now (returns to the item he was on, or
+ * starts a new one).
  * @param {{itemName?:string, itemId:string}} record
+ * @param {boolean} forward
  * @param {boolean} resumes
  * @returns {string}
  */
-export function backNote(record, resumes) {
+export function walkNote(record, forward, resumes) {
     const name = record.itemName || record.itemId;
     const next = resumes ? "returns to the item you were on" : "starts a new item";
-    return `Back to "${name}", as it was left. NEXT ${next}.`;
+    return `${forward ? "Forward" : "Back"} to "${name}", as it was left. NEXT ${next}.`;
+}
+
+/**
+ * The line said when the walk comes back to the items in hand: the one on
+ * screen by name, nothing for a fresh screen.
+ * @param {null|{itemName?:string, itemId:string}} record the item in hand, as saved for a reload
+ * @returns {string}
+ */
+export function presentNote(record) {
+    return record ? `Back on "${record.itemName || record.itemId}", the item you were on.` : "";
 }
 
 /**
