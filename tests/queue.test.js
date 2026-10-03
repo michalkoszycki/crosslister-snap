@@ -191,9 +191,9 @@ test("the same name the same day is the same item: its photos join, ours number 
     assert.deepEqual(
         s.photos.map((p) => [p.id, p.n, p.name, p.status, p.ai]),
         [
-            ["pc#1", 1, "Boots-1.jpg", "sent", false],
-            ["pc#2", 2, "Boots-2.jpg", "sent", false],
-            ["pc#5", 5, "Boots-5.jpg", "sent", false],
+            ["pc#goods#1", 1, "Boots-1.jpg", "sent", false],
+            ["pc#goods#2", 2, "Boots-2.jpg", "sent", false],
+            ["pc#goods#5", 5, "Boots-5.jpg", "sent", false],
             ["p1", 6, "Boots-6.jpg", "waiting", false],
             ["p2", 7, "Boots-7.jpg", "waiting", true],
         ]

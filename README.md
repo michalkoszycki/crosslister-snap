@@ -147,8 +147,10 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   both buttons; a failure with nothing else running takes it away. A press
   waits one second before anything leaves the phone (Michal, 2026-10-02:
   "delay sending by 1 second, but show loading, so that if one cancels within
-  1 sec there is no call money spent"): the ring turns at once, and a red
-  **cancel** sits under the button from the press until the link or the error.
+  1 sec there is no call money spent"): the ring turns at once, and a small red
+  **cancel**, plain text in the Settings link's shape rather than a button
+  (Michal, 2026-10-03: "low profile red text"), sits under the button from the
+  press until the link or the error.
   Within that second cancel takes the press back for free (the line says
   `cancelled`). After it the PC is told (`DELETE /jobs/<id>`): a job still
   queued is dropped before it runs, nothing paid; the job in hand stops at its
@@ -171,20 +173,19 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   about it, so its link is not shown. While a listing is posting, a quiet line
   under NEXT says so: `A listing is still posting on the PC; NEXT starts the
   next item without waiting for its link`.
-  An item nothing was posted from is trash (Michal, 2026-09-30: "when I snap
-  some photos and don't make a posting, assume that thing is trash - delete the
-  photos ... if I click NEXT, that is"): NEXT asks the PC to delete its folder,
-  photos and note and all (`DELETE /items/<id>`), and says so once it is gone:
-  `"Lamp" was not posted: its 2 photos were deleted from the PC.` An item with
-  a saved row, a job on its way or on the PC, or a job that finished is kept;
-  the PC refuses (409) to delete an item a row was made from or a job still
-  holds, whatever the page thinks, and the line then says it could not.
-  What NEXT leaves behind is not gone: the page keeps the last 30 finished
-  items (`snap.history`), and **the browser's back button** brings the latest
+  Every item NEXT leaves is kept, posted or not (Michal, 2026-10-03: "When I
+  took some photos and pressed next. I would be able to go back and see same
+  photos. Even if I did not post yet"; until then an item nothing was posted
+  from was deleted on the PC, his 2026-09-30 wish, and the PC's
+  `DELETE /items/<id>` stays but is no longer called).
+  What NEXT leaves behind is not gone: the page keeps the last 30 items it
+  left (`snap.history`), and **the browser's back button** brings the latest
   one of the shown kind up as it was left, read back from the PC like a reload
-  (its photos "on the PC", the note, the title and price, the links; Michal,
-  2026-10-02: "when I press next but then want to go back and see how much
-  that other thing posted for"). The line under the photos says which item is
+  (its photos, their pictures fetched back one at a time, the note, the title
+  and price, the links; Michal, 2026-10-02: "when I press next but then want
+  to go back and see how much that other thing posted for"). An item nothing
+  was posted from comes back open: more photos, the note, the buttons, as if
+  NEXT had not been pressed. The line under the photos says which item is
   up and what NEXT does now: an item that was in hand is parked, and NEXT
   returns to it; from a fresh screen NEXT starts a new item. The page always
   keeps one history entry to go back from, so back never leaves it; on an
@@ -334,10 +335,11 @@ the PC cannot be reached:
   photo or a delete of this item is on its way. The other kind's item (goods
   or book) keeps its own photos going, as ever.
 - **A reload** (or the phone closing the tab) reads the item back from the PC:
-  its photos (shown as "on the PC"; the pictures themselves are there), the AI
-  marks, the note, the sku and the jobs, whose status lines carry on. Photos
-  that had not reached the PC before the reload are lost from the page (they
-  were only in its memory); everything sent is safe.
+  its photos (each says "on the PC" until its picture is fetched back,
+  `GET /items/<id>/photos/<n>`, one at a time; one the PC cannot give keeps
+  saying so), the AI marks, the note, the sku and the jobs, whose status lines
+  carry on. Photos that had not reached the PC before the reload are lost from
+  the page (they were only in its memory); everything sent is safe.
 
 ## The service contract (as this page uses it)
 
@@ -349,6 +351,7 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | --- | --- | --- |
 | `POST <pc>/items`, with the first photo | `{"name": "Boots"}` | `{"item": "Boots 2026-09-24", "photos": [n...]}` (what that folder already holds) |
 | `PUT <pc>/items/<id>/photos/<n>`, each photo | the shrunk JPEG itself, `Content-Type: image/jpeg` | `{"item", "n", "bytes"}`; a retry overwrites |
+| `GET <pc>/items/<id>/photos/<n>`, each photo of an item read back (a reload, back) | - | the JPEG itself, `Content-Type: image/jpeg`; 404 for a photo the item does not hold |
 | `DELETE <pc>/items/<id>/photos/<n>`, the x | - | `{"item", "n", "deleted"}`; safe to repeat |
 | `PUT <pc>/items/<id>/note` | `{"note": "..."}` (blank removes it) | `{"item", "note"}` |
 | `GET <pc>/items/<id>`, after a reload | - | `{"item", "photos", "note", "sku", "jobs"}` |

@@ -403,7 +403,14 @@ function snap(nodes, count = 1) {
 function card(nodes, i) {
     const li = nodes.get("strip").children[i];
     const child = (cls) => li.children.find((c) => c.className && c.className.split(" ")[0] === cls);
-    return { li, x: child("kill"), ai: child("ai-mark"), badge: child("badge"), remote: child("shot-remote") };
+    return {
+        li,
+        x: child("kill"),
+        ai: child("ai-mark"),
+        badge: child("badge"),
+        remote: child("shot-remote"),
+        img: li.children.find((c) => c.tag === "img"),
+    };
 }
 
 function badges(nodes) {
@@ -452,6 +459,12 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             if (parts[2] === "photos" && method === "DELETE") {
                 const deleted = item.photos.delete(Number(parts[3]));
                 return json({ item: parts[1], n: Number(parts[3]), deleted });
+            }
+            if (parts[2] === "photos" && method === "GET") {
+                // the JPEG itself, for the thumbnail of a photo read back
+                const held = item.photos.get(Number(parts[3]));
+                if (held === undefined) return json({ detail: `${parts[1]}: no photo ${parts[3]}` }, 404);
+                return new Response(held, { status: 200, headers: { "Content-Type": "image/jpeg" } });
             }
             if (!parts[2] && method === "DELETE") {
                 if (item.sku || item.jobs.some((j) => ["queued", "running"].includes(j.state))) {
@@ -724,8 +737,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
     assert.equal(nodes.get("craigslist-link").href, "https://sfbay.craigslist.org/x/1.html");
     assert.equal(nodes.get("note").value, "Size 10, scuffed toe");
-    assert.equal(nodes.get("strip").children.length, 2, "the photos, on the PC");
-    assert.equal(card(nodes, 0).remote.textContent, "on the PC");
+    assert.equal(nodes.get("strip").children.length, 2, "the photos, fetched back from the PC");
+    assert.equal(card(nodes, 0).img.src, "blob:stub");
+    assert.equal(card(nodes, 1).img.src, "blob:stub");
+    assert.equal(card(nodes, 0).remote, undefined);
     assert.equal(nodes.get("message").textContent, 'Back to "Boots", as it was left. NEXT starts a new item.');
     assert.equal(JSON.parse(local.getItem("snap.history")).length, 0, "brought up: off the list");
     // NEXT from there: a fresh item, the boots not deleted (they were posted)
@@ -1035,11 +1050,13 @@ test("a reload reads the item back from the PC: photos, marks, note, the job sti
         jobs: { j1: () => ({ state: "done", sku: "B-7", links: { ebay: "https://www.ebay.com/itm/7" } }) },
     });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    assert.deepEqual(pc.calls, [`GET /items/${item}`]);
+    // the item, then its pictures one at a time (Michal, 2026-10-03: "see same photos")
+    assert.deepEqual(pc.calls, [`GET /items/${item}`, `GET /items/${item}/photos/1`, `GET /items/${item}/photos/2`]);
     assert.equal(nodes.get("item-name").value, "Boots");
     assert.equal(nodes.get("item-name").readOnly, true);
     assert.equal(nodes.get("strip").children.length, 2);
-    assert.equal(card(nodes, 0).remote.textContent, "on the PC");
+    assert.equal(card(nodes, 0).img.src, "blob:stub", "the picture, fetched back");
+    assert.equal(card(nodes, 0).remote, undefined);
     assert.deepEqual(badges(nodes), ["sent", "sent"]);
     assert.equal(card(nodes, 1).ai.attrs["aria-pressed"], "true");
     assert.equal(nodes.get("note").value, "Size 10");
@@ -1679,14 +1696,18 @@ test("the mode is remembered per phone, and a reload reads the book back", async
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(nodes.get("book").hidden, false, "book, as he left it");
     assert.equal(nodes.get("work").hidden, true);
-    assert.deepEqual(pc.calls, [`GET /items/${item}`], "the found book was kept: no second lookup");
+    assert.deepEqual(
+        pc.calls,
+        [`GET /items/${item}`, `GET /items/${item}/photos/1`, `GET /items/${item}/photos/2`],
+        "the found book was kept: no second lookup, only the pictures"
+    );
     assert.equal(nodes.get("book-isbn").value, ISBN);
     assert.equal(nodes.get("book-isbn").readOnly, true);
     assert.equal(nodes.get("book-card-title").textContent, "The Art of Computer Programming");
     assert.equal(nodes.get("book-price").value, "9", "his price, not the suggestion");
     assert.equal(nodes.get("book-condition-acceptable").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("book-flaws").value, "Spine creased");
-    assert.equal(bookShot(nodes, 0).li.children[0].textContent, "on the PC");
+    assert.equal(bookShot(nodes, 0).li.children[0].src, "blob:stub", "the cover, fetched back from the PC");
     assert.deepEqual(mains(nodes), [false, true], "his main photo, read back");
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
 
@@ -1963,7 +1984,11 @@ test("a reload reads a book with no ISBN back: the fields, the match, the price"
     });
     const pc = fakePc({ items: { [item]: { photos: new Map([[1, "a"]]), note: "", sku: null, jobs: [] } } });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    assert.deepEqual(pc.calls, [`GET /items/${item}`], "the match was kept: no second search");
+    assert.deepEqual(
+        pc.calls,
+        [`GET /items/${item}`, `GET /items/${item}/photos/1`],
+        "the match was kept: no second search, only the picture"
+    );
     assert.equal(nodes.get("book-manual").hidden, false);
     assert.equal(nodes.get("book-no-isbn").disabled, true);
     assert.equal(nodes.get("book-title").value, "Dune");
@@ -2386,35 +2411,65 @@ test("after the first photo the button says Snap Again and scrolls to where the 
     assert.equal(nodes.get("snap-label").textContent, "Snap", "a new item starts over");
 });
 
-test("NEXT on an item nothing was posted from deletes it on the PC and says so", async (t) => {
-    // Michal, 2026-09-30: "when I snap some photos and don't make a posting, assume that
-    // thing is trash - delete the photos ... if I click NEXT, that is"
+test("NEXT keeps an item nothing was posted from, and back brings it up with its pictures", async (t) => {
+    // Michal, 2026-10-03: "When I took some photos and pressed next. I would be able to go
+    // back and see same photos. Even if I did not post yet" (until then such an item was
+    // deleted on the PC, his 2026-09-30 wish)
     t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
     const pc = fakePc();
-    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
     const item = `Lamp ${TODAY}`;
     await typeName(nodes, "Lamp");
     snap(nodes, 2);
     await settle();
+    card(nodes, 1).ai.fire("click");
+    nodes.get("note").value = "brass";
+    nodes.get("note").fire("input");
+    t.mock.timers.tick(1500);
+    await settle();
     assert.equal(pc.items.has(item), true);
     nodes.get("next-item").fire("click");
     await settle();
-    assert.equal(pc.calls.at(-1), `DELETE /items/${item}`);
-    assert.equal(pc.items.has(item), false, "folder, photos and note are gone");
-    assert.equal(nodes.get("message").textContent, '"Lamp" was not posted: its 2 photos were deleted from the PC.');
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE /items/")), "nothing is deleted on the PC");
+    assert.equal(pc.items.has(item), true);
+    assert.equal(nodes.get("message").textContent, "");
     assert.equal(nodes.get("strip").children.length, 0);
     assert.equal(nodes.get("item-name").value, "");
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")), [{ itemName: "Lamp", itemId: item, ai: [2] }]);
 
-    // one the PC will not give up (a row was made from it after all): said, not hidden
-    const kept = `Vase ${TODAY}`;
-    await typeName(nodes, "Vase");
-    snap(nodes, 1);
+    // back: the lamp as it was left, its pictures fetched from the PC, and it can go on
+    const calls = pc.calls.length;
+    win.fire("popstate");
     await settle();
-    pc.items.get(kept).sku = "B-0099";
-    nodes.get("next-item").fire("click");
-    await settle();
-    assert.equal(pc.items.has(kept), true);
-    assert.match(nodes.get("message").textContent, /^"Vase" was not posted and could not be deleted on the PC: /);
+    assert.equal(nodes.get("item-name").value, "Lamp");
+    assert.equal(nodes.get("note").value, "brass");
+    assert.deepEqual(pc.calls.slice(calls), [`GET /items/${item}`, `GET /items/${item}/photos/1`, `GET /items/${item}/photos/2`]);
+    assert.equal(nodes.get("strip").children.length, 2);
+    assert.equal(card(nodes, 0).img.src, "blob:stub");
+    assert.equal(card(nodes, 1).img.src, "blob:stub");
+    assert.equal(card(nodes, 1).ai.attrs["aria-pressed"], "true", "the AI mark as it was left");
+    assert.equal(nodes.get("snap-input").disabled, false, "nothing was posted: it can go on");
+    assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT starts a new item.');
+});
+
+test("a picture the PC cannot give stays on the PC; a PC that does not answer stops the fetching", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const item = `Boots ${TODAY}`;
+    const local = memoryStore({ ...GOOD, "snap.item": JSON.stringify({ itemName: "Boots", itemId: item, ai: [] }) });
+    const pc = fakePc({ items: { [item]: { photos: new Map([[1, "a"], [2, "b"], [3, "c"]]), note: "", sku: null, jobs: [] } } });
+    const real = pc.fetch;
+    pc.fetch = async (url, init) => {
+        if (url.endsWith("/photos/1")) return new Response(JSON.stringify({ detail: "gone" }), { status: 404 });
+        if (url.endsWith("/photos/3")) throw new TypeError("Failed to fetch");
+        return real(url, init);
+    };
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nodes.get("strip").children.length, 3);
+    assert.equal(card(nodes, 0).remote.textContent, "on the PC");
+    assert.equal(card(nodes, 1).img.src, "blob:stub");
+    assert.equal(card(nodes, 2).remote.textContent, "on the PC");
+    assert.equal(nodes.get("message").hidden, true, "nothing to say: the photos are safe on the PC");
 });
 
 test("photos are shrunk one after another as they come; only the shrunk JPEG is kept and shown", async (t) => {

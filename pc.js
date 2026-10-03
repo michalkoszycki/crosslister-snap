@@ -8,10 +8,10 @@
 //   PUT    <pc>/items/<id>/note        {"note"} -> note.txt beside the photos
 //   GET    <pc>/items/<id>             -> {"item", "photos", "note", "sku", "jobs"}
 //                                      (a reloaded page reads the item back)
-//   DELETE <pc>/items/<id>             -> {"item", "deleted": true, "photos": n}: the folder
-//                                      removed whole (NEXT on an item nothing was posted
-//                                      from); 409 when a row was made from it or a job
-//                                      for it is unfinished
+//   GET    <pc>/items/<id>/photos/<n>  -> the JPEG itself (image/jpeg), for the thumbnail of a
+//                                      photo read back; 404 for one the item does not hold
+// (DELETE <pc>/items/<id> removes the folder whole; the page called it from NEXT on an item
+//  nothing was posted from until 2026-10-03, when Michal asked for every item to be kept.)
 // A book (the book mode), as soon as its ISBN is known:
 //   GET    <pc>/books/<isbn13>        -> {"isbn", "title", "subtitle", "authors", "publisher",
 //                                          "year", "format", "pages", "price" (or null),
@@ -48,7 +48,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=1.18.0";
+import { errorText, KEY_HEADER } from "./core.js?v=1.19.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -59,8 +59,38 @@ export class PcError extends Error {
     }
 }
 
+/** One request with the key; a PC that cannot be reached is a PcError(0). */
+async function request(url, key, { method = "GET", headers = {}, body } = {}) {
+    try {
+        return await fetch(url, {
+            method,
+            headers: { [KEY_HEADER]: key, ...headers },
+            body,
+            cache: "no-store",
+            referrerPolicy: "no-referrer",
+        });
+    } catch {
+        throw new PcError(0);
+    }
+}
+
+/** The response's JSON, or null when it has none. */
+async function parsed(res) {
+    try {
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+/** The error a refused response is: its status and its {"detail"} when it has one. */
+async function refused(res) {
+    const answer = await parsed(res);
+    return new PcError(res.status, answer && answer.detail);
+}
+
 async function call(url, key, { method = "GET", json, body, type } = {}) {
-    const headers = { [KEY_HEADER]: key };
+    const headers = {};
     let payload = body;
     if (json !== undefined) {
         headers["Content-Type"] = "application/json";
@@ -68,25 +98,9 @@ async function call(url, key, { method = "GET", json, body, type } = {}) {
     } else if (type) {
         headers["Content-Type"] = type;
     }
-    let res;
-    try {
-        res = await fetch(url, {
-            method,
-            headers,
-            body: payload,
-            cache: "no-store",
-            referrerPolicy: "no-referrer",
-        });
-    } catch {
-        throw new PcError(0);
-    }
-    let answer = null;
-    try {
-        answer = await res.json();
-    } catch {
-        answer = null;
-    }
-    if (!res.ok) throw new PcError(res.status, answer && answer.detail);
+    const res = await request(url, key, { method, headers, body: payload });
+    if (!res.ok) throw await refused(res);
+    const answer = await parsed(res);
     if (!answer || typeof answer !== "object") throw new PcError(res.status, "the PC gave no answer");
     return answer;
 }
@@ -118,6 +132,20 @@ export function putPhoto({ pc, key }, item, n, jpeg) {
         body: jpeg,
         type: "image/jpeg",
     });
+}
+
+/**
+ * Photo number n of an item read back (a reload, back): the JPEG itself, as a
+ * Blob for its thumbnail. 404 for a photo the item does not hold.
+ * @param {{pc:string, key:string}} settings
+ * @param {string} item
+ * @param {number} n
+ * @returns {Promise<Blob>}
+ */
+export async function getPhoto({ pc, key }, item, n) {
+    const res = await request(`${itemUrl(pc, item)}/photos/${n}`, key);
+    if (!res.ok) throw await refused(res);
+    return res.blob();
 }
 
 /** Photo number n off the PC too (the x). */
