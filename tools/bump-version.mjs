@@ -15,6 +15,7 @@ const { VERSION } = await import("../version.js");
 
 const files = [
     "index.html",
+    "styles.css", // the font's URL
     "app.js",
     "core.js",
     "pc.js",

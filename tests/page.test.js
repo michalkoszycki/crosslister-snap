@@ -103,6 +103,8 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "progress",
         "strip",
         "snap-label",
+        // the word in it, beside the camera icon (design A2, 2026-10-05)
+        "snap-word",
         "snap-input",
         "gallery-label",
         "gallery-input",
@@ -154,6 +156,25 @@ test("the manifest points at icons that exist", () => {
     for (const icon of manifest.icons) {
         assert.ok(existsSync(join(root, icon.src)), `missing icon ${icon.src}`);
     }
+});
+
+test("the header carries the A2 mark and the $nap wordmark; the font comes from this repo", async () => {
+    // Michal, 2026-10-05: "A2 implement" -- the app is written "crosslister $nap"
+    const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
+    const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(header)[1];
+    assert.match(h1, /<svg class="mark" viewBox="0 0 132 132"[^>]*role="img" aria-label="crosslister \$nap">/);
+    assert.match(h1, /<circle class="mark-lens" cx="66" cy="76" r="23"/);
+    assert.match(h1, />\$<\/text>/, "the lens holds the $");
+    assert.match(h1, /crosslister <span class="wordmark-snap">\$nap<\/span>/);
+    assert.match(html, /<title>crosslister \$nap<\/title>/);
+    // the font is self-hosted: the CSP lets fonts come from 'self' and nowhere else
+    const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
+    assert.match(csp, /font-src 'self';/);
+    assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(html), "no font CDN");
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    const { VERSION } = await import("../version.js");
+    assert.ok(css.includes(`url("fonts/Manrope.woff2?v=${VERSION}")`), "the font's URL carries VERSION");
+    assert.ok(existsSync(join(root, "fonts/Manrope.woff2")));
 });
 
 test("nothing is logged to the console, so the key never is", () => {
@@ -1272,7 +1293,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
     ]);
     // the camera button is called what it reads (Michal, 2026-09-28: "Let's call scan
     // 'ISBN' since that is what it is"); under it, small, No ISBN opens the typed fields
-    assert.match(book[1], /<label id="book-scan-label" class="big snap"[^>]*aria-label="ISBN: [^"]*">ISBN</);
+    assert.match(book[1], /<label id="book-scan-label" class="big snap"[^>]*aria-label="ISBN: [^"]*">[\s\S]*?<span>ISBN<\/span><\/label>/);
     assert.match(
         book[1],
         /<button type="button" id="book-no-isbn" class="secondary no-isbn" aria-expanded="false"\s+aria-controls="book-manual">No ISBN</
@@ -2438,10 +2459,10 @@ test("after the first photo the button says Snap Again and scrolls to where the 
     win.scrollY = 100;
     nodes.get("snap-label").getBoundingClientRect = () => ({ top: 1000, height: 100 });
     await typeName(nodes, "Lamp");
-    assert.equal(nodes.get("snap-label").textContent, "Snap");
+    assert.equal(nodes.get("snap-word").textContent, "Snap");
     snap(nodes, 1);
     await settle();
-    assert.equal(nodes.get("snap-label").textContent, "Snap Again");
+    assert.equal(nodes.get("snap-word").textContent, "Snap Again");
     // the button's middle (100 + 1000 + 50) at three quarters of 800
     assert.deepEqual(scrolls, [{ top: 550, left: 0, behavior: "instant" }]);
     // a gallery pick is not a return from the camera: no scroll
@@ -2450,7 +2471,7 @@ test("after the first photo the button says Snap Again and scrolls to where the 
     assert.equal(scrolls.length, 1);
     nodes.get("next-item").fire("click");
     await settle();
-    assert.equal(nodes.get("snap-label").textContent, "Snap", "a new item starts over");
+    assert.equal(nodes.get("snap-word").textContent, "Snap", "a new item starts over");
 });
 
 test("NEXT keeps an item nothing was posted from, and back brings it up with its pictures", async (t) => {

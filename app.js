@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=1.20.0";
+import { VERSION } from "./version.js?v=2.0.0";
 import {
     anyActive,
     bannerText,
@@ -63,8 +63,8 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=1.20.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=1.20.0";
+} from "./core.js?v=2.0.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.0.0";
 import {
     cancelJob,
     checkPc,
@@ -79,8 +79,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=1.20.0";
-import { shrinkPhoto } from "./shrink.js?v=1.20.0";
+} from "./pc.js?v=2.0.0";
+import { shrinkPhoto } from "./shrink.js?v=2.0.0";
 import {
     bookCard,
     bookPriceValue,
@@ -93,8 +93,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=1.20.0";
-import { canScan, readIsbn } from "./scan.js?v=1.20.0";
+} from "./book.js?v=2.0.0";
+import { canScan, readIsbn } from "./scan.js?v=2.0.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -313,7 +313,8 @@ function renderGoods() {
     const taken = nameTakenHint(state);
     el.itemInput.classList.toggle("taken", !!taken);
     const ready = !!state.itemName && !locked && !restoring.goods && !taken;
-    el.snapLabel.textContent = snapWord(state);
+    // the word only: the camera icon beside it in the label stays
+    el.snapText.textContent = snapWord(state);
     el.snapLabel.classList.toggle("disabled", !ready);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !ready;
@@ -1605,6 +1606,7 @@ function main() {
         hint: $("hint"),
         snapInput: $("snap-input"),
         snapLabel: $("snap-label"),
+        snapText: $("snap-word"),
         galleryInput: $("gallery-input"),
         galleryLabel: $("gallery-label"),
         progress: $("progress"),

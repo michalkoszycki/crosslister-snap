@@ -11,28 +11,44 @@
                  http://127.0.0.1, http://localhost (any port)
                                         -> the service on the PC itself, for trying the page there
   core.js checkSettings() accepts exactly these hosts; change both together.
+    font-src     'self'                 -> Manrope, kept in fonts/ (never a font CDN)
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   script-src 'self';
   style-src 'self';
+  font-src 'self';
   img-src 'self' blob: data:;
   connect-src 'self' https://*.ts.net https://*.ts.net:* http://127.0.0.1:* http://localhost:*;
   manifest-src 'self';
   base-uri 'none';
   form-action 'none';
   object-src 'none'">
-<meta name="theme-color" content="#101418">
+<meta name="theme-color" content="#FFFC00">
 <meta name="referrer" content="no-referrer">
-<title>crosslister snap</title>
-<link rel="stylesheet" href="styles.css?v=1.20.0">
+<title>crosslister $nap</title>
+<link rel="stylesheet" href="styles.css?v=2.0.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.0.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
 <header>
-  <h1>crosslister snap</h1>
+  <!-- the mark: one camera with a $ for a lens, its colours set in styles.css so the
+       dark variant (black body, white ring) is the same drawing -->
+  <h1 class="brand">
+    <svg class="mark" viewBox="0 0 132 132" width="36" height="36" role="img" aria-label="crosslister $nap">
+      <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <circle class="mark-ring" cx="66" cy="76" r="32" fill="#0B0B0B"/>
+      <circle class="mark-lens" cx="66" cy="76" r="23" fill="#FFFC00"/>
+      <text class="mark-glyph" x="66" y="88" text-anchor="middle" font-family="Manrope, system-ui, sans-serif"
+            font-weight="800" font-size="34" fill="#0B0B0B">$</text>
+      <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
+    </svg>
+    <span class="wordmark" aria-hidden="true">crosslister <span class="wordmark-snap">$nap</span></span>
+  </h1>
   <div class="header-right">
     <span id="server" class="server" aria-live="polite"></span>
     <button type="button" id="settings-toggle" class="link" aria-expanded="false"
@@ -84,7 +100,11 @@
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
 
-    <label id="snap-label" class="big snap" for="snap-input">Snap</label>
+    <!-- app.js writes the word (Snap / Snap Again) into #snap-word; the icon stays -->
+    <label id="snap-label" class="big snap" for="snap-input"><span class="btn-icon" aria-hidden="true"><svg
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+        stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
+        cx="12" cy="13" r="3.5"></circle></svg></span><span id="snap-word">Snap</span></label>
     <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
@@ -152,7 +172,10 @@
   <section id="book" hidden>
     <p id="book-hint" class="small">Tap ISBN to read the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
     <label id="book-scan-label" class="big snap" for="book-scan-input"
-           aria-label="ISBN: read the barcode with the camera">ISBN</label>
+           aria-label="ISBN: read the barcode with the camera"><span class="btn-icon" aria-hidden="true"><svg
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path
+        d="M4 6v12M7.5 6v12M12 6v12M16.5 6v12M20 6v12"></path><path d="M9.75 6v12M14.25 6v12"
+        stroke-width="1.2"></path></svg></span><span>ISBN</span></label>
     <input id="book-scan-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label class="field">
@@ -200,7 +223,10 @@
       <p id="book-match" class="small"></p>
     </div>
 
-    <label id="book-snap-label" class="big" for="book-snap-input">Snap</label>
+    <label id="book-snap-label" class="big" for="book-snap-input"><span class="btn-icon" aria-hidden="true"><svg
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+        stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
+        cx="12" cy="13" r="3.5"></circle></svg></span><span>Snap</span></label>
     <input id="book-snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label id="book-gallery-label" class="secondary" for="book-gallery-input">Add from gallery</label>
@@ -273,6 +299,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=1.20.0"></script>
+<script type="module" src="app.js?v=2.0.0"></script>
 </body>
 </html>
