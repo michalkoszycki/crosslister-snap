@@ -24,7 +24,7 @@
        dark, where black would vanish, a yellow pill with black words */
     --accent: #0b0b0b;
     --accent-ink: #fffc00;
-    --ok: #138a3f;
+    --ok: #0f7a36; /* 5:1 on white: the 14 px posted line and the 11 px sent badge need it */
     --ok-ink: #ffffff;
     --bad: #d92d20;
     --bad-ink: #ffffff;
