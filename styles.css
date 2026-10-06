@@ -413,6 +413,9 @@ button.badge.failed {
     text-align: center;
 }
 .cancel:disabled { opacity: 0.6; }
+/* display: block above beats the hidden attribute, so the cancel showed all the time (Michal,
+   2026-10-03: "after a posting is published ... can't cancel it now"; found 2026-10-06). */
+.cancel[hidden] { display: none; }
 /* the venue buttons: outlined pills in ink, not filled, so Snap and NEXT stay the loud ones */
 .venue-btn {
     margin-top: 0;
