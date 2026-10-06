@@ -115,6 +115,14 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "customize",
         "quantity",
         "pickup-only",
+        // Michal, 2026-10-06: "a slider for price preference (3 grade)", its three words and
+        // its line; then "a checkbox for post without asking"
+        "pricing",
+        "pricing-1",
+        "pricing-2",
+        "pricing-3",
+        "pricing-note",
+        "auto-post",
         // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
         "title-line",
         "price-line",
@@ -534,6 +542,24 @@ function badges(nodes) {
 const TODAY = "2026-09-24";
 
 /**
+ * What is wrong with a POST /jobs body as the PC reads it, or "" when nothing:
+ * a new item, a book, or a sku, each with customize's optional top-level keys
+ * (`pricing` 2 or 3, `auto_post` false; 1 and true are never sent).
+ */
+function jobContract(body) {
+    const known = ["item", "venue", "ai", "book", "sku", "quantity", "pickup_only", "pricing", "auto_post"];
+    const odd = Object.keys(body).filter((k) => !known.includes(k));
+    if (odd.length) return `unknown keys ${odd.join(", ")}`;
+    if (body.sku && ("book" in body || "item" in body)) return "a sku job carries no book and no item";
+    if (!body.sku && !body.item) return "neither an item nor a sku";
+    if ("pricing" in body && ![2, 3].includes(body.pricing)) return `pricing ${body.pricing}`;
+    if ("auto_post" in body && body.auto_post !== false) return `auto_post ${body.auto_post}`;
+    if ("pickup_only" in body && body.pickup_only !== true) return `pickup_only ${body.pickup_only}`;
+    if ("quantity" in body && !(Number.isInteger(body.quantity) && body.quantity > 1)) return `quantity ${body.quantity}`;
+    return "";
+}
+
+/**
  * The PC as the page sees it: `crosslister serve`'s items and jobs, in memory.
  * `down` makes every call fail as an unreachable PC does; `jobs` answers
  * GET /jobs/<id>; `refuseJob` answers POST /jobs with a 400.
@@ -606,6 +632,11 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         }
         if (parts[0] === "jobs" && method === "POST") {
             pc.posted.push(body);
+            // the PC's contract: a sku job carries no book (and no item); customize's keys
+            // come only when not the default. A body that breaks it is refused, in words
+            // a test's status line shows
+            const broken = jobContract(body);
+            if (broken) return json({ detail: `contract: ${broken}` }, 422);
             if (refuseJob) return json({ detail: refuseJob }, 400);
             const id = body.venue === "ebay" ? "j1" : "j2";
             // the item remembers its jobs, as the PC's GET /items/<id> lists them
@@ -1729,6 +1760,13 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-customize",
         "book-quantity",
         "book-pickup-only",
+        // Michal, 2026-10-06: the price grade slider and post without asking
+        "book-pricing",
+        "book-pricing-1",
+        "book-pricing-2",
+        "book-pricing-3",
+        "book-pricing-note",
+        "book-auto-post",
         "book-title-line",
         "book-price-line",
         "book-ebay-btn",
@@ -2653,7 +2691,30 @@ test("customize sits right above the venue buttons in both modes, folded", () =>
         assert.match(html, new RegExp(`id="${prefix}quantity" class="quantity" type="text" inputmode="numeric"[^>]*value="1"`));
         assert.match(html, new RegExp(`id="${prefix}pickup-only" type="checkbox">\\s*<span>Pickup only — no shipping on eBay</span>`));
         assert.ok(html.indexOf(`id="${prefix}pickup-only"`) < html.indexOf(`id="${next}"`), "right above the buttons");
+        // Michal, 2026-10-06: the price grade under the pickup row, three steps, 1 by default
+        assert.match(
+            html,
+            new RegExp(`<input id="${prefix}pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"`)
+        );
+        assert.match(
+            html,
+            new RegExp(
+                `<span id="${prefix}pricing-1" class="on">Quick sale</span>\\s*<span id="${prefix}pricing-2">Fair price</span>\\s*<span id="${prefix}pricing-3">Higher end</span>`
+            )
+        );
+        assert.match(html, new RegExp(`id="${prefix}pricing-note" class="pricing-note">sell what we have this week<`));
+        // ... then post without asking, ticked: what the PC did until now
+        assert.match(
+            html,
+            new RegExp(
+                `<input id="${prefix}auto-post" type="checkbox" checked>\\s*<span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>`
+            )
+        );
+        assert.ok(html.indexOf(`id="${prefix}pickup-only"`) < html.indexOf(`id="${prefix}pricing"`));
+        assert.ok(html.indexOf(`id="${prefix}auto-post"`) < html.indexOf(`id="${next}"`));
     }
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /input\[type="range"\]\.pricing \{[^}]*height: 44px;[^}]*accent-color: var\(--signal\);/);
 });
 
 test("customize, goods: open it, 2 and pickup only, ebay carries both, craigslist by sku too, DONE resets", async (t) => {
@@ -2831,6 +2892,268 @@ test("a reload brings customize back, folded, with pickup only under ebay", asyn
     t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], quantity: 4, pickup_only: true }]);
+});
+
+// --- customize: the price grade and post without asking (Michal, 2026-10-06) ---------
+// "a slider for price preference (3 grade) 1 (quicksell what we have) 2 (fair price
+// longer wait time) 3 (higher end price - probably cheaper options exist in the
+// marketplace) ... 1 by default." and "a checkbox for post without asking - which is
+// our default now."
+
+/** The slider and its words, as the screen shows them. */
+function pricingShown(nodes, prefix = "") {
+    return {
+        value: nodes.get(`${prefix}pricing`).value,
+        bold: [1, 2, 3].filter((g) => nodes.get(`${prefix}pricing-${g}`).classList.contains("on")),
+        note: nodes.get(`${prefix}pricing-note`).textContent,
+        said: nodes.get(`${prefix}pricing`).attrs["aria-valuetext"],
+    };
+}
+
+test("customize, goods: fair price and post without asking off; saved, not posted; the next press posts by sku; NEXT resets", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let ebayPosted = false;
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        jobs: {
+            j1: () => ({
+                state: "done",
+                sku: "B-0060",
+                price: "14.00",
+                title: "Brass Lamp",
+                links: ebayPosted ? { ebay: "https://www.ebay.com/itm/60" } : {},
+            }),
+            j2: () => ({ state: "running", step: "drafting the listing", sku: "B-0060" }),
+        },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("customize-toggle").fire("click");
+
+    // 1 by default, post without asking ticked
+    assert.deepEqual(pricingShown(nodes), {
+        value: "1",
+        bold: [1],
+        note: "sell what we have this week",
+        said: "Quick sale",
+    });
+    assert.equal(nodes.get("auto-post").checked, true);
+
+    nodes.get("pricing").value = "2";
+    nodes.get("pricing").fire("input");
+    assert.deepEqual(pricingShown(nodes), {
+        value: "2",
+        bold: [2],
+        note: "a fair price, a longer wait",
+        said: "Fair price",
+    });
+    assert.equal(nodes.get("ebay-status").textContent, "fair price");
+    assert.equal(nodes.get("craigslist-status").textContent, "fair price", "the grade goes with both");
+    nodes.get("auto-post").checked = false;
+    nodes.get("auto-post").fire("change");
+    assert.equal(nodes.get("ebay-status").textContent, "fair price · saved, not posted");
+    assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, {
+        quantity: "1",
+        pickupOnly: false,
+        pricing: 2,
+        autoPost: false,
+    });
+
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
+    await settle();
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], pricing: 2, auto_post: false }]);
+    // fixed while the job is on its way, as the quantity box is
+    assert.equal(nodes.get("pricing").disabled, true);
+    assert.equal(nodes.get("auto-post").disabled, true);
+
+    // done with no link: the row is saved, not posted, and the button opens again
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "saved, not posted");
+    assert.equal(nodes.get("ebay-status").className, "venue-status ok");
+    assert.equal(nodes.get("ebay-link").hidden, true);
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+    assert.equal(nodes.get("ebay-btn").textContent, "ebay");
+    assert.equal(nodes.get("ebay-btn").classList.contains("posted"), false, "not green: nothing is up");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, saved, not posted");
+    assert.equal(nodes.get("price-line").textContent, "$14");
+    assert.equal(nodes.get("pricing").disabled, false);
+
+    // the next press posts the saved row by its sku: no second model call
+    ebayPosted = true;
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted[1], { sku: "B-0060", venue: "ebay", pricing: 2 });
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/60");
+    assert.equal(nodes.get("ebay-btn").disabled, true);
+    assert.equal(nodes.get("ebay-btn").classList.contains("posted"), true);
+
+    // craigslist, with the box still unticked, is saved first too
+    nodes.get("craigslist-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted[2], { sku: "B-0060", venue: "craigslist", pricing: 2, auto_post: false });
+
+    // NEXT: a quick sale, posted without asking, folded
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("customize").hidden, true);
+    assert.deepEqual(pricingShown(nodes), {
+        value: "1",
+        bold: [1],
+        note: "sell what we have this week",
+        said: "Quick sale",
+    });
+    assert.equal(nodes.get("auto-post").checked, true);
+    assert.equal(nodes.get("auto-post").disabled, false);
+    assert.equal(nodes.get("ebay-status").hidden, true);
+});
+
+test("customize, goods: the slider alone sends pricing, and Higher end says so under both buttons", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("customize-toggle").fire("click");
+    nodes.get("pricing").value = "3";
+    nodes.get("pricing").fire("input");
+    assert.deepEqual(pricingShown(nodes).bold, [3]);
+    assert.equal(nodes.get("pricing-note").textContent, "a higher-end price; cheaper ones exist out there");
+    assert.equal(nodes.get("craigslist-status").textContent, "higher end");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(JSON.stringify(pc.posted[0]), `{"item":"Lamp ${TODAY}","venue":"ebay","ai":[1],"pricing":3}`);
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+});
+
+test("customize, book: higher end, saved, not posted, then posted by sku with no book", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let posted = false;
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        books: { [ISBN]: BOOK },
+        jobs: {
+            j1: () => ({
+                state: "done",
+                sku: "B-0070",
+                price: "11.00",
+                links: posted ? { ebay: "https://www.ebay.com/itm/70" } : {},
+            }),
+        },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
+    const item = `Book ${ISBN} ${TODAY}`;
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input");
+    await settle();
+    nodes.get("book-customize-toggle").fire("click");
+    assert.deepEqual(pricingShown(nodes, "book-").bold, [1]);
+    nodes.get("book-pricing").value = "3";
+    nodes.get("book-pricing").fire("input");
+    nodes.get("book-auto-post").checked = false;
+    nodes.get("book-auto-post").fire("change");
+    assert.equal(nodes.get("book-ebay-status").textContent, "higher end · saved, not posted");
+    assert.equal(pricingShown(nodes).value, "1", "the goods slider is its own");
+    assert.deepEqual(JSON.parse(local.getItem("snap.book")).customize, {
+        quantity: "1",
+        pickupOnly: false,
+        pricing: 3,
+        autoPost: false,
+    });
+
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [
+        {
+            item,
+            venue: "ebay",
+            book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 1 },
+            pricing: 3,
+            auto_post: false,
+        },
+    ]);
+    assert.equal(nodes.get("book-pricing").disabled, true);
+    assert.equal(nodes.get("book-auto-post").disabled, true);
+
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("book-ebay-status").textContent, "saved, not posted");
+    assert.equal(nodes.get("book-ebay-btn").disabled, false);
+
+    // the press after it posts the saved row: the sku only, no book, no second save
+    posted = true;
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted[1], { sku: "B-0070", venue: "ebay", pricing: 3 });
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("book-ebay-link").href, "https://www.ebay.com/itm/70");
+    assert.equal(nodes.get("book-ebay-btn").disabled, true);
+});
+
+test("a reload brings the price grade and post without asking back, and a row saved, not posted", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const item = `Chairs ${TODAY}`;
+    const local = memoryStore({
+        ...GOOD,
+        "snap.item": JSON.stringify({
+            itemName: "Chairs",
+            itemId: item,
+            ai: [1],
+            customize: { quantity: "1", pickupOnly: false, pricing: 2, autoPost: false },
+        }),
+    });
+    const pc = fakePc({
+        items: {
+            [item]: {
+                photos: new Map([[1, "a"]]),
+                note: "",
+                sku: "B-0080",
+                jobs: [{ job: "j9", venue: "ebay", state: "done", sku: "B-0080", price: "30.00", links: {} }],
+            },
+        },
+        jobs: { j1: () => ({ state: "running", step: "publishing on eBay", sku: "B-0080" }) },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nodes.get("customize").hidden, true, "folded: the open state is not kept");
+    assert.deepEqual(pricingShown(nodes), {
+        value: "2",
+        bold: [2],
+        note: "a fair price, a longer wait",
+        said: "Fair price",
+    });
+    assert.equal(nodes.get("auto-post").checked, false);
+    assert.equal(nodes.get("ebay-status").textContent, "saved, not posted");
+    assert.equal(nodes.get("craigslist-status").textContent, "fair price · saved, not posted");
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ sku: "B-0080", venue: "ebay", pricing: 2 }]);
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
 });
 
 test("a name the PC already has today is flagged after a pause and Snap waits for another", async (t) => {

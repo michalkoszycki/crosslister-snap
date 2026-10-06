@@ -9,7 +9,7 @@
 // page then asks for another try or the typed number. The photo is only read
 // here, never kept: the barcode close-up is not a listing photo.
 
-import { normalizeIsbn } from "./book.js?v=2.1.0";
+import { normalizeIsbn } from "./book.js?v=2.2.0";
 
 /** True when this browser can read a barcode from a photo. */
 export function canScan() {

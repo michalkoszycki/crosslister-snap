@@ -168,12 +168,30 @@ and every behaviour are the live app's.
   until tapped (the arrow turns ▾); it opens a small card with **Quantity** (1
   unless changed; a whole number, 1 or more, or the buttons stay shut and the
   line under them says `Quantity (under customize) must be a whole number, 1
-  or more`) and **Pickup only — no shipping on eBay**. Once ticked, the line
-  under ebay says `pickup only` until the press, so it is plain it took. Both
-  go with either button, the second one's too (the PC updates the saved row
-  first), and lock while a job is on its way. Folded again on every load and
-  every **NEXT**; the values themselves are kept for a reload and reset by
-  NEXT.
+  or more`) and **Pickup only — no shipping on eBay**. Under them (Michal,
+  2026-10-06: "in customize, there should be a slider for price preference (3
+  grade) 1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher
+  end price - probably cheaper options exist in the marketplace). these need to
+  be reflected in the prompt. 1 by default."), **Price**: a three-step slider
+  with a yellow thumb, its words under the track, **Quick sale**, **Fair
+  price**, **Higher end**, the chosen one bold, and a line saying what it
+  means: `sell what we have this week`, `a fair price, a longer wait`, `a
+  higher-end price; cheaper ones exist out there`. The PC writes the grade into
+  the model's prompt. Last (Michal, 2026-10-06: "in customize it also should
+  have a checkbox for post without asking - which is our default now."), **Post
+  without asking**, ticked, with the small print `unticked: the PC saves the
+  draft and the button posts it on the next press`. Unticked, a press saves the
+  row without publishing: the line under that button says `saved, not posted`
+  in green, the button opens again (not green: nothing is up), and its next
+  press posts the saved row by its sku, with no second model call. Before a
+  press, the line under each button says what customize changed, joined with
+  ` · `: `pickup only` (under ebay only), the grade when it is not a quick sale
+  (`fair price`, `higher end`) and `saved, not posted` while the box is
+  unticked, e.g. `pickup only · fair price · saved, not posted`, so it is plain
+  it took. All four go with either button, the second one's too (the PC updates
+  the saved row first), and lock while a job is on its way. Folded again on
+  every load and every **NEXT**; the values themselves are kept for a reload
+  and reset by NEXT.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
@@ -343,7 +361,10 @@ title instead, and the PC does the same work from that. Top to bottom:
 - **Flaws**: the item's note, sent to the PC exactly as the goods note is.
 - **▸ customize**, right above ebay: the same disclosure as for goods, the
   book's own (open or folded, and its values, apart from the goods item's):
-  **Quantity** (several copies of one book) and **Pickup only**.
+  **Quantity** (several copies of one book), **Pickup only**, **Price** (the
+  three grades) and **Post without asking**. A book saved, not posted, opens
+  ebay again, and that press posts the saved row by its sku (no book in the
+  body); otherwise a book is always sent whole.
 - **ebay**, one full-width button with the same status line, turning ring and
   link. It opens once the book is found (by title: once the PC answered,
   matched or not), there is a photo (`Snap the cover
@@ -422,8 +443,10 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | `GET <pc>/books/search?title=<t>&author=<a>&year=<y>`, No ISBN, 0.6 s after the last keystroke | each URL-encoded (`%20` for a space); author and year `""` when not typed, year only once it has four digits | the same as `/books/<isbn13>`, plus `"found": true` (a catalogue matched it) or `false` (none did: it is listed as typed; `price` and `listings` still from eBay); 400 and 502 show the PC's words and keep the fields |
 | `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay" or "craigslist", "ai": [photo numbers]}` | `{"job": id, "state": "queued", "ahead": n}` |
 | `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""`. After an ISBN no catalogue knows (the 404 above) and No ISBN: both, `"isbn": "9781926856155"` and the typed `"title"`, `"author"`, `"year"`, `"format"`; the PC keeps the ISBN on the listing and takes the rest from the typed fields | the same |
-| `POST <pc>/jobs`, the other button | `{"sku": sku, "venue": ...}` only (plus customize's two, below); the PC updates the saved row with them before it posts | the same |
+| `POST <pc>/jobs`, the other button, or the press after `saved, not posted` (a book's too) | `{"sku": sku, "venue": ...}` only, never a `book` (plus customize's keys, below); the PC updates the saved row with them before it posts | the same |
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
+| customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the PC always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the PC writes it into the model's prompt | the same |
+| customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The PC drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the PC publishes the saved row | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All | `{"rows": [summary...]}`, newest first; a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}` |
@@ -438,8 +461,10 @@ the sku with the item until **NEXT** (the id and the AI marks also in
 `localStorage`, `snap.item`, for a reload; a book's id, ISBN (or, with no
 ISBN, its title, author, year and format; after an ISBN miss, both, and
 `isbnMiss`), condition, price, main photo and found record in `snap.book`;
-either one's customize, `{"quantity", "pickupOnly"}`, once it is not the
-default). What NEXT left is in `snap.history`, the same records, oldest first,
+either one's customize, `{"quantity", "pickupOnly"}` plus `"pricing"` and
+`"autoPost": false` when they are not the default, once it is not the
+default; a reload with `autoPost` off reads a job done with no link as
+`saved, not posted`). What NEXT left is in `snap.history`, the same records, oldest first,
 at most 10; the walk's place is not in `localStorage` but in the browser's own
 history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
 the last the items in hand), which a reload keeps and a new tab starts afresh
