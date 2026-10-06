@@ -19,8 +19,11 @@ import {
     checkPc,
     createItem,
     deletePhoto,
+    getInventory,
     getItem,
     getJob,
+    getRow,
+    getRowPhoto,
     PcError,
     postJob,
     putNote,
@@ -132,6 +135,33 @@ test("the jobs: a JSON body for a press, GETs for the status and the Settings ch
     assert.deepEqual(JSON.parse(press.init.body), { item: ITEM, venue: "ebay", ai: [2] });
     assert.equal((await wire(() => getJob(PC, "j 1"))).url, "http://127.0.0.1:8765/jobs/j%201");
     assert.equal((await wire(() => checkPc(PC))).url, "http://127.0.0.1:8765/jobs?limit=1");
+});
+
+test("Admin's inventory: the list with its query, a row by sku, a row's photo as a Blob", async () => {
+    const list = await wire(() => getInventory(PC, { q: "blue lamp", venue: "ebay", status: "" }));
+    assert.equal(list.url, "http://127.0.0.1:8765/inventory?q=blue%20lamp&venue=ebay&status=&limit=200");
+    assert.equal(list.init.method, "GET");
+    assert.equal(list.init.headers["X-Crosslister-Key"], PC.key);
+    assert.equal((await wire(() => getRow(PC, "a/b c"))).url, "http://127.0.0.1:8765/inventory/a%2Fb%20c");
+
+    const before = globalThis.fetch;
+    const seen = [];
+    globalThis.fetch = async (url, init) => {
+        seen.push({ url, init });
+        return url.endsWith("/photos/2")
+            ? new Response("png bytes", { status: 200, headers: { "Content-Type": "image/png" } })
+            : new Response(JSON.stringify({ detail: "R5GM4XZN: no photo 9" }), { status: 404 });
+    };
+    try {
+        const blob = await getRowPhoto(PC, "R5GM4XZN", 2);
+        assert.equal(seen[0].url, "http://127.0.0.1:8765/inventory/R5GM4XZN/photos/2");
+        assert.equal(seen[0].init.headers["X-Crosslister-Key"], PC.key);
+        assert.equal(blob.type, "image/png");
+        assert.equal(await blob.text(), "png bytes");
+        await assert.rejects(getRowPhoto(PC, "R5GM4XZN", 9), (e) => e instanceof PcError && e.status === 404);
+    } finally {
+        globalThis.fetch = before;
+    }
 });
 
 test("the contract constants: the key header and a 3 s poll", () => {

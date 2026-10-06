@@ -44,7 +44,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
    item's id and the AI marks, and asks for the job's status every 3 s.
 4. The PC is reached at its Tailscale Funnel address
    (`https://<pc>.<tailnet>.ts.net`) with a per-person key; both are typed into
-   **Settings** once and kept in the phone's `localStorage`.
+   **Settings** (under **Admin**) once and kept in the phone's `localStorage`.
 5. `core.js` and `queue.js` hold every decision worth testing (settings, the
    shrink size, the queue, the requests, the job's state and the line under each
    button, when a button may be pressed); `tests/` proves it, including whole
@@ -55,9 +55,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Settings, customize, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory), customize, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the PC |
+| `pc.js` | every call to the PC, Admin's inventory reads too |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -119,11 +119,13 @@ and every behaviour are the live app's.
   nothing and loses nothing. Photos of the hidden item keep going to the PC
   (the shown item's go first), and a job running for it keeps being asked
   about, so its link is there on switching back.
-- **Settings** (header, top right): the PC address and the key. **Save and
+- **Admin** (header, top right; it was Settings until 2.1.0): **Settings** and
+  the **Inventory**, each a foldout, opening under the switch (see
+  [Admin](#admin)). **Settings** holds the PC address and the key: **Save and
   check** stores them and asks the PC whether it knows the key (a read of the
-  newest job: no model call, nothing published). **Close** at the bottom hides
-  them again.
-- **The server word** (header, beside Settings, and at the top of Settings):
+  newest job: no model call, nothing published). **Close** at the bottom of
+  Admin hides it again.
+- **The server word** (header, beside Admin, and at the top of Settings):
   the page asks the PC by itself, on load, every 30 s while it is on screen,
   and when the phone is back online or back on screen, the same read as the
   Settings check. **server ok** in green, **server off** in red (no answer),
@@ -190,7 +192,7 @@ and every behaviour are the live app's.
   waits one second before anything leaves the phone (Michal, 2026-10-02:
   "delay sending by 1 second, but show loading, so that if one cancels within
   1 sec there is no call money spent"): the ring turns at once, and a small red
-  **cancel**, plain text in the Settings link's shape rather than a button
+  **cancel**, plain text in the header link's shape rather than a button
   (Michal, 2026-10-03: "low profile red text"), sits under the button from the
   press until the PC's step says `publishing ...`, the link or the error: once a
   posting is going up there is nothing left to cancel (Michal, 2026-10-03:
@@ -256,7 +258,7 @@ first job fails before the PC saved the row, they unlock and the next press is
 a fresh send.
 
 When a button is disabled, one line under the pair says why: `Set the PC
-address and key in Settings`, `Snap a photo first`, `At most 24 photos -
+address and key in Admin`, `Snap a photo first`, `At most 24 photos -
 delete n`, `Mark at least one photo AI (bottom right of the photo)`, `A photo
 did not reach the PC - tap its 'failed' to try again`, `Waiting for the photos
 to reach the PC (2 of 4 sent)`, or that the other button goes first.
@@ -424,6 +426,9 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
+| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All | `{"rows": [summary...]}`, newest first; a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}` |
+| `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields) and `"photos": [{"n", "name"}...]` (a list here); 404 for an unknown sku |
+| `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the note is sent first if it is still being typed. The `sku` comes from the
@@ -441,6 +446,62 @@ the last the items in hand), which a reload keeps and a new tab starts afresh
 on the items in hand. (`snap.forward.<kind>`, the one item back parked, is gone.)
 A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
+
+## Admin
+
+Michal, 2026-10-06: "i would like you to start working (and complete) on an
+admin section of the app. somewhere where one can pull in all the listings ...
+I was thinking that screen could be accessible through Admin which would
+replace Settings. Settings would remain part of Admin though. After clicking
+Admin (where settings are now) a user would have access to inventory list,
+with search options / filtering options, etc. checkbox for showing images
+(which would make the list less compact unfortunately.) clicking would need to
+show all the card options and all the photos (in thumbnail format + plus if
+clicking on a photo - should bring [it up full size]) ... just like 'customize'
+now is a foldout - settings and inventory would be a foldout in the admin
+section. once you click on a listing probably all the cards are different
+foldouts (craigslist, ebay, etc)".
+
+- **Admin**, the header link where Settings was, opens a section above the
+  item (where Settings opened) with two foldouts in customize's shape (**▸**
+  folded, **▾** open) and a **Close** at its bottom. It opens on **Settings**
+  while the address or key is missing or malformed, and otherwise on the
+  **Inventory**, asked afresh each time. Should the PC then refuse the key, the
+  inventory's line says `wrong key - check Settings` and Settings opens too.
+- **Settings** is the old Settings card, unchanged inside (the address, the
+  key, **Save and check**, the server word at its top). Saving while the
+  inventory is open asks for the list again.
+- **Inventory**: a **Search** box (asked 0.4 s after the last keystroke, or at
+  once on the keyboard's search key), the line under it (`Asking the PC...`,
+  `12 listings`, `No listings match.`, `The newest 200 listings; search to
+  narrow them.`, or `Could not read the inventory: cannot reach the PC.`: the
+  list stays as it was), two rows of chips, **Venue** (All | ebay |
+  craigslist) and **Status** (All | draft | listed | sold | ended), each asking
+  at once, and **Show photos**, off by default. Then the list: one button per
+  listing, newest first, with the title in bold (it wraps anywhere, so a long
+  one never widens the page), the price (`$24`, `$24.50`), the sku in small
+  mono, and a small badge per venue with its status: listed in the posted
+  green, sold and ended muted, a draft outlined. With **Show photos** on, a
+  64 px tile of photo 1 sits on the left of each (`no photo` for a listing with
+  none), fetched one at a time; changing the list lets those pictures go.
+- **A listing tapped** opens in place of the list: **← Back to the list** at
+  the top (back on the same list, at the same row, nothing asked again), the
+  title and price as its heading, then four foldouts. **Item** (open):
+  condition, category path, quantity, pickup only, the ISBN when there is one,
+  the description as written (line breaks kept), the note, the package
+  (`40 oz, 18 x 12 x 12 in`), the model cost (`$0.1046`) and the source
+  folder. **Photos** (open): every photo as an 88 px tile, fetched one at a
+  time; a tap shows it full size on black, the whole picture, with **Close**
+  at the top right (a tap anywhere on it, or Escape, closes it too). **ebay**
+  (folded): status, id, link, when it was listed (`2026-10-03 16:21`, the
+  phone's own time), the condition note, the condition details and the
+  aspects as `name: values` lines. **craigslist** (folded): status, id, link,
+  listed at, then its four overrides (title, price, description, category),
+  each what was typed for craigslist or, muted, `derived from eBay`. A venue's
+  foldout is there only for a venue the listing has.
+- **Read-only.** Nothing in Admin changes a listing or posts one; each venue
+  card ends in an empty row (`venue-actions`) where a later version's actions
+  go.
 
 ## Settings
 

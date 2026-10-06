@@ -68,6 +68,28 @@ import {
     nextNote,
     NEXT_NOTE,
     idleJob,
+    DERIVED,
+    derivedOr,
+    INVENTORY_DEBOUNCE_MS,
+    INVENTORY_LIMIT,
+    INVENTORY_STATUSES,
+    INVENTORY_VENUES,
+    inventoryCount,
+    inventoryQuery,
+    inventoryRows,
+    itemFacts,
+    listedAtWord,
+    namedLines,
+    packageWord,
+    priceWord,
+    rowBadges,
+    rowHeading,
+    rowPhotos,
+    rowTitle,
+    rowVenues,
+    statusBadge,
+    venueFacts,
+    venueStatus,
 } from "../core.js";
 import {
     bookCard,
@@ -300,7 +322,7 @@ test("without settings neither venue button works, and the hint says why", () =>
     for (const venue of ["ebay", "craigslist"]) {
         assert.deepEqual(venueButton(s, venue, false), { enabled: false, hint: SETTINGS_HINT });
     }
-    assert.equal(SETTINGS_HINT, "Set the PC address and key in Settings");
+    assert.equal(SETTINGS_HINT, "Set the PC address and key in Admin");
 });
 
 test("a new item needs a photo, at most 24, and at least one AI mark", () => {
@@ -1849,4 +1871,185 @@ test("customize is kept for a reload once it is not the default, and read back",
     });
     assert.deepEqual(bookBack.book.customize, { quantity: "1", pickupOnly: true });
     assert.equal("customize" in savedItem(foundBook()), false, "left alone: saved as it always was");
+});
+
+// --- Admin: the inventory (Michal, 2026-10-06) -----------------------------------------
+
+test("the inventory's query: every key sent, each encoded, All as blank, the limit last", () => {
+    assert.equal(INVENTORY_LIMIT, 200);
+    assert.equal(INVENTORY_DEBOUNCE_MS, 400);
+    assert.deepEqual(INVENTORY_VENUES, ["", "ebay", "craigslist"]);
+    assert.deepEqual(INVENTORY_STATUSES, ["", "draft", "listed", "sold", "ended"]);
+    assert.equal(inventoryQuery({}), "q=&venue=&status=&limit=200");
+    assert.equal(
+        inventoryQuery({ q: "  blue lamp & co ", venue: "ebay", status: "sold" }),
+        "q=blue%20lamp%20%26%20co&venue=ebay&status=sold&limit=200"
+    );
+    assert.equal(inventoryQuery({ q: "x", venue: "etsy", status: "lost" }), "q=x&venue=&status=&limit=200", "unknown: All");
+});
+
+test("the inventory's rows: only objects with a sku; the count line", () => {
+    assert.deepEqual(inventoryRows(null), []);
+    assert.deepEqual(inventoryRows({ rows: "no" }), []);
+    assert.deepEqual(inventoryRows({ rows: [{ sku: "A" }, null, { title: "no sku" }, { sku: "" }, "B"] }), [{ sku: "A" }]);
+    assert.equal(inventoryCount(0), "No listings match.");
+    assert.equal(inventoryCount(1), "1 listing");
+    assert.equal(inventoryCount(12), "12 listings");
+    assert.equal(inventoryCount(200), "The newest 200 listings; search to narrow them.");
+});
+
+test("a row's price: whole dollars when .00, cents otherwise, nothing for none", () => {
+    assert.equal(priceWord("24.00"), "$24");
+    assert.equal(priceWord("24.50"), "$24.50");
+    assert.equal(priceWord("24.5"), "$24.50");
+    assert.equal(priceWord(14), "$14");
+    assert.equal(priceWord(null), "");
+    assert.equal(priceWord(""), "");
+    assert.equal(priceWord("0.00"), "");
+});
+
+test("a venue's badge: listed green, sold and ended muted, a draft outlined", () => {
+    assert.deepEqual(statusBadge("ebay", "listed"), { text: "ebay listed", kind: "posted" });
+    assert.deepEqual(statusBadge("ebay", "sold"), { text: "ebay sold", kind: "muted" });
+    assert.deepEqual(statusBadge("craigslist", "ended"), { text: "craigslist ended", kind: "muted" });
+    assert.deepEqual(statusBadge("craigslist", "draft"), { text: "craigslist draft", kind: "draft" });
+    assert.deepEqual(statusBadge("ebay", ""), { text: "ebay", kind: "draft" });
+    assert.deepEqual(statusBadge("ebay", "paused"), { text: "ebay paused", kind: "draft" });
+});
+
+const ROW = {
+    sku: "R5GM4XZN",
+    title: "Brass lamp",
+    price: "24.00",
+    condition: "Used",
+    category: "Lamps",
+    category_path: "Home > Lighting > Lamps",
+    quantity: 2,
+    venues: ["ebay", "craigslist"],
+    photos: [
+        { n: 1, name: "R5GM4XZN-1.jpg" },
+        { n: 3, name: "" },
+        { n: 0, name: "bad" },
+        { name: "no number" },
+    ],
+    note: "from the attic",
+    isbn: "",
+    pickup_only: true,
+    model_cost: "0.1046",
+    description: "Brass.\nWorks.",
+    condition_note: "Light wear",
+    source: "Lamp 2026-10-03",
+    condition_details: { "Professional grader": "PSA" },
+    aspects: { Brand: ["Acme"], Color: ["Brass", "Gold"], Empty: [] },
+    package: { weight_oz: "5", length_in: "8", width_in: "6", height_in: "2" },
+    craigslist: { title: "", price: "30.00", description: "Brass lamp, pickup in town", category: null },
+    statuses: {
+        ebay: {
+            status: "listed",
+            id: "257780366045",
+            url: "https://www.ebay.com/itm/257780366045",
+            listed_at: "2026-10-03T16:21:47-05:00",
+        },
+        craigslist: { status: "draft", id: "", url: "javascript:alert(1)", listed_at: null },
+    },
+};
+
+test("a row's title, heading, badges, venues and photos", () => {
+    assert.equal(rowTitle(ROW), "Brass lamp");
+    assert.equal(rowTitle({ sku: "X1", title: " " }), "X1", "no title: the sku");
+    assert.equal(rowHeading(ROW), "Brass lamp · $24");
+    assert.equal(rowHeading({ sku: "X1", title: "Vase", price: null }), "Vase");
+    assert.deepEqual(rowBadges(ROW), [
+        { text: "ebay listed", kind: "posted" },
+        { text: "craigslist draft", kind: "draft" },
+    ]);
+    assert.deepEqual(rowBadges({ sku: "X", venues: ["ebay"] }), [{ text: "ebay", kind: "draft" }]);
+    assert.deepEqual(rowVenues(ROW), ["ebay", "craigslist"]);
+    assert.deepEqual(rowVenues({ statuses: { craigslist: {} } }), ["craigslist"]);
+    assert.deepEqual(rowVenues({}), []);
+    assert.deepEqual(rowPhotos(ROW), [
+        { n: 1, name: "R5GM4XZN-1.jpg" },
+        { n: 3, name: "photo 3" },
+    ]);
+    assert.deepEqual(rowPhotos({ photos: 5 }), [], "a summary counts its photos, it does not list them");
+    assert.deepEqual(venueStatus(ROW, "craigslist"), { status: "draft", id: "", url: "", listedAt: "" }, "no javascript: link");
+});
+
+test("craigslist's overrides: the override, or derived from eBay", () => {
+    assert.equal(DERIVED, "derived from eBay");
+    assert.equal(derivedOr("Brass lamp"), "Brass lamp");
+    assert.equal(derivedOr(""), DERIVED);
+    assert.equal(derivedOr("  "), DERIVED);
+    assert.equal(derivedOr(null), DERIVED);
+});
+
+test("when a listing went up: short, in the phone's own time", () => {
+    assert.equal(listedAtWord("2026-10-03T16:21:47-05:00", -300), "2026-10-03 16:21");
+    assert.equal(listedAtWord("2026-10-03T16:21:47-05:00", 120), "2026-10-03 23:21");
+    assert.equal(listedAtWord("2026-10-03T23:30:00-05:00", 0), "2026-10-04 04:30", "the date moves with the time");
+    assert.equal(listedAtWord(null), "");
+    assert.equal(listedAtWord(""), "");
+    assert.equal(listedAtWord("yesterday"), "yesterday", "not a date: as it came");
+    // without an offset, the phone's own
+    const t = new Date("2026-10-03T16:21:47-05:00");
+    const own = listedAtWord("2026-10-03T16:21:47-05:00");
+    assert.equal(own.slice(11), `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`);
+});
+
+test("the parcel and name: value lines", () => {
+    assert.equal(packageWord(ROW.package), "5 oz, 8 x 6 x 2 in");
+    assert.equal(packageWord({ weight_oz: "12", length_in: "", width_in: "6", height_in: "2" }), "12 oz");
+    assert.equal(packageWord(null), "");
+    assert.equal(namedLines(ROW.aspects), "Brand: Acme\nColor: Brass, Gold");
+    assert.equal(namedLines({ Grade: "9", Blank: "" }), "Grade: 9");
+    assert.equal(namedLines(null), "");
+    assert.equal(namedLines(["a"]), "");
+});
+
+test("the Item card: what the row is, quantity and pickup only always", () => {
+    assert.deepEqual(itemFacts(ROW), [
+        { label: "Condition", value: "Used" },
+        { label: "Category", value: "Home > Lighting > Lamps" },
+        { label: "Quantity", value: "2" },
+        { label: "Pickup only", value: "yes, no shipping on eBay" },
+        { label: "Description", value: "Brass.\nWorks.", pre: true },
+        { label: "Note", value: "from the attic", pre: true },
+        { label: "Package", value: "5 oz, 8 x 6 x 2 in" },
+        { label: "Model cost", value: "$0.1046" },
+        { label: "Source folder", value: "Lamp 2026-10-03", mono: true },
+    ]);
+    assert.deepEqual(itemFacts({ sku: "B", category: "Books", isbn: "9780306406157", model_cost: null }), [
+        { label: "Category", value: "Books" },
+        { label: "Quantity", value: "1" },
+        { label: "Pickup only", value: "no" },
+        { label: "ISBN", value: "9780306406157", mono: true },
+    ]);
+});
+
+test("the venue cards: status, id, link, listed at; eBay's fields; craigslist's four overrides", () => {
+    assert.deepEqual(venueFacts(ROW, "ebay", -300), [
+        { label: "Status", value: "listed" },
+        { label: "ID", value: "257780366045", mono: true },
+        { label: "Link", value: "https://www.ebay.com/itm/257780366045", link: true },
+        { label: "Listed at", value: "2026-10-03 16:21" },
+        { label: "Condition note", value: "Light wear", pre: true },
+        { label: "Condition details", value: "Professional grader: PSA", pre: true },
+        { label: "Aspects", value: "Brand: Acme\nColor: Brass, Gold", pre: true },
+    ]);
+    assert.deepEqual(venueFacts(ROW, "craigslist"), [
+        { label: "Status", value: "draft" },
+        { label: "Title", value: DERIVED, pre: false, derived: true },
+        { label: "Price", value: "$30", pre: false, derived: false },
+        { label: "Description", value: "Brass lamp, pickup in town", pre: true, derived: false },
+        { label: "Category", value: DERIVED, pre: false, derived: true },
+    ]);
+    // a row the PC gave no craigslist overrides: all four derived
+    const bare = venueFacts({ sku: "X", statuses: { craigslist: { status: "listed" } } }, "craigslist");
+    assert.deepEqual(bare.map((f) => `${f.label}: ${f.value}`), [
+        "Status: listed",
+        "Title: derived from eBay",
+        "Price: derived from eBay",
+        "Description: derived from eBay",
+        "Category: derived from eBay",
+    ]);
 });

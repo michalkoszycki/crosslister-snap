@@ -150,6 +150,60 @@ test("the work section reads top to bottom the way Michal asked", () => {
     }
 });
 
+test("Admin reads top to bottom: Settings, the inventory and a listing's foldouts, Close", () => {
+    // Michal, 2026-10-06: "Admin which would replace Settings ... settings and inventory
+    // would be a foldout in the admin section ... all the cards are different foldouts"
+    assert.match(html, /id="admin-toggle"[^>]*aria-controls="admin">Admin</);
+    assert.ok(!html.includes('id="settings-close"'), "Close is Admin's now");
+    const admin = /<section id="admin"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
+    const order = [...admin.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(order, [
+        "settings-toggle",
+        "settings",
+        "settings-server",
+        "pc-address",
+        "pc-key",
+        "settings-save",
+        "settings-status",
+        "inventory-toggle",
+        "inventory",
+        "inventory-browse",
+        "inventory-search",
+        // the status line right under the search box: the count, or the PC's trouble
+        "inventory-status",
+        "inventory-venue",
+        "inventory-venue-all",
+        "inventory-venue-ebay",
+        "inventory-venue-craigslist",
+        "inventory-state",
+        "inventory-state-all",
+        "inventory-state-draft",
+        "inventory-state-listed",
+        "inventory-state-sold",
+        "inventory-state-ended",
+        "inventory-photos",
+        "inventory-list",
+        // a listing, in place of the list
+        "inventory-detail",
+        "inventory-back",
+        "detail-heading",
+        "detail-status",
+        "detail-item-toggle",
+        "detail-item",
+        "detail-photos-toggle",
+        "detail-photos",
+        "detail-ebay-toggle",
+        "detail-ebay",
+        "detail-craigslist-toggle",
+        "detail-craigslist",
+        "admin-close",
+    ]);
+    assert.match(html, /id="inventory-search"[^>]*inputmode="search"/);
+    // the full-size photo lies over everything, outside main
+    const after = html.slice(html.indexOf("</main>"));
+    assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
+});
+
 test("the manifest points at icons that exist", () => {
     const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
     assert.equal(manifest.display, "standalone");
@@ -386,9 +440,11 @@ test("app.js loads against the real index.html ids, with no settings yet", async
     }
     assert.equal(nodes.get("ebay-btn").disabled, true);
     assert.equal(nodes.get("craigslist-btn").disabled, true);
-    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Settings");
+    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Admin");
     assert.equal(nodes.get("next-item").disabled, true);
+    assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("settings").hidden, true);
+    assert.equal(nodes.get("photo-view").hidden, true);
     const { VERSION } = await import("../version.js");
     assert.equal(nodes.get("version").textContent, VERSION);
 });
@@ -399,8 +455,8 @@ test("the page still works when the browser blocks storage outright", async () =
             throw new Error("SecurityError");
         },
     });
-    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Settings");
-    nodes.get("settings-toggle").fire("click");
+    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Admin");
+    nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("settings").hidden, false);
     assert.equal(nodes.get("pc-address").value, "");
 });
@@ -416,7 +472,7 @@ test("Settings: a bad address is refused on the page; a good one is saved and ch
             return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
         },
     });
-    nodes.get("settings-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click");
     nodes.get("pc-address").value = "http://pc.tail1234.ts.net";
     nodes.get("pc-key").value = "test-key-0123456789";
     nodes.get("settings-save").fire("click");
@@ -445,7 +501,7 @@ test("Settings: a wrong key is reported as such", async (t) => {
                 status: 401,
             }),
     });
-    nodes.get("settings-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click");
     nodes.get("pc-address").value = "http://127.0.0.1:8765";
     nodes.get("pc-key").value = "wrong-key-0123456789";
     nodes.get("settings-save").fire("click");
@@ -1051,14 +1107,407 @@ test("the PC coming back is noticed by the check: waiting photos go without wait
     assert.deepEqual(badges(nodes), ["sent"]);
 });
 
-test("Settings has a Close button", async (t) => {
+test("Admin has a Close button at its bottom", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const { nodes } = await loadPage();
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("admin-toggle").attrs["aria-expanded"], "true");
+    nodes.get("admin-close").fire("click");
+    assert.equal(nodes.get("admin").hidden, true);
+    assert.equal(nodes.get("admin-toggle").attrs["aria-expanded"], "false");
+    // the header link again opens it, and closes it, as Settings' did
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("admin").hidden, true);
+});
+
+// --- Admin: Settings and the inventory (Michal, 2026-10-06) ------------------------------
+
+/** Rows as GET /inventory gives them: a summary each, newest first. */
+function summary(sku, over = {}) {
+    return {
+        sku,
+        title: `Item ${sku}`,
+        price: "24.00",
+        condition: "Used",
+        category: "Lamps",
+        category_path: "Home > Lamps",
+        quantity: 1,
+        venues: ["ebay", "craigslist"],
+        photos: 2,
+        note: "",
+        isbn: "",
+        pickup_only: false,
+        model_cost: "0.1046",
+        statuses: {
+            ebay: {
+                status: "listed",
+                id: "257780366045",
+                url: "https://www.ebay.com/itm/257780366045",
+                listed_at: "2026-10-03T16:21:47-05:00",
+            },
+            craigslist: { status: "draft", id: "", url: "", listed_at: null },
+        },
+        ...over,
+    };
+}
+
+/** The whole row, as GET /inventory/<sku> gives it. */
+function wholeRow(sku, over = {}) {
+    return {
+        ...summary(sku),
+        description: "A brass lamp.\nWorks.",
+        condition_note: "Light wear on the base",
+        source: `Lamp ${TODAY}`,
+        condition_details: {},
+        aspects: { Brand: ["Acme"], Color: ["Brass", "Gold"] },
+        package: { weight_oz: "5", length_in: "8", width_in: "6", height_in: "2" },
+        craigslist: { title: "Brass lamp, works", price: null, description: "", category: "" },
+        photos: [
+            { n: 1, name: `${sku}-1.jpg` },
+            { n: 2, name: `${sku}-2.jpg` },
+        ],
+        ...over,
+    };
+}
+
+/**
+ * The fake PC with Admin's routes: GET /inventory answers `rows` (the query is
+ * in pc.calls), /inventory/<sku> the whole row, /inventory/<sku>/photos/<n> an
+ * image for any photo the row names.
+ */
+function inventoryPc(rows, wholes = {}) {
+    const pc = fakePc();
+    const base = pc.fetch;
+    pc.fetch = async (url, init = {}) => {
+        const u = new URL(url);
+        const parts = u.pathname.split("/").slice(1).map(decodeURIComponent);
+        if (parts[0] !== "inventory") return base(url, init);
+        pc.calls.push(`GET /${parts.join("/")}${u.search}`);
+        if (pc.down) throw new TypeError("Failed to fetch");
+        const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+        if (!parts[1]) return json({ rows });
+        const whole = wholes[parts[1]];
+        if (!whole) return json({ detail: `no row ${parts[1]}` }, 404);
+        if (parts[2] === "photos") {
+            if (!whole.photos.some((p) => p.n === Number(parts[3]))) return json({ detail: "no such photo" }, 404);
+            return new Response(`jpeg ${parts[1]} ${parts[3]}`, { status: 200, headers: { "Content-Type": "image/jpeg" } });
+        }
+        return json(whole);
+    };
+    return pc;
+}
+
+const ALL = "venue=&status=&limit=200";
+
+/** The list's rows as the screen shows them: the button's words, each part by its class. */
+function listed(nodes) {
+    return nodes.get("inventory-list").children.map((li) => {
+        const open = li.children[0];
+        const words = open.children.find((c) => c.className === "inv-words");
+        const [title, line, badges] = words.children;
+        return {
+            title: title.textContent,
+            line: line.children.map((c) => c.textContent).join(" "),
+            badges: badges.children.map((b) => `${b.textContent} (${b.className})`),
+            thumb: open.children.find((c) => c.className === "inv-thumb"),
+            open,
+        };
+    });
+}
+
+/** A detail card's facts: "label: value", a derived override marked. */
+function facts(card) {
+    const list = card.children[0];
+    const out = [];
+    for (let i = 0; i < list.children.length; i += 2) {
+        const value = list.children[i + 1];
+        const text = value.children.length ? value.children[0].textContent : value.textContent;
+        out.push(`${list.children[i].textContent}: ${text}${value.className.includes("derived") ? " (muted)" : ""}`);
+    }
+    return out;
+}
+
+test("Admin opens on Settings while they are missing; Settings work inside it as before", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { nodes } = await loadPage();
+    assert.equal(nodes.get("admin").hidden, true);
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("settings").hidden, false, "no settings yet: Settings opens by itself");
+    assert.equal(nodes.get("settings-toggle").textContent, "▾ Settings");
+    assert.equal(nodes.get("settings-toggle").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("inventory").hidden, true);
+    assert.equal(nodes.get("inventory-toggle").textContent, "▸ Inventory");
+    // folded by hand, opened by hand
     nodes.get("settings-toggle").fire("click");
-    assert.equal(nodes.get("settings").hidden, false);
-    nodes.get("settings-close").fire("click");
     assert.equal(nodes.get("settings").hidden, true);
-    assert.equal(nodes.get("settings-toggle").attrs["aria-expanded"], "false");
+    assert.equal(nodes.get("settings-toggle").textContent, "▸ Settings");
+    // the inventory without settings asks nothing and says why
+    nodes.get("inventory-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory").hidden, false);
+    assert.equal(nodes.get("inventory-status").textContent, "Set the PC address and key under Settings first.");
+});
+
+test("Admin opens on the inventory once Settings are right: the PC's rows, one button each", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([
+        summary("R5GM4XZN"),
+        summary("B-0042", {
+            title: "A very long title that goes on and on without a break",
+            price: "24.50",
+            venues: ["ebay"],
+            statuses: { ebay: { status: "sold", id: "1", url: "", listed_at: null } },
+        }),
+        summary("NOPRICE", { price: null, venues: [], statuses: {} }),
+    ]);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("settings").hidden, true, "settings are right: folded");
+    assert.equal(nodes.get("inventory").hidden, false);
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory");
+    assert.equal(nodes.get("inventory-status").textContent, "Asking the PC...");
+    await settle();
+    assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
+    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+    const rows = listed(nodes);
+    assert.deepEqual(
+        rows.map(({ title, line, badges }) => ({ title, line, badges })),
+        [
+            {
+                title: "Item R5GM4XZN",
+                line: "$24 R5GM4XZN",
+                badges: ["ebay listed (vbadge posted)", "craigslist draft (vbadge draft)"],
+            },
+            {
+                title: "A very long title that goes on and on without a break",
+                line: "$24.50 B-0042",
+                badges: ["ebay sold (vbadge muted)"],
+            },
+            { title: "Item NOPRICE", line: "NOPRICE", badges: [] },
+        ]
+    );
+    assert.equal(rows[0].open.tag, "button");
+    assert.equal(rows[0].thumb, undefined, "Show photos is off: no tiles, no photo fetched");
+    assert.equal(nodes.get("inventory-detail").hidden, true);
+});
+
+test("the search waits for him to stop typing; the chips and Show photos ask at once", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "No listings match.");
+    assert.deepEqual(nodes.get("inventory-list").children, []);
+
+    nodes.get("inventory-search").value = "blue lamp ";
+    nodes.get("inventory-search").fire("input");
+    await settle();
+    t.mock.timers.tick(399);
+    await settle();
+    assert.equal(pc.calls.length, 1, "not while typing");
+    t.mock.timers.tick(1);
+    await settle();
+    assert.equal(pc.calls.at(-1), `GET /inventory?q=blue%20lamp&${ALL}`);
+
+    nodes.get("inventory-venue-craigslist").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-venue-craigslist").attrs["aria-pressed"], "true");
+    assert.equal(nodes.get("inventory-venue-all").attrs["aria-pressed"], "false");
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=&limit=200");
+    nodes.get("inventory-state-sold").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-state-sold").attrs["aria-pressed"], "true");
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=sold&limit=200");
+    nodes.get("inventory-venue-all").fire("click");
+    nodes.get("inventory-state-all").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=&status=&limit=200");
+    const before = pc.calls.length;
+    nodes.get("inventory-photos").checked = true;
+    nodes.get("inventory-photos").fire("change");
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), [`GET /inventory?q=blue%20lamp&${ALL}`]);
+});
+
+test("Show photos puts photo 1 of each row on its left, fetched one at a time", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc(
+        [summary("A1"), summary("NONE", { photos: 0 }), summary("B2")],
+        { A1: wholeRow("A1"), B2: wholeRow("B2") }
+    );
+    const revoked = [];
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    let made = 0;
+    globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
+    globalThis.URL.revokeObjectURL = (url) => revoked.push(url);
+    nodes.get("inventory-photos").checked = true;
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`, "GET /inventory/A1/photos/1", "GET /inventory/B2/photos/1"]);
+    const rows = listed(nodes);
+    assert.equal(rows[0].thumb.children[0].tag, "img");
+    assert.equal(rows[0].thumb.children[0].src, "blob:1");
+    assert.equal(rows[1].thumb.textContent, "no photo");
+    assert.equal(rows[2].thumb.children[0].src, "blob:2");
+    // the list changing lets its pictures go
+    nodes.get("inventory-photos").checked = false;
+    nodes.get("inventory-photos").fire("change");
+    await settle();
+    assert.deepEqual(revoked, ["blob:1", "blob:2"]);
+    assert.equal(listed(nodes)[0].thumb, undefined);
+});
+
+test("a PC that cannot be reached is said under the search box; the list stays", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")]);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(listed(nodes).length, 1);
+    pc.down = true;
+    nodes.get("inventory-state-listed").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "Could not read the inventory: cannot reach the PC.");
+    assert.equal(listed(nodes).length, 1, "nothing else changes");
+    assert.equal(nodes.get("server").textContent, "server off");
+});
+
+test("a key the PC does not know: the inventory says so and Settings opens to put it right", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { nodes } = await loadPage({
+        local: memoryStore(GOOD),
+        fetchImpl: async () => new Response(JSON.stringify({ detail: "wrong" }), { status: 401 }),
+    });
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("settings").hidden, true, "the settings look right on the phone");
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "Could not read the inventory: wrong key - check Settings.");
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("pc-key").value, GOOD["snap.key"]);
+});
+
+test("a row tapped: its detail in place of the list, four foldouts, the photos, full size and back", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("R5GM4XZN")], { R5GM4XZN: wholeRow("R5GM4XZN") });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    let made = 0;
+    globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    // the summary at once, the whole row once the PC gives it
+    assert.equal(nodes.get("inventory-browse").hidden, true);
+    assert.equal(nodes.get("inventory-detail").hidden, false);
+    assert.equal(nodes.get("detail-heading").textContent, "Item R5GM4XZN · $24");
+    assert.equal(nodes.get("detail-status").textContent, "Reading R5GM4XZN from the PC...");
+    await settle();
+    assert.deepEqual(pc.calls.slice(1), [
+        "GET /inventory/R5GM4XZN",
+        "GET /inventory/R5GM4XZN/photos/1",
+        "GET /inventory/R5GM4XZN/photos/2",
+    ]);
+    assert.equal(nodes.get("detail-status").hidden, true);
+
+    // Item and Photos open, the venue cards folded, each with its arrow
+    const toggles = ["item", "photos", "ebay", "craigslist"].map((k) => nodes.get(`detail-${k}-toggle`));
+    assert.deepEqual(
+        toggles.map((n) => `${n.textContent} ${n.hidden ? "hidden" : "shown"}`),
+        ["▾ Item shown", "▾ Photos shown", "▸ ebay shown", "▸ craigslist shown"]
+    );
+    assert.equal(nodes.get("detail-item").hidden, false);
+    assert.equal(nodes.get("detail-ebay").hidden, true);
+    assert.deepEqual(facts(nodes.get("detail-item")), [
+        "Condition: Used",
+        "Category: Home > Lamps",
+        "Quantity: 1",
+        "Pickup only: no",
+        "Description: A brass lamp.\nWorks.",
+        "Package: 5 oz, 8 x 6 x 2 in",
+        "Model cost: $0.1046",
+        `Source folder: Lamp ${TODAY}`,
+    ]);
+    const description = nodes.get("detail-item").children[0].children[9];
+    assert.equal(description.className, "pre", "kept as written, line breaks and all");
+
+    nodes.get("detail-ebay-toggle").fire("click");
+    assert.equal(nodes.get("detail-ebay").hidden, false);
+    assert.equal(nodes.get("detail-ebay-toggle").textContent, "▾ ebay");
+    const ebay = facts(nodes.get("detail-ebay"));
+    assert.deepEqual(ebay.slice(0, 3), ["Status: listed", "ID: 257780366045", "Link: https://www.ebay.com/itm/257780366045"]);
+    assert.match(ebay[3], /^Listed at: 2026-10-0\d \d\d:\d\d$/);
+    assert.deepEqual(ebay.slice(4), ["Condition note: Light wear on the base", "Aspects: Brand: Acme\nColor: Brass, Gold"]);
+    const link = nodes.get("detail-ebay").children[0].children[5].children[0];
+    assert.equal(link.tag, "a");
+    assert.equal(link.rel, "noopener noreferrer");
+    // read-only: the actions row is there, empty, for a later lane
+    assert.equal(nodes.get("detail-ebay").children[1].className, "venue-actions");
+    assert.deepEqual(nodes.get("detail-ebay").children[1].children, []);
+
+    nodes.get("detail-craigslist-toggle").fire("click");
+    assert.deepEqual(facts(nodes.get("detail-craigslist")), [
+        "Status: draft",
+        "Title: Brass lamp, works",
+        "Price: derived from eBay (muted)",
+        "Description: derived from eBay (muted)",
+        "Category: derived from eBay (muted)",
+    ]);
+    nodes.get("detail-item-toggle").fire("click");
+    assert.equal(nodes.get("detail-item").hidden, true);
+    assert.equal(nodes.get("detail-item-toggle").attrs["aria-expanded"], "false");
+
+    // the photos: 88 px tiles, each its picture; a tap shows it full size
+    const tiles = nodes.get("detail-photos").children[0].children.map((li) => li.children[0]);
+    assert.equal(tiles.length, 2);
+    assert.deepEqual(tiles.map((b) => b.children[0].src), ["blob:1", "blob:2"]);
+    assert.equal(tiles[1].disabled, false);
+    assert.equal(nodes.get("photo-view").hidden, true);
+    tiles[1].fire("click");
+    assert.equal(nodes.get("photo-view").hidden, false);
+    assert.equal(nodes.get("photo-view-img").src, "blob:2");
+    assert.equal(nodes.get("photo-view-img").alt, "R5GM4XZN-2.jpg");
+    nodes.get("photo-view-close").fire("click");
+    assert.equal(nodes.get("photo-view").hidden, true);
+    // a tap anywhere on it closes it too
+    tiles[0].fire("click");
+    assert.equal(nodes.get("photo-view-img").src, "blob:1");
+    nodes.get("photo-view").fire("click");
+    assert.equal(nodes.get("photo-view").hidden, true);
+
+    // back: the list as it was, no new query
+    const asked = pc.calls.length;
+    nodes.get("inventory-back").fire("click");
+    assert.equal(nodes.get("inventory-detail").hidden, true);
+    assert.equal(nodes.get("inventory-browse").hidden, false);
+    assert.equal(listed(nodes).length, 1);
+    await settle();
+    assert.equal(pc.calls.length, asked);
+});
+
+test("a row with one venue has that venue's card only; a row the PC no longer has says so", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const only = summary("EB1", { venues: ["ebay"], statuses: { ebay: { status: "draft", id: "", url: "", listed_at: null } } });
+    const pc = inventoryPc([only, summary("GONE")], { EB1: wholeRow("EB1", { statuses: only.statuses, photos: [] }) });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    assert.equal(nodes.get("detail-ebay-toggle").hidden, false);
+    assert.equal(nodes.get("detail-craigslist-toggle").hidden, true);
+    assert.equal(nodes.get("detail-craigslist").hidden, true);
+    assert.equal(nodes.get("detail-photos").children[0].textContent, "No photos.");
+
+    nodes.get("inventory-back").fire("click");
+    listed(nodes)[1].open.fire("click");
+    await settle();
+    assert.equal(nodes.get("detail-status").hidden, false);
+    assert.equal(nodes.get("detail-status").textContent, "Could not read GONE: no row GONE.");
+    assert.equal(nodes.get("detail-heading").textContent, "Item GONE · $24", "the summary stays on screen");
 });
 
 test("a photo the PC refuses shows failed; a tap sends it again", async (t) => {

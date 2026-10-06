@@ -28,8 +28,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.0.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.0.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.1.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.1.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -52,8 +52,8 @@
   </h1>
   <div class="header-right">
     <span id="server" class="server" aria-live="polite"></span>
-    <button type="button" id="settings-toggle" class="link" aria-expanded="false"
-            aria-controls="settings">Settings</button>
+    <button type="button" id="admin-toggle" class="link" aria-expanded="false"
+            aria-controls="admin">Admin</button>
   </div>
 </header>
 
@@ -70,21 +70,96 @@
   </p>
   <p id="message" class="message" hidden></p>
 
-  <section id="settings" class="card" hidden>
-    <p id="settings-server" class="server server-line"></p>
-    <label class="field">
-      <span class="field-label">PC address</span>
-      <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
-             spellcheck="false" placeholder="https://pc.tail1234.ts.net">
-    </label>
-    <label class="field">
-      <span class="field-label">Key</span>
-      <input id="pc-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-             placeholder="from CROSSLISTER_KEYS on the PC">
-    </label>
-    <button type="button" id="settings-save" class="secondary">Save and check</button>
-    <p id="settings-status" class="small"></p>
-    <button type="button" id="settings-close" class="secondary">Close</button>
+  <!-- Admin, where Settings was (Michal, 2026-10-06: "accessible through Admin which would
+       replace Settings. Settings would remain part of Admin though"): two foldouts in
+       customize's pattern, Settings and the inventory. Read-only: a listing's cards show
+       what the PC holds; nothing here changes it. -->
+  <section id="admin" class="admin" hidden>
+    <h2 class="admin-title">Admin</h2>
+    <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="settings">▸ Settings</button>
+    <div id="settings" class="card" hidden>
+      <p id="settings-server" class="server server-line"></p>
+      <label class="field">
+        <span class="field-label">PC address</span>
+        <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="https://pc.tail1234.ts.net">
+      </label>
+      <label class="field">
+        <span class="field-label">Key</span>
+        <input id="pc-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="from CROSSLISTER_KEYS on the PC">
+      </label>
+      <button type="button" id="settings-save" class="secondary">Save and check</button>
+      <p id="settings-status" class="small"></p>
+    </div>
+
+    <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="inventory">▸ Inventory</button>
+    <div id="inventory" class="card inventory" hidden>
+      <!-- the list: the search, the two filters, the photos or not, one row per listing -->
+      <div id="inventory-browse">
+        <label class="field">
+          <span class="field-label">Search</span>
+          <input id="inventory-search" type="text" inputmode="search" enterkeyhint="search"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
+        </label>
+        <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
+        <div class="field">
+          <span class="field-label">Venue</span>
+          <div id="inventory-venue" class="chips chips-three" role="group" aria-label="Venue">
+            <button type="button" id="inventory-venue-all" class="chip" data-value=""
+                    aria-pressed="true">All</button>
+            <button type="button" id="inventory-venue-ebay" class="chip" data-value="ebay"
+                    aria-pressed="false">ebay</button>
+            <button type="button" id="inventory-venue-craigslist" class="chip" data-value="craigslist"
+                    aria-pressed="false">craigslist</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Status</span>
+          <div id="inventory-state" class="chips chips-five" role="group" aria-label="Status">
+            <button type="button" id="inventory-state-all" class="chip" data-value=""
+                    aria-pressed="true">All</button>
+            <button type="button" id="inventory-state-draft" class="chip" data-value="draft"
+                    aria-pressed="false">draft</button>
+            <button type="button" id="inventory-state-listed" class="chip" data-value="listed"
+                    aria-pressed="false">listed</button>
+            <button type="button" id="inventory-state-sold" class="chip" data-value="sold"
+                    aria-pressed="false">sold</button>
+            <button type="button" id="inventory-state-ended" class="chip" data-value="ended"
+                    aria-pressed="false">ended</button>
+          </div>
+        </div>
+        <!-- the same pill row as pickup only; photos make the list less compact, so off by default -->
+        <label class="pickup">
+          <input id="inventory-photos" type="checkbox">
+          <span>Show photos</span>
+        </label>
+        <ul id="inventory-list" class="inventory-list"></ul>
+      </div>
+
+      <!-- one listing, in place of the list: its cards as foldouts, Item and Photos open -->
+      <div id="inventory-detail" hidden>
+        <button type="button" id="inventory-back" class="link back-link">← Back to the list</button>
+        <h2 id="detail-heading" class="detail-heading"></h2>
+        <p id="detail-status" class="small" aria-live="polite" hidden></p>
+        <button type="button" id="detail-item-toggle" class="link customize-toggle" aria-expanded="true"
+                aria-controls="detail-item">▾ Item</button>
+        <div id="detail-item" class="card fold"></div>
+        <button type="button" id="detail-photos-toggle" class="link customize-toggle" aria-expanded="true"
+                aria-controls="detail-photos">▾ Photos</button>
+        <div id="detail-photos" class="card fold"></div>
+        <button type="button" id="detail-ebay-toggle" class="link customize-toggle" aria-expanded="false"
+                aria-controls="detail-ebay">▸ ebay</button>
+        <div id="detail-ebay" class="card fold" hidden></div>
+        <button type="button" id="detail-craigslist-toggle" class="link customize-toggle" aria-expanded="false"
+                aria-controls="detail-craigslist">▸ craigslist</button>
+        <div id="detail-craigslist" class="card fold" hidden></div>
+      </div>
+    </div>
+
+    <button type="button" id="admin-close" class="secondary">Close</button>
   </section>
 
   <section id="work">
@@ -296,10 +371,16 @@
   </section>
 </main>
 
+<!-- a listing's photo full size, over everything: a tap anywhere on it closes it -->
+<div id="photo-view" class="photo-view" role="dialog" aria-modal="true" aria-label="Photo, full size" hidden>
+  <img id="photo-view-img" class="photo-view-img" alt="">
+  <button type="button" id="photo-view-close" class="photo-view-close">Close</button>
+</div>
+
 <footer class="small">
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.0.0"></script>
+<script type="module" src="app.js?v=2.1.0"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.0.0";
+import { noteDirty, unsent } from "./queue.js?v=2.1.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.0.0";
+} from "./book.js?v=2.1.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1526,7 +1526,8 @@ export function venueLabel(job, venue) {
     return venue;
 }
 
-export const SETTINGS_HINT = "Set the PC address and key in Settings";
+/** Settings live inside Admin since 2.1.0 (Michal, 2026-10-06: "Admin which would replace Settings"). */
+export const SETTINGS_HINT = "Set the PC address and key in Admin";
 
 /** How long after the last keystroke the item name is checked against the PC. */
 export const NAME_CHECK_MS = 500;
@@ -1788,4 +1789,291 @@ export function bannerText(state) {
         return `${why[0].toUpperCase()}${why.slice(1)}. Photos wait on this page and go to the PC as soon as it answers.`;
     }
     return "";
+}
+
+// --- Admin: the inventory ------------------------------------------------------
+//
+// Michal, 2026-10-06: "somewhere where one can pull in all the listings ... inventory
+// list, with search options / filtering options ... clicking would need to show all
+// the card options and all the photos". The PC answers GET /inventory with a summary
+// per row and GET /inventory/<sku> with the whole row; what follows turns those into
+// the words the list and the detail show. Read-only: nothing here changes a row.
+
+/** The most rows one query asks for: the newest; a search narrows them. */
+export const INVENTORY_LIMIT = 200;
+
+/** The search box asks the PC this long after the last keystroke. */
+export const INVENTORY_DEBOUNCE_MS = 400;
+
+/** The venue filter's chips, All ("") first. */
+export const INVENTORY_VENUES = ["", ...VENUES];
+
+/** The status filter's chips, All ("") first. */
+export const INVENTORY_STATUSES = ["", "draft", "listed", "sold", "ended"];
+
+/** Said for an override left blank on the craigslist card: the PC fills it from the eBay fields. */
+export const DERIVED = "derived from eBay";
+
+/** A string field of an answer, trimmed; "" for anything else. */
+function plain(x) {
+    if (typeof x === "number" && Number.isFinite(x)) return String(x);
+    return typeof x === "string" ? x.trim() : "";
+}
+
+/**
+ * The query string of GET /inventory: every key always sent ("" for All), each
+ * URL-encoded, and the limit. An unknown venue or status is sent as All.
+ * @param {{q?:string, venue?:string, status?:string}} filters
+ * @returns {string} e.g. "q=blue%20lamp&venue=ebay&status=&limit=200"
+ */
+export function inventoryQuery({ q = "", venue = "", status = "" } = {}) {
+    const asked = {
+        q: plain(q),
+        venue: INVENTORY_VENUES.includes(venue) ? venue : "",
+        status: INVENTORY_STATUSES.includes(status) ? status : "",
+        limit: String(INVENTORY_LIMIT),
+    };
+    // encodeURIComponent, as searchBook does: a space is %20, never a "+"
+    return Object.entries(asked)
+        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .join("&");
+}
+
+/**
+ * The rows of GET /inventory's answer that are rows: objects with a sku.
+ * @param {unknown} answer
+ * @returns {Record<string, any>[]}
+ */
+export function inventoryRows(answer) {
+    const rows = answer && typeof answer === "object" && Array.isArray(answer.rows) ? answer.rows : [];
+    return rows.filter((r) => r && typeof r === "object" && typeof r.sku === "string" && r.sku);
+}
+
+/**
+ * The line under the search box once the PC answered.
+ * @param {number} n rows in the answer
+ * @returns {string}
+ */
+export function inventoryCount(n) {
+    if (n === 0) return "No listings match.";
+    if (n >= INVENTORY_LIMIT) return `The newest ${n} listings; search to narrow them.`;
+    return n === 1 ? "1 listing" : `${n} listings`;
+}
+
+/**
+ * A row's price as the screen says it: "$24" for "24.00", "$24.50"; "" for none.
+ * @param {unknown} price the PC's "24.00" or null
+ * @returns {string}
+ */
+export function priceWord(price) {
+    return money(priceText(price));
+}
+
+/**
+ * A venue's status as the PC keeps it on a row: the word, the listing's id and
+ * link (only an http(s) one), and when it went up.
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @returns {{status:string, id:string, url:string, listedAt:string}}
+ */
+export function venueStatus(row, venue) {
+    const all = row && row.statuses && typeof row.statuses === "object" ? row.statuses : {};
+    const s = all[venue] && typeof all[venue] === "object" ? all[venue] : {};
+    return { status: plain(s.status), id: plain(s.id), url: safeLink(s.url), listedAt: plain(s.listed_at) };
+}
+
+/**
+ * The small badge a list row wears per venue: the venue and its status word.
+ * Listed is the posted green, sold and ended are muted, a draft (or a word the
+ * page does not know) is outlined.
+ * @param {string} venue
+ * @param {string} status
+ * @returns {{text:string, kind:"posted"|"muted"|"draft"}}
+ */
+export function statusBadge(venue, status) {
+    const word = plain(status);
+    const kind = word === "listed" ? "posted" : word === "sold" || word === "ended" ? "muted" : "draft";
+    return { text: word ? `${venue} ${word}` : venue, kind };
+}
+
+/**
+ * One badge per venue the row names in `venues`, in that order.
+ * @param {Record<string, any>} row
+ */
+export function rowBadges(row) {
+    const venues = Array.isArray(row.venues) ? row.venues.map(plain).filter(Boolean) : [];
+    return venues.map((v) => statusBadge(v, venueStatus(row, v).status));
+}
+
+/** A row's title, or its sku when it has none. */
+export function rowTitle(row) {
+    return plain(row.title) || row.sku;
+}
+
+/**
+ * The detail's heading: the title and the price ("Brown boots · $24").
+ * @param {Record<string, any>} row
+ * @returns {string}
+ */
+export function rowHeading(row) {
+    const price = priceWord(row.price);
+    return price ? `${rowTitle(row)} · ${price}` : rowTitle(row);
+}
+
+/**
+ * The venues a row's detail has a card for: those in its statuses.
+ * @param {Record<string, any>} row
+ * @returns {string[]}
+ */
+export function rowVenues(row) {
+    const all = row && row.statuses && typeof row.statuses === "object" ? row.statuses : {};
+    return VENUES.filter((v) => all[v] && typeof all[v] === "object");
+}
+
+/**
+ * The photos of a whole row (GET /inventory/<sku>), by number: the summary's
+ * "photos" is a count, so it has none.
+ * @param {Record<string, any>} row
+ * @returns {{n:number, name:string}[]}
+ */
+export function rowPhotos(row) {
+    const list = Array.isArray(row.photos) ? row.photos : [];
+    return list
+        .filter((p) => p && Number.isInteger(p.n) && p.n > 0)
+        .map((p) => ({ n: p.n, name: plain(p.name) || `photo ${p.n}` }));
+}
+
+/**
+ * An override on the craigslist card: what was typed for craigslist, or, left
+ * blank, the words saying the PC derives it from the eBay fields.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function derivedOr(value) {
+    return plain(value) || DERIVED;
+}
+
+/**
+ * When a listing went up, short and in the phone's own time: "2026-10-03 16:21".
+ * "" when it has not; an answer that is not a date is shown as it came.
+ * @param {unknown} iso the PC's "2026-10-03T16:21:47-05:00"
+ * @param {number} [offsetMinutes] east of UTC; the phone's own by default
+ * @returns {string}
+ */
+export function listedAtWord(iso, offsetMinutes) {
+    const text = plain(iso);
+    if (!text) return "";
+    const t = Date.parse(text);
+    if (Number.isNaN(t)) return text;
+    const offset = offsetMinutes === undefined ? -new Date(t).getTimezoneOffset() : offsetMinutes;
+    const local = new Date(t + offset * 60000).toISOString();
+    return `${local.slice(0, 10)} ${local.slice(11, 16)}`;
+}
+
+/**
+ * The parcel: "5 oz, 8 x 6 x 2 in"; "" when the row has none.
+ * @param {unknown} pkg {"weight_oz", "length_in", "width_in", "height_in"} or null
+ * @returns {string}
+ */
+export function packageWord(pkg) {
+    if (!pkg || typeof pkg !== "object") return "";
+    const weight = plain(pkg.weight_oz);
+    const sides = [pkg.length_in, pkg.width_in, pkg.height_in].map(plain);
+    const parts = [];
+    if (weight) parts.push(`${weight} oz`);
+    if (sides.every(Boolean)) parts.push(`${sides.join(" x ")} in`);
+    return parts.join(", ");
+}
+
+/**
+ * {name: value} or {name: [values]} as lines: "Brand: Levi's\nSize: M, L".
+ * @param {unknown} pairs
+ * @returns {string}
+ */
+export function namedLines(pairs) {
+    if (!pairs || typeof pairs !== "object" || Array.isArray(pairs)) return "";
+    return Object.entries(pairs)
+        .map(([name, value]) => {
+            const words = (Array.isArray(value) ? value : [value]).map(plain).filter(Boolean);
+            return words.length ? `${name}: ${words.join(", ")}` : "";
+        })
+        .filter(Boolean)
+        .join("\n");
+}
+
+/**
+ * @typedef {Object} Fact
+ * @property {string} label
+ * @property {string} value
+ * @property {boolean} [pre]     kept as written, line breaks and all
+ * @property {boolean} [mono]    an id or a folder
+ * @property {boolean} [link]    a tappable address
+ * @property {boolean} [derived] an override left blank: muted
+ */
+
+/**
+ * The Item card: what the row is, whichever venue it goes to. Quantity and
+ * pickup only always; the rest only when the row has them.
+ * @param {Record<string, any>} row
+ * @returns {Fact[]}
+ */
+export function itemFacts(row) {
+    const quantity = Number.isInteger(row.quantity) ? String(row.quantity) : "1";
+    const cost = plain(row.model_cost);
+    /** @type {Fact[]} */
+    const facts = [
+        { label: "Condition", value: plain(row.condition) },
+        { label: "Category", value: plain(row.category_path) || plain(row.category) },
+        { label: "Quantity", value: quantity },
+        { label: "Pickup only", value: row.pickup_only === true ? "yes, no shipping on eBay" : "no" },
+        { label: "ISBN", value: plain(row.isbn), mono: true },
+        { label: "Description", value: plain(row.description), pre: true },
+        { label: "Note", value: plain(row.note), pre: true },
+        { label: "Package", value: packageWord(row.package) },
+        { label: "Model cost", value: cost ? `$${cost}` : "" },
+        { label: "Source folder", value: plain(row.source), mono: true },
+    ];
+    return facts.filter((f) => f.value);
+}
+
+/**
+ * A venue's card: its status, id, link and when it went up; then eBay's own
+ * fields (the condition note, the condition details, the aspects), or
+ * craigslist's four overrides, each the override or "derived from eBay".
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @param {number} [offsetMinutes] for listedAtWord
+ * @returns {Fact[]}
+ */
+export function venueFacts(row, venue, offsetMinutes) {
+    const s = venueStatus(row, venue);
+    /** @type {Fact[]} */
+    const facts = [
+        { label: "Status", value: s.status },
+        { label: "ID", value: s.id, mono: true },
+        { label: "Link", value: s.url, link: true },
+        { label: "Listed at", value: listedAtWord(s.listedAt, offsetMinutes) },
+    ];
+    if (venue === "ebay") {
+        facts.push(
+            { label: "Condition note", value: plain(row.condition_note), pre: true },
+            { label: "Condition details", value: namedLines(row.condition_details), pre: true },
+            { label: "Aspects", value: namedLines(row.aspects), pre: true }
+        );
+    }
+    const shown = facts.filter((f) => f.value);
+    if (venue === "craigslist") {
+        const own = row.craigslist && typeof row.craigslist === "object" ? row.craigslist : {};
+        const override = (label, value, pre = false) => {
+            const said = derivedOr(value);
+            return { label, value: said, pre, derived: said === DERIVED };
+        };
+        shown.push(
+            override("Title", own.title),
+            override("Price", priceWord(own.price)),
+            override("Description", own.description, true),
+            override("Category", own.category)
+        );
+    }
+    return shown;
 }
