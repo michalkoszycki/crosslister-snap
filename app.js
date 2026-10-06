@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.1.0";
+import { VERSION } from "./version.js?v=2.2.0";
 import {
     anyActive,
     bannerText,
@@ -34,6 +34,9 @@ import {
     noteStatusText,
     photosLocked,
     POLL_MS,
+    PRICING,
+    pricingOf,
+    savedNotPosted,
     progressLine,
     raiseCount,
     reduce,
@@ -76,8 +79,8 @@ import {
     rowTitle,
     rowVenues,
     venueFacts,
-} from "./core.js?v=2.1.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.1.0";
+} from "./core.js?v=2.2.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.2.0";
 import {
     cancelJob,
     checkPc,
@@ -95,8 +98,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.1.0";
-import { shrinkPhoto } from "./shrink.js?v=2.1.0";
+} from "./pc.js?v=2.2.0";
+import { shrinkPhoto } from "./shrink.js?v=2.2.0";
 import {
     bookCard,
     bookPriceValue,
@@ -109,8 +112,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.1.0";
-import { canScan, readIsbn } from "./scan.js?v=2.1.0";
+} from "./book.js?v=2.2.0";
+import { canScan, readIsbn } from "./scan.js?v=2.2.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -506,17 +509,40 @@ function renderBook() {
     renderNext(state, el.bookNextBtn, el.bookDoneHint, el.bookNextNote);
 }
 
-/** The customize nodes of a kind: the toggle, its card, the quantity box and the pickup box. */
+/**
+ * The customize nodes of a kind: the toggle, its card, the quantity box, the
+ * pickup box, the price slider with its three words and its line, and the
+ * post without asking box.
+ */
 function customizeNodes(m) {
     return m === "book"
-        ? { toggle: el.bookCustomizeToggle, card: el.bookCustomize, quantity: el.bookQuantity, pickup: el.bookPickupOnly }
-        : { toggle: el.customizeToggle, card: el.customize, quantity: el.quantity, pickup: el.pickupOnly };
+        ? {
+              toggle: el.bookCustomizeToggle,
+              card: el.bookCustomize,
+              quantity: el.bookQuantity,
+              pickup: el.bookPickupOnly,
+              pricing: el.bookPricing,
+              pricingWords: el.bookPricingWords,
+              pricingNote: el.bookPricingNote,
+              autoPost: el.bookAutoPost,
+          }
+        : {
+              toggle: el.customizeToggle,
+              card: el.customize,
+              quantity: el.quantity,
+              pickup: el.pickupOnly,
+              pricing: el.pricing,
+              pricingWords: el.pricingWords,
+              pricingNote: el.pricingNote,
+              autoPost: el.autoPost,
+          };
 }
 
 /**
  * customize: the arrow and the card follow the open flag; the boxes lock once a
  * job is on its way (as the photos do). The quantity box is not rewritten here,
  * so a half-typed number stays as typed; DONE and a reload fill it (fillCustomize).
+ * The price slider's chosen word is bold and its line says what the grade means.
  */
 function renderCustomize(m) {
     const nodes = customizeNodes(m);
@@ -525,9 +551,18 @@ function renderCustomize(m) {
     nodes.toggle.setAttribute("aria-expanded", open ? "true" : "false");
     nodes.card.hidden = !open;
     const fixed = restoring[m] || anyActive(slots[m]);
+    const c = customizeOf(slots[m]);
     nodes.quantity.disabled = fixed;
     nodes.pickup.disabled = fixed;
-    nodes.pickup.checked = customizeOf(slots[m]).pickupOnly;
+    nodes.pickup.checked = c.pickupOnly;
+    const grade = pricingOf(c.pricing);
+    nodes.pricing.disabled = fixed;
+    nodes.pricing.value = String(grade.grade);
+    nodes.pricing.setAttribute("aria-valuetext", grade.word);
+    PRICING.forEach((p, i) => nodes.pricingWords[i].classList.toggle("on", p.grade === grade.grade));
+    nodes.pricingNote.textContent = grade.note;
+    nodes.autoPost.disabled = fixed;
+    nodes.autoPost.checked = c.autoPost;
 }
 
 /** The customize boxes show what the state holds (after a reload or a DONE). */
@@ -555,12 +590,12 @@ function renderVenue(state, venue, ok, nodes) {
     nodes.btn.setAttribute("aria-busy", active ? "true" : "false");
     nodes.btn.textContent = venue;
     nodes.btn.setAttribute("aria-label", venueLabel(job, venue));
-    nodes.btn.classList.toggle("posted", job.phase === "done");
+    nodes.btn.classList.toggle("posted", job.phase === "done" && !savedNotPosted(job));
     // the red cancel under it, from the press until the link or the error
     nodes.cancel.hidden = !cancelButton(state, venue);
     nodes.cancel.disabled = job.step === STOPPING_STEP;
 
-    // before the press, "pickup only" under ebay once ticked: he sees it took
+    // before the press, what customize changed ("pickup only · fair price"): he sees it took
     const line = venueLine(state.jobs[venue], venueIdleNote(state, venue));
     nodes.status.textContent = line.text;
     nodes.status.className = `venue-status ${line.kind}`;
@@ -1153,8 +1188,9 @@ async function send(m, venue) {
     const press = {};
     presses.set(key, press);
     const taken = () => mine !== generation[m] || presses.get(key) !== press;
-    // the second goods button reuses the saved row; a book is always sent whole
-    const reuse = m === "goods" && !!slots[m].sku;
+    // the second goods button reuses the saved row, and so does the press after
+    // "saved, not posted" (a book's too); otherwise a book is always sent whole
+    const reuse = !!slots[m].sku && (m === "goods" || savedNotPosted(slots[m].jobs[venue]));
     setState(m, reduce(slots[m], { type: "jobSending", venue, step: "sending" }));
     if (!reuse && !(await noteReady(m))) {
         if (taken()) return;
@@ -1176,8 +1212,10 @@ async function send(m, venue) {
         sku: s.sku,
         item: s.itemId,
         photos: s.photos,
-        book: m === "book" ? bookForm(s) : undefined,
-        customize: customizeOf(s),
+        // a sku job carries no book: the PC posts the row it saved
+        book: m === "book" && !reuse ? bookForm(s) : undefined,
+        // auto-post off: the press saves the row (held), and the one after posts it
+        customize: { ...customizeOf(s), autoPost: !s.jobs[venue].held },
     });
     try {
         const answer = await postJob(pc, body);
@@ -1872,7 +1910,7 @@ async function nextItem(m) {
     clearItem(m);
     say("");
     keepSaved[m] = false;
-    customizeOpen[m] = false; // the next item starts folded, at one, shipped
+    customizeOpen[m] = false; // the next item starts folded, at one, shipped, a quick sale, posted
     setState(m, reduce(slots[m], { type: "reset" }));
     fillCustomize(m);
     // the walk is at the items in hand again, one place further when the list grew;
@@ -2090,6 +2128,10 @@ function main() {
         customize: $("customize"),
         quantity: $("quantity"),
         pickupOnly: $("pickup-only"),
+        pricing: $("pricing"),
+        pricingWords: PRICING.map(({ grade }) => $(`pricing-${grade}`)),
+        pricingNote: $("pricing-note"),
+        autoPost: $("auto-post"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -2127,6 +2169,10 @@ function main() {
         bookCustomize: $("book-customize"),
         bookQuantity: $("book-quantity"),
         bookPickupOnly: $("book-pickup-only"),
+        bookPricing: $("book-pricing"),
+        bookPricingWords: PRICING.map(({ grade }) => $(`book-pricing-${grade}`)),
+        bookPricingNote: $("book-pricing-note"),
+        bookAutoPost: $("book-auto-post"),
         bookTitleLine: $("book-title-line"),
     bookPriceLine: $("book-price-line"),
     bookEbayBtn: $("book-ebay-btn"),
@@ -2262,6 +2308,12 @@ function main() {
         );
         nodes.pickup.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setPickupOnly", on: nodes.pickup.checked }))
+        );
+        nodes.pricing.addEventListener("input", () =>
+            setState(m, reduce(slots[m], { type: "setPricing", grade: nodes.pricing.value }))
+        );
+        nodes.autoPost.addEventListener("change", () =>
+            setState(m, reduce(slots[m], { type: "setAutoPost", on: nodes.autoPost.checked }))
         );
     }
 

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.1.0";
+import { noteDirty, unsent } from "./queue.js?v=2.2.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.1.0";
+} from "./book.js?v=2.2.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -283,11 +283,12 @@ export const KEY_HEADER = "X-Crosslister-Key";
  *
  * @param {{n:number, ai:boolean}[]} [o.photos]
  * @param {BookJob} [o.book]  from bookForm()
- * @param {Customize} [o.customize]  from customizeOf(): the quantity and pickup only ride
- *        along, top-level, in every one of the three bodies -- the sku's too, since the PC
- *        updates the saved row before it posts it again (customizeBody says when)
+ * @param {Customize} [o.customize]  from customizeOf(): the quantity, pickup only, the price
+ *        grade and auto-post ride along, top-level, in every one of the three bodies -- the
+ *        sku's too, since the PC updates the saved row before it posts it again
+ *        (customizeBody says when)
  * @returns {({sku:string, venue:string} | {item:string, venue:string, ai:number[]}
- *          | {item:string, venue:string, book:BookJob}) & {quantity?:number, pickup_only?:true}}
+ *          | {item:string, venue:string, book:BookJob}) & CustomizeBody}
  */
 export function jobRequest({ venue, sku = "", item = "", photos = [], book = undefined, customize = undefined }) {
     if (!VENUES.includes(venue)) throw new RangeError(`unknown venue ${venue}`);
@@ -297,24 +298,91 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
     return { item, venue, ai: photos.filter((p) => p.ai).map((p) => p.n), ...extra };
 }
 
-// --- customize: the quantity and pickup only -----------------------------------
+// --- customize: the quantity, pickup only, the price grade, auto-post -----------
 // Michal, 2026-09-28: "Before the eBay and Craigslist buttons I would like to
 // have a little arrow with the word customize. If clicked I want to be able to
 // edit quantity. Also I want to be able to check pickup only. And it would be a
 // pickup only item on eBay then." Nearly everything he lists is one of a kind
 // and shipped, so both sit folded away, and left alone they send nothing new:
 // the body is exactly what it was before customize existed.
+//
+// Michal, 2026-10-06: "in customize, there should be a slider for price
+// preference (3 grade) 1 (quicksell what we have) 2 (fair price longer wait
+// time) 3 (higher end price - probably cheaper options exist in the
+// marketplace). these need to be reflected in the prompt. 1 by default." and
+// "in customize it also should have a checkbox for post without asking - which
+// is our default now." Both defaults are what the PC already did, so they too
+// send nothing new.
 
 /**
  * What customize holds, per item (goods: state.customize; a book: state.book.customize).
  * @typedef {Object} Customize
  * @property {string} quantity   the box as typed ("1" until he changes it); quantityValue() reads it
  * @property {boolean} pickupOnly  no shipping on eBay: the buyer collects it
+ * @property {1|2|3} pricing     the price grade (PRICING): 1 a quick sale, the default
+ * @property {boolean} autoPost  the PC publishes (the default); off, it saves the row and the
+ *                               button posts it on the next press
  */
+
+/**
+ * What customize adds to a job's body, each key only when it is not the default.
+ * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false}} CustomizeBody
+ */
+
+/**
+ * The three price grades, in Michal's words: the word under the slider's track
+ * and the line under the slider. The PC writes the grade into the model's prompt.
+ */
+export const PRICING = [
+    { grade: 1, word: "Quick sale", note: "sell what we have this week" },
+    { grade: 2, word: "Fair price", note: "a fair price, a longer wait" },
+    { grade: 3, word: "Higher end", note: "a higher-end price; cheaper ones exist out there" },
+];
+
+/** "1 by default": a quick sale, what the PC did before there was a slider. */
+export const DEFAULT_PRICING = 1;
 
 /** @returns {Customize} */
 export function initialCustomize() {
-    return { quantity: "1", pickupOnly: false };
+    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true };
+}
+
+/**
+ * A price grade as the slider (a string) or storage (a number) gives it; 0 when
+ * it is not one of the three.
+ * @param {unknown} x
+ * @returns {0|1|2|3}
+ */
+export function pricingGrade(x) {
+    const n = typeof x === "string" && x.trim() !== "" ? Number(x) : x;
+    const hit = PRICING.find((p) => p.grade === n);
+    return hit ? /** @type {1|2|3} */ (hit.grade) : 0;
+}
+
+/**
+ * The grade's word and line; the default's for anything else.
+ * @param {unknown} grade
+ * @returns {{grade:number, word:string, note:string}}
+ */
+export function pricingOf(grade) {
+    return PRICING.find((p) => p.grade === pricingGrade(grade)) || PRICING[0];
+}
+
+/**
+ * A done job with no link, pressed with auto-post off: the PC saved the row and
+ * did not publish it. Said under the button, which opens again: the next press
+ * posts that row by its sku.
+ */
+export const SAVED_NOT_POSTED = "saved, not posted";
+
+/**
+ * The PC saved this venue's row without publishing it (auto-post was off for the
+ * press): the button is open again and its next press posts the row.
+ * @param {VenueJob} job
+ * @returns {boolean}
+ */
+export function savedNotPosted(job) {
+    return job.phase === "done" && !job.link && job.held === true;
 }
 
 /**
@@ -348,30 +416,43 @@ export function customizeOf(state) {
 }
 
 /**
- * What customize adds to a job's body: `quantity` only when it is not 1 and
- * `pickup_only` only when ticked, so an item left alone sends the same body
- * as ever (and the PC's defaults, 1 and shipped, apply).
+ * What customize adds to a job's body: `quantity` only when it is not 1,
+ * `pickup_only` only when ticked, `pricing` only when it is not 1 and
+ * `auto_post: false` only when unticked, so an item left alone sends the same
+ * body as ever (and the PC's defaults, 1, shipped, a quick sale and published,
+ * apply).
  * @param {Customize} [customize]
- * @returns {{quantity?:number, pickup_only?:true}}
+ * @returns {CustomizeBody}
  */
 export function customizeBody(customize) {
     if (!customize) return {};
+    /** @type {CustomizeBody} */
     const out = {};
     const quantity = quantityValue(customize.quantity);
     if (quantity > 1) out.quantity = quantity;
     if (customize.pickupOnly === true) out.pickup_only = true;
+    const grade = pricingGrade(customize.pricing);
+    if (grade > DEFAULT_PRICING) out.pricing = /** @type {2|3} */ (grade);
+    if (customize.autoPost === false) out.auto_post = false;
     return out;
 }
 
 /**
- * The line under a venue button before it is pressed: "pickup only" under
- * ebay once ticked (craigslist is pickup anyway), else nothing.
+ * The line under a venue button before it is pressed: what customize changed,
+ * so he sees it took, joined with " · ": "pickup only" under ebay once ticked
+ * (craigslist is pickup anyway), the price grade when it is not a quick sale,
+ * and "saved, not posted" while auto-post is off. Nothing when left alone.
  * @param {SnapState} state
  * @param {string} venue
  * @returns {string}
  */
 export function venueIdleNote(state, venue) {
-    return venue === "ebay" && customizeOf(state).pickupOnly ? PICKUP_NOTE : "";
+    const c = customizeOf(state);
+    const said = [];
+    if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
+    if (pricingGrade(c.pricing) > DEFAULT_PRICING) said.push(pricingOf(c.pricing).word.toLowerCase());
+    if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
+    return said.join(" · ");
 }
 
 /** Customize read back from storage after a reload; anything odd is the default. */
@@ -381,12 +462,27 @@ function recoveredCustomize(saved) {
     if (typeof saved.quantity === "string") c.quantity = saved.quantity;
     else if (typeof saved.quantity === "number") c.quantity = String(saved.quantity);
     c.pickupOnly = saved.pickupOnly === true;
+    c.pricing = pricingGrade(saved.pricing) || DEFAULT_PRICING;
+    c.autoPost = saved.autoPost !== false;
     return c;
 }
 
-/** Customize as savedItem keeps it: nothing at all while it is the default. */
+/**
+ * Customize as savedItem keeps it: nothing at all while it is the default; the
+ * price grade and auto-post only when they are not, so an item saved before
+ * they existed and one left alone read the same.
+ */
 function savedCustomize(c) {
-    return c.quantity === "1" && !c.pickupOnly ? {} : { customize: { quantity: c.quantity, pickupOnly: c.pickupOnly } };
+    const grade = pricingGrade(c.pricing) || DEFAULT_PRICING;
+    if (c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false) return {};
+    return {
+        customize: {
+            quantity: c.quantity,
+            pickupOnly: c.pickupOnly,
+            ...(grade === DEFAULT_PRICING ? {} : { pricing: grade }),
+            ...(c.autoPost === false ? { autoPost: false } : {}),
+        },
+    };
 }
 
 /** Customize changed, in the right place for the item's kind; fixed while a job is on its way. */
@@ -476,6 +572,8 @@ export function safeLink(url) {
  *                             row is saved; the line above the buttons shows it (priceLine)
  * @property {string} title    the saved row's title as the PC says it, "" until the row is
  *                             saved; the small line above the price shows it (titleLine)
+ * @property {boolean} held    pressed with auto-post off: the PC saves the row and does not
+ *                             publish it, so done with no link is "saved, not posted"
  */
 
 /**
@@ -495,7 +593,7 @@ export function safeLink(url) {
  * @property {Record<string, VenueJob>} jobs
  * @property {"goods"|"book"} mode  which kind of item this is; the page keeps one of each
  * @property {BookSlice} book       the book's own fields (untouched in goods mode)
- * @property {Customize} customize  goods' quantity and pickup only (a book's is in its slice)
+ * @property {Customize} customize  goods' customize (a book's is in its slice)
  */
 
 /**
@@ -525,7 +623,7 @@ export function safeLink(url) {
  * @property {string} year
  * @property {string} format     one of FORMATS' values, paperback by default
  * @property {boolean} formatChosen  he tapped a format chip: a catalogue match no longer sets it
- * @property {Customize} customize   the book's quantity and pickup only
+ * @property {Customize} customize   the book's own customize
  */
 
 /**
@@ -598,6 +696,7 @@ export function idleJob() {
         trouble: "",
         price: "",
         title: "",
+        held: false,
     };
 }
 
@@ -672,7 +771,9 @@ export function photosLocked(state) {
  *   {type:"pollTrouble", venue, error}    that GET failed; keep asking
  *   {type:"setQuantity", text}            the quantity box under customize, as typed
  *   {type:"setPickupOnly", on}            the pickup only box under customize
- *                                         (both: this item's kind's own; fixed while a job is on its way)
+ *   {type:"setPricing", grade}            the price slider under customize: 1, 2 or 3
+ *   {type:"setAutoPost", on}              the post without asking box under customize
+ *                                         (all four: this item's kind's own; fixed while a job is on its way)
  * The book mode:
  *   {type:"setMode", mode}                "goods" or "book": what kind of item this state holds
  *   {type:"bookIsbn", isbn}               a valid ISBN-13 scanned or typed, or "" (fixed once the item is on the PC)
@@ -787,17 +888,21 @@ export function reduce(state, action) {
             return settleMain(recovered(state, action));
 
         case "jobSending":
-            return withJob(state, action.venue, () => ({
+            return withJob(state, action.venue, (job) => ({
                 ...idleJob(),
                 phase: "sending",
                 step: action.step || "sending",
+                // auto-post off: this press saves the row, unless it is the press
+                // after "saved, not posted" -- that one posts it
+                held: customizeOf(state).autoPost === false && !savedNotPosted(job),
             }));
         case "jobAccepted":
-            return withJob(state, action.venue, () => ({
+            return withJob(state, action.venue, (job) => ({
                 ...idleJob(),
                 phase: "queued",
                 jobId: String(action.job),
                 ahead: toCount(action.ahead),
+                held: job.held,
             }));
         case "jobRefused":
             return withJob(state, action.venue, () => ({
@@ -846,6 +951,12 @@ export function reduce(state, action) {
         }
         case "setPickupOnly":
             return withCustomize(state, (c) => ({ ...c, pickupOnly: action.on === true }));
+        case "setPricing": {
+            const grade = pricingGrade(action.grade);
+            return grade ? withCustomize(state, (c) => ({ ...c, pricing: grade })) : state;
+        }
+        case "setAutoPost":
+            return withCustomize(state, (c) => ({ ...c, autoPost: action.on !== false }));
 
         case "setMode":
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;
@@ -1183,7 +1294,9 @@ function recovered(state, action) {
     };
     for (const job of Array.isArray(answer.jobs) ? answer.jobs : []) {
         if (!job || !VENUES.includes(job.venue)) continue;
-        next = withJob(next, job.venue, () => ({ ...idleJob(), jobId: String(job.job) }));
+        // auto-post was off for the item: a job done with no link saved the row unposted
+        const held = customizeOf(next).autoPost === false;
+        next = withJob(next, job.venue, () => ({ ...idleJob(), jobId: String(job.job), held }));
         next = reduce(next, { type: "jobStatus", venue: job.venue, status: job });
     }
     return next;
@@ -1304,8 +1417,9 @@ export function raiseCount(counters, itemName, n) {
  * price box, the main photo and the book the lookup found (so a reload does
  * not even have to ask the catalogues again). It has no AI marks.
  *
- * Either kind also keeps customize (the quantity and pickup only), but only
- * once it is not the default: an item left alone is saved as it always was.
+ * Either kind also keeps customize (the quantity, pickup only, the price grade
+ * and auto-post), but only once it is not the default: an item left alone is
+ * saved as it always was.
  * @returns {null|{itemName:string, itemId:string, ai:number[], customize?:Customize}
  *          |{mode:"book", itemName:string, itemId:string, isbn:string, isbnMiss:boolean, manual:boolean, title:string,
  *            author:string, year:string, format:string, condition:string, price:string,
@@ -1356,7 +1470,9 @@ export function savedItem(state) {
 
 /**
  * The line under a venue button, and the link when there is one. Before the
- * press it says `idle`, if anything (venueIdleNote: "pickup only").
+ * press it says `idle`, if anything (venueIdleNote: "pickup only · fair price").
+ * Done with no link says "saved, not posted" when the press had auto-post off,
+ * else "done".
  * @param {VenueJob} job
  * @param {string} [idle]
  * @returns {{text:string, link:string, kind:""|"busy"|"ok"|"bad"}}
@@ -1376,7 +1492,7 @@ export function venueLine(job, idle = "") {
         case "done":
             return job.link
                 ? { text: "", link: job.link, kind: "ok" }
-                : { text: "done", link: "", kind: "ok" };
+                : { text: job.held ? SAVED_NOT_POSTED : "done", link: "", kind: "ok" };
         case "failed":
             return { text: job.error || "failed", link: "", kind: "bad" };
         default:
@@ -1522,6 +1638,7 @@ export function presentNote(record) {
  */
 export function venueLabel(job, venue) {
     if (isActive(job)) return `${venue}, posting`;
+    if (savedNotPosted(job)) return `${venue}, ${SAVED_NOT_POSTED}`;
     if (job.phase === "done") return `${venue}, posted`;
     return venue;
 }
@@ -1575,8 +1692,9 @@ export function nameTakenHint(state) {
 export function venueButton(state, venue, settingsOk) {
     if (state.mode === "book") return bookVenueButton(state, venue, settingsOk);
     const job = state.jobs[venue];
-    // pressed already: on its way, or posted (the link is right there)
-    if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
+    // pressed already: on its way, or posted (the link is right there); a row
+    // saved, not posted, opens again to post it
+    if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     // a quantity he typed wrong is his to fix first: it goes with either button
     if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
@@ -1637,7 +1755,9 @@ export const ISBN_MISS_HINT = "Tap No ISBN and type the title";
  * not), at least one photo is taken and every photo is on the PC, and
  * the price box holds a price. A book goes by its catalogue record, not a
  * model, so there is no AI mark to wait for -- and no second venue: a book
- * that failed after the PC saved its row is simply sent again whole.
+ * that failed after the PC saved its row is simply sent again whole. A book
+ * saved, not posted (auto-post off) opens again, and that press posts the row
+ * by its sku.
  * @param {SnapState} state
  * @param {string} venue
  * @param {boolean} settingsOk
@@ -1646,7 +1766,7 @@ export const ISBN_MISS_HINT = "Tap No ISBN and type the title";
 function bookVenueButton(state, venue, settingsOk) {
     const job = state.jobs[venue];
     if (venue !== "ebay" || !job) return { enabled: false, hint: "" };
-    if (isActive(job) || job.phase === "done") return { enabled: false, hint: "" };
+    if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
     const { book } = state;
     if (!quantityValue(book.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };

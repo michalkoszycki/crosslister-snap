@@ -28,8 +28,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.1.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.1.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.2.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.2.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -209,6 +209,23 @@
         <input id="pickup-only" type="checkbox">
         <span>Pickup only — no shipping on eBay</span>
       </label>
+      <!-- the price grade and auto-post (Michal, 2026-10-06: "a slider for price
+           preference (3 grade) ... 1 by default"; "a checkbox for post without asking") -->
+      <div class="field pricing-field">
+        <label class="field-label" for="pricing">Price</label>
+        <input id="pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+               aria-valuetext="Quick sale" aria-describedby="pricing-note">
+        <div class="pricing-words" aria-hidden="true">
+          <span id="pricing-1" class="on">Quick sale</span>
+          <span id="pricing-2">Fair price</span>
+          <span id="pricing-3">Higher end</span>
+        </div>
+        <p id="pricing-note" class="pricing-note">sell what we have this week</p>
+      </div>
+      <label class="pickup">
+        <input id="auto-post" type="checkbox" checked>
+        <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
+      </label>
     </div>
 
     <!-- the row's price, once a press has one, above both buttons -->
@@ -352,6 +369,21 @@
         <input id="book-pickup-only" type="checkbox">
         <span>Pickup only — no shipping on eBay</span>
       </label>
+      <div class="field pricing-field">
+        <label class="field-label" for="book-pricing">Price</label>
+        <input id="book-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+               aria-valuetext="Quick sale" aria-describedby="book-pricing-note">
+        <div class="pricing-words" aria-hidden="true">
+          <span id="book-pricing-1" class="on">Quick sale</span>
+          <span id="book-pricing-2">Fair price</span>
+          <span id="book-pricing-3">Higher end</span>
+        </div>
+        <p id="book-pricing-note" class="pricing-note">sell what we have this week</p>
+      </div>
+      <label class="pickup">
+        <input id="book-auto-post" type="checkbox" checked>
+        <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
+      </label>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
@@ -381,6 +413,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.1.0"></script>
+<script type="module" src="app.js?v=2.2.0"></script>
 </body>
 </html>

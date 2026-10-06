@@ -39,6 +39,12 @@ import {
     customizeOf,
     initialCustomize,
     PICKUP_NOTE,
+    PRICING,
+    DEFAULT_PRICING,
+    pricingGrade,
+    pricingOf,
+    SAVED_NOT_POSTED,
+    savedNotPosted,
     QUANTITY_HINT,
     quantityValue,
     venueIdleNote,
@@ -1733,8 +1739,8 @@ test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => 
 // Michal, 2026-09-28: a little arrow with the word customize before the buttons,
 // to edit the quantity and tick pickup only ("a pickup only item on eBay then").
 
-test("customize starts at one, shipped, for goods and books alike", () => {
-    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false });
+test("customize starts at one, shipped, a quick sale, posted, for goods and books alike", () => {
+    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true });
     assert.deepEqual(initialState("x").customize, initialCustomize());
     assert.deepEqual(bookState().book.customize, initialCustomize());
     const goods = initialState("x");
@@ -1853,7 +1859,7 @@ test("customize is kept for a reload once it is not the default, and read back",
         customize: JSON.parse(JSON.stringify(saved.customize)),
         answer: { item: ITEM, photos: [1, 2] },
     });
-    assert.deepEqual(back.customize, { quantity: "2", pickupOnly: true });
+    assert.deepEqual(back.customize, { ...initialCustomize(), quantity: "2", pickupOnly: true });
     // nothing saved (an item from before customize): the default
     const old = reduce(initialState(""), { type: "recovered", itemName: "Boots", itemId: ITEM, answer: { photos: [1] } });
     assert.deepEqual(old.customize, initialCustomize());
@@ -1869,8 +1875,205 @@ test("customize is kept for a reload once it is not the default, and read back",
         book: JSON.parse(JSON.stringify(bookSaved)),
         answer: { photos: [1] },
     });
-    assert.deepEqual(bookBack.book.customize, { quantity: "1", pickupOnly: true });
+    assert.deepEqual(bookBack.book.customize, { ...initialCustomize(), pickupOnly: true });
     assert.equal("customize" in savedItem(foundBook()), false, "left alone: saved as it always was");
+});
+
+// --- customize: the price grade and auto-post (Michal, 2026-10-06) ------------------
+// "a slider for price preference (3 grade) 1 (quicksell what we have) 2 (fair price
+// longer wait time) 3 (higher end price - probably cheaper options exist in the
+// marketplace). these need to be reflected in the prompt. 1 by default." and "a
+// checkbox for post without asking - which is our default now."
+
+test("the price grade: three steps in Michal's words, 1 by default; odd input is not a grade", () => {
+    assert.equal(DEFAULT_PRICING, 1);
+    assert.deepEqual(
+        PRICING.map((p) => [p.grade, p.word, p.note]),
+        [
+            [1, "Quick sale", "sell what we have this week"],
+            [2, "Fair price", "a fair price, a longer wait"],
+            [3, "Higher end", "a higher-end price; cheaper ones exist out there"],
+        ]
+    );
+    for (const [x, grade] of [
+        [1, 1],
+        [2, 2],
+        [3, 3],
+        ["2", 2],
+        [" 3 ", 3],
+    ]) {
+        assert.equal(pricingGrade(x), grade, JSON.stringify(x));
+    }
+    for (const bad of [0, 4, 1.5, "", "two", null, undefined, true]) {
+        assert.equal(pricingGrade(bad), 0, JSON.stringify(bad));
+    }
+    assert.equal(pricingOf(3).word, "Higher end");
+    assert.equal(pricingOf("x").word, "Quick sale", "anything else reads as the default");
+});
+
+test("setPricing and setAutoPost: this kind's own, fixed while a job is on its way, reset by NEXT", () => {
+    let s = reduce(sent(1, [1]), { type: "setPricing", grade: "2" });
+    assert.equal(s.customize.pricing, 2);
+    assert.equal(reduce(s, { type: "setPricing", grade: "9" }), s, "not a grade: nothing changes");
+    s = reduce(s, { type: "setAutoPost", on: false });
+    assert.equal(s.customize.autoPost, false);
+    assert.equal(reduce(s, { type: "setAutoPost", on: true }).customize.autoPost, true);
+    const going = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(reduce(going, { type: "setPricing", grade: 3 }), going);
+    assert.equal(reduce(going, { type: "setAutoPost", on: true }), going);
+    assert.deepEqual(reduce(s, { type: "reset" }).customize, initialCustomize());
+    // a book's is in its slice
+    const book = reduce(reduce(foundBook(), { type: "setPricing", grade: 3 }), { type: "setAutoPost", on: false });
+    assert.deepEqual([book.book.customize.pricing, book.book.customize.autoPost], [3, false]);
+    assert.deepEqual(book.customize, initialCustomize(), "the goods customize is not the book's");
+    assert.deepEqual(reduce(book, { type: "reset" }).book.customize, initialCustomize());
+});
+
+test("the body carries pricing only when not 1 and auto_post only when off, in all three bodies", () => {
+    const c = (o) => ({ ...initialCustomize(), ...o });
+    assert.deepEqual(customizeBody(c({ pricing: 1 })), {});
+    assert.deepEqual(customizeBody(c({ pricing: 2 })), { pricing: 2 });
+    assert.deepEqual(customizeBody(c({ pricing: 3, autoPost: false })), { pricing: 3, auto_post: false });
+    assert.deepEqual(customizeBody(c({ autoPost: true })), {});
+    // a customize saved before the grade existed sends nothing new
+    assert.deepEqual(customizeBody({ quantity: "1", pickupOnly: false }), {});
+
+    let s = sent(2, [2]);
+    s = reduce(s, { type: "setPricing", grade: 2 });
+    s = reduce(s, { type: "setAutoPost", on: false });
+    assert.equal(
+        JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })),
+        `{"item":"${ITEM}","venue":"ebay","ai":[2],"pricing":2,"auto_post":false}`
+    );
+    assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), {
+        sku: "B-9",
+        venue: "craigslist",
+        pricing: 2,
+        auto_post: false,
+    });
+    const b = reduce(foundBook(), { type: "setPricing", grade: 3 });
+    const bookBody = jobRequest({ venue: "ebay", item: b.itemId, book: bookForm(b), customize: customizeOf(b) });
+    assert.equal(bookBody.pricing, 3);
+    assert.equal("pricing" in bookBody.book, false, "top-level, beside the book");
+    assert.equal("auto_post" in bookBody, false);
+});
+
+test("the idle line says what customize changed, joined with a middle dot", () => {
+    let s = sent(1, [1]);
+    assert.equal(venueIdleNote(s, "ebay"), "");
+    s = reduce(s, { type: "setPricing", grade: 2 });
+    assert.equal(venueIdleNote(s, "ebay"), "fair price");
+    assert.equal(venueIdleNote(s, "craigslist"), "fair price", "the grade goes with both buttons");
+    s = reduce(s, { type: "setPickupOnly", on: true });
+    s = reduce(s, { type: "setAutoPost", on: false });
+    assert.equal(venueIdleNote(s, "ebay"), "pickup only · fair price · saved, not posted");
+    assert.equal(venueIdleNote(s, "craigslist"), "fair price · saved, not posted", "pickup only stays under ebay");
+    s = reduce(s, { type: "setPricing", grade: 3 });
+    assert.equal(venueIdleNote(s, "craigslist"), "higher end · saved, not posted");
+    const book = reduce(foundBook(), { type: "setAutoPost", on: false });
+    assert.equal(venueIdleNote(book, "ebay"), "saved, not posted");
+});
+
+test("auto-post off: done with no link is saved, not posted; the button opens and the next press posts", () => {
+    assert.equal(SAVED_NOT_POSTED, "saved, not posted");
+    let s = reduce(sent(1, [1]), { type: "setAutoPost", on: false });
+    s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(s.jobs.ebay.held, true, "this press saves the row");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(s.jobs.ebay.held, true, "kept once the PC has the job");
+    s = reduce(s, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "done", sku: "B-1", price: "14.00", title: "Lamp", links: {} },
+    });
+    assert.equal(savedNotPosted(s.jobs.ebay), true);
+    assert.deepEqual(venueLine(s.jobs.ebay), { text: "saved, not posted", link: "", kind: "ok" });
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, saved, not posted");
+    assert.deepEqual(venueButton(s, "ebay", true), { enabled: true, hint: "" });
+    assert.equal(priceLine(s), "$14");
+    // the next press posts: it is not held, so the body says nothing of auto_post
+    const again = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(again.jobs.ebay.held, false);
+    assert.deepEqual(
+        jobRequest({ venue: "ebay", sku: again.sku, customize: { ...customizeOf(again), autoPost: !again.jobs.ebay.held } }),
+        { sku: "B-1", venue: "ebay" }
+    );
+    // craigslist, still with auto-post off, is saved first too
+    const cl = reduce(s, { type: "jobSending", venue: "craigslist", step: "sending" });
+    assert.equal(cl.jobs.craigslist.held, true);
+    // posted after all: the link, and shut as ever
+    const posted = reduce(again, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "done", sku: "B-1", links: { ebay: "https://www.ebay.com/itm/1" } },
+    });
+    assert.equal(savedNotPosted(posted.jobs.ebay), false);
+    assert.equal(venueButton(posted, "ebay", true).enabled, false);
+    // auto-post on: done with no link is still just "done", and shut
+    const plain = reduce(reduce(sent(1, [1]), { type: "jobSending", venue: "ebay" }), {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "done", sku: "B-1", links: {} },
+    });
+    assert.deepEqual(venueLine(plain.jobs.ebay), { text: "done", link: "", kind: "ok" });
+    assert.equal(venueButton(plain, "ebay", true).enabled, false);
+    // a book opens again the same way
+    let book = reduce(foundBook(), { type: "setAutoPost", on: false });
+    book = reduce(book, { type: "jobSending", venue: "ebay" });
+    book = reduce(book, { type: "jobStatus", venue: "ebay", status: { state: "done", sku: "B-2", links: {} } });
+    assert.deepEqual(venueButton(book, "ebay", true), { enabled: true, hint: "" });
+    assert.equal(venueLine(book.jobs.ebay).text, "saved, not posted");
+});
+
+test("the price grade and auto-post are kept for a reload only when not the default, and read back", () => {
+    let s = reduce(sent(2, [1]), { type: "setPricing", grade: 3 });
+    s = reduce(s, { type: "setAutoPost", on: false });
+    const saved = savedItem(s);
+    assert.deepEqual(saved.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false });
+    // only the one changed is written
+    assert.deepEqual(savedItem(reduce(sent(1, [1]), { type: "setPricing", grade: 2 })).customize, {
+        quantity: "1",
+        pickupOnly: false,
+        pricing: 2,
+    });
+    // set back to a quick sale, posted: saved as it always was
+    const undone = reduce(reduce(s, { type: "setPricing", grade: 1 }), { type: "setAutoPost", on: true });
+    assert.equal("customize" in savedItem(undone), false);
+    const back = reduce(initialState(""), {
+        type: "recovered",
+        mode: "goods",
+        itemName: saved.itemName,
+        itemId: saved.itemId,
+        ai: saved.ai,
+        customize: JSON.parse(JSON.stringify(saved.customize)),
+        // the PC saved the row unposted before the reload
+        answer: { photos: [1, 2], sku: "B-1", jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", links: {} }] },
+    });
+    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false });
+    assert.equal(venueLine(back.jobs.ebay).text, "saved, not posted");
+    assert.equal(venueButton(back, "ebay", true).enabled, true);
+    // anything odd is the default
+    const odd = reduce(initialState(""), {
+        type: "recovered",
+        itemName: "Boots",
+        itemId: ITEM,
+        customize: { quantity: "1", pricing: 7, autoPost: "no" },
+        answer: { photos: [1] },
+    });
+    assert.deepEqual(odd.customize, initialCustomize());
+
+    const book = reduce(foundBook(), { type: "setPricing", grade: 2 });
+    const bookSaved = savedItem(book);
+    assert.deepEqual(bookSaved.customize, { quantity: "1", pickupOnly: false, pricing: 2 });
+    const bookBack = reduce(bookState(), {
+        type: "recovered",
+        mode: "book",
+        itemName: bookSaved.itemName,
+        itemId: bookSaved.itemId,
+        book: JSON.parse(JSON.stringify(bookSaved)),
+        answer: { photos: [1] },
+    });
+    assert.deepEqual(bookBack.book.customize, { ...initialCustomize(), pricing: 2 });
 });
 
 // --- Admin: the inventory (Michal, 2026-10-06) -----------------------------------------
