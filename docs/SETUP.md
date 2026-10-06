@@ -47,8 +47,9 @@ Never put a key in this repo: it is public.
 ## 3. The first phone
 
 1. Open **Chrome** and go to `https://michalkoszycki.github.io/crosslister-snap/`
-2. Tap **Settings** (top right). Type the PC address and the key, tap **Save
-   and check**. It should say "Saved. The PC answers and knows this key."
+2. Tap **Admin** (top right); **Settings** opens in it by itself. Type the PC
+   address and the key, tap **Save and check**. It should say "Saved. The PC
+   answers and knows this key."
 3. Tap Chrome's **three-dot menu** > **Add to Home screen** (or **Install
    app**), then **Add**. The icon opens the page without the address bar.
 4. The first time you tap **Snap**, Android asks to allow the camera. Allow it.
@@ -138,7 +139,7 @@ between them.
 
 ## 6. When something goes wrong
 
-**The buttons stay grey with "Set the PC address and key in Settings"**
+**The buttons stay grey with "Set the PC address and key in Admin"**
 Settings are empty or were not saved. In a private (incognito) tab nothing is
 remembered; use a normal tab or the home-screen icon.
 

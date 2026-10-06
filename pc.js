@@ -44,11 +44,20 @@
 //                                      stops at its next step and keeps its draft unpublished;
 //                                      409 once done or failed
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
+// Admin's inventory (read-only; Michal, 2026-10-06):
+//   GET    <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200
+//                                      -> {"rows": [summary...]}, newest first; venue and status
+//                                         "" for All (inventoryQuery in core.js)
+//   GET    <pc>/inventory/<sku>       -> the summary's keys plus the description, the condition
+//                                         note and details, the aspects, the package, craigslist's
+//                                         overrides and "photos": [{"n", "name"}...]; 404 unknown sku
+//   GET    <pc>/inventory/<sku>/photos/<n>
+//                                      -> the image itself (jpeg, png or webp); 404 when missing
 //
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, KEY_HEADER } from "./core.js?v=2.0.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.1.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -225,4 +234,41 @@ export function getJob({ pc, key }, jobId) {
  */
 export function checkPc({ pc, key }) {
     return call(`${pc}/jobs?limit=1`, key);
+}
+
+/**
+ * Admin's inventory list: the newest rows matching the search and the two filters.
+ * @param {{pc:string, key:string}} settings
+ * @param {{q?:string, venue?:string, status?:string}} filters "" is All
+ * @returns {Promise<{rows: Record<string, any>[]}>}
+ */
+export function getInventory({ pc, key }, filters) {
+    return call(`${pc}/inventory?${inventoryQuery(filters)}`, key);
+}
+
+function rowUrl(pc, sku) {
+    return `${pc}/inventory/${encodeURIComponent(sku)}`;
+}
+
+/**
+ * One row whole, for its detail: every field each venue's card shows, and its photos by number.
+ * @param {{pc:string, key:string}} settings
+ * @param {string} sku
+ */
+export function getRow({ pc, key }, sku) {
+    return call(rowUrl(pc, sku), key);
+}
+
+/**
+ * Photo number n of a row: the image itself, as a Blob for a thumbnail and
+ * the full-size view. 404 for a photo the row does not hold.
+ * @param {{pc:string, key:string}} settings
+ * @param {string} sku
+ * @param {number} n
+ * @returns {Promise<Blob>}
+ */
+export async function getRowPhoto({ pc, key }, sku, n) {
+    const res = await request(`${rowUrl(pc, sku)}/photos/${n}`, key);
+    if (!res.ok) throw await refused(res);
+    return res.blob();
 }

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.0.0";
+import { VERSION } from "./version.js?v=2.1.0";
 import {
     anyActive,
     bannerText,
@@ -63,24 +63,40 @@ import {
     venueLabel,
     venueLine,
     VENUES,
-} from "./core.js?v=2.0.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.0.0";
+    INVENTORY_DEBOUNCE_MS,
+    INVENTORY_STATUSES,
+    INVENTORY_VENUES,
+    inventoryCount,
+    inventoryRows,
+    itemFacts,
+    priceWord,
+    rowBadges,
+    rowHeading,
+    rowPhotos,
+    rowTitle,
+    rowVenues,
+    venueFacts,
+} from "./core.js?v=2.1.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.1.0";
 import {
     cancelJob,
     checkPc,
     createItem,
     deletePhoto,
     getBook,
+    getInventory,
     getItem,
     getJob,
     getPhoto,
+    getRow,
+    getRowPhoto,
     PcError,
     postJob,
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.0.0";
-import { shrinkPhoto } from "./shrink.js?v=2.0.0";
+} from "./pc.js?v=2.1.0";
+import { shrinkPhoto } from "./shrink.js?v=2.1.0";
 import {
     bookCard,
     bookPriceValue,
@@ -93,8 +109,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.0.0";
-import { canScan, readIsbn } from "./scan.js?v=2.0.0";
+} from "./book.js?v=2.1.0";
+import { canScan, readIsbn } from "./scan.js?v=2.1.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -147,6 +163,40 @@ const customizeOpen = { goods: false, book: false };
 let serverStatus = null;
 let healthTimer = null;
 let checking = false;
+
+/** The detail's foldouts as a row opens: Item and Photos open, the venue cards folded. */
+const DETAIL_FOLDS = { item: true, photos: true, ebay: false, craigslist: false };
+
+/**
+ * Admin's screen state (only the screen's: nothing of it is stored). The filters,
+ * the rows the PC last gave, and the row on screen. `asked` and `shown` are bumped
+ * per query and per detail opened or left, so a late answer for an older one is dropped.
+ */
+const admin = {
+    inventoryOpen: false,
+    venue: "",
+    status: "",
+    rows: [],
+    asked: 0,
+    /** sku -> the 64 px tile its photo 1 goes into, while Show photos is on */
+    tiles: new Map(),
+    /** the list's object URLs, revoked when the list changes */
+    thumbs: [],
+    shown: 0,
+    folds: { ...DETAIL_FOLDS },
+    /** the row on screen, whole once the PC gave it; null on the list */
+    row: null,
+    /** the row button the detail was opened from, to come back to */
+    from: null,
+    /** the detail's photo number -> object URL, revoked when the detail closes */
+    pictures: new Map(),
+    /** the detail's photo number -> its 88 px tile */
+    photoTiles: new Map(),
+    /** the thumbnail the full-size view was opened from, focused again when it closes */
+    opener: null,
+};
+/** The inventory's search box asks the PC once he stops typing. */
+let searchTimer = null;
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -1213,11 +1263,53 @@ async function poll(m, venue, mine) {
     if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, mine);
 }
 
-// --- settings --------------------------------------------------------------
+// --- Admin: Settings and the inventory ---------------------------------------------
+//
+// Michal, 2026-10-06: "After clicking Admin (where settings are now) a user would have
+// access to inventory list, with search options / filtering options, etc. ... just like
+// 'customize' now is a foldout - settings and inventory would be a foldout in the admin
+// section. once you click on a listing probably all the cards are different foldouts".
 
+/** The foldout's arrow and word: ▸ folded, ▾ open, as customize. */
+function fold(toggle, word, open) {
+    toggle.textContent = `${open ? "▾" : "▸"} ${word}`;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+/**
+ * Admin opens on Settings while they are missing or wrong, and otherwise on the
+ * inventory, asked afresh. Closed, it lets go of the photos it fetched and opens
+ * on the list next time.
+ */
+function showAdmin(open) {
+    el.admin.hidden = !open;
+    el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) {
+        // a search still waiting or an answer still on its way is for a list no longer shown
+        clearTimeout(searchTimer);
+        searchTimer = null;
+        admin.asked += 1;
+        showList();
+        dropThumbs();
+        return;
+    }
+    const ok = !!settings();
+    showSettings(!ok);
+    showInventory(ok);
+}
+
+function toggleAdmin() {
+    showAdmin(el.admin.hidden);
+}
+
+/** Settings, inside Admin: opening them opens Admin too, for a caller that sends him there. */
 function showSettings(open) {
+    if (open && el.admin.hidden) {
+        el.admin.hidden = false;
+        el.adminToggle.setAttribute("aria-expanded", "true");
+    }
     el.settings.hidden = !open;
-    el.settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    fold(el.settingsToggle, "Settings", open);
     if (open) {
         el.pcAddress.value = readText("localStorage", PC_KEY);
         el.pcKey.value = readText("localStorage", KEY_KEY);
@@ -1227,6 +1319,349 @@ function showSettings(open) {
 
 function toggleSettings() {
     showSettings(el.settings.hidden);
+}
+
+/** The inventory foldout: opened, it shows the list and asks the PC for it. */
+function showInventory(open) {
+    admin.inventoryOpen = open;
+    el.inventory.hidden = !open;
+    fold(el.inventoryToggle, "Inventory", open);
+    if (open) {
+        showList();
+        loadInventory().catch(() => {});
+    }
+}
+
+/** The chips show the filters chosen. */
+function renderFilters() {
+    for (const { value, node } of el.inventoryVenues) node.setAttribute("aria-pressed", value === admin.venue ? "true" : "false");
+    for (const { value, node } of el.inventoryStates) node.setAttribute("aria-pressed", value === admin.status ? "true" : "false");
+}
+
+/**
+ * Ask the PC for the rows that match the search and the filters, and show them.
+ * A PC that does not answer says so on the line under the search box; the list
+ * stays as it was.
+ */
+async function loadInventory() {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+    admin.asked += 1;
+    const mine = admin.asked;
+    const pc = settings();
+    if (!pc) {
+        el.inventoryStatus.textContent = "Set the PC address and key under Settings first.";
+        return;
+    }
+    el.inventoryStatus.textContent = "Asking the PC...";
+    let answer;
+    try {
+        answer = await getInventory(pc, { q: el.inventorySearch.value, venue: admin.venue, status: admin.status });
+    } catch (e) {
+        if (mine !== admin.asked) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.inventoryStatus.textContent = `Could not read the inventory: ${e.message}.`;
+        // a key the PC does not know: Settings is where it is put right
+        if (e.status === 401) showSettings(true);
+        return;
+    }
+    if (mine !== admin.asked) return; // a later search or filter has its own answer coming
+    heard(200);
+    admin.rows = inventoryRows(answer);
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    renderRows();
+    if (el.inventoryPhotos.checked) fetchThumbs(pc, mine).catch(() => {});
+}
+
+/** The list: one button per row, with photo 1's tile on its left while Show photos is on. */
+function renderRows() {
+    dropThumbs();
+    const photos = !!el.inventoryPhotos.checked;
+    el.inventoryList.replaceChildren(...admin.rows.map((row) => rowNode(row, photos)));
+}
+
+function rowNode(row, photos) {
+    const li = document.createElement("li");
+    li.className = "inv-row";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "inv-open";
+    if (photos) {
+        // a blank tile until photo 1 comes (fetchThumbs), or for a row with none
+        const tile = document.createElement("span");
+        tile.className = "inv-thumb";
+        tile.textContent = Number(row.photos) > 0 ? "" : "no photo";
+        admin.tiles.set(row.sku, tile);
+        open.append(tile);
+    }
+    const words = document.createElement("span");
+    words.className = "inv-words";
+    const title = document.createElement("span");
+    title.className = "inv-title";
+    title.textContent = rowTitle(row);
+    const line = document.createElement("span");
+    line.className = "inv-line";
+    const price = priceWord(row.price);
+    if (price) {
+        const said = document.createElement("span");
+        said.className = "inv-price";
+        said.textContent = price;
+        line.append(said);
+    }
+    const sku = document.createElement("span");
+    sku.className = "inv-sku mono";
+    sku.textContent = row.sku;
+    line.append(sku);
+    const badges = document.createElement("span");
+    badges.className = "inv-badges";
+    for (const badge of rowBadges(row)) {
+        const b = document.createElement("span");
+        b.className = `vbadge ${badge.kind}`;
+        b.textContent = badge.text;
+        badges.append(b);
+    }
+    words.append(title, line, badges);
+    open.append(words);
+    open.addEventListener("click", () => {
+        openRow(row, open).catch(() => {});
+    });
+    li.append(open);
+    return li;
+}
+
+/**
+ * Photo 1 of each row into its tile, one at a time. A photo the PC cannot give
+ * leaves the tile blank; no answer at all stops the rest, as does a new query.
+ */
+async function fetchThumbs(pc, mine) {
+    for (const row of admin.rows) {
+        const tile = admin.tiles.get(row.sku);
+        if (!tile || !(Number(row.photos) > 0)) continue;
+        let blob;
+        try {
+            blob = await getRowPhoto(pc, row.sku, 1);
+        } catch (e) {
+            if (e.status === 0) return;
+            continue;
+        }
+        if (mine !== admin.asked) return;
+        const url = URL.createObjectURL(blob);
+        admin.thumbs.push(url);
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "";
+        tile.replaceChildren(img);
+    }
+}
+
+/** The list's pictures let go: the list is changing, or Admin closed. */
+function dropThumbs() {
+    for (const url of admin.thumbs) URL.revokeObjectURL(url);
+    admin.thumbs = [];
+    admin.tiles.clear();
+}
+
+/** A filter chip tapped ("venue" or "status"): the list is asked for again at once. */
+function onFilter(filter, value) {
+    admin[filter] = value;
+    renderFilters();
+    loadInventory().catch(() => {});
+}
+
+/**
+ * A row tapped: its detail in place of the list, the summary at once, then the
+ * whole row from the PC and its photos one at a time.
+ */
+async function openRow(row, from) {
+    admin.shown += 1;
+    const mine = admin.shown;
+    dropPictures();
+    admin.from = from;
+    admin.folds = { ...DETAIL_FOLDS };
+    detailLine("");
+    el.inventoryBrowse.hidden = true;
+    el.inventoryDetail.hidden = false;
+    renderDetail(row);
+    if (typeof el.inventoryDetail.scrollIntoView === "function") el.inventoryDetail.scrollIntoView({ block: "start" });
+    const pc = settings();
+    if (!pc) {
+        detailLine("Set the PC address and key under Settings first.");
+        return;
+    }
+    detailLine(`Reading ${row.sku} from the PC...`);
+    let whole;
+    try {
+        whole = await getRow(pc, row.sku);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        detailLine(`Could not read ${row.sku}: ${e.message}.`);
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    detailLine("");
+    renderDetail({ ...whole, sku: row.sku });
+    fetchRowPhotos(pc, mine).catch(() => {});
+}
+
+function detailLine(text) {
+    el.detailStatus.textContent = text;
+    el.detailStatus.hidden = !text;
+}
+
+/** The detail's foldouts and what is in them; a venue's card only for a venue the row has. */
+function renderDetail(row) {
+    admin.row = row;
+    el.detailHeading.textContent = rowHeading(row);
+    el.detailItem.replaceChildren(factsNode(itemFacts(row)));
+    renderDetailPhotos(row);
+    for (const venue of VENUES) {
+        // the actions row stays empty in this read-only lane: the posting actions come later
+        const actions = document.createElement("div");
+        actions.className = "venue-actions";
+        el.detailFolds[venue].card.replaceChildren(factsNode(venueFacts(row, venue)), actions);
+    }
+    renderFolds();
+}
+
+/** Each foldout's arrow and card; the venue cards only for the venues the row has. */
+function renderFolds() {
+    const venues = admin.row ? rowVenues(admin.row) : [];
+    for (const [key, { word, toggle, card }] of Object.entries(el.detailFolds)) {
+        const there = !VENUES.includes(key) || venues.includes(key);
+        const open = there && admin.folds[key];
+        fold(toggle, word, open);
+        toggle.hidden = !there;
+        card.hidden = !open;
+    }
+}
+
+/** A card's facts as a list of label and value. */
+function factsNode(facts) {
+    const list = document.createElement("dl");
+    list.className = "facts";
+    for (const f of facts) {
+        const label = document.createElement("dt");
+        label.textContent = f.label;
+        const value = document.createElement("dd");
+        value.className = [f.pre && "pre", f.mono && "mono", f.derived && "derived"].filter(Boolean).join(" ");
+        if (f.link) {
+            const a = document.createElement("a");
+            a.href = f.value;
+            a.textContent = f.value;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            value.append(a);
+        } else {
+            value.textContent = f.value;
+        }
+        list.append(label, value);
+    }
+    return list;
+}
+
+/** The Photos card: an 88 px tile per photo, its picture on its way (fetchPictures). */
+function renderDetailPhotos(row) {
+    admin.photoTiles.clear();
+    const photos = rowPhotos(row);
+    if (photos.length === 0) {
+        const none = document.createElement("p");
+        none.className = "small";
+        none.textContent = Array.isArray(row.photos) ? "No photos." : "Reading the photos...";
+        el.detailPhotos.replaceChildren(none);
+        return;
+    }
+    const strip = document.createElement("ul");
+    strip.className = "strip";
+    for (const p of photos) {
+        const li = document.createElement("li");
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "thumb";
+        tile.disabled = true;
+        tile.textContent = "...";
+        tile.setAttribute("aria-label", `${p.name}, full size`);
+        tile.addEventListener("click", () => {
+            const url = admin.pictures.get(p.n);
+            if (url) openPhoto(url, p.name, tile);
+        });
+        admin.photoTiles.set(p.n, tile);
+        li.append(tile);
+        strip.append(li);
+    }
+    el.detailPhotos.replaceChildren(strip);
+}
+
+/**
+ * The detail's photos, one at a time, each into its tile; a tap then shows it
+ * full size. One the PC cannot give says so; no answer stops the rest, as does
+ * leaving the detail.
+ */
+async function fetchRowPhotos(pc, mine) {
+    const row = admin.row;
+    for (const p of rowPhotos(row)) {
+        const tile = admin.photoTiles.get(p.n);
+        let blob;
+        try {
+            blob = await getRowPhoto(pc, row.sku, p.n);
+        } catch (e) {
+            if (e.status === 0 || mine !== admin.shown) return;
+            tile.textContent = "not on the PC";
+            continue;
+        }
+        if (mine !== admin.shown) return;
+        const url = URL.createObjectURL(blob);
+        admin.pictures.set(p.n, url);
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "";
+        tile.replaceChildren(img);
+        tile.disabled = false;
+    }
+}
+
+/** The detail's pictures let go: the detail is leaving the screen. */
+function dropPictures() {
+    closePhoto();
+    for (const url of admin.pictures.values()) URL.revokeObjectURL(url);
+    admin.pictures.clear();
+    admin.photoTiles.clear();
+    el.detailPhotos.replaceChildren();
+}
+
+/** The list on screen, as it was left (no new query); the detail's answers still on their way are dropped. */
+function showList() {
+    admin.shown += 1;
+    dropPictures();
+    admin.row = null;
+    admin.from = null;
+    el.inventoryDetail.hidden = true;
+    el.inventoryBrowse.hidden = false;
+}
+
+/** Back to the list: on the row the detail was opened from, however long the list. */
+function backToList() {
+    const from = admin.from;
+    showList();
+    if (from && typeof from.scrollIntoView === "function") from.scrollIntoView({ block: "center" });
+}
+
+/** A photo full size over everything (Michal: "if clicking on a photo - should bring [it up full size]"). */
+function openPhoto(url, name, opener) {
+    admin.opener = opener;
+    el.photoViewImg.src = url;
+    el.photoViewImg.alt = name;
+    el.photoView.hidden = false;
+    el.photoViewClose.focus();
+}
+
+function closePhoto() {
+    if (el.photoView.hidden) return;
+    el.photoView.hidden = true;
+    const opener = admin.opener;
+    admin.opener = null;
+    if (opener) opener.focus();
 }
 
 // --- the server check ----------------------------------------------------------
@@ -1316,6 +1751,7 @@ async function saveSettings() {
     for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
     pump();
     retryLookup();
+    if (admin.inventoryOpen) loadInventory().catch(() => {});
 }
 
 // --- a reload: the item back from the PC -----------------------------------------
@@ -1589,14 +2025,41 @@ function onFiles(handler) {
 
 function main() {
     Object.assign(el, {
+        adminToggle: $("admin-toggle"),
+        admin: $("admin"),
+        adminClose: $("admin-close"),
         settingsToggle: $("settings-toggle"),
         settings: $("settings"),
         pcAddress: $("pc-address"),
         pcKey: $("pc-key"),
         settingsSave: $("settings-save"),
         settingsStatus: $("settings-status"),
-        settingsClose: $("settings-close"),
         settingsServer: $("settings-server"),
+        inventoryToggle: $("inventory-toggle"),
+        inventory: $("inventory"),
+        inventoryBrowse: $("inventory-browse"),
+        inventorySearch: $("inventory-search"),
+        inventoryStatus: $("inventory-status"),
+        inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
+        inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
+        inventoryPhotos: $("inventory-photos"),
+        inventoryList: $("inventory-list"),
+        inventoryDetail: $("inventory-detail"),
+        inventoryBack: $("inventory-back"),
+        detailHeading: $("detail-heading"),
+        detailStatus: $("detail-status"),
+        detailItem: $("detail-item"),
+        detailPhotos: $("detail-photos"),
+        detailFolds: Object.fromEntries(
+            [
+                ["item", "Item"],
+                ["photos", "Photos"],
+                ...VENUES.map((v) => [v, v]),
+            ].map(([key, word]) => [key, { word, toggle: $(`detail-${key}-toggle`), card: $(`detail-${key}`) }])
+        ),
+        photoView: $("photo-view"),
+        photoViewImg: $("photo-view-img"),
+        photoViewClose: $("photo-view-close"),
         server: $("server"),
         modeGoods: $("mode-goods"),
         modeBook: $("mode-book"),
@@ -1688,10 +2151,39 @@ function main() {
 
     renderServer();
 
+    el.adminToggle.addEventListener("click", toggleAdmin);
+    el.adminClose.addEventListener("click", () => showAdmin(false));
     el.settingsToggle.addEventListener("click", toggleSettings);
-    el.settingsClose.addEventListener("click", () => showSettings(false));
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});
+    });
+    el.inventoryToggle.addEventListener("click", () => showInventory(!admin.inventoryOpen));
+    el.inventorySearch.addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            loadInventory().catch(() => {});
+        }, INVENTORY_DEBOUNCE_MS);
+    });
+    el.inventorySearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") loadInventory().catch(() => {});
+    });
+    for (const { value, node } of el.inventoryVenues) node.addEventListener("click", () => onFilter("venue", value));
+    for (const { value, node } of el.inventoryStates) node.addEventListener("click", () => onFilter("status", value));
+    el.inventoryPhotos.addEventListener("change", () => {
+        loadInventory().catch(() => {});
+    });
+    el.inventoryBack.addEventListener("click", backToList);
+    for (const [key, { toggle, card }] of Object.entries(el.detailFolds)) {
+        toggle.addEventListener("click", () => {
+            admin.folds[key] = card.hidden;
+            renderFolds();
+        });
+    }
+    // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
+    el.photoView.addEventListener("click", closePhoto);
+    el.photoViewClose.addEventListener("click", closePhoto);
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closePhoto();
     });
     el.modeGoods.addEventListener("click", () => setMode("goods"));
     el.modeBook.addEventListener("click", () => setMode("book"));
