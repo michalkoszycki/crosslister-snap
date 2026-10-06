@@ -1,86 +1,147 @@
-/* crosslister snap -- one thumb, one hand, outdoors, in a hurry. */
+/* crosslister $nap -- one thumb, one hand, outdoors, in a hurry.
+   The look is design A2, "Signal Yellow" (Michal, 2026-10-05: "A2 implement"):
+   pure yellow, black ink, white, pills everywhere. README "The look" has the rules. */
+
+@font-face {
+    font-family: "Manrope";
+    src: url("fonts/Manrope.woff2?v=2.0.0") format("woff2");
+    font-weight: 200 800;
+    font-display: swap;
+}
 
 :root {
     color-scheme: light dark;
-    --bg: #f5f6f8;
-    --card: #ffffff;
-    --ink: #14181d;
-    --muted: #5d6673;
-    --line: #d7dbe0;
-    --accent: #1667c8;
-    --accent-ink: #ffffff;
-    --ok: #1c7d3f;
+    --bg: #ffffff;
+    --card: #f2f2f0; /* smoke: every sheet, the switch's track, Add from gallery */
+    --field: #ffffff;
+    --ink: #0b0b0b;
+    --muted: #5a5a5a;
+    --line: #e2e2e0;
+    --signal: #fffc00; /* the brand: the header, NEXT, the AI / main marks */
+    --on-signal: #0b0b0b;
+    --on-signal-muted: #3d3d3d;
+    /* the chosen thing (a mode, a chip, Snap): a black pill with yellow words; in the
+       dark, where black would vanish, a yellow pill with black words */
+    --accent: #0b0b0b;
+    --accent-ink: #fffc00;
+    --ok: #0f7a36; /* 5:1 on white: the 14 px posted line and the 11 px sent badge need it */
     --ok-ink: #ffffff;
-    --done: #1f5a36;
-    --done-ink: #ffffff;
-    --bad: #b3261e;
-    --warn: #8a5300;
-    --warn-bg: #fff4d6;
-    --radius: 14px;
+    --bad: #d92d20;
+    --bad-ink: #ffffff;
+    --warn: #0b0b0b;
+    --warn-bg: #fffcb3;
+    /* the header band: yellow here, black with a yellow rule in the dark; its "server ok"
+       and "server off" darkened to read 4.5:1 on the yellow */
+    --head-bg: var(--signal);
+    --head-ink: var(--on-signal);
+    --head-muted: var(--on-signal-muted);
+    --head-ok: #0b5c2a;
+    --head-bad: #b42318;
+    --head-rule: transparent;
+    --head-snap: var(--on-signal);
+    /* the mark: white camera, black ring (dark: black camera, white ring) */
+    --mark-fill: #ffffff;
+    --mark-line: #0b0b0b;
+    --radius: 18px;
+    --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg: #101418;
-        --card: #1a2027;
-        --ink: #e9edf2;
-        --muted: #9aa6b4;
-        --line: #2c343d;
-        --accent: #4d9bff;
-        --accent-ink: #06101d;
-        --ok: #62d48c;
-        --ok-ink: #06210f;
-        --done: #1f5a36;
-        --done-ink: #e9edf2;
-        --bad: #ff8a80;
-        --warn: #ffd27d;
-        --warn-bg: #3a2d10;
+        --bg: #0b0b0b;
+        --card: #171717;
+        --field: #0b0b0b;
+        --ink: #fafafa;
+        --muted: #9a9a9a;
+        --line: #2c2c2c;
+        --accent: #fffc00;
+        --accent-ink: #0b0b0b;
+        --ok: #7cf59a;
+        --ok-ink: #0b0b0b;
+        --bad: #ff7b72;
+        --bad-ink: #0b0b0b;
+        --warn: #fafafa;
+        --warn-bg: #3a3900;
+        --head-bg: #0b0b0b;
+        --head-ink: #fafafa;
+        --head-muted: #9a9a9a;
+        --head-ok: #7cf59a;
+        --head-bad: #ff7b72;
+        --head-rule: var(--signal);
+        --head-snap: var(--signal);
+        --mark-fill: #0b0b0b;
+        --mark-line: #ffffff;
     }
 }
 
 * { box-sizing: border-box; }
 
+/* the header band runs edge to edge; everything else keeps the 640 px column */
 body {
     margin: 0;
-    padding: 0 16px 48px;
+    padding: 0 0 48px;
     background: var(--bg);
     color: var(--ink);
-    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 500 17px/1.45 var(--font);
+}
+main, footer {
     max-width: 640px;
     margin-inline: auto;
+    padding-inline: 16px;
 }
 
+/* on the narrowest phones the server line and Settings drop under the name, right aligned */
 header {
     display: flex;
-    align-items: baseline;
+    flex-wrap: wrap;
+    align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 18px 0 10px;
+    gap: 0 8px;
+    /* the column's edges (640 - 2 x 16), and below the phone's status bar when installed */
+    padding: calc(18px + env(safe-area-inset-top, 0px)) max(16px, calc(50% - 304px)) 14px;
+    background: var(--head-bg);
+    color: var(--head-ink);
+    border-bottom: 4px solid var(--head-rule);
+    margin-bottom: 14px;
 }
 
 h1 {
-    font-size: 20px;
+    font-size: 19px;
+    font-weight: 500;
     margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
 }
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark { flex: none; display: block; width: 36px; height: 36px; }
+.mark-shell { fill: var(--mark-fill); stroke: var(--mark-line); }
+.mark-ring { fill: var(--mark-line); }
+.mark-lens { fill: var(--signal); }
+.mark-glyph { fill: var(--on-signal); }
+.wordmark { white-space: nowrap; }
+.wordmark-snap { font-weight: 800; color: var(--head-snap); }
 
-h2 { font-size: 18px; margin: 0 0 8px; }
+h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; }
 
 /* the Settings link in the header: a button that looks like a link */
 .link {
     background: none;
     border: none;
     padding: 10px 0 10px 12px;
-    color: var(--accent);
+    color: var(--ink);
     font-size: 14px;
+    font-weight: 700;
 }
+header .link { color: var(--head-ink); padding-left: 10px; }
 
-.header-right { display: flex; align-items: baseline; gap: 4px; }
+.header-right { display: flex; align-items: baseline; gap: 4px; margin-left: auto; white-space: nowrap; }
 
 /* "server ok" in green, "server off" / "wrong key" in red, checked by the page itself */
-.server { font-size: 13px; font-weight: 600; color: var(--muted); }
+.server { font-size: 13px; font-weight: 700; color: var(--muted); }
 .server.ok { color: var(--ok); }
 .server.bad { color: var(--bad); }
+header .server { color: var(--head-muted); }
+header .server.ok { color: var(--head-ok); }
+header .server.bad { color: var(--head-bad); }
 .server-line { margin: 0 0 4px; font-size: 16px; }
 
 .small { font-size: 13px; color: var(--muted); }
@@ -88,7 +149,7 @@ h2 { font-size: 18px; margin: 0 0 8px; }
 
 .card {
     background: var(--card);
-    border: 1px solid var(--line);
+    border: none;
     border-radius: var(--radius);
     padding: 18px;
 }
@@ -99,31 +160,30 @@ h2 { font-size: 18px; margin: 0 0 8px; }
     margin: 12px 0;
     font-size: 15px;
 }
-.banner-warn, .message.warn { background: var(--warn-bg); color: var(--warn); }
-.message.info { background: var(--card); border: 1px solid var(--line); }
+.banner-warn, .message.warn { background: var(--warn-bg); color: var(--warn); font-weight: 700; }
+.message.info { background: var(--card); }
 
 .field { display: block; margin: 14px 0 6px; }
-.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.field-label { display: block; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
 
 input[type="text"], input[type="url"] {
     width: 100%;
-    font-size: 19px;
-    padding: 14px;
+    font: 500 19px/1.3 var(--font);
+    padding: 14px 16px;
     border-radius: var(--radius);
-    border: 1px solid var(--line);
-    background: var(--card);
+    border: 2px solid var(--line);
+    background: var(--field);
     color: var(--ink);
 }
 input[type="text"]:focus, input[type="url"]:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 textarea {
     width: 100%;
-    font: inherit;
-    font-size: 17px;
-    padding: 12px 14px;
+    font: 500 16px/1.45 var(--font);
+    padding: 12px 16px;
     border-radius: var(--radius);
-    border: 1px solid var(--line);
-    background: var(--card);
+    border: 2px solid var(--line);
+    background: var(--field);
     color: var(--ink);
     resize: vertical;
     min-height: 76px;
@@ -131,46 +191,62 @@ textarea {
 textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 /* the quiet "saved" / "saving..." next to the notes label */
-.note-status { float: right; font-size: 12px; color: var(--muted); font-weight: 400; }
+.note-status { float: right; font-size: 12px; color: var(--muted); font-weight: 500; }
 
+/* every button a pill */
 button, .big, .secondary {
     font: inherit;
     cursor: pointer;
-    border-radius: var(--radius);
+    border-radius: 999px;
     border: 1px solid transparent;
 }
 
 .big {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
     width: 100%;
+    min-height: 64px;
     background: var(--accent);
     color: var(--accent-ink);
     font-size: 22px;
-    font-weight: 600;
-    padding: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    padding: 12px 22px;
     text-align: center;
     margin-top: 14px;
 }
+/* the camera (or barcode) drawn left of the word, in the word's colour */
+.btn-icon { display: flex; flex: none; }
+.btn-icon svg { width: 26px; height: 26px; }
 /* Snap, and NEXT (once DONE; Michal, 2026-09-28: "I want the final done button to
-   be NEXT") below the notes: the same button, same height, same corners, same word
-   size. NEXT is green and nothing else (Michal, 2026-09-21: "the same style just
-   different color. not round"). */
-.snap, .done { padding: 34px 22px; font-size: 26px; letter-spacing: 0.02em; }
-.done { background: var(--done); color: var(--done-ink); }
-/* Until the item has its first photo NEXT is plain grey, not a faded green: nothing to
+   be NEXT") below the notes: the same button, same height, same word size. Snap is
+   black with yellow words (yellow in the dark), NEXT yellow with black (design A2,
+   2026-10-05). */
+.snap, .done { min-height: 92px; font-size: 28px; }
+.snap .btn-icon svg { width: 30px; height: 30px; }
+.done { background: var(--signal); color: var(--on-signal); letter-spacing: 0.02em; }
+/* Until the item has its first photo NEXT is plain smoke, not a faded yellow: nothing to
    finish yet (Michal, 2026-09-21). Overrides the shared 0.45 opacity of disabled buttons. */
-.done:disabled { background: var(--line); color: var(--muted); opacity: 1; }
+.done:disabled { background: var(--card); color: var(--muted); opacity: 1; }
 
 .secondary {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
+    min-height: 48px;
     text-align: center;
     background: var(--card);
     color: var(--ink);
-    border-color: var(--line);
-    padding: 16px;
+    font-weight: 700;
+    padding: 10px 16px;
     margin-top: 10px;
 }
+
+/* on a smoke sheet (Save and check, Close) a smoke pill would vanish: white there */
+.card .secondary { background: var(--field); }
 
 .disabled, button:disabled { opacity: 0.45; pointer-events: none; }
 
@@ -192,19 +268,20 @@ button, .big, .secondary {
     padding: 0;
 }
 
+/* a photo: 108 x 128, the name under it */
 .shot {
     position: relative;
-    width: 104px;
-    border-radius: 12px;
+    width: 108px;
+    border-radius: 18px;
     overflow: hidden;
     background: var(--card);
-    border: 2px solid var(--line);
+    border: 3px solid var(--line);
     padding-bottom: 4px;
 }
-.shot img { display: block; width: 100%; height: 104px; object-fit: cover; background: var(--line); }
-/* a photo marked for the AI (or a book's main photo) wears the accent colour all round */
+.shot img { display: block; width: 100%; height: 128px; object-fit: cover; background: var(--line); }
+/* a photo marked for the AI (or a book's main photo) wears the yellow all round */
 .shot-ai,
-.shot-main { border-color: var(--accent); }
+.shot-main { border-color: var(--signal); }
 
 /* the delete x: a small glyph inside a 44 px thumb target */
 .kill {
@@ -219,17 +296,17 @@ button, .big, .secondary {
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
     border: none;
-    border-radius: 0 10px 0 12px;
+    border-radius: 0 15px 0 18px;
 }
 .kill:active { background: var(--bad); }
 
 /* the AI mark: bottom right of the photo (the x has the top right), a 44 px
-   touch target. Off: a faint outlined "AI". On: a filled accent chip.
+   touch target. Off: a faint outlined "AI". On: a yellow chip with black words.
    A book's "main" mark sits in the same place and looks the same. */
 .ai-mark,
 .main-mark {
     position: absolute;
-    top: 60px; /* the photo is 104 px tall: 104 - 44 */
+    top: 84px; /* the photo is 128 px tall: 128 - 44 */
     right: 0;
     width: 44px;
     height: 44px;
@@ -241,7 +318,7 @@ button, .big, .secondary {
     border: none;
     border-radius: 0;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.04em;
     color: rgba(255, 255, 255, 0.85);
     isolation: isolate;
@@ -251,7 +328,7 @@ button, .big, .secondary {
     content: "";
     position: absolute;
     inset: 9px 6px 9px 6px;
-    border-radius: 8px;
+    border-radius: 999px;
     border: 1.5px solid rgba(255, 255, 255, 0.85);
     background: rgba(0, 0, 0, 0.45);
     z-index: -1;
@@ -260,9 +337,9 @@ button, .big, .secondary {
 .main-mark { font-size: 11px; letter-spacing: 0.02em; }
 .main-mark::before { inset: 9px 3px 9px 3px; }
 .ai-mark.on,
-.main-mark.on { color: var(--accent-ink); }
+.main-mark.on { color: var(--on-signal); }
 .ai-mark.on::before,
-.main-mark.on::before { background: var(--accent); border-color: var(--accent); }
+.main-mark.on::before { background: var(--signal); border-color: var(--signal); }
 /* after sending, the mark shows what went (to the AI, or first) but no longer toggles */
 .ai-mark:disabled,
 .main-mark:disabled { opacity: 1; }
@@ -273,7 +350,7 @@ button, .big, .secondary {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 104px;
+    height: 128px;
     background: var(--line);
     color: var(--muted);
     font-size: 12px;
@@ -285,11 +362,12 @@ button, .big, .secondary {
     position: absolute;
     top: 6px;
     left: 6px;
-    background: rgba(0, 0, 0, 0.66);
+    background: #0b0b0b;
     color: #fff;
     font-size: 11px;
+    font-weight: 700;
     line-height: 1.3;
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: 999px;
     border: none;
 }
@@ -300,10 +378,10 @@ button.badge.failed {
     min-width: 44px;
     min-height: 44px;
     padding: 0 8px;
-    border-radius: 10px 0 12px 0;
+    border-radius: 15px 0 18px 0;
     background: var(--bad);
-    color: #fff;
-    font-weight: 700;
+    color: var(--bad-ink);
+    font-weight: 800;
 }
 
 .shot-name { display: block; font-size: 10px; color: var(--muted); padding: 4px 6px 0; word-break: break-all; }
@@ -319,7 +397,7 @@ button.badge.failed {
 /* The cancel under a pressed venue button (Michal, 2026-10-02): from the press until the
    link or the error; the first second takes the press back for free. Just red text, not
    a button (Michal, 2026-10-03: "low profile red text ... just like the settings text"):
-   the Settings link's shape and size in the bad colour, still 44 px tall for a thumb. */
+   the Settings link's size in the bad colour, still 44 px tall for a thumb. */
 .cancel {
     display: block;
     width: 100%;
@@ -331,21 +409,20 @@ button.badge.failed {
     background: none;
     color: var(--bad);
     font-size: 14px;
-    font-weight: 400;
+    font-weight: 500;
     text-align: center;
 }
 .cancel:disabled { opacity: 0.6; }
+/* the venue buttons: outlined pills in ink, not filled, so Snap and NEXT stay the loud ones */
 .venue-btn {
     margin-top: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    min-height: 64px;
+    background: none;
+    color: var(--ink);
+    border: 3px solid var(--ink);
+    padding: 8px;
+    font-size: 20px;
     gap: 10px;
-    background: var(--card);
-    color: var(--accent);
-    border: 2px solid var(--accent);
-    padding: 24px 8px;
-    font-size: 22px;
 }
 /* A pressed button, while its job is on its way or running on the PC: not faded like
    any other disabled button, but its word at full strength with a ring turning beside
@@ -365,13 +442,21 @@ button.badge.failed {
 @keyframes turn { to { transform: rotate(360deg); } }
 /* The row's price above the venue buttons, from the press on (Michal, 2026-09-30: "show
    the chosen price for the item above the buttons instead of replacing button text"). */
-.price-line { margin: 0 2px 10px; text-align: center; font-size: 22px; font-weight: 600; color: var(--ink); }
+.price-line {
+    margin: 0 2px 10px;
+    text-align: center;
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+}
 /* the listing's title above the price, small: a glance to check it (Michal, 2026-10-02) */
-.title-line { margin: 0 2px 4px; text-align: center; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.title-line { margin: 18px 2px 4px; text-align: center; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 /* An item name the PC already has today: refused, and the box says so. */
 #item-name.taken { border-color: var(--bad); }
-/* Posted: the button's word is the price alone ("$14"), at full strength in the
-   done colour rather than faded like a button that cannot be pressed yet. */
+/* Posted: the button's word is at full strength in the posted green rather than
+   faded like a button that cannot be pressed yet. */
 .venue-btn.posted { opacity: 1; color: var(--ok); border-color: var(--ok); }
 @media (prefers-reduced-motion: reduce) {
     .venue-btn.busy::after { animation: none; }
@@ -385,22 +470,23 @@ button.badge.failed {
     display: block;
     margin: 8px 2px 0;
     font-size: 14px;
-    color: var(--accent);
+    font-weight: 700;
+    color: var(--ink);
     overflow-wrap: anywhere;
 }
 .hint-line { margin: 10px 0 0; }
 
-/* goods | book at the top: one control in two halves, the chosen half filled.
+/* goods | book at the top: a smoke pill track, the chosen half a filled pill.
    Quiet next to Snap on purpose: it is chosen once per sitting, not per photo. */
 .modes {
     display: grid;
     grid-template-columns: 1fr 1fr;
     margin: 4px 0 6px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border: none;
+    border-radius: 999px;
     background: var(--card);
-    padding: 3px;
-    gap: 3px;
+    padding: 4px;
+    gap: 4px;
 }
 .mode {
     min-height: 44px;
@@ -408,15 +494,15 @@ button.badge.failed {
     background: none;
     color: var(--muted);
     font-size: 16px;
-    font-weight: 600;
-    border-radius: 11px;
+    font-weight: 700;
+    border-radius: 999px;
 }
-.mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
 
 /* the book the PC found: the title in bold, then the authors, then the small print */
 .book-card { margin-top: 14px; }
 .book-card p { margin: 0; overflow-wrap: anywhere; }
-.book-title { font-weight: 700; font-size: 18px; line-height: 1.3; }
+.book-title { font-weight: 800; font-size: 18px; line-height: 1.3; letter-spacing: -0.02em; }
 .book-card .book-authors { margin-top: 4px; }
 .book-card .small { margin-top: 6px; }
 .book-lookup { color: var(--muted); font-size: 15px; }
@@ -433,16 +519,17 @@ button.badge.failed {
     min-height: 44px;
     padding: 6px 4px;
     font-size: 14px;
+    font-weight: 700;
     line-height: 1.2;
-    background: var(--card);
+    background: var(--field);
     color: var(--ink);
-    border: 1px solid var(--line);
+    border: 2px solid var(--line);
 }
 .chip[aria-pressed="true"] {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-ink);
-    font-weight: 600;
+    font-weight: 800;
 }
 /* on a narrow phone four in a row would squeeze "Acceptable" past its chip: two by two */
 @media (max-width: 380px) {
@@ -455,7 +542,7 @@ button.badge.failed {
 /* No ISBN, under the ISBN box: small on purpose, most books have one
    (Michal, 2026-09-28: "hidden under one button overall -- a small button under scan") */
 .secondary.no-isbn {
-    display: inline-block;
+    display: inline-flex;
     width: auto;
     min-height: 44px;
     padding: 8px 18px;
@@ -463,9 +550,9 @@ button.badge.failed {
     font-size: 15px;
     color: var(--muted);
 }
-.secondary.no-isbn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.secondary.no-isbn[aria-expanded="true"] { color: var(--ink); border: 2px solid var(--ink); }
 /* after an ISBN no catalogue knows it is the next step: filled, as a pressed chip is */
-.secondary.no-isbn.next { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.secondary.no-isbn.next { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 800; }
 /* ... and the ISBN it keeps looks set aside, not waiting for more typing (it can still be replaced) */
 input[type="text"].kept { background: transparent; color: var(--muted); }
 .isbn-kept { margin: 12px 0 0; }
@@ -488,21 +575,22 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
 .customize .field { margin-top: 10px; }
 input[type="text"].quantity { width: 7em; }
 input[type="text"]:disabled { color: var(--muted); }
-/* pickup only: the checkbox in a chip-like row, the whole row the target */
+/* pickup only: the checkbox in a pill row, the whole row the target */
 .pickup {
     display: flex;
     align-items: center;
     gap: 12px;
     min-height: 44px;
     margin-top: 12px;
-    padding: 8px 12px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
+    padding: 8px 16px;
+    border: 2px solid var(--line);
+    border-radius: 999px;
+    background: var(--field);
     font-size: 15px;
     cursor: pointer;
 }
 .pickup input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
-.pickup:has(input:checked) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.pickup:has(input:checked) { border-color: var(--accent); font-weight: 800; }
 .pickup:has(input:disabled) { opacity: 0.45; pointer-events: none; }
 .pickup input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 

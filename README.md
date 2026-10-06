@@ -1,4 +1,4 @@
-# crosslister snap
+# crosslister $nap
 
 Open the phone, tap the icon, type the item name, tap **Snap**, take the
 photos. Each photo goes to the home PC the moment it is taken, into the item's
@@ -64,9 +64,51 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | `core.js` | pure logic, no DOM, no network: the state and everything the screen says |
 | `version.js` | one `VERSION`; every file the page loads carries it as `?v=` |
 | `styles.css` | the look |
+| `fonts/` | Manrope (variable, latin), self-hosted, with its licence (SIL OFL 1.1) |
 | `tools/make-icons.mjs` | regenerates `icon-192.png` / `icon-512.png` from scratch |
 | `tools/bump-version.mjs` | rewrites every `?v=` to match `VERSION` |
 | `tests/` | `node --test`, no dependencies |
+
+## The look (v2, design A2)
+
+Michal picked design A2, "Signal Yellow", from a canvas of options ("A2
+implement", 2026-10-05). This branch, `design-a2`, deploys to the design site
+beside the live app; `main` stays the stable look. Only the look differs: the
+ids, the order on screen, the Content-Security-Policy (bar `font-src 'self'`)
+and every behaviour are the live app's.
+
+- **The name** is written **crosslister $nap**: the S of Snap is a dollar sign.
+  The header is a yellow band with the mark (a camera whose lens holds the $)
+  and the wordmark, "crosslister" at weight 500 and "$nap" at 800. In the dark
+  the band is black with a 4 px yellow rule under it, "$nap" turns yellow and
+  the mark turns to its dark variant (black camera, white outline). The mark is
+  one inline SVG whose colours come from `styles.css`, so both variants are the
+  same drawing. "server ok" on the yellow is a darker green (`#0B5C2A`), and
+  "server off" a darker red, so both read at 4.5:1.
+- **Colours.** Light: white ground, smoke `#F2F2F0` sheets, ink `#0B0B0B`,
+  muted `#5A5A5A`, lines `#E2E2E0`, signal yellow `#FFFC00` (the brand), posted
+  green `#138A3F`, stop red `#D92D20`, the warning banner in ink on a yellow
+  tint `#FFFCB3`. On yellow, text is always ink (muted: `#3D3D3D`). Dark: ground
+  `#0B0B0B`, sheets `#171717`, ink `#FAFAFA`, muted `#9A9A9A`, lines `#2C2C2C`,
+  the same yellow, posted `#7CF59A`, stop `#FF7B72`, warning tint `#3A3900`.
+- **Shapes.** Every button is a pill. Sheets, inputs and photo tiles have 18 px
+  corners. The chosen thing (goods | book, a condition chip, Snap) is a black
+  pill with yellow words; in the dark, a yellow pill with black words.
+- **Type.** Manrope, self-hosted in `fonts/` (never a font CDN: the CSP allows
+  fonts from the page's own origin only). Body 17 px at 500; labels 13 px 700
+  muted; headings and big words 800 with tight letter-spacing (-0.02em).
+- **Snap** (and the book's **ISBN**) is a 92 px black pill with yellow words
+  and a camera (a barcode) icon left of the word; **NEXT** is a 92 px yellow
+  pill with black words, smoke until there is something to finish. **Add from
+  gallery** is a 48 px smoke pill. **ebay** and **craigslist** are 64 px
+  outlined pills in ink, green once posted; the link under them is ink. The
+  price above them is 34 px at 800, the title over it 13 px muted.
+- **Photos** are 108 x 128 tiles with a 3 px border, yellow when marked for the
+  AI (or a book's main); "sent" is a green pill, "waiting" a black one,
+  "failed" stays the red tap target; the AI / main marks are yellow chips when
+  on, faint outlines when off.
+- **The icon** is the mark on a yellow rounded square
+  (`node tools/make-icons.mjs` draws the PNGs, the $ as two arcs and a bar).
 
 ## The screen, top to bottom
 
@@ -111,8 +153,8 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
   page, on its way), `sent` (on the PC), or `failed` (the PC refused it; tap
   the word to send it again). The **x** at the top right takes a photo off the
   page and off the PC. The **AI** at the bottom right marks it for the model:
-  off by default, a faint outlined "AI" when off, a filled blue chip (and a
-  blue frame round the photo) when on. Every photo goes to the listing; only
+  off by default, a faint outlined "AI" when off, a filled yellow chip (and a
+  yellow frame round the photo) when on. Every photo goes to the listing; only
   the marked ones go to the model, and a new item needs at least one.
 - **Notes for this item**: sent to the PC (`note.txt` in the item's folder) a
   moment and a half after you stop typing, or when you leave the box. The small
@@ -255,7 +297,7 @@ title instead, and the PC does the same work from that. Top to bottom:
   PC; the fields themselves can still be corrected until **ebay** is pressed.
 - **No ISBN after an ISBN no catalogue knows** (Michal, 2026-09-28: he scanned
   9781926856155 and the page said to post it as goods, a dead end): the card
-  says so and points at No ISBN, which is filled in blue as the next step.
+  says so and points at No ISBN, which is filled in as the next step (black, yellow in the dark).
   Tapped, it opens the same fields but keeps the ISBN: the box stays filled
   (greyed, set aside), `ISBN 9781926856155 kept: it goes on the listing` sits
   above the fields, the folder stays `Book <isbn13> <date>` (so No ISBN opens
@@ -283,8 +325,8 @@ title instead, and the PC does the same work from that. Top to bottom:
   the title` -- `for the title` once No ISBN is open -- and the lines under
   ebay and NEXT say what to do).
 - **main**, at the bottom right of each photo, where goods have the AI mark
-  and looking the same (a faint outlined `main` when off, a filled blue chip
-  and a blue frame when on): the photo the listing leads with. Exactly one
+  and looking the same (a faint outlined `main` when off, a filled yellow chip
+  and a yellow frame when on): the photo the listing leads with. Exactly one
   photo wears it, the first by default, so doing nothing leads with the first
   photo taken. A tap on another moves it there; deleting the main photo moves
   it back to the first one left. After the **ebay** press it shows but no
