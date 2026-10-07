@@ -24,12 +24,14 @@
   base-uri 'none';
   form-action 'none';
   object-src 'none'">
-<meta name="theme-color" content="#FFFC00">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
+<!-- the status bar: these two follow the device; Dark or Light chosen in Settings puts
+     that look's colour on both (app.js reads these values, so they are written only here) -->
+<meta id="theme-color" name="theme-color" content="#FFFC00">
+<meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.3.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.3.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.3.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.3.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -93,6 +95,19 @@
         <input id="pc-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
                placeholder="from CROSSLISTER_KEYS on the PC">
       </label>
+      <!-- the look (Michal, 2026-10-06: "Dark, light or sync with device"): a tap applies
+           and remembers it on this phone at once, not part of Save and check -->
+      <div class="field">
+        <span class="field-label">Appearance</span>
+        <div id="theme" class="chips chips-three" role="group" aria-label="Appearance">
+          <button type="button" id="theme-dark" class="chip" data-value="dark"
+                  aria-pressed="false">Dark</button>
+          <button type="button" id="theme-light" class="chip" data-value="light"
+                  aria-pressed="false">Light</button>
+          <button type="button" id="theme-device" class="chip" data-value="device"
+                  aria-pressed="true">Sync with device</button>
+        </div>
+      </div>
       <button type="button" id="settings-save" class="secondary">Save and check</button>
       <p id="settings-status" class="small"></p>
     </div>
@@ -436,6 +451,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.3.0"></script>
+<script type="module" src="app.js?v=2.3.1"></script>
 </body>
 </html>

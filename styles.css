@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.3.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.3.1") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -46,8 +46,15 @@
     --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* The dark tokens, twice: for a dark device unless Light was chosen, and for Dark chosen
+   whatever the device says (Michal, 2026-10-06: "Dark, light or sync with device"; app.js
+   sets data-theme on <html>, none for the device's). CSS has no way to name one block for
+   both, so the two copies must stay identical, the mark's colours too: page.test.js
+   compares them. Every dark-only rule goes in both. */
+/* dark tokens: the device's */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
         --bg: #0b0b0b;
         --card: #171717;
         --field: #0b0b0b;
@@ -73,6 +80,35 @@
         --mark-line: #ffffff;
     }
 }
+/* dark tokens: Dark chosen */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0b0b0b;
+    --card: #171717;
+    --field: #0b0b0b;
+    --ink: #fafafa;
+    --muted: #9a9a9a;
+    --line: #2c2c2c;
+    --accent: #fffc00;
+    --accent-ink: #0b0b0b;
+    --ok: #7cf59a;
+    --ok-ink: #0b0b0b;
+    --bad: #ff7b72;
+    --bad-ink: #0b0b0b;
+    --warn: #fafafa;
+    --warn-bg: #3a3900;
+    --head-bg: #0b0b0b;
+    --head-ink: #fafafa;
+    --head-muted: #9a9a9a;
+    --head-ok: #7cf59a;
+    --head-bad: #ff7b72;
+    --head-rule: var(--signal);
+    --head-snap: var(--signal);
+    --mark-fill: #0b0b0b;
+    --mark-line: #ffffff;
+}
+/* Light chosen: :root's tokens above, and the browser's own controls light too */
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
