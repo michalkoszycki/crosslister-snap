@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.3.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.3.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.4.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.4.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -169,14 +169,53 @@
         <ul id="inventory-list" class="inventory-list"></ul>
       </div>
 
-      <!-- one listing, in place of the list: the heading, its photos, then one card per venue
-           and nothing else (Michal, 2026-10-06: "when I click on an item there should only be
-           eBay or and Craigslist card"); a venue it is not on is an empty card with its Add -->
+      <!-- one listing, in place of the list: the heading, its photos, its customize, then one
+           card per venue and nothing else (Michal, 2026-10-06: "when I click on an item there
+           should only be eBay or and Craigslist card"); a venue it is not on is an empty card
+           with its Add -->
       <div id="inventory-detail" hidden>
         <button type="button" id="inventory-back" class="link back-link">← Back to the list</button>
         <h2 id="detail-heading" class="detail-heading"></h2>
         <p id="detail-status" class="small" aria-live="polite" hidden></p>
         <div id="detail-photos" class="detail-photos"></div>
+        <!-- the listing's customize, first and open (Michal, 2026-10-07: "each item needs a
+             customize tab and the customization options as at posting should pop up there
+             ... I can there click pickup only and sync to eBay"): the goods card's shape,
+             the quantity and pickup only to change, the price grade and post without asking
+             as they were at posting, read-only; Save, then Sync to eBay -->
+        <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
+                aria-controls="detail-customize">▾ customize</button>
+        <div id="detail-customize" class="card customize fold">
+          <label class="field">
+            <span class="field-label">Quantity</span>
+            <input id="detail-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+                   spellcheck="false" value="1">
+          </label>
+          <label class="pickup">
+            <input id="detail-pickup-only" type="checkbox">
+            <span>Pickup only — no shipping on eBay</span>
+          </label>
+          <!-- read-only: the grade only shaped the draft the model wrote -->
+          <div class="field pricing-field">
+            <span class="field-label">Price preference</span>
+            <div class="pricing-words">
+              <span id="detail-pricing-1">Quick sale</span>
+              <span id="detail-pricing-2">Fair price</span>
+              <span id="detail-pricing-3">Higher end</span>
+            </div>
+            <p id="detail-pricing-note" class="pricing-note"></p>
+            <p class="pricing-note">The grade only shapes the draft: to re-price, post the item again.</p>
+          </div>
+          <div class="field">
+            <span class="field-label">Post without asking</span>
+            <p id="detail-auto-post" class="posting-word"></p>
+          </div>
+          <div class="venue-actions">
+            <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
+            <button type="button" id="detail-customize-sync" class="pill">Sync to eBay</button>
+          </div>
+          <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
+        </div>
         <button type="button" id="detail-ebay-toggle" class="link customize-toggle" aria-expanded="false"
                 aria-controls="detail-ebay">▸ ebay</button>
         <div id="detail-ebay" class="card fold" hidden></div>
@@ -451,6 +490,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.3.1"></script>
+<script type="module" src="app.js?v=2.4.0"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.3.1";
+import { noteDirty, unsent } from "./queue.js?v=2.4.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.3.1";
+} from "./book.js?v=2.4.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2347,8 +2347,10 @@ export function endQuestion(venue) {
  * The body of POST /jobs for an action job (the PC's contract, 2026-10-06):
  *   {"action": "end" | "refresh", "sku", "venue"}  a card's End listing / Refresh status
  *   {"action": "sync", "direction": "from" | "to"}  the sync bar's two buttons
+ *   {"action": "push", "sku", "venue": "ebay"}       a listing's customize, Sync to eBay
+ *                                                    (the contract of 2026-10-07: eBay only)
  * A card's Post stays jobRequest's {"sku", "venue"}.
- * @param {"end"|"refresh"|"sync"} action
+ * @param {"end"|"refresh"|"sync"|"push"} action
  * @param {{sku?:string, venue?:string, direction?:string}} what
  * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string}}
  */
@@ -2357,8 +2359,9 @@ export function actionJob(action, { sku = "", venue = "", direction = "" } = {})
         if (direction !== "from" && direction !== "to") throw new RangeError(`unknown sync direction ${direction}`);
         return { action, direction };
     }
-    if (action !== "end" && action !== "refresh") throw new RangeError(`unknown action ${action}`);
+    if (action !== "end" && action !== "refresh" && action !== "push") throw new RangeError(`unknown action ${action}`);
     if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
+    if (action === "push" && venue !== "ebay") throw new RangeError(`push goes to ebay, not ${venue}`);
     return { action, sku, venue };
 }
 
@@ -2391,6 +2394,18 @@ export function syncLine(job) {
 }
 
 /**
+ * What a card (or a listing's customize) has to say before anything else: what is
+ * on its way to the PC, its job, what the PC refused; null when none of these.
+ * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null}} card
+ * @returns {{text:string, kind:string} | null}
+ */
+function busyLine(card) {
+    if (card.wait) return { text: card.wait, kind: "busy" };
+    if (card.job) return syncLine(card.job);
+    return card.note || null;
+}
+
+/**
  * A card's status line: what is on its way to the PC (`wait`), its job (running
  * or ended), what the PC refused (`note`), and otherwise the venue's status on
  * the row. Nothing for a venue the row is not on until its Add has something to say.
@@ -2401,9 +2416,8 @@ export function syncLine(job) {
  * @returns {{text:string, kind:string}}
  */
 export function cardLine(row, venue, card, offsetMinutes) {
-    if (card.wait) return { text: card.wait, kind: "busy" };
-    if (card.job) return syncLine(card.job);
-    if (card.note) return card.note;
+    const said = busyLine(card);
+    if (said) return said;
     if (!rowVenues(row).includes(venue)) return { text: "", kind: "" };
     const listed = venueStatus(row, venue).status === "listed";
     return { text: venueStatusLine(row, venue, offsetMinutes), kind: listed ? "ok" : "" };
@@ -2413,7 +2427,8 @@ export function cardLine(row, venue, card, offsetMinutes) {
  * A card's fields as Edit turns them into inputs, in their order on the card:
  * eBay's go top-level in the PATCH, craigslist's four overrides inside its
  * "craigslist" (where "" clears one). kind: "line" an input, "price" an input
- * for dollars, "count" a whole number, "text" a textarea, "check" a tick.
+ * for dollars, "text" a textarea. The quantity and pickup only are not here: the
+ * listing's customize owns them (Michal, 2026-10-07), so one place edits them.
  */
 export const EDIT_FIELDS = {
     ebay: [
@@ -2421,8 +2436,6 @@ export const EDIT_FIELDS = {
         { key: "price", label: "Price, dollars", kind: "price" },
         { key: "description", label: "Description", kind: "text" },
         { key: "note", label: "Note", kind: "text" },
-        { key: "quantity", label: "Quantity", kind: "count" },
-        { key: "pickup_only", label: "Pickup only — no shipping on eBay", kind: "check" },
         { key: "condition_note", label: "Condition note", kind: "text" },
     ],
     craigslist: [
@@ -2439,7 +2452,7 @@ export const EDIT_FIELDS = {
  * is derived from).
  * @param {Record<string, any>} row
  * @param {string} venue
- * @returns {Record<string, string|boolean>}
+ * @returns {Record<string, string>}
  */
 export function editValues(row, venue) {
     if (venue === "craigslist") {
@@ -2456,8 +2469,6 @@ export function editValues(row, venue) {
         price: priceText(row.price),
         description: plain(row.description),
         note: plain(row.note),
-        quantity: Number.isInteger(row.quantity) ? String(row.quantity) : "1",
-        pickup_only: row.pickup_only === true,
         condition_note: plain(row.condition_note),
     };
 }
@@ -2480,26 +2491,146 @@ export function changedFields(before, after) {
     return out;
 }
 
-/** Said under Save while the quantity typed is not one. */
-export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
-
 /**
- * The one PATCH /inventory/<sku> body Save sends: only the fields changed, eBay's
- * top-level (the quantity as a number), craigslist's inside "craigslist". `body`
- * is null when nothing changed (nothing is sent) or when the quantity is not a
- * quantity (`error` says so).
+ * The one PATCH /inventory/<sku> body a card's Save sends: only the fields
+ * changed, eBay's top-level, craigslist's inside "craigslist"; null when nothing
+ * changed (nothing is sent).
  * @param {string} venue
  * @param {Record<string, unknown>} before editValues()
  * @param {Record<string, unknown>} after the inputs
- * @returns {{body: Record<string, any> | null, error: string}}
+ * @returns {Record<string, any> | null}
  */
 export function patchBody(venue, before, after) {
     const changed = changedFields(before, after);
-    if ("quantity" in changed) {
-        const n = quantityValue(changed.quantity);
-        if (!n) return { body: null, error: EDIT_QUANTITY_HINT };
-        changed.quantity = n;
-    }
-    if (Object.keys(changed).length === 0) return { body: null, error: "" };
-    return { body: venue === "craigslist" ? { craigslist: changed } : changed, error: "" };
+    if (Object.keys(changed).length === 0) return null;
+    return venue === "craigslist" ? { craigslist: changed } : changed;
+}
+
+// --- Admin: a listing's customize ---------------------------------------------------
+//
+// Michal, 2026-10-07: "In inventory each item needs a customize tab and the customization
+// options as at posting should pop up there with the choices that were made at posting.
+// For instance I can there click pickup only and sync to eBay, and that detail of that
+// listing should update." So the detail opens on a customize foldout in the goods card's
+// shape: the quantity and pickup only to change (one PATCH), the price grade and post
+// without asking as they were sent with the job that drafted the row (GET
+// /inventory/<sku>'s "posting"), read-only, and Sync to eBay, the push job that puts the
+// row as saved onto its eBay listing.
+
+/** Said for a choice the row cannot tell: it was drafted at the terminal, not from the phone. */
+export const POSTING_UNKNOWN = "not known (made from the terminal)";
+
+/** Under the price grade's three words, once the row says which one was sent. */
+export const AT_POSTING = "as chosen at posting";
+
+/** Post without asking, as the job that drafted the row was sent. */
+export const AUTO_POSTED = "posted without asking";
+export const HELD_FIRST = "saved first, posted on the next press";
+
+/** Said under Save and Sync while the listing is not up on eBay: there is nothing to push to. */
+export const PUSH_CLOSED = "Sync to eBay opens once the listing is up on eBay";
+
+/** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
+export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
+
+/**
+ * customize's choices at posting, read-only: the price grade (0 when the row
+ * cannot tell), its word and the line under the three words, and post without
+ * asking's word.
+ * @param {unknown} posting GET /inventory/<sku>'s {"pricing": 1|2|3|null, "auto_post": bool|null, "job"}, or null
+ * @returns {{grade:0|1|2|3, pricing:string, note:string, autoPost:string}}
+ */
+export function postingWords(posting) {
+    const p = posting && typeof posting === "object" ? /** @type {Record<string, unknown>} */ (posting) : {};
+    const grade = pricingGrade(p.pricing);
+    const autoPost = p.auto_post === true ? AUTO_POSTED : p.auto_post === false ? HELD_FIRST : POSTING_UNKNOWN;
+    return {
+        grade,
+        pricing: grade ? pricingOf(grade).word : "",
+        note: grade ? AT_POSTING : POSTING_UNKNOWN,
+        autoPost,
+    };
+}
+
+/**
+ * The foldout's two boxes as the row has them: the quantity as the box holds it
+ * (a string, 1 when the row has none) and pickup only.
+ * @param {Record<string, any>} row
+ * @returns {{quantity:string, pickupOnly:boolean}}
+ */
+export function rowCustomize(row) {
+    return {
+        quantity: Number.isInteger(row.quantity) ? String(row.quantity) : "1",
+        pickupOnly: row.pickup_only === true,
+    };
+}
+
+/**
+ * The PATCH /inventory/<sku> body of the foldout's Save: `quantity` (a number)
+ * and `pickup_only`, each only when it is not the row's; null when neither
+ * changed. The box must hold a quantity (quantityValue): the foldout says so and
+ * keeps Save shut before this is asked.
+ * @param {Record<string, any>} row
+ * @param {{quantity:string, pickupOnly:boolean}} values the boxes
+ * @returns {{quantity?:number, pickup_only?:boolean} | null}
+ */
+export function customizeChanges(row, { quantity, pickupOnly }) {
+    const n = quantityValue(quantity);
+    if (!n) throw new RangeError(EDIT_QUANTITY_HINT);
+    const was = rowCustomize(row);
+    /** @type {{quantity?:number, pickup_only?:boolean}} */
+    const body = {};
+    if (n !== Number(was.quantity)) body.quantity = n;
+    if (pickupOnly !== was.pickupOnly) body.pickup_only = pickupOnly;
+    return Object.keys(body).length ? body : null;
+}
+
+/**
+ * The row is listed on eBay: there is a listing for Sync to eBay to update (the PC
+ * refuses a push otherwise).
+ * @param {Record<string, any>} row
+ * @returns {boolean}
+ */
+export function canPush(row) {
+    return rowVenues(row).includes("ebay") && venueStatus(row, "ebay").status === "listed";
+}
+
+/**
+ * Which of the foldout's buttons can be pressed. Save: a change to send, the box a
+ * quantity. Sync to eBay: listed on eBay, the box a quantity (a change not yet
+ * saved is saved first). Neither while the row is busy (one job per row at a time).
+ * @param {Record<string, any>} row
+ * @param {{quantity:string, pickupOnly:boolean}} values
+ * @param {boolean} busy
+ * @returns {{save:boolean, sync:boolean}}
+ */
+export function customizeButtons(row, values, busy) {
+    const ok = !busy && quantityValue(values.quantity) > 0;
+    return { save: ok && customizeChanges(row, values) !== null, sync: ok && canPush(row) };
+}
+
+/**
+ * The foldout's status line: what is on its way, the push job (its step, then
+ * "updated" or "unchanged", or its error), what the PC refused or said; then the
+ * quantity box that holds no quantity, then why Sync to eBay is shut.
+ * @param {Record<string, any>} row
+ * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, values:{quantity:string}}} card
+ * @returns {{text:string, kind:string}}
+ */
+export function customizeLine(row, card) {
+    const said = busyLine(card);
+    if (said) return said;
+    if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
+    if (!canPush(row)) return { text: PUSH_CLOSED, kind: "" };
+    return { text: "", kind: "" };
+}
+
+/**
+ * Said once Save is through: the PC holds it, and on a listing up on eBay, Sync to
+ * eBay is what puts it there.
+ * @param {Record<string, any>} row the row the PC answered
+ * @returns {{text:string, kind:string}}
+ */
+export function customizeSaved(row) {
+    return { text: canPush(row) ? "saved; Sync to eBay puts it on the listing" : "saved", kind: "ok" };
 }

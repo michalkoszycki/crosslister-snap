@@ -209,6 +209,21 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "detail-heading",
         "detail-status",
         "detail-photos",
+        // its customize, first (Michal, 2026-10-07: "each item needs a customize tab and the
+        // customization options as at posting should pop up there"): the goods card's boxes,
+        // the price grade and post without asking as at posting, Save and Sync to eBay
+        "detail-customize-toggle",
+        "detail-customize",
+        "detail-quantity",
+        "detail-pickup-only",
+        "detail-pricing-1",
+        "detail-pricing-2",
+        "detail-pricing-3",
+        "detail-pricing-note",
+        "detail-auto-post",
+        "detail-customize-save",
+        "detail-customize-sync",
+        "detail-customize-status",
         "detail-ebay-toggle",
         "detail-ebay",
         "detail-craigslist-toggle",
@@ -222,6 +237,12 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
     assert.match(html, /id="inventory-search"[^>]*inputmode="search"/);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
+    // customize opens with the listing; its price grade is words, not a slider he could move
+    assert.match(html, /<button type="button" id="detail-customize-toggle"[^>]*aria-expanded="true"[^>]*>▾ customize</);
+    assert.match(html, /<div id="detail-customize" class="card customize fold">/);
+    const custom = /<div id="detail-customize"[^>]*>([\s\S]*?)<p id="detail-customize-status"/.exec(html)[1];
+    assert.ok(!custom.includes('type="range"'), "the grade at posting is read-only");
+    assert.match(custom, /to re-price, post the item again/);
     assert.match(html, /<button type="button" id="sync-from"[^>]*>Sync from eBay</);
     assert.match(html, /<button type="button" id="sync-to"[^>]*>Sync to eBay</);
     // the goods | book switch has an id, so Admin can hide it
@@ -1334,6 +1355,8 @@ function wholeRow(sku, over = {}) {
             { n: 1, name: `${sku}-1.jpg` },
             { n: 2, name: `${sku}-2.jpg` },
         ],
+        // the choices the job that drafted it was sent with (the contract of 2026-10-07)
+        posting: { pricing: 2, auto_post: true, job: "j1" },
         ...over,
     };
 }
@@ -1341,12 +1364,16 @@ function wholeRow(sku, over = {}) {
 /**
  * What is wrong with an action job's POST /jobs body as the PC reads it, or ""
  * (the contract of 2026-10-06): {"action": "end" | "refresh", "sku", "venue"} or
- * {"action": "sync", "direction": "from" | "to"}, nothing else.
+ * {"action": "sync", "direction": "from" | "to"}; and since 2026-10-07 {"action":
+ * "push", "sku", "venue": "ebay"}; nothing else.
  */
 function actionContract(body) {
     const keys = Object.keys(body).sort().join(",");
     if (body.action === "sync") {
         return keys === "action,direction" && ["from", "to"].includes(body.direction) ? "" : `sync with ${keys}`;
+    }
+    if (body.action === "push") {
+        return keys === "action,sku,venue" && body.sku && body.venue === "ebay" ? "" : `push with ${keys}`;
     }
     if (["end", "refresh"].includes(body.action)) {
         const ok = keys === "action,sku,venue" && body.sku && ["ebay", "craigslist"].includes(body.venue);
@@ -1363,7 +1390,8 @@ function actionContract(body) {
  * those words instead), POST /inventory/<sku>/venues/<venue> puts the row on that
  * venue. POST /jobs with an "action" is checked against the contract, kept in
  * pc.posted and queued as a1, a2, ... (answered by `jobs`), or refused with
- * `pc.refuse[action]`'s words; any other job is fakePc's own.
+ * `pc.refuse[action]`'s words (a push, too, for a row not listed on eBay); any
+ * other job is fakePc's own.
  */
 function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
     const pc = fakePc({ jobs });
@@ -1385,6 +1413,11 @@ function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
             const broken = actionContract(body);
             if (broken) return json({ detail: `contract: ${broken}` }, 422);
             if (pc.refuse[body.action]) return json({ detail: pc.refuse[body.action] }, 400);
+            // a push needs a listing on eBay to update, as the PC does
+            const listing = wholes[body.sku] && wholes[body.sku].statuses.ebay;
+            if (body.action === "push" && (!listing || listing.status !== "listed")) {
+                return json({ detail: `${body.sku} is not listed on eBay` }, 400);
+            }
             made += 1;
             return json({ job: `a${made}`, state: "queued", ahead: 0 });
         }
@@ -1462,8 +1495,7 @@ function cardOf(nodes, venue) {
     const actions = find("venue-actions");
     const refused = find("edit-error");
     const fields = form ? form.children : [];
-    const field = (label) =>
-        fields.find((f) => (f.className === "pickup" ? f.children[1] : f.children[0].children[0]).textContent === label);
+    const field = (label) => fields.find((f) => f.children[0].children[0].textContent === label);
     return {
         line: line.textContent,
         kind: line.className,
@@ -1476,10 +1508,8 @@ function cardOf(nodes, venue) {
         }),
         refused: refused ? refused.textContent : "",
         button: (word) => actions.children.find((b) => b.textContent === word),
-        input: (label) => {
-            const f = field(label);
-            return f.className === "pickup" ? f.children[0] : f.children[1];
-        },
+        input: (label) => field(label).children[1],
+        labels: fields.map((f) => f.children[0].children[0].textContent),
         clear: (label) => field(label).children[0].children[1],
     };
 }
@@ -1941,19 +1971,16 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
     assert.equal(ebay.input("Description").tag, "textarea");
     assert.equal(ebay.input("Description").value, "A brass lamp.\nWorks.");
     assert.equal(ebay.input("Note").value, "");
-    assert.equal(ebay.input("Quantity").value, "1");
-    assert.equal(ebay.input("Pickup only — no shipping on eBay").checked, false);
     assert.equal(ebay.input("Condition note").value, "Light wear on the base");
+    // the quantity and pickup only are customize's (Michal, 2026-10-07): facts here, not inputs
+    assert.deepEqual(ebay.labels, ["Title", "Price, dollars", "Description", "Note", "Condition note"]);
     typeField(ebay.input("Title"), "Brass desk lamp ");
-    typeField(ebay.input("Quantity"), "2");
-    const pickup = ebay.input("Pickup only — no shipping on eBay");
-    pickup.checked = true;
-    pickup.fire("change");
+    typeField(ebay.input("Note"), "from the attic");
     ebay.button("Save").fire("click");
     assert.equal(cardOf(nodes, "ebay").line, "saving");
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Save (off)", "Cancel (off)"]);
     await settle();
-    assert.deepEqual(pc.patches, [{ title: "Brass desk lamp", quantity: 2, pickup_only: true }]);
+    assert.deepEqual(pc.patches, [{ title: "Brass desk lamp", note: "from the attic" }]);
     assert.equal(pc.calls.at(-1), "PATCH /inventory/R5");
     ebay = cardOf(nodes, "ebay");
     assert.deepEqual(ebay.facts.slice(0, 6), [
@@ -1961,25 +1988,22 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
         "Price: $24",
         "Condition: Used",
         "Category: Home > Lamps",
-        "Quantity: 2",
-        "Pickup only: yes, no shipping on eBay",
+        "Quantity: 1",
+        "Pickup only: no",
     ]);
     assert.equal(nodes.get("detail-heading").textContent, "Brass desk lamp · $24");
 
-    // nothing changed: nothing sent; a quantity that is not one: said, nothing sent; Cancel
+    // nothing changed: nothing sent; Cancel puts the card back
     cardOf(nodes, "ebay").button("Edit").fire("click");
     cardOf(nodes, "ebay").button("Save").fire("click");
     await settle();
     assert.equal(pc.patches.length, 1);
     assert.notEqual(cardOf(nodes, "ebay").facts, null);
     cardOf(nodes, "ebay").button("Edit").fire("click");
-    typeField(cardOf(nodes, "ebay").input("Quantity"), "two");
-    cardOf(nodes, "ebay").button("Save").fire("click");
-    await settle();
-    assert.equal(cardOf(nodes, "ebay").refused, "Quantity must be a whole number, 1 or more");
-    assert.equal(pc.patches.length, 1);
+    typeField(cardOf(nodes, "ebay").input("Title"), "Something else");
     cardOf(nodes, "ebay").button("Cancel").fire("click");
-    assert.equal(cardOf(nodes, "ebay").facts[4], "Quantity: 2", "Cancel restores");
+    assert.equal(cardOf(nodes, "ebay").facts[0], "Title: Brass desk lamp", "Cancel restores");
+    assert.equal(pc.patches.length, 1);
     assert.equal(cardOf(nodes, "ebay").refused, "");
 
     // craigslist: its overrides, a blank one showing what it derives; "clear" empties one
@@ -2134,6 +2158,237 @@ test("an End the PC refuses says why, and its button goes", async (t) => {
     assert.deepEqual(craigslist.actions, ["Open listing (link)", "Refresh status", "Edit"]);
     // the other venue's End stays
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+});
+
+/** A listing's customize as the screen shows it: its boxes, the grade's bold word, its words, its buttons, its line. */
+function customizeOf(nodes) {
+    const status = nodes.get("detail-customize-status");
+    return {
+        open: `${nodes.get("detail-customize-toggle").textContent} ${nodes.get("detail-customize").hidden ? "hidden" : "shown"}`,
+        quantity: nodes.get("detail-quantity").value,
+        pickup: nodes.get("detail-pickup-only").checked === true,
+        locked: nodes.get("detail-quantity").disabled && nodes.get("detail-pickup-only").disabled,
+        grade: [1, 2, 3].filter((g) => nodes.get(`detail-pricing-${g}`).classList.contains("on")),
+        note: nodes.get("detail-pricing-note").textContent,
+        autoPost: nodes.get("detail-auto-post").textContent,
+        // the stub does not read index.html's words, so the buttons are named here
+        buttons: [
+            ["save", "Save"],
+            ["sync", "Sync to eBay"],
+        ].map(([id, word]) => (nodes.get(`detail-customize-${id}`).disabled ? `${word} (off)` : word)),
+        line: status.textContent,
+        kind: status.className,
+    };
+}
+
+/** Tick or untick customize's pickup only, as a thumb does. */
+function tickPickup(nodes, on) {
+    const box = nodes.get("detail-pickup-only");
+    box.checked = on;
+    box.fire("change");
+}
+
+/** Open the first listing of the inventory, and wait for the whole row. */
+async function openFirst(nodes) {
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+}
+
+test("a listing's customize: first and open, the choices at posting; Save sends only what changed", async (t) => {
+    // Michal, 2026-10-07: "In inventory each item needs a customize tab and the customization
+    // options as at posting should pop up there with the choices that were made at posting."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("R5")], { R5: wholeRow("R5") });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openFirst(nodes);
+    // the summary from the list: open at once, the words at posting wait for the whole row
+    let custom = customizeOf(nodes);
+    assert.equal(custom.open, "▾ customize shown");
+    assert.equal(nodes.get("detail-customize-toggle").attrs["aria-expanded"], "true");
+    assert.deepEqual([custom.grade, custom.note, custom.autoPost], [[], "", ""]);
+    await settle();
+    custom = customizeOf(nodes);
+    assert.deepEqual(custom, {
+        open: "▾ customize shown",
+        quantity: "1",
+        pickup: false,
+        locked: false,
+        grade: [2],
+        note: "as chosen at posting",
+        autoPost: "posted without asking",
+        buttons: ["Save (off)", "Sync to eBay"],
+        line: "",
+        kind: "venue-status",
+    });
+
+    // folds and opens like the cards
+    nodes.get("detail-customize-toggle").fire("click");
+    assert.equal(customizeOf(nodes).open, "▸ customize hidden");
+    nodes.get("detail-customize-toggle").fire("click");
+    assert.equal(customizeOf(nodes).open, "▾ customize shown");
+
+    // a quantity that is not one: said at once, as the goods card does, and nothing can go
+    typeField(nodes.get("detail-quantity"), "two");
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "Quantity must be a whole number, 1 or more");
+    assert.equal(custom.kind, "venue-status bad");
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay (off)"]);
+
+    // the quantity and pickup only changed: one PATCH, the row as the PC answers it
+    typeField(nodes.get("detail-quantity"), "3");
+    tickPickup(nodes, true);
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save", "Sync to eBay"]);
+    nodes.get("detail-customize-save").fire("click");
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "saving");
+    assert.equal(custom.locked, true);
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay (off)"]);
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status (off)", "End listing (off)", "Edit (off)"]);
+    await settle();
+    assert.deepEqual(pc.patches, [{ quantity: 3, pickup_only: true }]);
+    assert.equal(pc.calls.at(-1), "PATCH /inventory/R5");
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "saved; Sync to eBay puts it on the listing");
+    assert.equal(custom.kind, "venue-status ok");
+    assert.deepEqual([custom.quantity, custom.pickup, custom.locked], ["3", true, false]);
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay"], "nothing left to save");
+    // the eBay card says it as a fact; its Edit no longer holds them
+    assert.deepEqual(cardOf(nodes, "ebay").facts.slice(4, 6), ["Quantity: 3", "Pickup only: yes, no shipping on eBay"]);
+
+    // pickup only alone: only it is sent
+    tickPickup(nodes, false);
+    assert.equal(customizeOf(nodes).line, "", "what Save said gives way to the change");
+    nodes.get("detail-customize-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { pickup_only: false });
+
+    // a field the PC refuses: its words in the line, the box as typed
+    pc.refusePatch = "quantity: more than eBay allows";
+    typeField(nodes.get("detail-quantity"), "5000");
+    nodes.get("detail-customize-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { quantity: 5000 });
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "quantity: more than eBay allows");
+    assert.equal(custom.kind, "venue-status bad");
+    assert.equal(custom.quantity, "5000");
+    assert.deepEqual(custom.buttons, ["Save", "Sync to eBay"]);
+});
+
+test("Sync to eBay: pickup only ticked, saved, pushed and polled; the listing read again", async (t) => {
+    // Michal, 2026-10-07: "I can there click pickup only and sync to eBay, and that detail of
+    // that listing should update."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let pushing = { action: "push", state: "running", step: "revising the eBay listing" };
+    let again = { action: "push", state: "running", step: "revising the eBay listing" };
+    const whole = wholeRow("R5");
+    const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => pushing, a2: () => again } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openFirst(nodes);
+    await settle();
+
+    // ticked and not saved: Sync to eBay saves it first, then sends the push
+    tickPickup(nodes, true);
+    nodes.get("detail-customize-sync").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches, [{ pickup_only: true }]);
+    assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "ebay" }]);
+    let custom = customizeOf(nodes);
+    assert.equal(custom.line, "queued");
+    assert.equal(custom.locked, true);
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay (off)"]);
+    // one job per row: the cards wait too
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (off)", "Edit (off)"]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(customizeOf(nodes).line, "revising the eBay listing");
+    assert.equal(customizeOf(nodes).kind, "venue-status busy");
+
+    // done: "updated", and the row read again (the heading and the eBay card with it)
+    pushing = { action: "push", state: "done", step: "done", summary: "updated" };
+    whole.title = "Brass lamp, pickup only";
+    whole.statuses = { ...whole.statuses, ebay: { ...whole.statuses.ebay, listed_at: "2026-10-07T09:30:00-05:00" } };
+    const before = pc.calls.length;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", "GET /inventory/R5"]);
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "updated");
+    assert.equal(custom.kind, "venue-status ok");
+    assert.deepEqual([custom.pickup, custom.locked], [true, false]);
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay"]);
+    assert.equal(nodes.get("detail-heading").textContent, "Brass lamp, pickup only · $24");
+    const ebay = cardOf(nodes, "ebay");
+    assert.match(ebay.line, /^listed since 2026-10-07 \d\d:\d\d$/);
+    assert.equal(ebay.facts[5], "Pickup only: yes, no shipping on eBay");
+    assert.deepEqual(ebay.actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.length, before + 2, "no more polls once it ended");
+
+    // nothing changed: Sync to eBay only pushes, and "unchanged" says so
+    nodes.get("detail-customize-sync").fire("click");
+    await settle();
+    assert.equal(pc.patches.length, 1);
+    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "ebay" });
+    again = { action: "push", state: "done", summary: "unchanged" };
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(customizeOf(nodes).line, "unchanged");
+
+    // the row changed: back asks for the list again
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`);
+});
+
+test("Sync to eBay waits for a listing on eBay; a row from the terminal is not known; a push refused says why", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const draft = { status: "draft", id: "", url: "", listed_at: null };
+    const d1 = summary("D1", { statuses: { ebay: draft, craigslist: draft } });
+    const l1 = summary("L1");
+    const pc = inventoryPc([d1, l1], {
+        D1: wholeRow("D1", { statuses: d1.statuses, posting: { pricing: null, auto_post: null, job: null } }),
+        L1: wholeRow("L1", { posting: { pricing: 3, auto_post: false, job: "j4" } }),
+    });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openFirst(nodes);
+    await settle();
+    let custom = customizeOf(nodes);
+    assert.deepEqual(custom.grade, [], "no grade bold: the row cannot tell");
+    assert.equal(custom.note, "not known (made from the terminal)");
+    assert.equal(custom.autoPost, "not known (made from the terminal)");
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay (off)"]);
+    assert.equal(custom.line, "Sync to eBay opens once the listing is up on eBay");
+    // Save still works on a draft: the next post carries it
+    typeField(nodes.get("detail-quantity"), "2");
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save", "Sync to eBay (off)"]);
+    nodes.get("detail-customize-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches, [{ quantity: 2 }]);
+    assert.equal(customizeOf(nodes).line, "saved");
+    nodes.get("detail-customize-sync").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [], "a draft is never pushed");
+
+    // a listing saved first, posted on the next press; higher end; a push the PC refuses
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    listed(nodes)[1].open.fire("click");
+    await settle();
+    custom = customizeOf(nodes);
+    assert.deepEqual([custom.grade, custom.note, custom.autoPost], [[3], "as chosen at posting", "saved first, posted on the next press"]);
+    assert.deepEqual([custom.quantity, custom.pickup], ["1", false], "the boxes are this row's, not the last one's");
+    pc.refuse.push = "eBay would not revise L1: the listing has ended";
+    nodes.get("detail-customize-sync").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "push", sku: "L1", venue: "ebay" }]);
+    custom = customizeOf(nodes);
+    assert.equal(custom.line, "eBay would not revise L1: the listing has ended");
+    assert.equal(custom.kind, "venue-status bad");
+    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay"]);
 });
 
 test("a photo the PC refuses shows failed; a tap sends it again", async (t) => {
