@@ -171,6 +171,11 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "settings-server",
         "pc-address",
         "pc-key",
+        // Michal, 2026-10-06: "In settings I want to have the mode options. Dark, light or sync with device"
+        "theme",
+        "theme-dark",
+        "theme-light",
+        "theme-device",
         "settings-save",
         "settings-status",
         "inventory-toggle",
@@ -227,6 +232,47 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
     // the full-size photo lies over everything, outside main
     const after = html.slice(html.indexOf("</main>"));
     assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
+});
+
+test("Appearance: three chips in Settings, Sync with device pressed until one is chosen", () => {
+    const group = /<div id="theme" class="chips chips-three" role="group" aria-label="Appearance">([\s\S]*?)<\/div>/.exec(html)[1];
+    const chips = [...group.matchAll(/<button type="button" id="theme-(\w+)" class="chip" data-value="(\w+)"\s+aria-pressed="(\w+)">([^<]+)</g)];
+    assert.deepEqual(
+        chips.map((m) => [m[1], m[2], m[3], m[4]]),
+        [
+            ["dark", "dark", "false", "Dark"],
+            ["light", "light", "false", "Light"],
+            ["device", "device", "true", "Sync with device"],
+        ]
+    );
+    // the status bar's two colours are written once, in the metas app.js reads them from
+    assert.match(html, /<meta id="theme-color" name="theme-color" content="#FFFC00">/);
+    assert.match(html, /<meta id="theme-color-dark" name="theme-color" media="\(prefers-color-scheme: dark\)" content="#0B0B0B">/);
+});
+
+test("styles.css: the device's dark and Dark chosen declare the very same tokens", () => {
+    const css = readFileSync(join(root, "styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const declarations = (block) =>
+        block
+            .split(";")
+            .map((d) => d.trim())
+            .filter(Boolean)
+            .map((d) => [d.slice(0, d.indexOf(":")).trim(), d.slice(d.indexOf(":") + 1).trim()]);
+    const device = /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}\s*\}/.exec(css);
+    const chosen = /:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css);
+    assert.ok(device, "the device's dark is guarded so Light chosen wins");
+    assert.ok(chosen, "Dark chosen has its own block");
+    const a = declarations(device[1]);
+    const b = declarations(chosen[1]);
+    assert.deepEqual(a, b);
+    const names = a.map(([name]) => name);
+    for (const token of ["--bg", "--ink", "--accent", "--head-bg", "--mark-fill", "--mark-line"]) {
+        assert.ok(names.includes(token), `${token} is in the dark tokens`);
+    }
+    assert.equal(new Set(names).size, names.length, "no token declared twice");
+    // every dark-only rule follows the two selectors: no other dark media block
+    assert.equal(css.match(/prefers-color-scheme/g).length, 1);
+    assert.match(css, /:root\[data-theme="light"\] \{ color-scheme: light; \}/);
 });
 
 test("the manifest points at icons that exist", () => {
@@ -318,6 +364,9 @@ function fakeElement(id = "", tag = "") {
         setAttribute(k, v) {
             attrs[k] = String(v);
         },
+        removeAttribute(k) {
+            delete attrs[k];
+        },
         // canvas, for shrink.js
         getContext: () => ({ drawImage() {} }),
         toBlob(cb, type) {
@@ -396,9 +445,13 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHist
     // elements the HTML starts hidden (the settings card, the offline banner...)
     for (const m of html.matchAll(/<[a-z]+\b[^>]*\bid="([^"]+)"[^>]*>/g)) {
         if (/\shidden[\s>]/.test(m[0])) nodes.get(m[1]).hidden = true;
+        // a meta's content as the HTML writes it (the theme-color pair)
+        const content = /\scontent="([^"]*)"/.exec(m[0]);
+        if (m[0].startsWith("<meta") && content) nodes.get(m[1]).content = content[1];
     }
     const asked = new Set();
     globalThis.document = {
+        documentElement: fakeElement("", "html"),
         getElementById(id) {
             asked.add(id);
             return nodes.get(id) ?? null;
@@ -532,6 +585,70 @@ test("Settings: a wrong key is reported as such", async (t) => {
     nodes.get("settings-save").fire("click");
     await settle();
     assert.match(nodes.get("settings-status").textContent, /wrong key/);
+});
+
+// --- Appearance (Michal, 2026-10-06: "Dark, light or sync with device") ----------
+
+function pressed(nodes) {
+    return ["dark", "light", "device"].filter((t) => nodes.get(`theme-${t}`).attrs["aria-pressed"] === "true");
+}
+
+test("Appearance: a chip applies the look at once and remembers it; Sync with device lets the device decide", async () => {
+    const local = memoryStore();
+    const { nodes } = await loadPage({ local });
+    const page = globalThis.document.documentElement;
+    const metas = () => [nodes.get("theme-color").content, nodes.get("theme-color-dark").content];
+    assert.equal(page.attrs["data-theme"], undefined, "nothing chosen: the device's look");
+    assert.deepEqual(pressed(nodes), ["device"]);
+    assert.deepEqual(metas(), ["#FFFC00", "#0B0B0B"]);
+
+    nodes.get("admin-toggle").fire("click");
+    nodes.get("theme-dark").fire("click");
+    assert.equal(page.attrs["data-theme"], "dark");
+    assert.equal(local.getItem("snap.theme"), "dark");
+    assert.deepEqual(pressed(nodes), ["dark"]);
+    assert.deepEqual(metas(), ["#0B0B0B", "#0B0B0B"], "the status bar black on a light phone too");
+
+    nodes.get("theme-light").fire("click");
+    assert.equal(page.attrs["data-theme"], "light");
+    assert.equal(local.getItem("snap.theme"), "light");
+    assert.deepEqual(pressed(nodes), ["light"]);
+    assert.deepEqual(metas(), ["#FFFC00", "#FFFC00"], "the status bar yellow on a dark phone too");
+
+    nodes.get("theme-device").fire("click");
+    assert.equal(page.attrs["data-theme"], undefined);
+    assert.equal(local.getItem("snap.theme"), "device");
+    assert.deepEqual(pressed(nodes), ["device"]);
+    assert.deepEqual(metas(), ["#FFFC00", "#0B0B0B"], "the metas as index.html has them");
+    // not part of Save and check: the address and key are untouched
+    assert.equal(local.getItem("snap.pc"), null);
+    assert.equal(nodes.get("settings-status").textContent, "");
+});
+
+test("Appearance: the saved look is on <html> before the page first renders", async () => {
+    const local = memoryStore({ "snap.theme": "dark" });
+    const dom = installDom({ local });
+    const page = globalThis.document.documentElement;
+    const seen = [];
+    const set = page.setAttribute;
+    page.setAttribute = (k, v) => {
+        // render() writes the venue hint; the version line comes right after the look
+        seen.push({ k, v, rendered: dom.nodes.get("venue-hint").textContent !== "" });
+        set(k, v);
+    };
+    loads += 1;
+    await import(`../app.js?load=${loads}`);
+    await settle();
+    assert.deepEqual(seen, [{ k: "data-theme", v: "dark", rendered: false }]);
+    assert.deepEqual(pressed(dom.nodes), ["dark"]);
+    assert.deepEqual([dom.nodes.get("theme-color").content, dom.nodes.get("theme-color-dark").content], ["#0B0B0B", "#0B0B0B"]);
+    assert.notEqual(dom.nodes.get("venue-hint").textContent, "", "and the page did render after");
+});
+
+test("Appearance: a look saved wrong (or by an older page) is the device's", async () => {
+    const { nodes } = await loadPage({ local: memoryStore({ "snap.theme": "sepia" }) });
+    assert.equal(globalThis.document.documentElement.attrs["data-theme"], undefined);
+    assert.deepEqual(pressed(nodes), ["device"]);
 });
 
 function snap(nodes, count = 1) {

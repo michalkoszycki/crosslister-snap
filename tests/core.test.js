@@ -27,6 +27,10 @@ import {
     raiseCount,
     savedItem,
     SETTINGS_HINT,
+    statusBarColors,
+    THEMES,
+    themeAttr,
+    themeOf,
     venueButton,
     bookForm,
     ISBN_WAIT_HINT,
@@ -236,6 +240,40 @@ test("the key must be there and be one plain word", () => {
     assert.match(checkSettings(pc, "klíč").error, /unusual/);
     assert.equal(checkSettings(pc, undefined).ok, false);
     assert.equal(checkSettings(undefined, KEY).ok, false);
+});
+
+// --- the look (Michal, 2026-10-06: "Dark, light or sync with device") ----------
+
+test("themeOf keeps dark and light and makes anything else the device's", () => {
+    assert.equal(themeOf("dark"), "dark");
+    assert.equal(themeOf("light"), "light");
+    assert.equal(themeOf("device"), "device");
+    for (const odd of ["", "Dark", " light", "auto", null, undefined, 1]) assert.equal(themeOf(odd), "device", String(odd));
+    assert.deepEqual(
+        THEMES.map((t) => [t.value, t.label]),
+        [
+            ["dark", "Dark"],
+            ["light", "Light"],
+            ["device", "Sync with device"],
+        ]
+    );
+});
+
+test("themeAttr is the data-theme value, empty for the device's look", () => {
+    assert.equal(themeAttr("dark"), "dark");
+    assert.equal(themeAttr("light"), "light");
+    assert.equal(themeAttr("device"), "");
+    assert.equal(themeAttr("sepia"), "");
+    assert.equal(themeAttr(undefined), "");
+});
+
+test("statusBarColors puts a chosen look's ground on both metas and leaves the device's as given", () => {
+    const grounds = { light: "#FFFC00", dark: "#0B0B0B" };
+    assert.deepEqual(statusBarColors("dark", grounds), { light: "#0B0B0B", dark: "#0B0B0B" });
+    assert.deepEqual(statusBarColors("light", grounds), { light: "#FFFC00", dark: "#FFFC00" });
+    assert.deepEqual(statusBarColors("device", grounds), grounds);
+    assert.notEqual(statusBarColors("device", grounds), grounds, "a copy, not the caller's object");
+    assert.deepEqual(statusBarColors("", grounds), grounds);
 });
 
 // --- the shrink size -----------------------------------------------------------

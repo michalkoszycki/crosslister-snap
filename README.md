@@ -123,7 +123,8 @@ and every behaviour are the live app's.
   the **Inventory**, each a foldout, then the sync bar, opening where the
   switch was (see [Admin](#admin)). **Settings** holds the PC address and the
   key: **Save and check** stores them and asks the PC whether it knows the key
-  (a read of the newest job: no model call, nothing published). **Close** at
+  (a read of the newest job: no model call, nothing published). It also holds
+  **Appearance**: Dark, Light or Sync with device, applied on the tap. **Close** at
   the bottom of Admin hides it again.
 - **The server word** (header, beside Admin, and at the top of Settings):
   the page asks the PC by itself, on load, every 30 s while it is on screen,
@@ -513,9 +514,10 @@ Empty. With capacity to generate that card from there."
   on the **Inventory**, asked afresh each time. Should the PC then refuse the
   key, the inventory's line says `wrong key - check Settings` and Settings
   opens too.
-- **Settings** is the old Settings card, unchanged inside (the address, the
-  key, **Save and check**, the server word at its top). Saving while the
-  inventory is open asks for the list again.
+- **Settings** is the old Settings card (the address, the key, **Save and
+  check**, the server word at its top), with the **Appearance** chips (Dark |
+  Light | Sync with device, see [Settings](#settings)) above Save and check.
+  Saving while the inventory is open asks for the list again.
 - **Inventory**: a **Search** box (asked 0.4 s after the last keystroke, or at
   once on the keyboard's search key), the line under it (`Asking the PC...`,
   `12 listings`, `No listings match.`, `The newest 200 listings; search to
@@ -600,10 +602,25 @@ Empty. With capacity to generate that card from there."
   fail silently.
 - **Key**: one of the keys in `CROSSLISTER_KEYS` in the PC's `.env`. Michal and
   his wife may use the same key on two phones.
+- **Appearance** (Michal, 2026-10-06: "In settings I want to have the mode
+  options. Dark, light or sync with device"): three chips above **Save and
+  check**, **Dark** | **Light** | **Sync with device**, the default. A tap
+  applies the look at once and remembers it on this phone; it is not part of
+  Save and check. Dark or Light sets `data-theme` on `<html>` and puts that
+  look's colour on both `theme-color` metas (the status bar: `#0B0B0B` or
+  `#FFFC00`, read from the tags themselves); Sync with device removes the
+  attribute and puts the metas back as `index.html` has them. The saved look
+  is applied first thing on load, before the page renders. In `styles.css`
+  the dark tokens are written twice, `@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) }` for the device and `:root[data-theme="dark"]`
+  for Dark chosen; a test checks the two copies declare the same tokens with
+  the same values, so change both together.
 
-Both are stored in `localStorage` on the phone (`snap.pc`, `snap.key`). Every
-storage read and write is wrapped, so a private window or blocked site data
-only means Settings are not remembered.
+The address and key are stored in `localStorage` on the phone (`snap.pc`,
+`snap.key`), and so is the look (`snap.theme`: `dark`, `light` or `device`;
+none, or anything else, is `device`). Every storage read and write is wrapped,
+so a private window or blocked site data only means Settings are not
+remembered.
 
 ## Getting a fix onto the phone
 

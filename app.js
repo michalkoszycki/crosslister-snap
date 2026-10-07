@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.3.0";
+import { VERSION } from "./version.js?v=2.3.1";
 import {
     anyActive,
     bannerText,
@@ -58,6 +58,10 @@ import {
     STOPPING_STEP,
     snapScrollTop,
     snapWord,
+    statusBarColors,
+    THEMES,
+    themeAttr,
+    themeOf,
     itemIdFor,
     NAME_CHECK_MS,
     nameTakenHint,
@@ -92,8 +96,8 @@ import {
     venueActions,
     venueFacts,
     venueStatus,
-} from "./core.js?v=2.3.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.3.0";
+} from "./core.js?v=2.3.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.3.1";
 import {
     addVenue,
     cancelJob,
@@ -113,8 +117,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.3.0";
-import { shrinkPhoto } from "./shrink.js?v=2.3.0";
+} from "./pc.js?v=2.3.1";
+import { shrinkPhoto } from "./shrink.js?v=2.3.1";
 import {
     bookCard,
     bookPriceValue,
@@ -127,13 +131,14 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.3.0";
-import { canScan, readIsbn } from "./scan.js?v=2.3.0";
+} from "./book.js?v=2.3.1";
+import { canScan, readIsbn } from "./scan.js?v=2.3.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
 const KEY_KEY = "snap.key";
 const MODE_KEY = "snap.mode";
+const THEME_KEY = "snap.theme";
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 
@@ -181,6 +186,12 @@ const customizeOpen = { goods: false, book: false };
 let serverStatus = null;
 let healthTimer = null;
 let checking = false;
+
+/**
+ * The status bar's colours as index.html gives them, read before a chosen look first
+ * changes them, so the device's are put back exactly.
+ */
+let grounds = { light: "", dark: "" };
 
 /**
  * Admin's screen state (only the screen's: nothing of it is stored). The filters
@@ -341,6 +352,11 @@ function inHand(m) {
 /** The kind last chosen with the switch: the screen the items in hand come back on. */
 function chosenMode() {
     return readText("localStorage", MODE_KEY) === "book" ? "book" : "goods";
+}
+
+/** The look chosen in Settings on this phone: "device" until Dark or Light is. */
+function chosenTheme() {
+    return themeOf(readText("localStorage", THEME_KEY));
 }
 
 /** The saved PC address and key, checked; null when either is missing or wrong. */
@@ -1389,6 +1405,27 @@ function showSettings(open) {
 
 function toggleSettings() {
     showSettings(el.settings.hidden);
+}
+
+/**
+ * The look on screen: data-theme on <html> for Dark or Light (styles.css follows the
+ * device without it), the status bar to match, and its chip pressed in Settings.
+ * @param {"dark"|"light"|"device"} theme
+ */
+function applyTheme(theme) {
+    const attr = themeAttr(theme);
+    if (attr) document.documentElement.setAttribute("data-theme", attr);
+    else document.documentElement.removeAttribute("data-theme");
+    const colors = statusBarColors(theme, grounds);
+    el.themeColor.content = colors.light;
+    el.themeColorDark.content = colors.dark;
+    for (const { value, node } of el.themeChips) node.setAttribute("aria-pressed", value === theme ? "true" : "false");
+}
+
+/** An Appearance chip: the look at once, remembered on this phone; Save and check is not needed. */
+function setTheme(theme) {
+    writeText("localStorage", THEME_KEY, theme);
+    applyTheme(theme);
 }
 
 /** The inventory foldout: opened, it shows the list and asks the PC for it. */
@@ -2594,6 +2631,9 @@ function main() {
         settingsSave: $("settings-save"),
         settingsStatus: $("settings-status"),
         settingsServer: $("settings-server"),
+        themeChips: THEMES.map(({ value }) => ({ value, node: $(`theme-${value}`) })),
+        themeColor: $("theme-color"),
+        themeColorDark: $("theme-color-dark"),
         inventoryToggle: $("inventory-toggle"),
         inventory: $("inventory"),
         inventoryBrowse: $("inventory-browse"),
@@ -2709,6 +2749,9 @@ function main() {
         version: $("version"),
     });
 
+    // the look chosen on this phone before anything is painted, so it never flashes the other one
+    grounds = { light: el.themeColor.content, dark: el.themeColorDark.content };
+    applyTheme(chosenTheme());
     el.version.textContent = VERSION;
     // goods unless this phone was last used for books; a reload on an item back brought up shows its kind
     const walked = startWalk();
@@ -2724,6 +2767,7 @@ function main() {
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});
     });
+    for (const { value, node } of el.themeChips) node.addEventListener("click", () => setTheme(value));
     el.inventoryToggle.addEventListener("click", () => showInventory(!admin.inventoryOpen));
     el.inventorySearch.addEventListener("input", () => {
         clearTimeout(searchTimer);

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.3.0";
+import { noteDirty, unsent } from "./queue.js?v=2.3.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.3.0";
+} from "./book.js?v=2.3.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -143,6 +143,52 @@ export function checkSettings(pcRaw, keyRaw) {
         return { ok: false, error: "The key has a space or an unusual character in it." };
     }
     return { ok: true, pc: url.origin, key };
+}
+
+// --- the look: dark, light or the device's ---------------------------------
+
+/**
+ * The Appearance chips in Settings, in their order on screen (Michal, 2026-10-06: "In
+ * settings I want to have the mode options. Dark, light or sync with device").
+ */
+export const THEMES = [
+    { value: "dark", label: "Dark" },
+    { value: "light", label: "Light" },
+    { value: "device", label: "Sync with device" },
+];
+
+/**
+ * The look as stored on the phone: "dark", "light", or "device" for anything else,
+ * nothing saved included, so a phone that never chose follows its own setting.
+ * @param {unknown} text
+ * @returns {"dark"|"light"|"device"}
+ */
+export function themeOf(text) {
+    return text === "dark" || text === "light" ? text : "device";
+}
+
+/**
+ * The value of `data-theme` on <html> for a look: "dark" or "light" when one is chosen,
+ * "" for the device's (the attribute goes, and styles.css follows the device).
+ * @param {unknown} theme
+ * @returns {"dark"|"light"|""}
+ */
+export function themeAttr(theme) {
+    const t = themeOf(theme);
+    return t === "device" ? "" : t;
+}
+
+/**
+ * What the two theme-color metas say for a look. `grounds` is what index.html gives them
+ * (`light` the plain one, `dark` the one for a dark device); a chosen look puts its own
+ * ground on both, so the status bar matches the page whatever the device says.
+ * @param {unknown} theme
+ * @param {{light:string, dark:string}} grounds
+ * @returns {{light:string, dark:string}}
+ */
+export function statusBarColors(theme, grounds) {
+    const attr = themeAttr(theme);
+    return attr ? { light: grounds[attr], dark: grounds[attr] } : { ...grounds };
 }
 
 // --- shrinking a photo before it is sent -----------------------------------
