@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.5.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.5.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.6.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.6.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -78,9 +78,12 @@
        replace Settings. Settings would remain part of Admin though"): two foldouts in
        customize's pattern, Settings and the inventory, and the sync bar under them. A
        listing's detail is one card per venue, each with its actions (post, refresh, end,
-       edit), and an empty card, with its Add, for a venue the listing is not on. -->
+       edit), and an empty card, with its Add, for a venue the listing is not on. A listing
+       open is a page of its own (Michal, 2026-10-07: "Looking at an item is a new page (at
+       the top it just says back to inventory)"): app.js hides the title, Settings, the
+       inventory's line, the sync bar and Close while it is. -->
   <section id="admin" class="admin" hidden>
-    <h2 class="admin-title">Admin</h2>
+    <h2 id="admin-title" class="admin-title">Admin</h2>
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="settings">▸ Settings</button>
     <div id="settings" class="card" hidden>
@@ -149,11 +152,6 @@
                     aria-pressed="false">ended</button>
           </div>
         </div>
-        <!-- the same pill row as pickup only; photos make the list less compact, so off by default -->
-        <label class="pickup">
-          <input id="inventory-photos" type="checkbox">
-          <span>Show photos</span>
-        </label>
         <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
         <div class="field">
           <span class="field-label">Sort</span>
@@ -166,6 +164,14 @@
                     aria-label="Price, lowest first">Price ↑</button>
           </div>
         </div>
+        <!-- the same pill row as pickup only, on by default and last of the options (Michal,
+             2026-10-07: "in inventory, let's keep photos showing by default. And that checkbox
+             should be at end of options. Not right in the awkward middle"); app.js remembers
+             it unticked on this phone -->
+        <label class="pickup">
+          <input id="inventory-photos" type="checkbox" checked>
+          <span>Show photos</span>
+        </label>
         <ul id="inventory-list" class="inventory-list"></ul>
       </div>
 
@@ -174,7 +180,7 @@
            should only be eBay or and Craigslist card"); a venue it is not on is an empty card
            with its Add -->
       <div id="inventory-detail" hidden>
-        <button type="button" id="inventory-back" class="link back-link">← Back to the list</button>
+        <button type="button" id="inventory-back" class="link back-link">← Back to inventory</button>
         <h2 id="detail-heading" class="detail-heading"></h2>
         <p id="detail-status" class="small" aria-live="polite" hidden></p>
         <div id="detail-photos" class="detail-photos"></div>
@@ -214,6 +220,9 @@
           </div>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
+        <!-- the venue cards, folded as a listing opens; each toggle is the list's badge for
+             that venue, then the arrow (Michal, 2026-10-07: "I want them to look like they
+             did on the inventory list. Inside a green bubble if listed"), written by app.js -->
         <button type="button" id="detail-ebay-toggle" class="link customize-toggle" aria-expanded="false"
                 aria-controls="detail-ebay">▸ ebay</button>
         <div id="detail-ebay" class="card fold" hidden></div>
@@ -226,10 +235,21 @@
     <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
          They probably could be below the inventory list hovering fixed on the screen as I
          scroll down"): it sticks to the bottom of the screen while Admin is on it -->
-    <div class="sync-bar" role="group" aria-label="Sync with eBay">
+    <div id="sync-bar" class="sync-bar" role="group" aria-label="Sync with eBay">
+      <!-- each button carries one half of the sync symbol, on one 24-unit box so the two
+           read as one circle (Michal, 2026-10-07): to eBay the top arc, left to right, its
+           arrow pointing right; from eBay the bottom arc, right to left, its arrow pointing
+           left. app.js writes the word after the icon, and the job's ring and "tap again to
+           cancel" while it runs -->
       <div class="sync-buttons">
-        <button type="button" id="sync-from" class="sync-btn">Sync from eBay</button>
-        <button type="button" id="sync-to" class="sync-btn">Sync to eBay</button>
+        <button type="button" id="sync-from" class="sync-btn"><span id="sync-from-icon" class="btn-icon"><svg
+            aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"></path><path
+            d="M6 22v-4.5h4.5"></path></svg></span>Sync from eBay</button>
+        <button type="button" id="sync-to" class="sync-btn"><span id="sync-to-icon" class="btn-icon"><svg
+            aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.5"></path><path
+            d="M18 2v4.5h-4.5"></path></svg></span>Sync to eBay</button>
       </div>
       <p id="sync-status" class="sync-status" aria-live="polite"></p>
     </div>
@@ -311,13 +331,11 @@
       <div class="venue">
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
         <p id="ebay-status" class="venue-status" aria-live="polite"></p>
-        <button type="button" id="ebay-cancel" class="cancel" hidden>cancel</button>
         <a id="ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <div class="venue">
         <button type="button" id="craigslist-btn" class="big venue-btn">craigslist</button>
         <p id="craigslist-status" class="venue-status" aria-live="polite"></p>
-        <button type="button" id="craigslist-cancel" class="cancel" hidden>cancel</button>
         <a id="craigslist-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
     </div>
@@ -466,7 +484,6 @@
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
       <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
-      <button type="button" id="book-ebay-cancel" class="cancel" hidden>cancel</button>
       <a id="book-ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
     </div>
     <p id="book-venue-hint" class="small hint-line"></p>
@@ -488,6 +505,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.5.0"></script>
+<script type="module" src="app.js?v=2.6.0"></script>
 </body>
 </html>

@@ -62,9 +62,12 @@ import {
     snapWord,
     SNAP_SPOT,
     cancelButton,
+    busyLine,
     CANCELLED,
     SEND_DELAY_MS,
     STOPPING_STEP,
+    TAP_TO_CANCEL,
+    taskCancel,
     titleLine,
     remembered,
     refreshed,
@@ -125,6 +128,7 @@ import {
     rowTitle,
     rowVenues,
     statusBadge,
+    venueBadge,
     venueFacts,
     venueStatus,
 } from "../core.js";
@@ -547,10 +551,12 @@ test("the Snap button says Snap Again once there is a photo, and lands three qua
     assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
 });
 
-test("the red cancel shows from the press until the link or the error; a cancelled press reads cancelled", () => {
-    // Michal, 2026-10-02: "below in red there should be a cancel button ... delay sending by
-    // 1 second (but show loading) so that if one cancels within 1 sec there is no call money spent"
+test("tap again to cancel shows from the press until the link or the error; a cancelled press reads cancelled", () => {
+    // Michal, 2026-10-02: "delay sending by 1 second (but show loading) so that if one cancels
+    // within 1 sec there is no call money spent"; 2026-10-07: the cancel is inside the pressed
+    // button, "tap again to cancel", no longer a red one under it
     assert.equal(SEND_DELAY_MS, 1000);
+    assert.equal(TAP_TO_CANCEL, "tap again to cancel");
     let s = sent(1, [1]);
     assert.equal(cancelButton(s, "ebay"), false, "before the press");
     s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
@@ -567,6 +573,7 @@ test("the red cancel shows from the press until the link or the error; a cancell
     assert.equal(cancelButton(s, "ebay"), true);
     s = reduce(s, { type: "jobStopping", venue: "ebay" });
     assert.equal(venueLine(s.jobs.ebay).text, STOPPING_STEP);
+    assert.equal(cancelButton(s, "ebay"), false, "told once: a second tap does nothing more");
     s = reduce(s, {
         type: "jobStatus",
         venue: "ebay",
@@ -586,6 +593,29 @@ test("the red cancel shows from the press until the link or the error; a cancell
     assert.equal(cancelButton(status("publishing B-1 on ebay"), "ebay"), false);
     assert.equal(cancelButton(status("publishing on craigslist for B-1"), "ebay"), false);
     assert.equal(venueLine(status("publishing B-1 on ebay").jobs.ebay).kind, "busy", "the ring still turns");
+});
+
+test("Admin's job buttons cancel by cancelButton's rule; the line says when the PC was told", () => {
+    const task = (over) => ({ press: null, wait: "", job: null, stopping: false, note: null, ...over });
+    assert.equal(taskCancel(task()), false, "nothing pressed");
+    assert.equal(taskCancel(task({ press: {}, wait: "sending" })), true, "the press's first second");
+    assert.equal(taskCancel(task({ wait: "sending" })), false, "the POST on its way: nothing to tell yet");
+    assert.equal(taskCancel(task({ wait: "saving", press: null })), false, "customize's save before a push");
+    assert.equal(taskCancel(task({ job: { state: "queued" } })), true);
+    assert.equal(taskCancel(task({ job: { state: "running", step: "asking eBay" } })), true);
+    assert.equal(taskCancel(task({ job: { state: "running", step: "publishing on craigslist for R5" } })), false);
+    assert.equal(taskCancel(task({ job: { state: "running", step: "asking eBay" }, stopping: true })), false, "told once");
+    assert.equal(taskCancel(task({ job: { state: "done" } })), false);
+    assert.equal(taskCancel(task({ job: { state: CANCELLED } })), false);
+    // the line: stopping first, then what is on its way, the job, what the PC said
+    assert.deepEqual(busyLine(task({ job: { state: "running", step: "asking eBay" }, stopping: true })), {
+        text: STOPPING_STEP,
+        kind: "busy",
+    });
+    assert.deepEqual(busyLine(task({ wait: "sending" })), { text: "sending", kind: "busy" });
+    assert.deepEqual(busyLine(task({ job: { state: CANCELLED } })), { text: CANCELLED, kind: "bad" });
+    assert.deepEqual(busyLine(task({ note: { text: CANCELLED, kind: "bad" } })), { text: CANCELLED, kind: "bad" });
+    assert.equal(busyLine(task()), null);
 });
 
 test("the title line is the saved row's title, from whichever job said it first", () => {
@@ -2254,6 +2284,13 @@ test("a row's title, heading, badges, venues and photos", () => {
     assert.deepEqual(rowBadges(unsafe), [{ text: "craigslist listed", kind: "posted", link: "" }], "only an http(s) link");
     const ended = { sku: "X", venues: ["ebay"], statuses: { ebay: { status: "ended", url: "https://www.ebay.com/itm/1" } } };
     assert.equal(rowBadges(ended)[0].link, "", "an ended listing's badge stays a word");
+    // a listing's venue foldout wears the list's badge (Michal, 2026-10-07), never a link;
+    // a venue the row is not on says so
+    assert.deepEqual(venueBadge(ROW, "ebay"), { text: "ebay listed", kind: "posted" });
+    assert.deepEqual(venueBadge(ROW, "craigslist"), { text: "craigslist draft", kind: "draft" });
+    assert.deepEqual(venueBadge(ended, "ebay"), { text: "ebay ended", kind: "muted" });
+    assert.deepEqual(venueBadge(ended, "craigslist"), { text: "craigslist not added", kind: "absent" });
+    assert.deepEqual(venueBadge({ sku: "X" }, "ebay"), { text: "ebay not added", kind: "absent" });
     // the venues a row is on: its `venues`, in the app's order
     assert.deepEqual(rowVenues(ROW), ["ebay", "craigslist"]);
     assert.deepEqual(rowVenues({ venues: ["craigslist", "etsy", "ebay"] }), ["ebay", "craigslist"]);

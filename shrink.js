@@ -20,7 +20,7 @@
 // the size, and every failure names the file's type and size, so the page can
 // say which photo and why.
 
-import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=2.5.0";
+import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=2.6.0";
 
 const SHRINK_TRIES = 3;
 

@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.5.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.6.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -430,28 +430,6 @@ button.badge.failed {
     margin-top: 18px;
 }
 .venue { min-width: 0; }
-/* The cancel under a pressed venue button (Michal, 2026-10-02): from the press until the
-   link or the error; the first second takes the press back for free. Just red text, not
-   a button (Michal, 2026-10-03: "low profile red text ... just like the settings text"):
-   the Settings link's size in the bad colour, still 44 px tall for a thumb. */
-.cancel {
-    display: block;
-    width: 100%;
-    margin: 0;
-    min-height: 44px;
-    padding: 10px 0;
-    border: none;
-    border-radius: 0;
-    background: none;
-    color: var(--bad);
-    font-size: 14px;
-    font-weight: 500;
-    text-align: center;
-}
-.cancel:disabled { opacity: 0.6; }
-/* display: block above beats the hidden attribute, so the cancel showed all the time (Michal,
-   2026-10-03: "after a posting is published ... can't cancel it now"; found 2026-10-06). */
-.cancel[hidden] { display: none; }
 /* the venue buttons: outlined pills in ink, not filled, so Snap and NEXT stay the loud ones */
 .venue-btn {
     margin-top: 0;
@@ -463,20 +441,33 @@ button.badge.failed {
     font-size: 20px;
     gap: 10px;
 }
-/* A pressed button, while its job is on its way or running on the PC: not faded like
-   any other disabled button, but its word at full strength with a ring turning beside
-   it, until the link or the error comes (Michal, 2026-09-26: "I want to know what
-   process is running" -- the step under the button says which). */
-.venue-btn.busy { opacity: 1; }
-.venue-btn.busy::after {
+/* A pressed job button (a venue button, a listing's Post, Refresh status, End listing and
+   Sync to eBay, the sync bar's two), while its job is on its way or running on the PC: its
+   word at full strength with a ring turning beside it, the ring as tall as the word, until
+   the link or the error comes (Michal, 2026-09-26: "I want to know what process is
+   running" -- the step under the button says which). While a second tap still calls it
+   off, "tap again to cancel" sits inside it under the word, small (Michal, 2026-10-07: "The
+   writing should be within it, below, and should be small"): the ring goes first on the
+   word's line, the small line wraps under them. */
+button.busy { opacity: 1; flex-wrap: wrap; row-gap: 2px; }
+button.busy::after {
     content: "";
     flex: none;
-    width: 20px;
-    height: 20px;
-    border: 3px solid currentColor;
+    order: 1;
+    width: 1em;
+    height: 1em;
+    border: 0.15em solid currentColor;
     border-right-color: transparent;
     border-radius: 50%;
     animation: turn 0.8s linear infinite;
+}
+.tap-cancel {
+    order: 2;
+    flex-basis: 100%;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.2;
 }
 @keyframes turn { to { transform: rotate(360deg); } }
 /* The row's price above the venue buttons, from the press on (Michal, 2026-09-30: "show
@@ -498,7 +489,7 @@ button.badge.failed {
    faded like a button that cannot be pressed yet. */
 .venue-btn.posted { opacity: 1; color: var(--ok); border-color: var(--ok); }
 @media (prefers-reduced-motion: reduce) {
-    .venue-btn.busy::after { animation: none; }
+    button.busy::after { animation: none; }
 }
 .venue-status { margin: 8px 2px 0; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 /* the PC's step while the job runs: full ink, it is the line to watch */
@@ -737,7 +728,10 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 .inv-price { font-weight: 800; letter-spacing: -0.02em; }
 .inv-sku { color: var(--muted); }
 .inv-badges { display: flex; flex-wrap: wrap; gap: 4px; }
-/* a venue's status: listed in the posted green, sold and ended muted, a draft outlined */
+/* a venue's status: listed in the posted green, sold and ended muted, a draft outlined,
+   a venue the listing is not on dashed. The list's rows and a listing's venue foldouts
+   wear the same badge (Michal, 2026-10-07: "Keeping visual references the same across
+   screens makes things simple"). */
 .vbadge {
     font-size: 11px;
     font-weight: 700;
@@ -749,6 +743,7 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 }
 .vbadge.posted { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); }
 .vbadge.muted { background: var(--line); border-color: var(--line); color: var(--muted); }
+.vbadge.absent { border-style: dashed; border-color: var(--muted); color: var(--muted); }
 /* a listed badge opens the listing (Michal, 2026-10-06): above the row's tap, a little
    larger for a thumb, an arrow saying it leaves the page */
 a.vbadge { position: relative; z-index: 1; padding: 4px 10px; font-size: 12px; text-decoration: none; }
@@ -833,6 +828,10 @@ a.vbadge::after { content: " ↗"; }
 }
 .sync-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sync-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 48px;
     padding: 8px 10px;
     background: var(--field);
@@ -843,6 +842,10 @@ a.vbadge::after { content: " ↗"; }
     letter-spacing: -0.01em;
 }
 .sync-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* each its half of the sync symbol, 20 px, left of the word (Michal, 2026-10-07) */
+.sync-btn .btn-icon svg { width: 20px; height: 20px; }
+/* pressed, the turning ring takes the icon's room: a half-width button holds the word and one of them */
+.sync-btn.busy .btn-icon { display: none; }
 .sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sync-status:empty { display: none; }
 .sync-status.busy { color: var(--ink); }

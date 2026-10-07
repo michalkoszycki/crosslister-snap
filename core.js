@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.5.0";
+import { noteDirty, unsent } from "./queue.js?v=2.6.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.5.0";
+} from "./book.js?v=2.6.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -238,13 +238,24 @@ export const MAX_PHOTOS = 24;
 export const POLL_MS = 3000;
 
 /**
- * How long a venue press waits before it is sent (Michal, 2026-10-02: "delay
- * sending by 1 second, but show loading, so that if one cancels within 1 sec
- * there is no call money spent"): the ring turns at once, the request goes
- * after this, and the red cancel under the button takes the press back for
- * free until then.
+ * How long a press that starts a job waits before it is sent (Michal, 2026-10-02:
+ * "delay sending by 1 second, but show loading, so that if one cancels within 1
+ * sec there is no call money spent"): the ring turns at once, the request goes
+ * after this, and a second tap on the button takes the press back for free until
+ * then. Every job button waits it: the venue buttons, a listing's Post, Refresh
+ * status, End listing and Sync to eBay, and the sync bar's two.
  */
 export const SEND_DELAY_MS = 1000;
+
+/**
+ * The second line inside a busy job button, small, while a tap on it still calls
+ * the job off (Michal, 2026-10-07: "The button, within it, should just get 'tap
+ * again to cancel' instead of an external cancel line. The writing should be within
+ * it, below, and should be small, and appear just when the button action is
+ * doing/loading"). It walks back 2026-10-02's "below in red there should be a
+ * cancel button" on purpose: the red cancel under the button is gone.
+ */
+export const TAP_TO_CANCEL = "tap again to cancel";
 
 /** The line under a venue button whose press was taken back, or dropped by the PC before it ran. */
 export const CANCELLED = "cancelled";
@@ -256,10 +267,11 @@ export const STOPPING_STEP = "cancelling: the PC stops at its next step";
 export const PUBLISHING_PREFIX = "publishing";
 
 /**
- * Whether the red cancel under a venue button shows: from the press until the
- * publish begins, the link or the error. Within the first second it costs
- * nothing; after that the PC is told, and it stops at its next step ("it will
- * be a double charge but oh well"). From the PC's publishing step on there is
+ * Whether a pressed venue button says "tap again to cancel" under its word and a
+ * second tap calls its job off: from the press until the publish begins, the link
+ * or the error, and not again once the PC has been told. Within the first second
+ * it costs nothing; after that the PC is told, and it stops at its next step ("it
+ * will be a double charge but oh well"). From the PC's publishing step on there is
  * nothing left to stop (Michal, 2026-10-03: "after a posting is published ...
  * can't cancel it now. cancel only makes sense in mid-load").
  * @param {SnapState} state
@@ -268,12 +280,27 @@ export const PUBLISHING_PREFIX = "publishing";
  */
 export function cancelButton(state, venue) {
     const job = state.jobs[venue];
-    return !!job && isActive(job) && !publishing(job);
+    return !!job && isActive(job) && !publishing(job) && job.step !== STOPPING_STEP;
 }
 
 /** @param {VenueJob} job */
 function publishing(job) {
     return job.phase === "running" && job.step.startsWith(PUBLISHING_PREFIX);
+}
+
+/**
+ * cancelButton's rule for Admin's job buttons (a listing's Post, Refresh status,
+ * End listing and Sync to eBay, the sync bar's two): within the press's first
+ * second (`press`), or while its job is on the PC's queue or in hand short of the
+ * publishing step; not while something else is on its way to the PC (the POST
+ * itself, customize's save before a push), nor once the PC has been told to stop.
+ * @param {{press?:unknown, wait:string, job:{state?:string, step?:string}|null, stopping?:boolean}} task
+ * @returns {boolean}
+ */
+export function taskCancel(task) {
+    if (task.stopping) return false;
+    if (task.press) return true;
+    return !task.wait && jobRunning(task.job) && !plain(task.job && task.job.step).startsWith(PUBLISHING_PREFIX);
 }
 
 /**
@@ -2114,6 +2141,21 @@ export function rowBadges(row) {
     });
 }
 
+/**
+ * The badge a listing's venue foldout wears, the list's own (Michal, 2026-10-07: "I
+ * want them to look like they did on the inventory list. Inside a green bubble if
+ * listed. (Keeping visual references the same across screens makes things
+ * simple)"); a venue the row is not on says so, dashed. Never a link: the
+ * listing's link is in the card's actions.
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @returns {{text:string, kind:"posted"|"muted"|"draft"|"absent"}}
+ */
+export function venueBadge(row, venue) {
+    if (!rowVenues(row).includes(venue)) return { text: `${venue} not added`, kind: "absent" };
+    return statusBadge(venue, venueStatus(row, venue).status);
+}
+
 /** A row's title, or its sku when it has none. */
 export function rowTitle(row) {
     return plain(row.title) || row.sku;
@@ -2394,12 +2436,14 @@ export function syncLine(job) {
 }
 
 /**
- * What a card (or a listing's customize) has to say before anything else: what is
- * on its way to the PC, its job, what the PC refused; null when none of these.
- * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null}} card
+ * What a card (or a listing's customize, or the sync bar) has to say before anything
+ * else: the PC told to stop, what is on its way to the PC, its job, what the PC
+ * refused; null when none of these.
+ * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, stopping?:boolean}} card
  * @returns {{text:string, kind:string} | null}
  */
-function busyLine(card) {
+export function busyLine(card) {
+    if (card.stopping) return { text: STOPPING_STEP, kind: "busy" };
     if (card.wait) return { text: card.wait, kind: "busy" };
     if (card.job) return syncLine(card.job);
     return card.note || null;
