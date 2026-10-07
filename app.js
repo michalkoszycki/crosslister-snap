@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.7.0";
+import { VERSION } from "./version.js?v=2.8.0";
 import {
     anyActive,
     bannerText,
@@ -97,10 +97,13 @@ import {
     editValues,
     endQuestion,
     followRow,
+    followSummary,
     inventoryCount,
     inventoryRows,
     jobRunning,
+    leftUnsynced,
     patchBody,
+    priceStep,
     priceWord,
     quantityValue,
     rowBadges,
@@ -111,12 +114,15 @@ import {
     rowVenues,
     sliderWords,
     busyLine,
+    syncLine,
+    unsyncedList,
+    unsyncedWith,
     venueActions,
     venueBadge,
     venueFacts,
     venueStatus,
-} from "./core.js?v=2.7.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.7.0";
+} from "./core.js?v=2.8.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.8.0";
 import {
     addVenue,
     cancelJob,
@@ -136,8 +142,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.7.0";
-import { shrinkPhoto } from "./shrink.js?v=2.7.0";
+} from "./pc.js?v=2.8.0";
+import { shrinkPhoto } from "./shrink.js?v=2.8.0";
 import {
     bookCard,
     bookPriceValue,
@@ -150,8 +156,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.7.0";
-import { canScan, readIsbn } from "./scan.js?v=2.7.0";
+} from "./book.js?v=2.8.0";
+import { canScan, readIsbn } from "./scan.js?v=2.8.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -162,6 +168,11 @@ const THEME_KEY = "snap.theme";
 const PHOTOS_KEY = "snap.inventory.photos";
 /** The listing open in Admin, by sku, so Admin opens back onto it; gone on Back. */
 const CARD_KEY = "snap.admin.card";
+/**
+ * The listings whose price this phone changed since eBay last had it, by sku (unsyncedList):
+ * their list badge offers Sync to eBay until a push of theirs, or the sync bar's, is done.
+ */
+const UNSYNCED_KEY = "snap.inventory.unsynced";
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 
@@ -232,6 +243,10 @@ const admin = {
     asked: 0,
     /** sku -> the 64 px tile its photo 1 goes into, while Show photos is on */
     tiles: new Map(),
+    /** sku -> its list row's parts on screen (rowNode), repainted in place (paintTile) */
+    parts: new Map(),
+    /** sku -> its row's job task (jobTask): a + or −'s PATCH on its way (`wait`), its sync badge's push */
+    rowTasks: new Map(),
     /** the list's object URLs, revoked when the list changes */
     thumbs: [],
     shown: 0,
@@ -577,8 +592,8 @@ function renderBook() {
 
 /**
  * The customize nodes of a kind: the toggle, its card, the quantity box, the
- * pickup box, the price slider with its three words and its line, and the
- * post without asking box.
+ * pickup box, the price slider with its three words and its line, the post
+ * without asking box and the eBay comparisons box.
  */
 function customizeNodes(m) {
     return m === "book"
@@ -591,6 +606,7 @@ function customizeNodes(m) {
               pricingWords: el.bookPricingWords,
               pricingNote: el.bookPricingNote,
               autoPost: el.bookAutoPost,
+              comps: el.bookComps,
           }
         : {
               toggle: el.customizeToggle,
@@ -601,6 +617,7 @@ function customizeNodes(m) {
               pricingWords: el.pricingWords,
               pricingNote: el.pricingNote,
               autoPost: el.autoPost,
+              comps: el.comps,
           };
 }
 
@@ -629,6 +646,8 @@ function renderCustomize(m) {
     nodes.pricingNote.textContent = grade.note;
     nodes.autoPost.disabled = fixed;
     nodes.autoPost.checked = c.autoPost;
+    nodes.comps.disabled = fixed;
+    nodes.comps.checked = c.comps;
 }
 
 /** The customize boxes show what the state holds (after a reload or a DONE). */
@@ -1317,7 +1336,7 @@ async function send(m, venue) {
         if (taken()) return;
         setState(
             m,
-            reduce(slots[m], { type: "jobRefused", venue, error: "the note has not reached the PC" })
+            reduce(slots[m], { type: "jobRefused", venue, error: "the user note has not reached the PC" })
         );
         return;
     }
@@ -1656,6 +1675,7 @@ async function loadInventory(lead = "") {
 /** The list: one row per listing, with photo 1's tile on its left while Show photos is on. */
 function renderRows() {
     dropThumbs();
+    admin.parts.clear();
     const photos = !!el.inventoryPhotos.checked;
     el.inventoryList.replaceChildren(...admin.rows.map((row) => rowNode(row, photos)));
 }
@@ -1677,6 +1697,10 @@ function linkNode(url, className, word) {
  * listed one is a link to the listing (Michal, 2026-10-06: "clicking the venue
  * button from the inventory should open the listing"), and a link inside a
  * button is one a browser does not follow, so the tap goes to the link alone.
+ * On the right, the price's round + at the top and − at the bottom (Michal,
+ * 2026-10-07: "Plus button in top right, minus button in bottom right of the little
+ * tile that represents an inventory item"). The price, the badges and the two are
+ * painted by paintTile, again whenever the row or its task changes.
  */
 function rowNode(row, photos) {
     const li = document.createElement("li");
@@ -1699,27 +1723,216 @@ function rowNode(row, photos) {
     title.textContent = rowTitle(row);
     const line = document.createElement("span");
     line.className = "inv-line";
+    open.append(title, line);
+    const badges = document.createElement("span");
+    badges.className = "inv-badges";
+    words.append(open, badges);
+    const steps = document.createElement("div");
+    steps.className = "inv-steps";
+    const up = actionButton("+", "inv-step", false, () => {
+        stepPrice(row.sku, 1).catch(() => {});
+    });
+    up.setAttribute("aria-label", "price up");
+    const down = actionButton("−", "inv-step", false, () => {
+        stepPrice(row.sku, -1).catch(() => {});
+    });
+    down.setAttribute("aria-label", "price down");
+    steps.append(up, down);
+    li.append(words, steps);
+    // the row as the PC last gave it: a tap of + or − puts its answer here
+    const parts = { row, line, badges, up, down };
+    open.addEventListener("click", () => {
+        openRow(parts.row, open).catch(() => {});
+    });
+    admin.parts.set(row.sku, parts);
+    paintTile(row.sku);
+    return li;
+}
+
+/**
+ * A list row's price (`$24`, from the row the PC last gave), its badges, and its + and −,
+ * each shut at its end (priceStep has no step) and both while the row's PATCH or its push
+ * is on its way or running (one job per row at a time, as on a listing's own page).
+ */
+function paintTile(sku) {
+    const parts = admin.parts.get(sku);
+    if (!parts) return;
+    const { row } = parts;
+    const kids = [];
     const price = priceWord(row.price);
     if (price) {
         const said = document.createElement("span");
         said.className = "inv-price";
         said.textContent = price;
-        line.append(said);
+        kids.push(said);
     }
-    const sku = document.createElement("span");
-    sku.className = "inv-sku mono";
-    sku.textContent = row.sku;
-    line.append(sku);
-    open.append(title, line);
-    open.addEventListener("click", () => {
-        openRow(row, open).catch(() => {});
+    const code = document.createElement("span");
+    code.className = "inv-sku mono";
+    code.textContent = sku;
+    kids.push(code);
+    parts.line.replaceChildren(...kids);
+    parts.badges.replaceChildren(
+        ...rowBadges(row, readUnsynced()).flatMap((badge) => (badge.sync ? syncBadge(sku, badge) : [badgeNode(badge)]))
+    );
+    const busy = rowTaskBusy(rowTask(sku));
+    parts.up.disabled = busy || !priceStep(row, 1);
+    parts.down.disabled = busy || !priceStep(row, -1);
+}
+
+/** A row's job task on the list, made the first time it is asked for. */
+function rowTask(sku) {
+    if (!admin.rowTasks.has(sku)) admin.rowTasks.set(sku, jobTask());
+    return admin.rowTasks.get(sku);
+}
+
+/** A row's PATCH or push is on its way, or its push runs on the PC: its tile waits. */
+function rowTaskBusy(task) {
+    return !!task.wait || jobRunning(task.job);
+}
+
+/** The listings eBay has not caught up with, by sku, as this phone keeps them. */
+function readUnsynced() {
+    return unsyncedList(readJson("localStorage", UNSYNCED_KEY, []));
+}
+
+/** A listing marked as eBay not having its price (`on`), or let go once it has. */
+function markUnsynced(sku, on) {
+    writeJson("localStorage", UNSYNCED_KEY, unsyncedWith(readUnsynced(), sku, on));
+}
+
+/**
+ * The eBay badge of a row whose price eBay has not caught up with: the listed badge, in
+ * its green, with the sync bar's to-eBay icon before its words, and a job button (Michal,
+ * 2026-10-07: "When the price changes there should be our sync-to logo appearing on the
+ * ebay green button below. Pressing it would sync, and the button would revert to the
+ * 'ebay listed'"): pressed, its ring and "tap again to cancel"; tapped again, paused, its
+ * continue and the reset beside it, as every job button.
+ */
+function syncBadge(sku, badge) {
+    const task = rowTask(sku);
+    const paint = () => {
+        paintTile(sku);
+        // the row has no line of its own: a tap from the publishing step on is said on the list's
+        if (task.late) el.inventoryStatus.textContent = `${sku}: ${TOO_LATE}`;
+    };
+    const btn = actionButton("", `vbadge ${badge.kind} vsync`, false, () => {
+        if (pressed(task, "push")) onTaskTap(task, paint);
+        else pushTile(sku).catch(() => {});
     });
-    const badges = document.createElement("span");
-    badges.className = "inv-badges";
-    badges.append(...rowBadges(row).map(badgeNode));
-    words.append(open, badges);
-    li.append(words);
-    return li;
+    const reset = actionButton(RESET, "reset-call", false, () => {
+        resetTask(task, paint).catch(() => {});
+    });
+    reset.setAttribute("aria-label", `${RESET} the sync of ${sku}`);
+    const busy = pressed(task, "push");
+    btn.disabled = busy ? !taskTap(task) : rowTaskBusy(task);
+    paintJobButton(btn, badge.text, {
+        busy,
+        cancel: busy && taskCancel(task),
+        paused: busy && task.paused,
+        label: `${badge.text}, sync to eBay`,
+        lead: [syncIcon()],
+        reset,
+    });
+    return [btn, reset];
+}
+
+/** The sync bar's to-eBay half of the sync symbol, copied for a sync badge (without its id: the bar keeps that). */
+function syncIcon() {
+    const icon = el.syncButtons.find((b) => b.direction === "to").icon.cloneNode(true);
+    icon.removeAttribute("id");
+    return icon;
+}
+
+/**
+ * A tile's + or − tapped: one PATCH at once, {"pricing": n} for the next cached grade or
+ * {"price": "25.00"} for the next whole dollar (priceStep), and the price on the tile is
+ * the one the PC answers. A listing up on eBay is then behind its row, and its badge
+ * offers Sync to eBay. A change the PC refuses (400) says its words on the inventory's
+ * line. Nothing while the row's PATCH or its push is on its way.
+ */
+async function stepPrice(sku, step) {
+    const parts = admin.parts.get(sku);
+    const task = rowTask(sku);
+    const pc = settings();
+    if (!parts || !pc || rowTaskBusy(task)) return;
+    const body = priceStep(parts.row, step);
+    if (!body) return;
+    const before = parts.row;
+    task.wait = "saving";
+    paintTile(sku);
+    let whole;
+    try {
+        whole = await patchRow(pc, sku, body);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        task.wait = "";
+        el.inventoryStatus.textContent = `${sku}: ${e.message}`;
+        paintTile(sku);
+        return;
+    }
+    heard(200);
+    task.wait = "";
+    if (leftUnsynced(before, whole)) markUnsynced(sku, true);
+    // the list as the PC now has it (a listing opened from it reads the row afresh)
+    admin.rows = admin.rows.map((r) => (r.sku === sku ? followSummary(r, whole) : r));
+    const shown = admin.parts.get(sku);
+    if (shown) shown.row = followSummary(shown.row, whole);
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    paintTile(sku);
+}
+
+/**
+ * A sync badge tapped: after the second a job button waits, the push job puts the row as
+ * saved on its eBay listing ({"action": "push", "sku", "venue": "ebay"}), asked about every
+ * POLL_MS. Done, eBay has the price and the badge is the plain listed one again, a link.
+ * What it ended with, or the PC's refusal, is said on the inventory's line.
+ */
+async function pushTile(sku) {
+    const task = rowTask(sku);
+    if (rowTaskBusy(task)) return;
+    task.action = "push";
+    task.note = null;
+    task.job = null;
+    task.stopping = false;
+    task.wait = "sending";
+    const waited = pressWait(task);
+    paintTile(sku);
+    if (!(await waited)) return;
+    const pc = settings();
+    if (!pc) {
+        task.action = "";
+        task.wait = "";
+        paintTile(sku);
+        return;
+    }
+    let answer;
+    try {
+        answer = await postJob(pc, actionJob("push", { sku, venue: "ebay" }));
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        task.action = "";
+        task.wait = "";
+        el.inventoryStatus.textContent = `${sku}: ${e.message}`;
+        paintTile(sku);
+        return;
+    }
+    heard(200);
+    task.wait = "";
+    task.job = { action: "push", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    task.ask = () => {
+        askTile(sku).catch(() => {});
+    };
+    paintTile(sku);
+    later(task);
+}
+
+/** A sync badge's push asked about; once it ends, done lets the row's mark go. */
+async function askTile(sku) {
+    const task = rowTask(sku);
+    if (!(await askTask(task, () => paintTile(sku)))) return;
+    if (task.job.state === "done") markUnsynced(sku, false);
+    el.inventoryStatus.textContent = `${sku}: ${syncLine(task.job).text}`;
+    paintTile(sku);
 }
 
 /**
@@ -2030,6 +2243,7 @@ async function saveRowCustomize() {
     heard(200);
     c.wait = "";
     c.note = customizeSaved(whole);
+    if (leftUnsynced(row, whole)) markUnsynced(row.sku, true);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
     return true;
@@ -2360,6 +2574,7 @@ async function saveEdit(venue) {
     c.edit = null;
     c.note = null;
     c.job = null;
+    if (leftUnsynced(row, whole)) markUnsynced(row.sku, true);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
 }
@@ -2596,6 +2811,8 @@ async function askJob(c, mine, paint) {
         renderCards();
         return;
     }
+    // customize's Sync to eBay: eBay has the row's price now, and its list badge is plain again
+    if (c.job.action === "push") markUnsynced(admin.row.sku, false);
     admin.changed = true;
     const pc = settings();
     let whole;
@@ -2791,6 +3008,8 @@ async function startSync(direction) {
 async function askSync() {
     if (!(await askTask(sync, renderSync))) return;
     renderSync();
+    // Sync to eBay put every row on its listing: no listing is behind its row any more
+    if (sync.job.state === "done" && sync.job.direction === "to") removeText("localStorage", UNSYNCED_KEY);
     if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
     // a listing open in place of the list: the list is asked for again on the way back
     if (!el.inventoryDetail.hidden) admin.changed = true;
@@ -3008,7 +3227,7 @@ async function fetchPictures(m, pc) {
 async function nextItem(m) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
-        say("The note has not reached the PC yet. NEXT again once it has.", "warn");
+        say("The user note has not reached the PC yet. NEXT again once it has.", "warn");
         return;
     }
     // the note's wait may have let something change: check again before clearing
@@ -3027,7 +3246,7 @@ async function nextItem(m) {
     clearItem(m);
     say("");
     keepSaved[m] = false;
-    customizeOpen[m] = false; // the next item starts folded, at one, shipped, a quick sale, posted
+    customizeOpen[m] = false; // the next item starts folded, at one, shipped, a quick sale, posted, no comparisons
     setState(m, reduce(slots[m], { type: "reset" }));
     fillCustomize(m);
     // the walk is at the items in hand again, one place further when the list grew;
@@ -3269,6 +3488,7 @@ function main() {
         pricingWords: PRICING.map(({ grade }) => $(`pricing-${grade}`)),
         pricingNote: $("pricing-note"),
         autoPost: $("auto-post"),
+        comps: $("comps"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -3310,6 +3530,7 @@ function main() {
         bookPricingWords: PRICING.map(({ grade }) => $(`book-pricing-${grade}`)),
         bookPricingNote: $("book-pricing-note"),
         bookAutoPost: $("book-auto-post"),
+        bookComps: $("book-comps"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
         bookEbayBtn: $("book-ebay-btn"),
@@ -3486,6 +3707,9 @@ function main() {
         );
         nodes.autoPost.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setAutoPost", on: nodes.autoPost.checked }))
+        );
+        nodes.comps.addEventListener("change", () =>
+            setState(m, reduce(slots[m], { type: "setComps", on: nodes.comps.checked }))
         );
     }
 

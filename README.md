@@ -159,10 +159,15 @@ and every behaviour are the live app's.
   off by default, a faint outlined "AI" when off, a filled yellow chip (and a
   yellow frame round the photo) when on. Every photo goes to the listing; only
   the marked ones go to the model, and a new item needs at least one.
-- **Notes for this item**: sent to the PC (`note.txt` in the item's folder) a
-  moment and a half after you stop typing, or when you leave the box. The small
-  word next to the label says `sending...`, `sent`, `not sent (offline), will
-  retry`, or `goes with the first photo` before there is an item.
+- **User note** (it was "Notes for this item"; Michal, 2026-10-07: "Call it
+  'User Note' everywhere. It is not something that posts. And 'note' by itself
+  confuses me."): for the PC and its model, not printed on the listing; sent to
+  the PC (`note.txt` in the item's folder) a moment and a half after you stop
+  typing, or when you leave the box. The small word next to the label says
+  `sending...`, `sent`, `not sent (offline), will retry`, or `goes with the
+  first photo` before there is an item. Wherever the screen names it (the
+  book's box, a listing's eBay card, its Edit) it is the **User note**; the
+  ids and the PC's key stay `note`.
 - **▸ customize**, small, left aligned, right above the buttons (Michal,
   2026-09-28: "a little arrow with the word customize. If clicked I want to be
   able to edit quantity. Also I want to be able to check pickup only"). Folded
@@ -178,21 +183,27 @@ and every behaviour are the live app's.
   price**, **Higher end**, the chosen one bold, and a line saying what it
   means: `sell what we have this week`, `a fair price, a longer wait`, `a
   higher-end price; cheaper ones exist out there`. The PC writes the grade into
-  the model's prompt. Last (Michal, 2026-10-06: "in customize it also should
+  the model's prompt. Then (Michal, 2026-10-06: "in customize it also should
   have a checkbox for post without asking - which is our default now."), **Post
   without asking**, ticked, with the small print `unticked: the PC saves the
   draft and the button posts it on the next press`. Unticked, a press saves the
   row without publishing: the line under that button says `saved, not posted`
   in green, the button opens again (not green: nothing is up), and its next
-  press posts the saved row by its sku, with no second model call. Before a
-  press, the line under each button says what customize changed, joined with
-  ` · `: `pickup only` (under ebay only), the grade when it is not a quick sale
-  (`fair price`, `higher end`) and `saved, not posted` while the box is
-  unticked, e.g. `pickup only · fair price · saved, not posted`, so it is plain
-  it took. All four go with either button, the second one's too (the PC updates
-  the saved row first), and lock while a job is on its way. Folded again on
-  every load and every **NEXT**; the values themselves are kept for a reload
-  and reset by NEXT.
+  press posts the saved row by its sku, with no second model call. Last
+  (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1)
+  and put that toggle default off, in customization."), **Compare with eBay
+  listings**, unticked, with the small print `sends eBay's similar listings to
+  the AI for the first draft; slower, a little dearer`; ticked, the body says
+  `"comps": true` and the PC looks eBay up for the draft as it used to, left
+  alone it does not. Before a press, the line under each button says what
+  customize changed, joined with ` · `: `pickup only` (under ebay only), the
+  grade when it is not a quick sale (`fair price`, `higher end`), `saved, not
+  posted` while that box is unticked and `with eBay comparisons` while this one
+  is ticked, e.g. `pickup only · fair price · saved, not posted`, so it is
+  plain it took. All five go with either button, the second one's too (the PC
+  updates the saved row first), and lock while a job is on its way. Folded
+  again on every load and every **NEXT**; the values themselves are kept for a
+  reload and reset by NEXT.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the PC's step (`drafting the listing`...), then
   the link (opens in a new tab), or the PC's error in its own words. The pressed
@@ -264,7 +275,7 @@ and every behaviour are the live app's.
   be NEXT"), at the very bottom: clears the item and starts the next one. It
   waits while a photo or a delete has not reached the PC (`NEXT waits until
   the photos are on the PC`), and for the moment a press is on its way to the
-  PC; it sends a note still being typed first. It does **not** wait for the
+  PC; it sends a user note still being typed first. It does **not** wait for the
   listing ("I want to be able to click NEXT as the things are loading/posting
   ... I know that does not allow seeing the returned link, and that is fine"):
   the job is the PC's, it posts all the same, and the page just stops asking
@@ -285,11 +296,11 @@ and every behaviour are the live app's.
   something like - 'end of item history - see inventory lists' - instead of
   just quitting and loosing all cache"; until then forward left the page).
   Each item comes up as it was left, read back from the PC like a reload (its
-  photos, their pictures fetched back one at a time, the note, the title and
+  photos, their pictures fetched back one at a time, the user note, the title and
   price, the links; Michal, 2026-10-02: "when I press next but then want to go
   back and see how much that other thing posted for"), on its own kind's
   screen. An item nothing was posted from comes back open: more photos, the
-  note, the buttons, as if NEXT had not been pressed, and what is done to it
+  user note, the buttons, as if NEXT had not been pressed, and what is done to it
   is kept with it in the history. The line under the photos says which item
   is up, which way (`Back to "Lamp", as it was left.` / `Forward to ...`), and
   what NEXT does there: return to the item in hand (the newest place in the
@@ -391,11 +402,12 @@ title instead, and the PC does the same work from that. Top to bottom:
   replaced by a later answer, when more of the title is typed). Under it: `eBay: 12 listings, $6–$24
   · suggested $11`, or `no eBay listings found — set a price`, with `under $5:
   a lot or a buyback site may be better` when the suggestion is that low.
-- **Flaws**: the item's note, sent to the PC exactly as the goods note is.
+- **User note** (it was Flaws; Michal, 2026-10-07: "Call it 'User Note'
+  everywhere"): the item's user note, sent to the PC exactly as the goods one is.
 - **▸ customize**, right above ebay: the same disclosure as for goods, the
   book's own (open or folded, and its values, apart from the goods item's):
   **Quantity** (several copies of one book), **Pickup only**, **Price** (the
-  three grades) and **Post without asking**. A book saved, not posted, opens
+  three grades), **Post without asking** and **Compare with eBay listings**. A book saved, not posted, opens
   ebay again, and that press posts the saved row by its sku (no book in the
   body); otherwise a book is always sent whole.
 - **ebay**, one full-width button with the same status line, turning ring,
@@ -416,7 +428,7 @@ title instead, and the PC does the same work from that. Top to bottom:
 ## The upload queue, and being offline
 
 One request at a time, in this order: the item itself (with the first photo),
-deletes, the photos in the order they were taken, then the note once it is due.
+deletes, the photos in the order they were taken, then the user note once it is due.
 The photos stay in the page's memory until **NEXT**, so nothing is lost while
 the PC cannot be reached:
 
@@ -430,7 +442,7 @@ the PC cannot be reached:
   that gives no JPEG): that photo shows `failed`, the line under the photos
   says which and why (`Lamp-3.jpg: could not read the photo (image/heic, 4.2
   MB)`), and the others carry on. Tap `failed` to try it again. An error for
-  the item, a delete or the note (a wrong key, say) is shown in the banner and
+  the item, a delete or the user note (a wrong key, say) is shown in the banner and
   tried again on the same schedule.
 - **Memory on the phone.** Each photo is shrunk the moment it is taken or
   picked, one after another, and only the shrunk JPEG is kept and shown as its
@@ -443,7 +455,7 @@ the PC cannot be reached:
   On a photo that is on the PC, or on its way, or failed, the PC deletes it too.
   Photo numbers are never reused, so a delete leaves a gap and the AI marks keep
   naming the right photos.
-- **Leaving the page** asks first while a photo, a delete or the note has not
+- **Leaving the page** asks first while a photo, a delete or the user note has not
   reached the PC, or a venue press has not reached it yet. A listing the PC
   has taken is no reason to ask: it posts whether or not the page watches.
 - **NEXT** never drops what the queue still owes the PC: it stays shut while a
@@ -452,7 +464,7 @@ the PC cannot be reached:
 - **A reload** (or the phone closing the tab) reads the item back from the PC:
   its photos (each says "on the PC" until its picture is fetched back,
   `GET /items/<id>/photos/<n>`, one at a time; one the PC cannot give keeps
-  saying so), the AI marks, the note, the sku and the jobs, whose status lines
+  saying so), the AI marks, the user note, the sku and the jobs, whose status lines
   carry on. Photos that had not reached the PC before the reload are lost from
   the page (they were only in its memory); everything sent is safe. A reload
   while back shows an earlier item reads that item back, and the item in hand
@@ -480,31 +492,33 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the PC always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the PC writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The PC drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the PC publishes the saved row | the same |
+| customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization.") | top-level `"comps": true`, only when ticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": true}`; never `"comps": false`: left alone, the PC drafts without eBay's similar listings | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
 | `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save) |
+| `PATCH <pc>/inventory/<sku>`, a list row's **+** or **−**, one per tap | `{"pricing": n}`, the next cached grade up or down (1 to 3, a grade with no cached price passed over), on a row with any cached `prices`; otherwise `{"price": "25.00"}`, the next whole dollar up or down, never below `"1.00"`; nothing at either end | the same; 400 `{"detail"}` on the inventory's line as `<sku>: <detail>`, the price as it was |
 | `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The PC sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused (Craigslist cannot be ended from here): the card says it and its End goes |
 | `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
-| `POST <pc>/jobs`, a listing's customize, **Sync to eBay** (one row, as saved, onto its eBay listing) | `{"action": "push", "sku", "venue": "ebay"}` | the same; 400 `{"detail"}` when the row is not listed on eBay, shown in customize's status line |
+| `POST <pc>/jobs`, a listing's customize, **Sync to eBay** (one row, as saved, onto its eBay listing), or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` | the same; 400 `{"detail"}` when the row is not listed on eBay, shown in customize's status line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
 
 The venue buttons open once every photo is `sent` and at least one is marked
-AI; the note is sent first if it is still being typed. The `sku` comes from the
+AI; the user note is sent first if it is still being typed. The `sku` comes from the
 first job's status as soon as the PC has saved the row, so the second button
 can go while the first job is still publishing. The page keeps the item id and
 the sku with the item until **NEXT** (the id and the AI marks also in
 `localStorage`, `snap.item`, for a reload; a book's id, ISBN (or, with no
 ISBN, its title, author, year and format; after an ISBN miss, both, and
 `isbnMiss`), condition, price, main photo and found record in `snap.book`;
-either one's customize, `{"quantity", "pickupOnly"}` plus `"pricing"` and
-`"autoPost": false` when they are not the default, once it is not the
-default; a reload with `autoPost` off reads a job done with no link as
+either one's customize, `{"quantity", "pickupOnly"}` plus `"pricing"`,
+`"autoPost": false` and `"comps": true` when they are not the default, once it
+is not the default; a reload with `autoPost` off reads a job done with no link as
 `saved, not posted`). What NEXT left is in `snap.history`, the same records, oldest first,
 at most 10; the walk's place is not in `localStorage` but in the browser's own
 history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
@@ -573,6 +587,37 @@ Empty. With capacity to generate that card from there."
   the detail. With **Show photos** on, a 64 px tile of photo 1 sits on the left
   of each (`no photo` for a listing with none), fetched one at a time;
   changing the list lets those pictures go.
+- **The price on a row** (Michal, 2026-10-07, "one of the highest priority
+  items": "On the inventory card on the right there should be a round + and a
+  round − button. Pressing them increments through the price. Plus button in
+  top right, minus button in bottom right of the little tile that represents an
+  inventory item. When the price changes there should be our sync-to logo
+  appearing on the ebay green button below. Pressing it would sync, and the
+  button would revert to the 'ebay listed' or whatever it says now."): right of
+  the badges, a round **+** at the row's top right and a round **−** at its
+  bottom right, 44 px, ink on smoke (`price up`, `price down` to a screen
+  reader). A tap sends one PATCH at once. A row with cached prices steps
+  through them, quick → fair → high and back (from the grade its price
+  follows; a row following none, from where its price stands), passing over a
+  grade with none cached: `{"pricing": n}`, and the PC sets the price. A row
+  with none moves a whole dollar (from $24.50 up to $25, down to $24), never
+  below $1: `{"price": "25.00"}`. The price on the row is the one the PC
+  answers; at either end that button is shut, and both are while the row's
+  PATCH or its push is on its way. A change the PC refuses puts its words on
+  the inventory's line (`D1: <detail>`), the price as it was. The listing
+  opened afterwards reads the row afresh, the new price in its heading.
+- **The sync badge.** A row listed on eBay whose price this phone changed
+  since eBay last had it (a tap of + or −, customize's Save, an Edit of the
+  price) is kept in `snap.inventory.unsynced` (its sku), and its eBay badge is
+  then the same green bubble with the sync bar's to-eBay icon before `ebay
+  listed`, a button, not a link. A tap is a job button's: the ring in the icon's
+  place and **tap again to cancel** under the words, the push
+  (`{"action": "push", "sku", "venue": "ebay"}`) a second later, asked about
+  every 3 s; a tap while it runs pauses it (**continue**, a small red **reset**
+  beside it), as everywhere. Done, the sku is let go and the badge is the plain
+  listed one again, a link; the inventory's line says how it ended (`G1:
+  updated`, or the PC's words). A Sync to eBay from the sync bar that ends done
+  lets every sku go, and so does customize's Sync to eBay for its own.
 - **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
   eBay** on a smoke sheet under a yellow rule, each with its half of the sync
   symbol left of the word (Michal, 2026-10-07; 20 px, in the word's colour, on
@@ -681,7 +726,7 @@ Empty. With capacity to generate that card from there."
     `not posted yet`), or a job's line while one runs, and the link under it.
   - **ebay**: the listing as eBay has it: title, price, condition, category
     path, quantity, pickup only, the description as written (line breaks
-    kept), the note, the condition note, the aspects and condition details as
+    kept), the User note, the condition note, the aspects and condition details as
     `name: values` lines, the package (`40 oz, 18 x 12 x 12 in`), the ISBN
     when there is one, the model cost (`$0.1046`).
   - **craigslist**: title, price, description and category, each the
@@ -705,7 +750,7 @@ Empty. With capacity to generate that card from there."
     (Craigslist cannot be ended from here) puts the PC's words in the status
     line and the button goes.
   - **Edit** turns the card's fields into the page's own inputs (eBay: title,
-    price, description, note, condition note, the quantity and pickup only
+    price, description, User note, condition note, the quantity and pickup only
     being customize's; craigslist: its four overrides, each blank one showing
     what it derives as its placeholder, each with a **clear** that empties the
     override); **Save** sends one PATCH with only the fields changed (nothing
@@ -791,7 +836,7 @@ To point the local page at a local `crosslister serve`
 (`http://127.0.0.1:8765`), the service must allow the page's origin: add
 `http://localhost:8080` to `CROSSLISTER_SERVE_ORIGINS` in the PC's `.env`
 (e.g. `CROSSLISTER_SERVE_ORIGINS=https://*.github.io,http://localhost:8080`).
-Taking photos and typing the note cost nothing (they only land in the inbox
+Taking photos and typing the user note cost nothing (they only land in the inbox
 folder). **A real press of ebay or craigslist pays for a model call and
 publishes.**
 
