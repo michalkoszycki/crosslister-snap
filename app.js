@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.3.1";
+import { VERSION } from "./version.js?v=2.4.0";
 import {
     anyActive,
     bannerText,
@@ -77,6 +77,10 @@ import {
     actionJob,
     actionWord,
     cardLine,
+    customizeButtons,
+    customizeChanges,
+    customizeLine,
+    customizeSaved,
     DERIVED,
     derivedFields,
     EDIT_FIELDS,
@@ -86,8 +90,11 @@ import {
     inventoryRows,
     jobRunning,
     patchBody,
+    postingWords,
     priceWord,
+    quantityValue,
     rowBadges,
+    rowCustomize,
     rowHeading,
     rowPhotos,
     rowTitle,
@@ -96,8 +103,8 @@ import {
     venueActions,
     venueFacts,
     venueStatus,
-} from "./core.js?v=2.3.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.3.1";
+} from "./core.js?v=2.4.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.4.0";
 import {
     addVenue,
     cancelJob,
@@ -117,8 +124,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.3.1";
-import { shrinkPhoto } from "./shrink.js?v=2.3.1";
+} from "./pc.js?v=2.4.0";
+import { shrinkPhoto } from "./shrink.js?v=2.4.0";
 import {
     bookCard,
     bookPriceValue,
@@ -131,8 +138,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.3.1";
-import { canScan, readIsbn } from "./scan.js?v=2.3.1";
+} from "./book.js?v=2.4.0";
+import { canScan, readIsbn } from "./scan.js?v=2.4.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -215,6 +222,8 @@ const admin = {
     folds: Object.fromEntries(VENUES.map((v) => [v, false])),
     /** venue -> its card's state (blankCard in the Admin section) */
     cards: Object.fromEntries(VENUES.map((v) => [v, blankCard()])),
+    /** the listing's customize foldout (blankCustomize in the Admin section) */
+    custom: blankCustomize(),
     /** the row on screen, whole once the PC gave it; null on the list */
     row: null,
     /** the row button the detail was opened from, to come back to */
@@ -1651,16 +1660,23 @@ function detailLine(text) {
     el.detailStatus.hidden = !text;
 }
 
-/** The detail whole: the heading, the photo strip, the venue cards. */
+/** The detail whole: the heading, the photo strip, customize's boxes as the row has them, the cards. */
 function renderDetail(row) {
     admin.row = row;
+    admin.custom.values = rowCustomize(row);
     el.detailHeading.textContent = rowHeading(row);
     renderDetailPhotos(row);
     renderCards();
 }
 
-/** The row as the PC has it after a card changed it: the heading and the cards; the photos stay. */
+/**
+ * The row as the PC has it after a card or customize changed it: the heading and
+ * the cards; the photos stay. customize's boxes follow the row, unless they hold a
+ * change not yet saved.
+ */
 function refreshRow(row) {
+    const c = admin.custom;
+    if (quantityValue(c.values.quantity) && !customizeChanges(admin.row, c.values)) c.values = rowCustomize(row);
     admin.row = row;
     el.detailHeading.textContent = rowHeading(row);
     renderCards();
@@ -1676,10 +1692,21 @@ function blankCard() {
     return { wait: "", job: null, note: null, confirm: false, edit: null, noEnd: false, line: null, timer: null };
 }
 
+/**
+ * The listing's customize, for the row on screen: open (each listing opens on it),
+ * its two boxes as typed (`values`, from the row until changed), and, as a card's,
+ * what is on its way, its push job, what the PC said, its poll's timer.
+ */
+function blankCustomize() {
+    return { open: true, values: { quantity: "1", pickupOnly: false }, wait: "", job: null, note: null, timer: null };
+}
+
 /** The cards' polls stopped and their state let go: the detail is leaving the screen or changing rows. */
 function dropCards() {
     for (const venue of VENUES) clearTimeout(admin.cards[venue].timer);
+    clearTimeout(admin.custom.timer);
     admin.cards = Object.fromEntries(VENUES.map((v) => [v, blankCard()]));
+    admin.custom = blankCustomize();
 }
 
 /**
@@ -1687,13 +1714,140 @@ function dropCards() {
  * row's fields stay read-only and the other actions wait (one job per row at a time).
  */
 function rowBusy() {
-    return VENUES.some((v) => !!admin.cards[v].wait || jobRunning(admin.cards[v].job));
+    const busy = (c) => !!c.wait || jobRunning(c.job);
+    return busy(admin.custom) || VENUES.some((v) => busy(admin.cards[v]));
 }
 
-/** Every venue card, in its fixed order, and the foldouts' arrows. */
+/** customize, then every venue card in its fixed order, and the foldouts' arrows. */
 function renderCards() {
+    renderRowCustomize();
     for (const venue of VENUES) el.detailFolds[venue].card.replaceChildren(...cardNodes(venue));
     renderFolds();
+}
+
+/**
+ * The listing's customize: open or folded; the quantity box (not rewritten while it
+ * holds what was typed) and pickup only, locked while the row is busy; the price
+ * grade's word bold and post without asking's word, as at posting (only once the
+ * whole row is here: a summary from the list does not carry them); Save and Sync
+ * to eBay as customizeButtons says; its status line.
+ */
+function renderRowCustomize() {
+    const c = admin.custom;
+    fold(el.detailCustomizeToggle, "customize", c.open);
+    el.detailCustomize.hidden = !c.open;
+    const row = admin.row;
+    if (!row) return;
+    const busy = rowBusy();
+    if (el.detailQuantity.value !== c.values.quantity) el.detailQuantity.value = c.values.quantity;
+    el.detailQuantity.disabled = busy;
+    el.detailPickupOnly.checked = c.values.pickupOnly;
+    el.detailPickupOnly.disabled = busy;
+    const whole = Array.isArray(row.photos);
+    const said = postingWords(row.posting);
+    PRICING.forEach((p, i) => el.detailPricingWords[i].classList.toggle("on", whole && p.grade === said.grade));
+    el.detailPricingNote.textContent = whole ? said.note : "";
+    el.detailAutoPost.textContent = whole ? said.autoPost : "";
+    const can = customizeButtons(row, c.values, busy);
+    el.detailCustomizeSave.disabled = !can.save;
+    el.detailCustomizeSync.disabled = !can.sync;
+    paintCustomizeLine();
+}
+
+/** customize's status line, rewritten in place: a poll changes it and nothing else. */
+function paintCustomizeLine() {
+    if (!admin.row) return;
+    const line = customizeLine(admin.row, admin.custom);
+    el.detailCustomizeStatus.textContent = line.text;
+    el.detailCustomizeStatus.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
+}
+
+/**
+ * A box typed or ticked: the state takes it, and what the last Save or push said
+ * gives way to what the boxes now are (Save opens, or the quantity hint shows).
+ */
+function onCustomizeInput(values) {
+    const c = admin.custom;
+    if (rowBusy()) return;
+    c.values = { ...c.values, ...values };
+    c.note = null;
+    c.job = null;
+    renderRowCustomize();
+}
+
+/**
+ * customize's Save: one PATCH with only the quantity and pickup only changed
+ * (customizeChanges); the row the PC answers is shown. true once the row holds
+ * what the boxes say (nothing to send counts), so Sync to eBay can follow.
+ */
+async function saveRowCustomize() {
+    const c = admin.custom;
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy() || !quantityValue(c.values.quantity)) return false;
+    const body = customizeChanges(row, c.values);
+    if (!body) return true;
+    const mine = admin.shown;
+    c.note = null;
+    c.job = null;
+    c.wait = "saving";
+    renderCards();
+    let whole;
+    try {
+        whole = await patchRow(pc, row.sku, body);
+    } catch (e) {
+        if (mine !== admin.shown) return false;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        c.wait = "";
+        c.note = { text: e.message, kind: "bad" };
+        renderCards();
+        return false;
+    }
+    if (mine !== admin.shown) return false;
+    heard(200);
+    c.wait = "";
+    c.note = customizeSaved(whole);
+    admin.changed = true;
+    refreshRow({ ...whole, sku: row.sku });
+    return true;
+}
+
+/**
+ * Sync to eBay (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
+ * detail of that listing should update"): a change not yet saved is saved first,
+ * then the push job puts the row as saved on its eBay listing. Its line is
+ * customize's status line, polled every POLL_MS, "updated" or "unchanged" once
+ * done, and the row is read again. A push the PC refuses says why.
+ */
+async function pushRow() {
+    const c = admin.custom;
+    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy()).sync) return;
+    if (!(await saveRowCustomize())) return;
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy()) return;
+    const mine = admin.shown;
+    c.job = null;
+    c.wait = "sending";
+    renderCards();
+    let answer;
+    try {
+        answer = await postJob(pc, actionJob("push", { sku: row.sku, venue: "ebay" }));
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        c.wait = "";
+        c.note = { text: e.message, kind: "bad" };
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    c.wait = "";
+    c.note = null;
+    c.job = { action: "push", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    renderCards();
+    pollJob(c, mine, paintCustomizeLine);
 }
 
 /** Each venue's foldout: open or folded, and "not added" on one the row is not on. */
@@ -1853,21 +2007,6 @@ function editNode(venue, busy) {
 
 function fieldNode(venue, f, from, locked) {
     const values = admin.cards[venue].edit.values;
-    if (f.kind === "check") {
-        const row = document.createElement("label");
-        row.className = "pickup";
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.checked = values[f.key] === true;
-        box.disabled = locked;
-        box.addEventListener("change", () => {
-            values[f.key] = box.checked;
-        });
-        const words = document.createElement("span");
-        words.textContent = f.label;
-        row.append(box, words);
-        return row;
-    }
     const field = document.createElement("div");
     field.className = "field";
     const head = document.createElement("div");
@@ -1883,10 +2022,6 @@ function fieldNode(venue, f, from, locked) {
         input.type = "text";
     }
     if (f.kind === "price") input.setAttribute("inputmode", "decimal");
-    if (f.kind === "count") {
-        input.setAttribute("inputmode", "numeric");
-        input.className = "quantity";
-    }
     input.setAttribute("aria-label", f.label);
     input.setAttribute("autocomplete", "off");
     input.value = String(values[f.key]);
@@ -1909,19 +2044,18 @@ function fieldNode(venue, f, from, locked) {
 }
 
 /**
- * Save: one PATCH with only the fields changed (patchBody); nothing changed sends
- * nothing. The row the PC answers is shown; a refusal is said under Save and the
- * inputs stay as typed.
+ * A card's Save: one PATCH with only the fields changed (patchBody); nothing
+ * changed sends nothing. The row the PC answers is shown; a refusal is said under
+ * Save and the inputs stay as typed.
  */
 async function saveEdit(venue) {
     const c = admin.cards[venue];
     const row = admin.row;
     const pc = settings();
     if (!c.edit || !row || !pc || rowBusy()) return;
-    const { body, error } = patchBody(venue, c.edit.before, c.edit.values);
+    const body = patchBody(venue, c.edit.before, c.edit.values);
     if (!body) {
-        if (error) c.edit.error = error;
-        else c.edit = null;
+        c.edit = null;
         renderCards();
         return;
     }
@@ -2015,19 +2149,21 @@ async function runAction(venue, action) {
     c.wait = "";
     c.job = { action, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     renderCards();
-    pollCard(venue, mine);
+    pollJob(c, mine, () => paintLine(venue));
 }
 
-function pollCard(venue, mine) {
-    const c = admin.cards[venue];
+/**
+ * A card's job (or customize's push) asked about again in POLL_MS; `paint`
+ * rewrites its status line while it runs.
+ */
+function pollJob(c, mine, paint) {
     clearTimeout(c.timer);
     c.timer = setTimeout(() => {
-        askCard(venue, mine).catch(() => {});
+        askJob(c, mine, paint).catch(() => {});
     }, POLL_MS);
 }
 
-async function askCard(venue, mine) {
-    const c = admin.cards[venue];
+async function askJob(c, mine, paint) {
     const pc = settings();
     if (mine !== admin.shown || !pc || !c.job) return;
     let status;
@@ -2038,8 +2174,8 @@ async function askCard(venue, mine) {
         if (e.status === 0) {
             // the job is safe on the PC's disk: keep asking
             c.job = { ...c.job, trouble: e.message };
-            paintLine(venue);
-            pollCard(venue, mine);
+            paint();
+            pollJob(c, mine, paint);
             return;
         }
         status = { state: "failed", error: e.message };
@@ -2047,8 +2183,8 @@ async function askCard(venue, mine) {
     if (mine !== admin.shown) return;
     c.job = { ...c.job, ...status, trouble: "" };
     if (jobRunning(c.job)) {
-        paintLine(venue);
-        pollCard(venue, mine);
+        paint();
+        pollJob(c, mine, paint);
         return;
     }
     if (c.job.state !== "done") {
@@ -2649,6 +2785,16 @@ function main() {
         detailHeading: $("detail-heading"),
         detailStatus: $("detail-status"),
         detailPhotos: $("detail-photos"),
+        detailCustomizeToggle: $("detail-customize-toggle"),
+        detailCustomize: $("detail-customize"),
+        detailQuantity: $("detail-quantity"),
+        detailPickupOnly: $("detail-pickup-only"),
+        detailPricingWords: PRICING.map(({ grade }) => $(`detail-pricing-${grade}`)),
+        detailPricingNote: $("detail-pricing-note"),
+        detailAutoPost: $("detail-auto-post"),
+        detailCustomizeSave: $("detail-customize-save"),
+        detailCustomizeSync: $("detail-customize-sync"),
+        detailCustomizeStatus: $("detail-customize-status"),
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
@@ -2785,6 +2931,18 @@ function main() {
         loadInventory().catch(() => {});
     });
     el.inventoryBack.addEventListener("click", backToList);
+    el.detailCustomizeToggle.addEventListener("click", () => {
+        admin.custom.open = !admin.custom.open;
+        renderRowCustomize();
+    });
+    el.detailQuantity.addEventListener("input", () => onCustomizeInput({ quantity: el.detailQuantity.value }));
+    el.detailPickupOnly.addEventListener("change", () => onCustomizeInput({ pickupOnly: el.detailPickupOnly.checked }));
+    el.detailCustomizeSave.addEventListener("click", () => {
+        saveRowCustomize().catch(() => {});
+    });
+    el.detailCustomizeSync.addEventListener("click", () => {
+        pushRow().catch(() => {});
+    });
     for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
         toggle.addEventListener("click", () => {
             admin.folds[venue] = card.hidden;

@@ -103,6 +103,18 @@ import {
     changedFields,
     patchBody,
     EDIT_QUANTITY_HINT,
+    AT_POSTING,
+    AUTO_POSTED,
+    HELD_FIRST,
+    POSTING_UNKNOWN,
+    PUSH_CLOSED,
+    canPush,
+    customizeButtons,
+    customizeChanges,
+    customizeLine,
+    customizeSaved,
+    postingWords,
+    rowCustomize,
     listedAtWord,
     namedLines,
     packageWord,
@@ -2386,6 +2398,10 @@ test("the action jobs' bodies: end and refresh carry the sku and venue, a sync i
     assert.throws(() => actionJob("end", { venue: "ebay" }), RangeError);
     assert.throws(() => actionJob("end", { sku: "R5", venue: "etsy" }), RangeError);
     assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
+    // a listing's customize, Sync to eBay (the contract of 2026-10-07): eBay only
+    assert.deepEqual(actionJob("push", { sku: "R5", venue: "ebay" }), { action: "push", sku: "R5", venue: "ebay" });
+    assert.throws(() => actionJob("push", { sku: "R5", venue: "craigslist" }), RangeError);
+    assert.throws(() => actionJob("push", { venue: "ebay" }), RangeError);
 });
 
 test("an action job's line: queued, the step, the summary once done, the error once failed", () => {
@@ -2425,10 +2441,8 @@ test("a card's status line: sending, its job, a refusal, else the venue's status
 });
 
 test("Edit: the inputs start from the row; Save sends only what changed", () => {
-    assert.deepEqual(
-        EDIT_FIELDS.ebay.map((f) => f.key),
-        ["title", "price", "description", "note", "quantity", "pickup_only", "condition_note"]
-    );
+    // the quantity and pickup only are customize's now (Michal, 2026-10-07): one place edits them
+    assert.deepEqual(EDIT_FIELDS.ebay.map((f) => f.key), ["title", "price", "description", "note", "condition_note"]);
     assert.deepEqual(EDIT_FIELDS.craigslist.map((f) => f.key), ["title", "price", "description", "category"]);
     const ebay = editValues(ROW, "ebay");
     assert.deepEqual(ebay, {
@@ -2436,8 +2450,6 @@ test("Edit: the inputs start from the row; Save sends only what changed", () => 
         price: "24.00",
         description: "Brass.\nWorks.",
         note: "from the attic",
-        quantity: "2",
-        pickup_only: true,
         condition_note: "Light wear",
     });
     const craigslist = editValues(ROW, "craigslist");
@@ -2445,20 +2457,84 @@ test("Edit: the inputs start from the row; Save sends only what changed", () => 
 
     assert.deepEqual(changedFields(ebay, { ...ebay }), {});
     assert.deepEqual(changedFields(ebay, { ...ebay, title: " Brass lamp " }), {}, "a stray space is no change");
-    assert.deepEqual(changedFields(ebay, { ...ebay, title: "Brass desk lamp ", pickup_only: false }), {
+    assert.deepEqual(changedFields(ebay, { ...ebay, title: "Brass desk lamp ", note: "" }), {
         title: "Brass desk lamp",
-        pickup_only: false,
+        note: "",
     });
 
-    assert.deepEqual(patchBody("ebay", ebay, { ...ebay }), { body: null, error: "" }, "nothing changed: nothing sent");
-    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, price: "26.50", quantity: " 3 " }), {
-        body: { price: "26.50", quantity: 3 },
-        error: "",
-    });
-    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, quantity: "two" }), { body: null, error: EDIT_QUANTITY_HINT });
+    assert.equal(patchBody("ebay", ebay, { ...ebay }), null, "nothing changed: nothing sent");
+    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, price: "26.50" }), { price: "26.50" });
     // craigslist's go inside "craigslist"; "" clears an override
     assert.deepEqual(patchBody("craigslist", craigslist, { ...craigslist, price: "", category: "household" }), {
-        body: { craigslist: { price: "", category: "household" } },
-        error: "",
+        craigslist: { price: "", category: "household" },
     });
+});
+
+test("a listing's customize: the choices at posting in words, read-only", () => {
+    // Michal, 2026-10-07: "the customization options as at posting should pop up there with
+    // the choices that were made at posting"
+    assert.deepEqual(postingWords({ pricing: 2, auto_post: true, job: "j1" }), {
+        grade: 2,
+        pricing: "Fair price",
+        note: AT_POSTING,
+        autoPost: AUTO_POSTED,
+    });
+    assert.deepEqual(postingWords({ pricing: 3, auto_post: false, job: "j9" }), {
+        grade: 3,
+        pricing: "Higher end",
+        note: "as chosen at posting",
+        autoPost: HELD_FIRST,
+    });
+    assert.equal(postingWords({ pricing: 1, auto_post: true, job: "j1" }).pricing, "Quick sale");
+    // a row made from the terminal: nulls, or no posting at all
+    const unknown = { grade: 0, pricing: "", note: POSTING_UNKNOWN, autoPost: POSTING_UNKNOWN };
+    assert.deepEqual(postingWords({ pricing: null, auto_post: null, job: null }), unknown);
+    assert.deepEqual(postingWords(null), unknown);
+    assert.deepEqual(postingWords(undefined), unknown);
+    assert.deepEqual(postingWords({ pricing: 7, auto_post: "yes" }), unknown, "a grade the page does not know");
+    assert.equal(POSTING_UNKNOWN, "not known (made from the terminal)");
+    assert.equal(AUTO_POSTED, "posted without asking");
+    assert.equal(HELD_FIRST, "saved first, posted on the next press");
+});
+
+test("a listing's customize: Save sends only the quantity and pickup only changed; Sync to eBay when listed there", () => {
+    assert.deepEqual(rowCustomize(ROW), { quantity: "2", pickupOnly: true });
+    assert.deepEqual(rowCustomize({ sku: "X" }), { quantity: "1", pickupOnly: false });
+    assert.equal(customizeChanges(ROW, { quantity: "2", pickupOnly: true }), null, "nothing changed: nothing sent");
+    assert.equal(customizeChanges(ROW, { quantity: " 2 ", pickupOnly: true }), null, "a stray space is no change");
+    assert.deepEqual(customizeChanges(ROW, { quantity: "2", pickupOnly: false }), { pickup_only: false });
+    assert.deepEqual(customizeChanges(ROW, { quantity: "3", pickupOnly: true }), { quantity: 3 });
+    assert.deepEqual(customizeChanges({ sku: "X" }, { quantity: "4", pickupOnly: true }), { quantity: 4, pickup_only: true });
+    assert.throws(() => customizeChanges(ROW, { quantity: "two", pickupOnly: true }), RangeError);
+
+    // Sync to eBay: only a listing up on eBay has something to update
+    assert.equal(canPush(ROW), true);
+    const draft = { ...ROW, statuses: { ...ROW.statuses, ebay: { status: "draft" } } };
+    assert.equal(canPush(draft), false);
+    assert.equal(canPush({ ...ROW, venues: ["craigslist"] }), false, "not on eBay");
+    const same = rowCustomize(ROW);
+    assert.deepEqual(customizeButtons(ROW, same, false), { save: false, sync: true });
+    assert.deepEqual(customizeButtons(ROW, { ...same, pickupOnly: false }, false), { save: true, sync: true });
+    assert.deepEqual(customizeButtons(ROW, { ...same, pickupOnly: false }, true), { save: false, sync: false }, "busy");
+    assert.deepEqual(customizeButtons(ROW, { ...same, quantity: "0" }, false), { save: false, sync: false });
+    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false), { save: true, sync: false });
+
+    // its status line: on its way, the push job, what the PC said; the quantity hint; why Sync is shut
+    const idle = { wait: "", job: null, note: null, values: same };
+    assert.deepEqual(customizeLine(ROW, idle), { text: "", kind: "" });
+    assert.deepEqual(customizeLine(draft, idle), { text: PUSH_CLOSED, kind: "" });
+    assert.deepEqual(customizeLine(ROW, { ...idle, values: { ...same, quantity: "1.5" } }), {
+        text: EDIT_QUANTITY_HINT,
+        kind: "bad",
+    });
+    assert.deepEqual(customizeLine(ROW, { ...idle, wait: "saving" }), { text: "saving", kind: "busy" });
+    assert.deepEqual(customizeLine(ROW, { ...idle, job: { state: "running", step: "revising on eBay" } }), {
+        text: "revising on eBay",
+        kind: "busy",
+    });
+    assert.deepEqual(customizeLine(ROW, { ...idle, job: { state: "done", summary: "updated" } }), { text: "updated", kind: "ok" });
+    const refused = { text: "R5 is not listed on eBay", kind: "bad" };
+    assert.deepEqual(customizeLine(ROW, { ...idle, note: refused }), refused);
+    assert.deepEqual(customizeSaved(ROW), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeSaved(draft), { text: "saved", kind: "ok" });
 });
