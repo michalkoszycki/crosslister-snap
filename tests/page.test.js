@@ -123,6 +123,9 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "pricing-3",
         "pricing-note",
         "auto-post",
+        // Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
+        // that toggle default off, in customization"
+        "comps",
         // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
         "title-line",
         "price-line",
@@ -419,6 +422,16 @@ function fakeElement(id = "", tag = "") {
         },
         removeAttribute(k) {
             delete attrs[k];
+            if (k === "id") this.id = "";
+        },
+        // a copy (the sync badge's icon is the sync bar's, copied): its class, attributes, children
+        cloneNode(deep) {
+            const copy = fakeElement(this.id, this.tag);
+            copy.className = this.className;
+            Object.assign(copy.attrs, attrs);
+            copy.cloneOf = this;
+            if (deep) copy.children = this.children.map((k) => (typeof k === "string" ? k : k.cloneNode(true)));
+            return copy;
         },
         // canvas, for shrink.js
         getContext: () => ({ drawImage() {} }),
@@ -745,16 +758,17 @@ const TODAY = "2026-09-24";
 /**
  * What is wrong with a POST /jobs body as the PC reads it, or "" when nothing:
  * a new item, a book, or a sku, each with customize's optional top-level keys
- * (`pricing` 2 or 3, `auto_post` false; 1 and true are never sent).
+ * (`pricing` 2 or 3, `auto_post` false, `comps` true; 1, true and false are never sent).
  */
 function jobContract(body) {
-    const known = ["item", "venue", "ai", "book", "sku", "quantity", "pickup_only", "pricing", "auto_post"];
+    const known = ["item", "venue", "ai", "book", "sku", "quantity", "pickup_only", "pricing", "auto_post", "comps"];
     const odd = Object.keys(body).filter((k) => !known.includes(k));
     if (odd.length) return `unknown keys ${odd.join(", ")}`;
     if (body.sku && ("book" in body || "item" in body)) return "a sku job carries no book and no item";
     if (!body.sku && !body.item) return "neither an item nor a sku";
     if ("pricing" in body && ![2, 3].includes(body.pricing)) return `pricing ${body.pricing}`;
     if ("auto_post" in body && body.auto_post !== false) return `auto_post ${body.auto_post}`;
+    if ("comps" in body && body.comps !== true) return `comps ${body.comps}`;
     if ("pickup_only" in body && body.pickup_only !== true) return `pickup_only ${body.pickup_only}`;
     if ("quantity" in body && !(Number.isInteger(body.quantity) && body.quantity > 1)) return `quantity ${body.quantity}`;
     return "";
@@ -1892,6 +1906,229 @@ test("the sync bar's pressed button, tapped: paused at once; continue carries on
     assert.equal(pc.calls.filter((c) => c.startsWith("DELETE")).length, 1);
 });
 
+// --- a list row's price on its tile (Michal, 2026-10-07) --------------------------------
+// "On the inventory card on the right there should be a round + and a round − button.
+// Pressing them increments through the price. Plus button in top right, minus button in
+// bottom right of the little tile that represents an inventory item. When the price changes
+// there should be our sync-to logo appearing on the ebay green button below. Pressing it
+// would sync, and the button would revert to the 'ebay listed' or whatever it says now."
+
+/** A list row's + and − (the round two on its right, + on top), by the row's place in the list. */
+function stepsOf(nodes, i) {
+    const li = nodes.get("inventory-list").children[i];
+    const [up, down] = li.children.find((c) => c.className === "inv-steps").children;
+    return { up, down, last: li.children.at(-1).className };
+}
+
+/** A list row's eBay badge, as listed() finds the row's badges. */
+function ebayBadge(nodes, i) {
+    return listed(nodes)[i].links[0];
+}
+
+test("a row's + and −: through the cached grades, or a dollar at a time; each tap one PATCH, the price from the PC", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const draft = { status: "draft", id: "", url: "", listed_at: null };
+    const none = { pricing: null, prices: { quick: null, market: null, high: null } };
+    const d1 = { price: "1.50", statuses: { ebay: draft, craigslist: draft }, ...none };
+    const pc = inventoryPc([summary("G1"), summary("D1", d1)], { G1: wholeRow("G1"), D1: wholeRow("D1", d1) });
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    const before = pc.calls.length;
+
+    // on the right of the badges' column, + on top and − under it, 44 px round targets
+    let g1 = stepsOf(nodes, 0);
+    assert.equal(g1.last, "inv-steps", "the last thing on the row, at its right");
+    assert.deepEqual([g1.up.textContent, g1.up.className, g1.up.attrs["aria-label"]], ["+", "inv-step", "price up"]);
+    assert.deepEqual([g1.down.textContent, g1.down.attrs["aria-label"]], ["−", "price down"]);
+    assert.deepEqual([g1.up.disabled, g1.down.disabled], [false, false]);
+    assert.equal(listed(nodes)[0].line, "$24 G1");
+
+    // G1 follows the fair price: + is the high one, sent at once as its grade
+    g1.up.fire("click");
+    assert.deepEqual([g1.up.disabled, g1.down.disabled], [true, true], "shut while the PATCH is on its way");
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["PATCH /inventory/G1"]);
+    assert.deepEqual(pc.patches, [{ pricing: 3 }]);
+    assert.equal(listed(nodes)[0].line, "$31.50 G1", "the PC's price on the tile");
+    g1 = stepsOf(nodes, 0);
+    assert.deepEqual([g1.up.disabled, g1.down.disabled], [true, false], "the top: + rests");
+    g1.up.fire("click");
+    await settle();
+    assert.equal(pc.patches.length, 1, "nothing above the higher end");
+
+    // the price moved on a listing up on eBay: its badge carries the sync-to icon, a button
+    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]');
+    const badge = ebayBadge(nodes, 0);
+    assert.equal(badge.tag, "button");
+    assert.equal(badge.className, "vbadge posted vsync", "the same green bubble");
+    assert.equal(badge.children[0].cloneOf, nodes.get("sync-to-icon"), "the sync bar's to-eBay icon");
+    assert.equal(badge.children[0].id, "", "a copy, without the bar's id");
+    assert.equal(wordOf(badge), "ebay listed");
+    assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay");
+    // its reset beside it, hidden until a tap pauses it; the other badges as ever
+    assert.deepEqual(listed(nodes)[0].badges, [
+        "ebay listed (vbadge posted vsync)",
+        "reset (reset-call)",
+        "craigslist draft (vbadge draft)",
+    ]);
+    assert.equal(listed(nodes)[0].links[1].hidden, true);
+
+    // − twice: fair, then quick, and − rests at the bottom
+    stepsOf(nodes, 0).down.fire("click");
+    await settle();
+    stepsOf(nodes, 0).down.fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.slice(1), [{ pricing: 2 }, { pricing: 1 }]);
+    assert.equal(listed(nodes)[0].line, "$18 G1");
+    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, true]);
+
+    // D1 has no cached prices: a whole dollar each way, never below $1; a draft, so no sync
+    stepsOf(nodes, 1).up.fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { price: "2.00" });
+    assert.equal(listed(nodes)[1].line, "$2 D1");
+    stepsOf(nodes, 1).down.fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { price: "1.00" });
+    assert.equal(listed(nodes)[1].line, "$1 D1");
+    assert.equal(stepsOf(nodes, 1).down.disabled, true, "never below $1");
+    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]', "a draft has no listing to fall behind");
+
+    // a change the PC refuses: its words on the inventory's line, the price as it was
+    pc.refusePatch = "price: the PC is busy";
+    stepsOf(nodes, 1).up.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "D1: price: the PC is busy");
+    assert.equal(listed(nodes)[1].line, "$1 D1");
+    assert.equal(stepsOf(nodes, 1).up.disabled, false);
+    pc.refusePatch = "";
+
+    // the listing opened shows the price the tiles left it at, read afresh
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    assert.equal(nodes.get("detail-heading").textContent, "Item G1 · $18");
+    // and the list, back again, still knows it
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    assert.equal(listed(nodes)[0].line, "$18 G1");
+    assert.equal(ebayBadge(nodes, 0).tag, "button", "still behind eBay");
+});
+
+test("a row's sync badge: pushes the row to its eBay listing as a job button; done, the plain listed badge again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let pushing = { action: "push", state: "running", step: "revising the eBay listing" };
+    const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => pushing, a2: () => pushing } });
+    // the price changed on this phone before: the badge offers the sync from the start
+    const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '["G1"]' });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(ebayBadge(nodes, 0).tag, "button");
+
+    // the press: its ring and "tap again to cancel" at once, the push after the second
+    ebayBadge(nodes, 0).fire("click");
+    let badge = ebayBadge(nodes, 0);
+    assert.equal(badge.classList.contains("busy"), true);
+    assert.equal(buttonSays(badge), "ebay listed / tap again to cancel");
+    assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay, tap again to cancel");
+    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [true, true], "no price change while it runs");
+    await settle();
+    assert.deepEqual(pc.posted, [], "nothing has left the phone yet");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "push", sku: "G1", venue: "ebay" }]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed / tap again to cancel");
+    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [true, true]);
+
+    // a tap pauses it as any job button: continue, and the reset beside it; continue asks at once
+    ebayBadge(nodes, 0).fire("click");
+    await settle();
+    badge = ebayBadge(nodes, 0);
+    let reset = listed(nodes)[0].links[1];
+    assert.equal(buttonSays(badge), "continue");
+    assert.equal(badge.classList.contains("busy"), false);
+    assert.equal(badge.attrs["aria-label"], "ebay listed, paused, continue");
+    assert.deepEqual([reset.textContent, reset.className, reset.hidden], ["reset", "reset-call", false]);
+    const asked = pc.calls.length;
+    t.mock.timers.tick(3000 * 2);
+    await settle();
+    assert.equal(pc.calls.length, asked, "not asked about while paused");
+    ebayBadge(nodes, 0).fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed / tap again to cancel");
+    assert.equal(listed(nodes)[0].links[1].hidden, true, "reset only while paused");
+
+    // paused, then reset: the PC is told, the badge is the sync badge again at once, still behind
+    ebayBadge(nodes, 0).fire("click");
+    await settle();
+    listed(nodes)[0].links[1].fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "DELETE /jobs/a1");
+    badge = ebayBadge(nodes, 0);
+    assert.equal(badge.tag, "button");
+    assert.equal(buttonSays(badge), "ebay listed");
+    assert.equal(badge.classList.contains("busy"), false);
+    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, false]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "G1: cancelled from the phone");
+    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]');
+
+    // pressed again and let run: done, the plain listed badge, a link again
+    ebayBadge(nodes, 0).fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "G1", venue: "ebay" });
+    pushing = { action: "push", state: "done", summary: "updated" };
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a2");
+    badge = ebayBadge(nodes, 0);
+    assert.equal(badge.tag, "a");
+    assert.equal(badge.href, "https://www.ebay.com/itm/257780366045");
+    assert.equal(listed(nodes)[0].badges[0], "ebay listed (vbadge posted)");
+    assert.equal(nodes.get("inventory-status").textContent, "G1: updated");
+    assert.equal(local.getItem("snap.inventory.unsynced"), "[]");
+    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, false]);
+
+    // a push the PC refuses says why, and the badge stays the sync one
+    local.setItem("snap.inventory.unsynced", '["G1"]');
+    pc.refuse.push = "eBay is not connected: run crosslister ebay-login";
+    stepsOf(nodes, 0).up.fire("click");
+    await settle();
+    ebayBadge(nodes, 0).fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "G1: eBay is not connected: run crosslister ebay-login");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed");
+});
+
+test("the sync bar's Sync to eBay, done, leaves no listing behind its row", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let syncing = { action: "sync", direction: "to", state: "running", step: "writing to eBay" };
+    const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => syncing } });
+    const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '["G1"]' });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(ebayBadge(nodes, 0).tag, "button");
+    nodes.get("sync-to").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    syncing = { ...syncing, state: "done", summary: "1 listing updated, 0 unchanged, 0 failed" };
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(local.getItem("snap.inventory.unsynced"), null);
+    assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`, "the list asked again");
+    assert.equal(ebayBadge(nodes, 0).tag, "a", "the plain listed badge, a link");
+});
+
 test("the search waits for him to stop typing; the chips and Show photos ask at once", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
@@ -2302,12 +2539,13 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
     assert.equal(ebay.input("Price, dollars").value, "24.00");
     assert.equal(ebay.input("Description").tag, "textarea");
     assert.equal(ebay.input("Description").value, "A brass lamp.\nWorks.");
-    assert.equal(ebay.input("Note").value, "");
+    assert.equal(ebay.input("User note").value, "");
     assert.equal(ebay.input("Condition note").value, "Light wear on the base");
-    // the quantity and pickup only are customize's (Michal, 2026-10-07): facts here, not inputs
-    assert.deepEqual(ebay.labels, ["Title", "Price, dollars", "Description", "Note", "Condition note"]);
+    // the quantity and pickup only are customize's (Michal, 2026-10-07): facts here, not inputs;
+    // the note is the User note, as everywhere ("'note' by itself confuses me")
+    assert.deepEqual(ebay.labels, ["Title", "Price, dollars", "Description", "User note", "Condition note"]);
     typeField(ebay.input("Title"), "Brass desk lamp ");
-    typeField(ebay.input("Note"), "from the attic");
+    typeField(ebay.input("User note"), "from the attic");
     ebay.button("Save").fire("click");
     assert.equal(cardOf(nodes, "ebay").line, "saving");
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Save (off)", "Cancel (off)"]);
@@ -2875,7 +3113,8 @@ test("Sync to eBay: the slider moved and pickup only ticked, saved in one PATCH,
     let again = { action: "push", state: "running", step: "revising the eBay listing" };
     const whole = wholeRow("R5");
     const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => pushing, a2: () => again } });
-    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     await openFirst(nodes);
     await settle();
 
@@ -2896,6 +3135,8 @@ test("Sync to eBay: the slider moved and pickup only ticked, saved in one PATCH,
     assert.deepEqual(pc.patches, [{ pickup_only: true, pricing: 1 }]);
     assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "ebay" }]);
     assert.equal(whole.price, "18.00", "the PC set the cached quick price before the push");
+    // the listing is behind its row until the push is done: its list badge would offer the sync
+    assert.equal(local.getItem("snap.inventory.unsynced"), '["R5"]');
     let custom = customizeOf(nodes);
     assert.equal(custom.line, "queued");
     assert.equal(custom.locked, true);
@@ -2920,6 +3161,7 @@ test("Sync to eBay: the slider moved and pickup only ticked, saved in one PATCH,
     custom = customizeOf(nodes);
     assert.equal(custom.line, "updated");
     assert.equal(custom.kind, "venue-status ok");
+    assert.equal(local.getItem("snap.inventory.unsynced"), "[]", "eBay has the price now");
     assert.deepEqual([custom.pickup, custom.slider, custom.grade, custom.locked], [true, "1", [1], false]);
     assert.deepEqual(custom.buttons, ["Save (off)", "Sync to eBay"]);
     assert.equal(nodes.get("detail-heading").textContent, "Brass lamp, pickup only · $18");
@@ -3243,6 +3485,8 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-pricing-3",
         "book-pricing-note",
         "book-auto-post",
+        // Michal, 2026-10-07: the eBay comparisons toggle, off by default, in both customize cards
+        "book-comps",
         "book-title-line",
         "book-price-line",
         "book-ebay-btn",
@@ -3271,6 +3515,13 @@ test("the book section is its own, beside the goods one, and reads top to bottom
     assert.match(book[1], /id="book-isbn" type="text" inputmode="numeric"/);
     assert.match(book[1], /id="book-price" type="text" inputmode="decimal"/);
     assert.match(book[1], /id="book-flaws"[^>]*placeholder="Wear, marks, writing inside, anything a buyer should know\."/);
+    // Michal, 2026-10-07: "Call it 'User Note' everywhere. It is not something that posts.
+    // And 'note' by itself confuses me." The book's Flaws and the goods' Notes for this item are
+    // both that one note; the ids stay
+    const label = (status) => new RegExp(`<span class="field-label">\\s*User note\\s*<span id="${status}" class="note-status"></span>`);
+    assert.match(book[1], label("book-note-status"));
+    assert.match(html, label("note-status"));
+    assert.ok(!/Flaws|Notes for this item/.test(html), "no other name for it on the screen");
     for (const [value, label] of [
         ["like_new", "Like new"],
         ["very_good", "Very good"],
@@ -4631,6 +4882,91 @@ test("a reload brings the price grade and post without asking back, and a row sa
     await settle();
     assert.deepEqual(pc.posted, [{ sku: "B-0080", venue: "ebay", pricing: 2 }]);
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+});
+
+// --- customize: the eBay comparisons (Michal, 2026-10-07) --------------------------------
+// "Let's abandon checking eBay for similar items (call 1) and put that toggle default off,
+// in customization."
+
+test("customize, goods: Compare with eBay listings, off by default; ticked, comps: true goes and is said; NEXT unticks it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing", sku: "B-0090" }) } });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const item = `Lamp ${TODAY}`;
+    // after post without asking, its small print saying what it costs
+    assert.match(
+        html,
+        /<input id="auto-post"[^>]*>[\s\S]*?<\/label>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="comps" type="checkbox">\s*<span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer<\/small><\/span>/
+    );
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("customize-toggle").fire("click");
+    assert.equal(nodes.get("comps").checked, false);
+    assert.equal(nodes.get("ebay-status").textContent, "", "left alone: nothing said");
+
+    nodes.get("comps").checked = true;
+    nodes.get("comps").fire("change");
+    assert.equal(nodes.get("ebay-status").textContent, "with eBay comparisons");
+    assert.equal(nodes.get("craigslist-status").textContent, "with eBay comparisons");
+    assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, { quantity: "1", pickupOnly: false, comps: true });
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], comps: true }]);
+    assert.equal(nodes.get("comps").disabled, true, "fixed while the job is on its way");
+
+    // NEXT: unticked again, and the next item's body says nothing of it
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("comps").checked, false);
+    assert.equal(nodes.get("comps").disabled, false);
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted[1], { item: `Vase ${TODAY}`, venue: "ebay", ai: [1] });
+});
+
+test("customize, book: its own Compare with eBay listings; ticked, comps: true beside the book; a reload keeps it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({ books: { [ISBN]: BOOK }, jobs: { j1: () => ({ state: "running", step: "listing the book" }) } });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input");
+    await settle();
+    nodes.get("book-customize-toggle").fire("click");
+    assert.equal(nodes.get("book-comps").checked, false);
+    nodes.get("book-comps").checked = true;
+    nodes.get("book-comps").fire("change");
+    assert.equal(nodes.get("comps").checked, false, "the goods box is its own");
+    assert.equal(nodes.get("book-ebay-status").textContent, "with eBay comparisons");
+    assert.equal(JSON.parse(local.getItem("snap.book")).customize.comps, true);
+
+    const again = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
+    assert.equal(again.nodes.get("book-comps").checked, true, "a reload keeps it ticked");
+    again.nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [
+        {
+            item: `Book ${ISBN} ${TODAY}`,
+            venue: "ebay",
+            book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 1 },
+            comps: true,
+        },
+    ]);
 });
 
 test("a name the PC already has today is flagged after a pause and Snap waits for another", async (t) => {

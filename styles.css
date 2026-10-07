@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.7.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.8.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -744,7 +744,7 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 .inv-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
 .inv-price { font-weight: 800; letter-spacing: -0.02em; }
 .inv-sku { color: var(--muted); }
-.inv-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.inv-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 /* a venue's status: listed in the posted green, sold and ended muted, a draft outlined,
    a venue the listing is not on dashed. The list's rows and a listing's venue foldouts
    wear the same badge (Michal, 2026-10-07: "Keeping visual references the same across
@@ -765,6 +765,53 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
    larger for a thumb, an arrow saying it leaves the page */
 a.vbadge { position: relative; z-index: 1; padding: 4px 10px; font-size: 12px; text-decoration: none; }
 a.vbadge::after { content: " ↗"; }
+/* a listed badge whose listing is behind the row's price (Michal, 2026-10-07: "there should
+   be our sync-to logo appearing on the ebay green button"): the same green bubble with the
+   sync bar's to-eBay icon before its words, a job button above the row's tap; pressed, the
+   ring takes the icon's room, as on the sync bar */
+button.vbadge {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 12px;
+}
+button.vbadge .btn-icon svg { width: 14px; height: 14px; }
+button.vbadge.busy .btn-icon { display: none; }
+button.vbadge .tap-cancel { font-size: 10px; }
+button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.inv-badges .reset-call { position: relative; z-index: 1; min-height: 32px; padding: 4px 2px; font-size: 13px; }
+/* the price's round + (top right) and − (bottom right) of each row (Michal, 2026-10-07):
+   44 px, ink on smoke, above the row's tap, so a tap on a shut one opens nothing either */
+.inv-steps {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+}
+.inv-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--card);
+    color: var(--ink);
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1;
+}
+.inv-step:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 /* one listing, in place of the list: the heading, the photo strip, the venue cards */
 .link.back-link { display: block; min-height: 44px; padding: 10px 0; font-size: 15px; }

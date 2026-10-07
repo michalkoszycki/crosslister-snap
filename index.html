@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.7.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.7.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.8.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.8.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -283,9 +283,11 @@
     <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
     <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
 
+    <!-- Michal, 2026-10-07: "Call it 'User Note' everywhere. It is not something that posts.
+         And 'note' by itself confuses me." -->
     <label class="field">
       <span class="field-label">
-        Notes for this item
+        User note
         <span id="note-status" class="note-status"></span>
       </span>
       <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
@@ -322,6 +324,12 @@
       <label class="pickup">
         <input id="auto-post" type="checkbox" checked>
         <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
+      </label>
+      <!-- Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
+           that toggle default off, in customization." -->
+      <label class="pickup">
+        <input id="comps" type="checkbox">
+        <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
     </div>
 
@@ -450,7 +458,7 @@
 
     <label class="field">
       <span class="field-label">
-        Flaws
+        User note
         <span id="book-note-status" class="note-status"></span>
       </span>
       <textarea id="book-flaws" rows="3" autocomplete="off" autocapitalize="sentences"
@@ -484,6 +492,10 @@
         <input id="book-auto-post" type="checkbox" checked>
         <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
       </label>
+      <label class="pickup">
+        <input id="book-comps" type="checkbox">
+        <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
+      </label>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
@@ -513,6 +525,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.7.0"></script>
+<script type="module" src="app.js?v=2.8.0"></script>
 </body>
 </html>

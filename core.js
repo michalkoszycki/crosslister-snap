@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.7.0";
+import { noteDirty, unsent } from "./queue.js?v=2.8.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.7.0";
+} from "./book.js?v=2.8.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -446,6 +446,11 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
 // "in customize it also should have a checkbox for post without asking - which
 // is our default now." Both defaults are what the PC already did, so they too
 // send nothing new.
+//
+// Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and
+// put that toggle default off, in customization." So eBay's comparable listings
+// reach the first draft only when he ticks Compare with eBay listings; left
+// alone, the body says nothing of them and the PC leaves them out.
 
 /**
  * What customize holds, per item (goods: state.customize; a book: state.book.customize).
@@ -455,11 +460,13 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
  * @property {1|2|3} pricing     the price grade (PRICING): 1 a quick sale, the default
  * @property {boolean} autoPost  the PC publishes (the default); off, it saves the row and the
  *                               button posts it on the next press
+ * @property {boolean} comps     eBay's similar listings go to the AI for the first draft; off
+ *                               by default
  */
 
 /**
  * What customize adds to a job's body, each key only when it is not the default.
- * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false}} CustomizeBody
+ * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:true}} CustomizeBody
  */
 
 /**
@@ -477,7 +484,7 @@ export const DEFAULT_PRICING = 1;
 
 /** @returns {Customize} */
 export function initialCustomize() {
-    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true };
+    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: false };
 }
 
 /**
@@ -539,6 +546,9 @@ export const QUANTITY_HINT = "Quantity (under customize) must be a whole number,
 /** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
 export const PICKUP_NOTE = "pickup only";
 
+/** Under both buttons, before the press, once Compare with eBay listings is ticked. */
+export const COMPS_NOTE = "with eBay comparisons";
+
 /**
  * This item's customize: a book keeps its own in the book slice, goods at the top.
  * @param {SnapState} state
@@ -550,10 +560,10 @@ export function customizeOf(state) {
 
 /**
  * What customize adds to a job's body: `quantity` only when it is not 1,
- * `pickup_only` only when ticked, `pricing` only when it is not 1 and
- * `auto_post: false` only when unticked, so an item left alone sends the same
- * body as ever (and the PC's defaults, 1, shipped, a quick sale and published,
- * apply).
+ * `pickup_only` only when ticked, `pricing` only when it is not 1,
+ * `auto_post: false` only when unticked and `comps: true` only when ticked, so
+ * an item left alone sends the same body as ever (and the PC's defaults, 1,
+ * shipped, a quick sale, published and no comparisons, apply).
  * @param {Customize} [customize]
  * @returns {CustomizeBody}
  */
@@ -567,6 +577,7 @@ export function customizeBody(customize) {
     const grade = pricingGrade(customize.pricing);
     if (grade > DEFAULT_PRICING) out.pricing = /** @type {2|3} */ (grade);
     if (customize.autoPost === false) out.auto_post = false;
+    if (customize.comps === true) out.comps = true;
     return out;
 }
 
@@ -574,7 +585,8 @@ export function customizeBody(customize) {
  * The line under a venue button before it is pressed: what customize changed,
  * so he sees it took, joined with " · ": "pickup only" under ebay once ticked
  * (craigslist is pickup anyway), the price grade when it is not a quick sale,
- * and "saved, not posted" while auto-post is off. Nothing when left alone.
+ * "saved, not posted" while auto-post is off, and "with eBay comparisons" once
+ * ticked. Nothing when left alone.
  * @param {SnapState} state
  * @param {string} venue
  * @returns {string}
@@ -585,6 +597,7 @@ export function venueIdleNote(state, venue) {
     if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
     if (pricingGrade(c.pricing) > DEFAULT_PRICING) said.push(pricingOf(c.pricing).word.toLowerCase());
     if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
+    if (c.comps === true) said.push(COMPS_NOTE);
     return said.join(" · ");
 }
 
@@ -597,23 +610,26 @@ function recoveredCustomize(saved) {
     c.pickupOnly = saved.pickupOnly === true;
     c.pricing = pricingGrade(saved.pricing) || DEFAULT_PRICING;
     c.autoPost = saved.autoPost !== false;
+    c.comps = saved.comps === true;
     return c;
 }
 
 /**
  * Customize as savedItem keeps it: nothing at all while it is the default; the
- * price grade and auto-post only when they are not, so an item saved before
- * they existed and one left alone read the same.
+ * price grade, auto-post and the comparisons only when they are not, so an item
+ * saved before they existed and one left alone read the same.
  */
 function savedCustomize(c) {
     const grade = pricingGrade(c.pricing) || DEFAULT_PRICING;
-    if (c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false) return {};
+    const plainly = c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false;
+    if (plainly && c.comps !== true) return {};
     return {
         customize: {
             quantity: c.quantity,
             pickupOnly: c.pickupOnly,
             ...(grade === DEFAULT_PRICING ? {} : { pricing: grade }),
             ...(c.autoPost === false ? { autoPost: false } : {}),
+            ...(c.comps === true ? { comps: true } : {}),
         },
     };
 }
@@ -1116,6 +1132,8 @@ export function reduce(state, action) {
         }
         case "setAutoPost":
             return withCustomize(state, (c) => ({ ...c, autoPost: action.on !== false }));
+        case "setComps":
+            return withCustomize(state, (c) => ({ ...c, comps: action.on === true }));
 
         case "setMode":
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;
@@ -2121,6 +2139,14 @@ export const INVENTORY_SORTS = [
     { key: "price-asc", word: "Price ↑", sort: "price", order: "asc" },
 ];
 
+/**
+ * What the item's note is called wherever the screen names it (Michal, 2026-10-07: "Call
+ * it 'User Note' everywhere. It is not something that posts. And 'note' by itself
+ * confuses me."): the eBay card's fact and Edit's input, as index.html labels the goods
+ * and book boxes.
+ */
+export const USER_NOTE = "User note";
+
 /** Said under an override left blank on the craigslist card: the PC fills it from the eBay fields. */
 export const DERIVED = "derived from eBay";
 
@@ -2224,15 +2250,21 @@ export function statusBadge(venue, status) {
  * One badge per venue the row names in `venues`, in that order. A listed one
  * with a link carries it: the badge opens the listing (Michal, 2026-10-06: "When
  * an item is listed probably clicking the venue button from the inventory should
- * open the listing"); "" leaves the badge a plain word.
+ * open the listing"); "" leaves the badge a plain word. A row listed on eBay whose
+ * price the phone changed since the listing was last synced (its sku in `unsynced`)
+ * has an eBay badge that syncs instead (`sync`, no link): a tap pushes the row's price
+ * onto the listing, and it is the plain listed badge again once that is done.
  * @param {Record<string, any>} row
- * @returns {{text:string, kind:"posted"|"muted"|"draft", link:string}[]}
+ * @param {string[]} [unsynced] unsyncedList's skus
+ * @returns {{text:string, kind:"posted"|"muted"|"draft", link:string, sync?:true}[]}
  */
-export function rowBadges(row) {
+export function rowBadges(row, unsynced = []) {
     const venues = Array.isArray(row.venues) ? row.venues.map(plain).filter(Boolean) : [];
     return venues.map((v) => {
         const s = venueStatus(row, v);
-        return { ...statusBadge(v, s.status), link: s.status === "listed" ? s.url : "" };
+        const badge = { ...statusBadge(v, s.status), link: s.status === "listed" ? s.url : "" };
+        if (v === "ebay" && s.status === "listed" && unsynced.includes(row.sku)) return { ...badge, link: "", sync: true };
+        return badge;
     });
 }
 
@@ -2416,7 +2448,7 @@ export function venueFacts(row, venue) {
         { label: "Quantity", value: quantity },
         { label: "Pickup only", value: row.pickup_only === true ? "yes, no shipping on eBay" : "no" },
         { label: "Description", value: plain(row.description), pre: true },
-        { label: "Note", value: plain(row.note), pre: true },
+        { label: USER_NOTE, value: plain(row.note), pre: true },
         { label: "Condition note", value: plain(row.condition_note), pre: true },
         { label: "Aspects", value: namedLines(row.aspects), pre: true },
         { label: "Condition details", value: namedLines(row.condition_details), pre: true },
@@ -2576,7 +2608,7 @@ export const EDIT_FIELDS = {
         { key: "title", label: "Title", kind: "line" },
         { key: "price", label: "Price, dollars", kind: "price" },
         { key: "description", label: "Description", kind: "text" },
-        { key: "note", label: "Note", kind: "text" },
+        { key: "note", label: USER_NOTE, kind: "text" },
         { key: "condition_note", label: "Condition note", kind: "text" },
     ],
     craigslist: [
@@ -2830,4 +2862,97 @@ export function customizeLine(row, card) {
  */
 export function customizeSaved(row) {
     return { text: canPush(row) ? "saved; Sync to eBay puts it on the listing" : "saved", kind: "ok" };
+}
+
+// --- Admin: a list row's price, stepped on its tile ------------------------------------
+//
+// Michal, 2026-10-07 ("one of the highest priority items"): "On the inventory card on the
+// right there should be a round + and a round − button. Pressing them increments through
+// the price. Plus button in top right, minus button in bottom right of the little tile that
+// represents an inventory item. When the price changes there should be our sync-to logo
+// appearing on the ebay green button below. Pressing it would sync, and the button would
+// revert to the 'ebay listed' or whatever it says now." So a tap is one PATCH, at once, and
+// which listings eBay has not caught up with is kept on the phone (rowBadges' `sync`).
+
+/** The grades a row has a cached price for, in grade order: the ones a tile steps through. */
+function cachedGrades(row) {
+    return cachedPrices(row)
+        .map((price, i) => (price ? i + 1 : 0))
+        .filter(Boolean);
+}
+
+/**
+ * The PATCH /inventory/<sku> body one tap of a tile's + (`step` 1) or − (-1) sends; null
+ * when the tap does nothing. A row with cached prices steps through them, quick → fair →
+ * high and back, from the grade its price follows (a row following none, from its price),
+ * passing over a grade with none cached and stopping at either end: {"pricing": n}, and
+ * the PC sets the price. A row with none moves by a whole dollar (from $24.50, up to $25,
+ * down to $24), never below $1: {"price": "25.00"}.
+ * @param {Record<string, any>} row
+ * @param {1|-1} step
+ * @returns {{pricing:number} | {price:string} | null}
+ */
+export function priceStep(row, step) {
+    const now = Number(priceText(row.price)) || 0;
+    const grades = cachedGrades(row);
+    if (grades.length) {
+        const prices = cachedPrices(row);
+        const at = pricingGrade(row.pricing);
+        // from the grade it follows; a row following none, from where its price stands
+        const beyond = (g) => {
+            const [mine, theirs] = at ? [at, g] : [now, Number(prices[g - 1])];
+            return step > 0 ? theirs > mine : theirs < mine;
+        };
+        const ahead = grades.filter(beyond);
+        if (!ahead.length) return null;
+        return { pricing: step > 0 ? ahead[0] : ahead[ahead.length - 1] };
+    }
+    const next = step > 0 ? Math.floor(now) + 1 : Math.ceil(now) - 1;
+    return next >= 1 ? { price: `${next}.00` } : null;
+}
+
+/**
+ * The skus whose price the phone changed since their eBay listing was last synced, as
+ * snap.inventory.unsynced keeps them: strings, each once; anything else is dropped.
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function unsyncedList(raw) {
+    const list = Array.isArray(raw) ? raw.filter((s) => typeof s === "string" && s !== "") : [];
+    return [...new Set(list)];
+}
+
+/**
+ * The list with `sku` marked (`on`) or let go: a tile's price changed, or its push done.
+ * @param {unknown} list
+ * @param {string} sku
+ * @param {boolean} on
+ * @returns {string[]}
+ */
+export function unsyncedWith(list, sku, on) {
+    const rest = unsyncedList(list).filter((s) => s !== sku);
+    return on ? [...rest, sku] : rest;
+}
+
+/**
+ * A change the PC answered (a tile's tap, customize's Save, the eBay card's Edit) left the
+ * row's eBay listing behind: the price moved, and the row is listed on eBay.
+ * @param {Record<string, any>} before
+ * @param {Record<string, any>} after the row the PC answered
+ * @returns {boolean}
+ */
+export function leftUnsynced(before, after) {
+    return Number(priceText(before.price)) !== Number(priceText(after.price)) && canPush(after);
+}
+
+/**
+ * A list row (a summary) with what the PC answered a PATCH with: every field but the
+ * photos, which the whole row lists and the summary counts.
+ * @param {Record<string, any>} summary
+ * @param {Record<string, any>} whole
+ * @returns {Record<string, any>}
+ */
+export function followSummary(summary, whole) {
+    const { photos, ...rest } = whole;
+    return { ...summary, ...rest, sku: summary.sku };
 }
