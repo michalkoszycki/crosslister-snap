@@ -39,10 +39,11 @@
 //                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
 //   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
-//   DELETE <pc>/jobs/<id>             the cancel button -> {"job", "state": "cancelled" | "stopping"}:
-//                                      a queued job is dropped (nothing paid), the running one
-//                                      stops at its next step and keeps its draft unpublished;
-//                                      409 once done or failed
+//   DELETE <pc>/jobs/<id>             a pressed job button tapped again (any job, Admin's action
+//                                      jobs too, since 2026-10-07) -> {"job", "state": "cancelled" |
+//                                      "stopping"}: a queued job is dropped (nothing paid), the
+//                                      running one stops at its next step and keeps its draft
+//                                      unpublished; 409 once done or failed
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
 // Admin's inventory (Michal, 2026-10-06):
 //   GET    <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=age|price&order=desc|asc
@@ -80,7 +81,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.5.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.6.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {

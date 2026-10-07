@@ -210,24 +210,33 @@ and every behaviour are the live app's.
   both buttons; a failure with nothing else running takes it away. A press
   waits one second before anything leaves the phone (Michal, 2026-10-02:
   "delay sending by 1 second, but show loading, so that if one cancels within
-  1 sec there is no call money spent"): the ring turns at once, and a small red
-  **cancel**, plain text in the header link's shape rather than a button
-  (Michal, 2026-10-03: "low profile red text"), sits under the button from the
-  press until the PC's step says `publishing ...`, the link or the error: once a
-  posting is going up there is nothing left to cancel (Michal, 2026-10-03:
-  "cancel only makes sense in mid-load"), and a cancel that reaches the PC after
-  its publish anyway lets the job finish with its link.
-  Within that second cancel takes the press back for free (the line says
-  `cancelled`). After it the PC is told (`DELETE /jobs/<id>`): a job still
-  queued is dropped before it runs, nothing paid; the job in hand stops at its
-  next step, saving the draft instead of publishing it, and the line reads
-  `cancelled from the phone` ("it will be a double charge but oh well"; it is
-  not, since the next press posts the saved row without drafting again). The other
+  1 sec there is no call money spent"): the ring turns at once, and inside the
+  pressed button, under its word, a second line in small type says **tap again
+  to cancel** (Michal, 2026-10-07: "The button, within it, should just get 'tap
+  again to cancel' instead of an external cancel line. The writing should be
+  within it, below, and should be small, and appear just when the button action
+  is doing/loading"; this replaces the small red **cancel** under the button of
+  2026-10-02/03, on purpose). A pressed button is not disabled, so it takes that
+  second tap; a screen reader hears `ebay, posting, tap again to cancel`. The
+  line shows from the press until the PC's step says `publishing ...`, the link
+  or the error: once a posting is going up there is nothing left to cancel
+  (Michal, 2026-10-03: "cancel only makes sense in mid-load"), the line goes and
+  a tap does nothing, and a cancel that reaches the PC after its publish anyway
+  lets the job finish with its link.
+  Within that second the tap takes the press back for free (the line says
+  `cancelled`). After it the PC is told (`DELETE /jobs/<id>`) and the status
+  line reads `cancelling: the PC stops at its next step`, the second line gone
+  (told once): a job still queued is dropped before it runs, nothing paid; the
+  job in hand stops at its next step, saving the draft instead of publishing it,
+  and the line reads `cancelled from the phone` ("it will be a double charge but
+  oh well"; it is not, since the next press posts the saved row without drafting
+  again). Admin's job buttons work the same way (below). The other
   button can be pressed at any time after the first (Michal, 2026-09-30: "I
   seem not to be able to click craigslist while ebay is loading"): the PC runs
   jobs one at a time, so it queues behind (`queued, 1 ahead`) and, by then, the
   row the first job saved is there to reuse; no second model call. A screen
-  reader hears the venue and its state (`ebay, posting`, `ebay, posted`).
+  reader hears the venue and its state (`ebay, posting`, `ebay, posted`), and
+  `, tap again to cancel` while it can be.
 - **NEXT** (it was DONE; Michal, 2026-09-28: "I want the final done button to
   be NEXT"), at the very bottom: clears the item and starts the next one. It
   waits while a photo or a delete has not reached the PC (`NEXT waits until
@@ -525,10 +534,14 @@ Empty. With capacity to generate that card from there."
   `12 listings`, `No listings match.`, `The newest 200 listings; search to
   narrow them.`, or `Could not read the inventory: cannot reach the PC.`: the
   list stays as it was), two rows of chips, **Venue** (All | ebay |
-  craigslist) and **Status** (All | draft | listed | sold | ended), **Show
-  photos**, off by default, and a row of **Sort** chips (**Newest** | Oldest |
-  Price ↓ | Price ↑; a row with no price comes last either way). Every chip
-  asks at once. Then the list: one row per listing, in that order, with the
+  craigslist) and **Status** (All | draft | listed | sold | ended), a row of
+  **Sort** chips (**Newest** | Oldest | Price ↓ | Price ↑; a row with no price
+  comes last either way), and last, on its own line, **Show photos**, ticked by
+  default (Michal, 2026-10-07: "in inventory, let's keep photos showing by
+  default. And that checkbox should be at end of options. Not right in the
+  awkward middle"); unticked, it stays so on this phone (`snap.inventory.photos`
+  is `off`; ticked again, `on`). Every chip and the box ask at once. Then the
+  list: one row per listing, in that order, with the
   title in bold (it wraps anywhere, so a long one never widens the page), the
   price (`$24`, `$24.50`), the sku in small mono, and a small badge per venue
   with its status: listed in the posted green, sold and ended muted, a draft
@@ -538,24 +551,58 @@ Empty. With capacity to generate that card from there."
   of each (`no photo` for a listing with none), fetched one at a time;
   changing the list lets those pictures go.
 - **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
-  eBay** on a smoke sheet under a yellow rule. It sticks to the bottom of the
-  screen while Admin is on it (`position: sticky`, so at the end of the list it
-  sits in its own place above Close and never covers the last row). A tap
-  sends the sync job; its line under the buttons says `queued`, then the PC's
-  step, then its summary (`3 listings updated, 10 unchanged, 0 failed`) or its
-  error, asked every 3 s; both buttons are locked until it ends, and the list
-  is then asked for again (on the way back, when a listing is open). A sync the
-  PC refuses shows the PC's words. Closing Admin leaves the job running on the
-  PC, still asked about.
-- **A listing tapped** opens in place of the list: **← Back to the list** at
-  the top (back on the same list, at the same row, nothing asked again, unless
-  a card changed the listing: then the list is asked for again), the title and
-  price as its heading, the photos as a strip right under it (88 px tiles,
-  fetched one at a time; a tap shows one full size on black, the whole
-  picture, with **Close** at the top right; a tap anywhere on it, or Escape,
-  closes it too), then its **customize** (below), then one foldout per venue
-  and nothing else, **ebay** then **craigslist**, open for a venue the listing
-  is on.
+  eBay** on a smoke sheet under a yellow rule, each with its half of the sync
+  symbol left of the word (Michal, 2026-10-07; 20 px, in the word's colour, on
+  one 24-unit box so the two read as one circle): to eBay the top arc, left to
+  right, its arrow at the right; from eBay the bottom arc, right to left, its
+  arrow at the left. It sticks to the bottom of the screen while Admin is on it
+  (`position: sticky`, so at the end of the list it sits in its own place above
+  Close and never covers the last row). A tap is a job button's, as a venue
+  button's: the ring turns in it at once (in the icon's place) with **tap again
+  to cancel** under the word, and the sync job leaves the phone a second later;
+  its line under the buttons says `queued`, then the PC's step, then its
+  summary (`3 listings updated, 10 unchanged, 0 failed`) or its error, asked
+  every 3 s; the other button is locked until it ends, and the list is then
+  asked for again (on the way back, when a listing is open). A second tap
+  within the second takes it back (`cancelled`); after it, `DELETE
+  /jobs/<id>`, then `cancelling: the PC stops at its next step` until the PC
+  drops it (`cancelled`) or stops it (its own words). A sync the PC refuses
+  shows the PC's words. Closing Admin leaves the job running on the PC, still
+  asked about.
+- **A listing tapped** is a page of its own (Michal, 2026-10-07: "Now when I am
+  on a card I don't want to see admin or settings above. Looking at an item is
+  a new page (at the top it just says back to inventory)"; "The general
+  inventory commands should not be present of course when looking at a card"):
+  Admin's title, Settings and its line, the Inventory line, the search, chips,
+  sort and Show photos, the sync bar and Close all step aside, the page scrolls
+  to the top, and only **← Back to inventory** sits above the listing. The
+  header stays, its **Admin** link still closing Admin. Back is the list again
+  (on the same list, at the same row, nothing asked again, unless a card
+  changed the listing: then the list is asked for again), with everything
+  Admin had. The listing open is remembered on this phone (`snap.admin.card`,
+  its sku, gone on Back): Admin closed (to snap something) and opened again
+  lands straight on it, as if it had been there all along (Michal, 2026-10-07:
+  "When I press admin I want to land on this same page tho"), read afresh from
+  the PC (its sku as the heading until the PC answers, no foldout yet); a
+  reload closes Admin as ever, and opening it lands on the listing too. Back
+  from a listing reopened so asks for the list behind it. A listing the PC no
+  longer has (404) is let go and the list shows, its line saying so first
+  (`Could not read B-1: no row B-1. 12 listings`); a PC that does not answer
+  keeps the listing, saying why. The listing: the title and price as its
+  heading, the photos as a strip right under it (88 px tiles, fetched one at a
+  time; a tap shows one full size on black, the whole picture, with **Close**
+  at the top right; a tap anywhere on it, or Escape, closes it too), then its
+  **customize** (below), then one foldout per venue and nothing else, **ebay**
+  then **craigslist**, both folded each time a listing opens (Michal,
+  2026-10-07: "When I look at a card of a listing I want the eBay and
+  Craigslist section be folded in at first"). Each foldout's line is the
+  list's own badge for that venue, then the arrow (Michal, 2026-10-07: "I want
+  them to look like they did on the inventory list. Inside a green bubble if
+  listed. (Keeping visual references the same across screens makes things
+  simple)"): `ebay listed` in the posted green, `craigslist draft` outlined,
+  sold and ended muted, and `craigslist not added` dashed for a venue the
+  listing is not on; one piece of markup and CSS for both screens, and never a
+  link here (the listing's link is in the card's actions).
   - **customize** (Michal, 2026-10-07: "In inventory each item needs a
     customize tab and the customization options as at posting should pop up
     there with the choices that were made at posting. For instance I can there
@@ -614,8 +661,8 @@ Empty. With capacity to generate that card from there."
     craigslist override when one was typed, or else the value it is derived
     from (the eBay title, price and description; the category `from the eBay
     category`) with `derived from eBay` under it, muted.
-  - A venue the listing is not on is an **empty foldout**, folded, its arrow
-    saying `▸ craigslist · not added`, holding one button, **Add craigslist to
+  - A venue the listing is not on is an **empty foldout**, folded, its badge
+    saying `craigslist not added`, holding one button, **Add craigslist to
     this item**: the PC puts the listing on it, and the card fills with its
     derived fields, open.
 - **A card's actions**, in its row under the fields (which ones show is
@@ -640,6 +687,19 @@ Empty. With capacity to generate that card from there."
   - While something of the listing's is on its way or a job of its is still
     running, every action button but Open listing waits and the fields stay
     read-only: one job per listing at a time.
+  - **Post**, **Refresh status**, **End listing** (pressed through **Yes, end
+    it**) and customize's **Sync to eBay** are job buttons, as a venue
+    button is (Michal, 2026-10-07: "Anytime there is a load or sync or AI call
+    command, anything that takes some [time] and we have a loading icon
+    running, these buttons should get that"): the pressed one turns its ring
+    beside its word with **tap again to cancel** under it, small, and its job
+    leaves the phone a second later (Sync to eBay saves first, then pushes). A
+    second tap within the second takes it back (`cancelled`); after it the PC
+    is told (`DELETE /jobs/<id>`) and the line says `cancelling: the PC stops
+    at its next step` until the PC drops it (`cancelled`) or stops it (`cancelled
+    from the phone`); from the PC's `publishing ...` step on the second line
+    goes and a tap does nothing. Add, Save and a plain load (the list, a
+    listing read again) have nothing to cancel: no ring, no second line.
 
 ## Settings
 
