@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.6.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.7.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -445,8 +445,8 @@ button.badge.failed {
    Sync to eBay, the sync bar's two), while its job is on its way or running on the PC: its
    word at full strength with a ring turning beside it, the ring as tall as the word, until
    the link or the error comes (Michal, 2026-09-26: "I want to know what process is
-   running" -- the step under the button says which). While a second tap still calls it
-   off, "tap again to cancel" sits inside it under the word, small (Michal, 2026-10-07: "The
+   running" -- the step under the button says which). While a tap still pauses it,
+   "tap again to cancel" sits inside it under the word, small (Michal, 2026-10-07: "The
    writing should be within it, below, and should be small"): the ring goes first on the
    word's line, the small line wraps under them. */
 button.busy { opacity: 1; flex-wrap: wrap; row-gap: 2px; }
@@ -470,6 +470,23 @@ button.busy::after {
     line-height: 1.2;
 }
 @keyframes turn { to { transform: rotate(360deg); } }
+/* reset, beside or under a job button its tap has paused (the button then says continue):
+   the real cancel, in small red words rather than a pill, so continue stays the thing to
+   tap (Michal, 2026-10-07: "The cancel should change to 'reset call' (as in discard)").
+   One look for every job button: under a venue button and the sync bar's two, beside
+   customize's Sync to eBay and a card's pressed action. */
+.reset-call {
+    display: block;
+    min-height: 36px;
+    padding: 6px 2px;
+    background: none;
+    border: none;
+    color: var(--bad);
+    font-size: 14px;
+    font-weight: 700;
+}
+.reset-call[hidden] { display: none; }
+.reset-call:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 /* The row's price above the venue buttons, from the press on (Michal, 2026-09-30: "show
    the chosen price for the item above the buttons instead of replacing button text"). */
 .price-line {

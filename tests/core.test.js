@@ -64,10 +64,18 @@ import {
     cancelButton,
     busyLine,
     CANCELLED,
+    CONTINUE,
+    NEXT_PAUSED,
+    PAUSED,
+    PAUSED_ON_PC,
+    RESET,
     SEND_DELAY_MS,
-    STOPPING_STEP,
     TAP_TO_CANCEL,
     taskCancel,
+    taskTap,
+    TOO_LATE,
+    TOO_LATE_MS,
+    venueTap,
     titleLine,
     remembered,
     refreshed,
@@ -551,65 +559,140 @@ test("the Snap button says Snap Again once there is a photo, and lands three qua
     assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
 });
 
-test("tap again to cancel shows from the press until the link or the error; a cancelled press reads cancelled", () => {
+test("a tap on a busy venue button pauses it; continue carries on, reset drops the press as if never made", () => {
     // Michal, 2026-10-02: "delay sending by 1 second (but show loading) so that if one cancels
-    // within 1 sec there is no call money spent"; 2026-10-07: the cancel is inside the pressed
-    // button, "tap again to cancel", no longer a red one under it
+    // within 1 sec there is no call money spent"; 2026-10-07, after a model call he could not
+    // cancel: "Better: show that it cancelled immediately, stop the loading button etc. The
+    // cancel should change to 'reset call' (as in discard) and the button should change to
+    // 'continue' ... Only pressing it twice actually drops all the info"
     assert.equal(SEND_DELAY_MS, 1000);
     assert.equal(TAP_TO_CANCEL, "tap again to cancel");
+    assert.equal(CONTINUE, "continue");
+    assert.equal(RESET, "reset");
     let s = sent(1, [1]);
     assert.equal(cancelButton(s, "ebay"), false, "before the press");
+    assert.equal(venueTap(s, "ebay"), "send");
+    assert.equal(reduce(s, { type: "jobPaused", venue: "ebay" }), s, "nothing to pause before the press");
     s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
     assert.equal(cancelButton(s, "ebay"), true);
+    assert.equal(venueTap(s, "ebay"), "pause");
     assert.equal(cancelButton(s, "craigslist"), false, "only under the pressed one");
-    const takenBack = reduce(s, { type: "jobCancelled", venue: "ebay" });
-    assert.equal(takenBack.jobs.ebay.phase, "failed");
-    assert.equal(venueLine(takenBack.jobs.ebay).text, CANCELLED);
-    assert.equal(cancelButton(takenBack, "ebay"), false);
-    assert.equal(venueButton(takenBack, "ebay", true).enabled, true, "the button comes back");
-    // once the PC has it: told, then its status says when it stopped
+    assert.equal(venueTap(s, "craigslist"), "send");
+
+    // paused within the second: held on the phone, its line says so, NEXT waits for his choice
+    const held = reduce(s, { type: "jobPaused", venue: "ebay" });
+    assert.equal(held.jobs.ebay.paused, true);
+    assert.equal(held.jobs.ebay.phase, "sending", "still the press, only held");
+    assert.equal(cancelButton(held, "ebay"), false, "no 'tap again to cancel' while paused");
+    assert.equal(venueTap(held, "ebay"), "continue");
+    assert.deepEqual(venueLine(held.jobs.ebay), { text: PAUSED, link: "", kind: "busy" });
+    assert.deepEqual(doneButton(held), { enabled: false, hint: NEXT_PAUSED });
+    // continue: as before the tap
+    const resumed = reduce(held, { type: "jobResumed", venue: "ebay" });
+    assert.equal(resumed.jobs.ebay.paused, false);
+    assert.equal(venueTap(resumed, "ebay"), "pause");
+    assert.equal(venueLine(resumed.jobs.ebay).text, "sending");
+    // reset: dropped as if never pressed, the button free for a new press
+    const dropped = reduce(held, { type: "jobCancelled", venue: "ebay" });
+    assert.equal(dropped.jobs.ebay.phase, "failed");
+    assert.equal(dropped.jobs.ebay.paused, false);
+    assert.equal(venueLine(dropped.jobs.ebay).text, CANCELLED);
+    assert.equal(venueTap(dropped, "ebay"), "send");
+    assert.equal(venueButton(dropped, "ebay", true).enabled, true, "the button comes back");
+
+    // paused once the PC has it: polls stop; a POST answered while paused stays paused
+    const answered = reduce(held, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(answered.jobs.ebay.paused, true);
+    assert.equal(venueLine(answered.jobs.ebay).text, PAUSED_ON_PC);
     s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
-    assert.equal(cancelButton(s, "ebay"), true);
-    s = reduce(s, { type: "jobStopping", venue: "ebay" });
-    assert.equal(venueLine(s.jobs.ebay).text, STOPPING_STEP);
-    assert.equal(cancelButton(s, "ebay"), false, "told once: a second tap does nothing more");
-    s = reduce(s, {
+    assert.equal(venueTap(s, "ebay"), "pause");
+    s = reduce(s, { type: "jobPaused", venue: "ebay" });
+    assert.deepEqual(venueLine(s.jobs.ebay), { text: PAUSED_ON_PC, link: "", kind: "busy" });
+    assert.equal(doneButton(s).hint, "", "a job the PC has does not hold NEXT");
+    // reset: the PC is told; the page drops the press at once and hears the PC out quietly
+    s = reduce(s, { type: "jobCancelled", venue: "ebay", stopping: true });
+    assert.equal(s.jobs.ebay.stopping, true);
+    assert.equal(s.jobs.ebay.jobId, "j1", "asked about until it stops");
+    assert.equal(venueLine(s.jobs.ebay).text, CANCELLED);
+    assert.equal(venueTap(s, "ebay"), "send", "free for a new press at once");
+    const still = reduce(s, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "running", step: "drafting", sku: "B-1", title: "Lamp" },
+    });
+    assert.equal(venueLine(still.jobs.ebay).text, CANCELLED, "not shown running again");
+    assert.equal(still.sku, "B-1", "the row it saved is taken: the next press posts it");
+    s = reduce(still, {
         type: "jobStatus",
         venue: "ebay",
         status: { state: "failed", error: "cancelled from the phone", sku: "B-1" },
     });
     assert.equal(venueLine(s.jobs.ebay).text, "cancelled from the phone");
-    assert.equal(s.sku, "B-1", "the saved draft's sku is kept: the next press posts it");
+    assert.equal(s.jobs.ebay.stopping, false);
+    assert.equal(s.sku, "B-1");
     assert.equal(cancelButton(s, "ebay"), false);
-    s = reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }).jobs.ebay.phase, "done");
-    assert.equal(cancelButton(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } }), "ebay"), false);
-    // Michal, 2026-10-03: "after a posting is published ... can't cancel it now": gone from
-    // the PC's publishing step on, before the link arrives
+    // dropped by the PC before it ran (DELETE answered "cancelled"): nothing more to hear
+    const gone = reduce(reduce(answered, { type: "jobCancelled", venue: "ebay", stopping: true }), {
+        type: "jobCancelled",
+        venue: "ebay",
+    });
+    assert.equal(gone.jobs.ebay.stopping, false);
+    assert.equal(gone.jobs.ebay.jobId, "");
+    assert.equal(venueLine(gone.jobs.ebay).text, CANCELLED);
+});
+
+test("from the publishing step on a tap is too late; a job that ends is neither paused nor stopping", () => {
+    // Michal, 2026-10-03: "after a posting is published ... can't cancel it now"; 2026-10-07:
+    // "Perhaps after pressing cancel it should say 'too late to cancel'?"
+    assert.equal(TOO_LATE, "too late to cancel: it is publishing");
+    assert.ok(TOO_LATE_MS >= 1000 && TOO_LATE_MS <= 5000, "a moment");
+    const s = reduce(sent(1, [1]), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
     const status = (step) => reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step } });
     assert.equal(cancelButton(status("drafting the listing"), "ebay"), true);
     assert.equal(cancelButton(status("filling craigslist for B-1"), "ebay"), true);
-    assert.equal(cancelButton(status("publishing B-1 on ebay"), "ebay"), false);
-    assert.equal(cancelButton(status("publishing on craigslist for B-1"), "ebay"), false);
-    assert.equal(venueLine(status("publishing B-1 on ebay").jobs.ebay).kind, "busy", "the ring still turns");
+    for (const step of ["publishing B-1 on ebay", "publishing on craigslist for B-1"]) {
+        assert.equal(cancelButton(status(step), "ebay"), false);
+        assert.equal(venueTap(status(step), "ebay"), "late");
+        const tapped = reduce(status(step), { type: "jobPaused", venue: "ebay" });
+        assert.equal(tapped.jobs.ebay.paused, false, "nothing to pause");
+        assert.equal(venueLine(tapped.jobs.ebay).kind, "busy", "the ring still turns");
+    }
+    const done = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "done" } });
+    assert.equal(done.jobs.ebay.phase, "done");
+    assert.equal(cancelButton(done, "ebay"), false);
+    // an answer that says it ended clears a pause
+    const paused = reduce(status("drafting"), { type: "jobPaused", venue: "ebay" });
+    const ended = reduce(paused, { type: "jobStatus", venue: "ebay", status: { state: "done" } });
+    assert.equal(ended.jobs.ebay.paused, false);
+    assert.equal(venueTap(ended, "ebay"), "send");
 });
 
-test("Admin's job buttons cancel by cancelButton's rule; the line says when the PC was told", () => {
-    const task = (over) => ({ press: null, wait: "", job: null, stopping: false, note: null, ...over });
+test("Admin's job buttons pause, continue and reset by the same rule; the line says which", () => {
+    const task = (over) => ({ press: null, wait: "", job: null, paused: false, note: null, ...over });
     assert.equal(taskCancel(task()), false, "nothing pressed");
     assert.equal(taskCancel(task({ press: {}, wait: "sending" })), true, "the press's first second");
-    assert.equal(taskCancel(task({ wait: "sending" })), false, "the POST on its way: nothing to tell yet");
+    assert.equal(taskCancel(task({ wait: "sending" })), false, "the POST on its way: nothing to pause");
+    assert.equal(taskTap(task({ wait: "sending" })), "");
     assert.equal(taskCancel(task({ wait: "saving", press: null })), false, "customize's save before a push");
     assert.equal(taskCancel(task({ job: { state: "queued" } })), true);
-    assert.equal(taskCancel(task({ job: { state: "running", step: "asking eBay" } })), true);
-    assert.equal(taskCancel(task({ job: { state: "running", step: "publishing on craigslist for R5" } })), false);
-    assert.equal(taskCancel(task({ job: { state: "running", step: "asking eBay" }, stopping: true })), false, "told once");
+    assert.equal(taskTap(task({ job: { state: "running", step: "asking eBay" } })), "pause");
+    const publishing = task({ job: { state: "running", step: "publishing on craigslist for R5" } });
+    assert.equal(taskCancel(publishing), false);
+    assert.equal(taskTap(publishing), "late");
+    assert.equal(taskCancel(task({ press: {}, wait: "sending", paused: true })), false, "paused: no second line");
+    assert.equal(taskTap(task({ press: {}, wait: "sending", paused: true })), "continue");
+    assert.equal(taskTap(task({ job: { state: "running", step: "asking eBay" }, paused: true })), "continue");
     assert.equal(taskCancel(task({ job: { state: "done" } })), false);
-    assert.equal(taskCancel(task({ job: { state: CANCELLED } })), false);
-    // the line: stopping first, then what is on its way, the job, what the PC said
-    assert.deepEqual(busyLine(task({ job: { state: "running", step: "asking eBay" }, stopping: true })), {
-        text: STOPPING_STEP,
+    assert.equal(taskTap(task({ job: { state: CANCELLED } })), "");
+    // the line: too late (for a moment), paused, then what is on its way, the job, what the PC said
+    assert.deepEqual(busyLine(task({ job: { state: "running", step: "publishing" }, late: true })), {
+        text: TOO_LATE,
+        kind: "busy",
+    });
+    assert.deepEqual(busyLine(task({ press: {}, wait: "sending", paused: true })), { text: PAUSED, kind: "busy" });
+    assert.deepEqual(busyLine(task({ job: { state: "running", step: "asking eBay" }, paused: true })), {
+        text: PAUSED_ON_PC,
         kind: "busy",
     });
     assert.deepEqual(busyLine(task({ wait: "sending" })), { text: "sending", kind: "busy" });
