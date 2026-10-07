@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.4.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.5.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -763,9 +763,6 @@ a.vbadge::after { content: " ↗"; }
 .fold .venue-status { margin: 12px 0 0; }
 .fold .venue-status:empty { display: none; }
 .fold .venue-link { margin: 4px 0 0; }
-/* a listing's customize (Michal, 2026-10-07): the goods card's boxes, then the price grade
-   and post without asking as they were at posting, read-only words, not inputs */
-.posting-word { margin: 2px 0 0; font-size: 15px; font-weight: 700; }
 .facts { margin: 0; }
 .facts dt { margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .facts dd { margin: 2px 0 0; font-size: 15px; overflow-wrap: anywhere; }
