@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.4.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.4.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.5.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.5.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -180,9 +180,11 @@
         <div id="detail-photos" class="detail-photos"></div>
         <!-- the listing's customize, first and open (Michal, 2026-10-07: "each item needs a
              customize tab and the customization options as at posting should pop up there
-             ... I can there click pickup only and sync to eBay"): the goods card's shape,
-             the quantity and pickup only to change, the price grade and post without asking
-             as they were at posting, read-only; Save, then Sync to eBay -->
+             ... I can there click pickup only and sync to eBay"), and live as the goods card
+             (Michal, 2026-10-07: "I want the menu in the inventory to look like the customize
+             menu ... We will indeed be changing price with a slider here"): the quantity,
+             pickup only and the price slider, each grade's cached price beside its word;
+             Save, then Sync to eBay -->
         <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
                 aria-controls="detail-customize">▾ customize</button>
         <div id="detail-customize" class="card customize fold">
@@ -195,20 +197,16 @@
             <input id="detail-pickup-only" type="checkbox">
             <span>Pickup only — no shipping on eBay</span>
           </label>
-          <!-- read-only: the grade only shaped the draft the model wrote -->
           <div class="field pricing-field">
-            <span class="field-label">Price preference</span>
-            <div class="pricing-words">
+            <label class="field-label" for="detail-pricing">Price</label>
+            <input id="detail-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+                   aria-valuetext="Quick sale" aria-describedby="detail-pricing-note">
+            <div class="pricing-words" aria-hidden="true">
               <span id="detail-pricing-1">Quick sale</span>
               <span id="detail-pricing-2">Fair price</span>
               <span id="detail-pricing-3">Higher end</span>
             </div>
             <p id="detail-pricing-note" class="pricing-note"></p>
-            <p class="pricing-note">The grade only shapes the draft: to re-price, post the item again.</p>
-          </div>
-          <div class="field">
-            <span class="field-label">Post without asking</span>
-            <p id="detail-auto-post" class="posting-word"></p>
           </div>
           <div class="venue-actions">
             <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
@@ -490,6 +488,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.4.0"></script>
+<script type="module" src="app.js?v=2.5.0"></script>
 </body>
 </html>

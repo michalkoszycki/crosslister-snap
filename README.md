@@ -450,11 +450,11 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The PC drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the PC publishes the saved row | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
-| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}` |
-| `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing": 1/2/3 or null, "auto_post": true/false or null, "job": id or null}`, the choices the job that drafted the row was sent with (nulls for a row made from the terminal; customize says them); 404 for an unknown sku |
+| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
+| `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
 | `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save) |
-| `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number) and `"pickup_only"`, each only when it is not the row's, e.g. `{"pickup_only": true}` or `{"quantity": 3, "pickup_only": true}`; nothing changed sends nothing, a quantity that is not one is never sent | the same; 400 `{"detail"}` in customize's status line |
+| `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The PC sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused (Craigslist cannot be ended from here): the card says it and its End goes |
@@ -560,32 +560,48 @@ Empty. With capacity to generate that card from there."
     customize tab and the customization options as at posting should pop up
     there with the choices that were made at posting. For instance I can there
     click pickup only and sync to eBay, and that detail of that listing should
-    update."): the first foldout, open with every listing, in the goods
-    customize card's shape. **Quantity** and **Pickup only** as the row has
-    them, to change; then **Price preference**, the three words with the one
-    the drafting job was sent with in bold and `as chosen at posting` under it,
-    and **Post without asking**, `posted without asking` or `saved first, posted
-    on the next press`; both read-only, from the row's `posting` (`not known
-    (made from the terminal)` for a row drafted there), with a line saying the
-    grade only shapes the draft: to re-price, post the item again. Under them
-    **Save** and **Sync to eBay**, and a status line.
-    - **Save** opens once a box differs from the row, and sends one PATCH with
-      only the quantity and pickup only changed. A quantity that is not a whole
+    update."): the first foldout, open with every listing, and the goods
+    customize card itself, live (Michal, 2026-10-07: "I want the menu in the
+    inventory to look like the customize menu. Saying post without confirmation
+    is useless. We will indeed be changing price with a slider here. Or quantity
+    etc. or pickup / no pickup."; then "Don't worry about changes that will
+    require model calls. Once in inventory changes can be made manually. However
+    definitely 3 prices should be cached in first call so that if I change the
+    slider, the price can be updated."). **Quantity** and **Pickup only** as the
+    row has them, then the **Price** slider at the grade the row's price
+    follows (its `pricing`), the three words under it each with the row's
+    cached price beside it (`Quick sale $18`, `Fair price $24`, `Higher end
+    $31.50`; `—` for one not cached), the chosen one bold, and the goods card's
+    line for the grade under them. A row whose price follows no grade stands at
+    1, nothing bold, the line `not priced by grade yet`. No post without asking
+    here. Under them **Save** and **Sync to eBay**, and a status line.
+    - **Save** opens once a box or the slider differs from the row, and sends
+      one PATCH with only what changed: the quantity, pickup only, and the
+      slider's grade as `pricing`. The PC sets the price to that grade's cached
+      one: no model call, no job, and the row it answers puts the new price in
+      the heading and the eBay card at once. A quantity that is not a whole
       number, 1 or more, is said in the status line at once and shuts both
       buttons, as the goods card does. Then `saved` (on a listing up on eBay,
-      `saved; Sync to eBay puts it on the listing`), or the PC's refusal with
-      the box as typed.
+      `saved; Sync to eBay puts it on the listing`), or the PC's refusal (`no
+      cached fair price for this row: set the price by hand`) with the box and
+      the slider as he left them. On a row with no cached prices at all, the
+      slider moved says `no cached prices on this listing; set the price by
+      hand` and is not sent; the boxes still are. The price itself is set by
+      hand on the eBay card's Edit.
     - **Sync to eBay** opens only on a listing up on eBay (otherwise the line
-      says `Sync to eBay opens once the listing is up on eBay`). It saves a
-      change not yet saved first, so a tick and one tap is the whole of what
-      Michal described, then sends the push job: `queued`, the PC's step, then
-      `updated` or `unchanged` or the error, asked every 3 s. Once done the
-      listing is read again, so the heading and the eBay card show what eBay
-      now has; a push the PC refuses shows its words.
-    - The boxes and both buttons wait while anything of the listing's is on
-      its way or running, and the cards wait while customize's is (one job per
-      listing). The eBay card shows the quantity and pickup only as facts;
-      only customize changes them.
+      says `Sync to eBay opens once the listing is up on eBay`). It saves what
+      is not yet saved first (a moved slider too, so the push carries the new
+      price), so a tick and one tap is the whole of what Michal described, then
+      sends the push job: `queued`, the PC's step, then `updated` or `unchanged`
+      or the error, asked every 3 s. Once done the listing is read again, so the
+      heading and the eBay card show what eBay now has; a Save or a push the PC
+      refuses shows its words, and a refused Save sends no push.
+    - The boxes, the slider and both buttons wait while anything of the
+      listing's is on its way or running, and the cards wait while customize's
+      is (one job per listing). A listing read again moves the boxes and the
+      slider with it, except one holding a change he has not saved. The eBay
+      card shows the quantity and pickup only as facts; only customize changes
+      them.
   - Each card starts with its **status line**, the venue's status and when it
     went up (`listed since 2026-10-03 16:21`, the phone's own time; `draft`;
     `not posted yet`), or a job's line while one runs, and the link under it.

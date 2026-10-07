@@ -51,19 +51,27 @@
 //                                         last when sorted by price (inventoryQuery in core.js)
 //   GET    <pc>/inventory/<sku>       -> the summary's keys plus the description, the condition
 //                                         note and details, the aspects, the package, craigslist's
-//                                         overrides and "photos": [{"n", "name"}...]; 404 unknown sku
+//                                         overrides and "photos": [{"n", "name"}...]; 404 unknown sku.
+//                                         The summary too carries "pricing" (1|2|3|null, the grade
+//                                         the price follows) and "prices" ({"quick", "market",
+//                                         "high"}, the first model call's three, cached; nulls)
 //   GET    <pc>/inventory/<sku>/photos/<n>
 //                                      -> the image itself (jpeg, png or webp); 404 when missing
 //   PATCH  <pc>/inventory/<sku>       a card's Save: only the fields changed, any of "title",
-//                                      "price" ("24.50"), "description", "note", "quantity",
-//                                      "pickup_only", "condition_note", "craigslist": {"title",
-//                                      "price", "description", "category"} ("" clears an override)
+//                                      "price" ("24.50"), "description", "note",
+//                                      "condition_note", "craigslist": {"title", "price",
+//                                      "description", "category"} ("" clears an override);
+//                                      customize's Save: any of "quantity", "pickup_only" and
+//                                      "pricing" (1|2|3: the PC sets the price to that grade's
+//                                      cached one) (customizeChanges in core.js)
 //                                      -> the whole row, as GET; 400 {"detail"} names a bad field
+//                                         (or the grade with no cached price)
 //   POST   <pc>/inventory/<sku>/venues/<venue>
 //                                      an empty card's Add -> the whole row, the venue in "venues"
 //   POST   <pc>/jobs                  a card's End listing / Refresh status: {"action": "end" |
 //                                      "refresh", "sku", "venue"}; the sync bar: {"action": "sync",
-//                                      "direction": "from" | "to"} (actionJob in core.js)
+//                                      "direction": "from" | "to"}; customize's Sync to eBay:
+//                                      {"action": "push", "sku", "venue": "ebay"} (actionJob in core.js)
 //                                      -> {"job", "state": "queued", "ahead"}; 400 {"detail"} when
 //                                         refused (Craigslist cannot be ended from here). GET
 //                                         /jobs/<id> adds "action", "direction" and, once done,
@@ -72,7 +80,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.4.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.5.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {

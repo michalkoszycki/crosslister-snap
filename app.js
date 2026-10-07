@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.4.0";
+import { VERSION } from "./version.js?v=2.5.0";
 import {
     anyActive,
     bannerText,
@@ -35,6 +35,7 @@ import {
     photosLocked,
     POLL_MS,
     PRICING,
+    pricingGrade,
     pricingOf,
     savedNotPosted,
     progressLine,
@@ -86,11 +87,11 @@ import {
     EDIT_FIELDS,
     editValues,
     endQuestion,
+    followRow,
     inventoryCount,
     inventoryRows,
     jobRunning,
     patchBody,
-    postingWords,
     priceWord,
     quantityValue,
     rowBadges,
@@ -99,12 +100,13 @@ import {
     rowPhotos,
     rowTitle,
     rowVenues,
+    sliderWords,
     syncLine,
     venueActions,
     venueFacts,
     venueStatus,
-} from "./core.js?v=2.4.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.4.0";
+} from "./core.js?v=2.5.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.5.0";
 import {
     addVenue,
     cancelJob,
@@ -124,8 +126,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.4.0";
-import { shrinkPhoto } from "./shrink.js?v=2.4.0";
+} from "./pc.js?v=2.5.0";
+import { shrinkPhoto } from "./shrink.js?v=2.5.0";
 import {
     bookCard,
     bookPriceValue,
@@ -138,8 +140,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.4.0";
-import { canScan, readIsbn } from "./scan.js?v=2.4.0";
+} from "./book.js?v=2.5.0";
+import { canScan, readIsbn } from "./scan.js?v=2.5.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -1671,12 +1673,11 @@ function renderDetail(row) {
 
 /**
  * The row as the PC has it after a card or customize changed it: the heading and
- * the cards; the photos stay. customize's boxes follow the row, unless they hold a
- * change not yet saved.
+ * the cards; the photos stay. customize's boxes and slider follow the row, unless
+ * they hold a change not yet saved (followRow).
  */
 function refreshRow(row) {
-    const c = admin.custom;
-    if (quantityValue(c.values.quantity) && !customizeChanges(admin.row, c.values)) c.values = rowCustomize(row);
+    admin.custom.values = followRow(admin.row, admin.custom.values, row);
     admin.row = row;
     el.detailHeading.textContent = rowHeading(row);
     renderCards();
@@ -1694,11 +1695,12 @@ function blankCard() {
 
 /**
  * The listing's customize, for the row on screen: open (each listing opens on it),
- * its two boxes as typed (`values`, from the row until changed), and, as a card's,
- * what is on its way, its push job, what the PC said, its poll's timer.
+ * its two boxes and the slider as he left them (`values`, from the row until
+ * changed), and, as a card's, what is on its way, its push job, what the PC said,
+ * its poll's timer.
  */
 function blankCustomize() {
-    return { open: true, values: { quantity: "1", pickupOnly: false }, wait: "", job: null, note: null, timer: null };
+    return { open: true, values: rowCustomize({}), wait: "", job: null, note: null, timer: null };
 }
 
 /** The cards' polls stopped and their state let go: the detail is leaving the screen or changing rows. */
@@ -1726,11 +1728,10 @@ function renderCards() {
 }
 
 /**
- * The listing's customize: open or folded; the quantity box (not rewritten while it
- * holds what was typed) and pickup only, locked while the row is busy; the price
- * grade's word bold and post without asking's word, as at posting (only once the
- * whole row is here: a summary from the list does not carry them); Save and Sync
- * to eBay as customizeButtons says; its status line.
+ * The listing's customize, as the goods card: open or folded; the quantity box (not
+ * rewritten while it holds what was typed), pickup only and the Price slider with
+ * each grade's cached price beside its word (sliderWords), locked while the row is
+ * busy; Save and Sync to eBay as customizeButtons says; its status line.
  */
 function renderRowCustomize() {
     const c = admin.custom;
@@ -1743,11 +1744,15 @@ function renderRowCustomize() {
     el.detailQuantity.disabled = busy;
     el.detailPickupOnly.checked = c.values.pickupOnly;
     el.detailPickupOnly.disabled = busy;
-    const whole = Array.isArray(row.photos);
-    const said = postingWords(row.posting);
-    PRICING.forEach((p, i) => el.detailPricingWords[i].classList.toggle("on", whole && p.grade === said.grade));
-    el.detailPricingNote.textContent = whole ? said.note : "";
-    el.detailAutoPost.textContent = whole ? said.autoPost : "";
+    const slider = sliderWords(row, c.values.pricing);
+    el.detailPricing.value = slider.value;
+    el.detailPricing.disabled = busy;
+    el.detailPricing.setAttribute("aria-valuetext", slider.said);
+    PRICING.forEach((p, i) => {
+        el.detailPricingWords[i].textContent = slider.words[i];
+        el.detailPricingWords[i].classList.toggle("on", p.grade === slider.bold);
+    });
+    el.detailPricingNote.textContent = slider.note;
     const can = customizeButtons(row, c.values, busy);
     el.detailCustomizeSave.disabled = !can.save;
     el.detailCustomizeSync.disabled = !can.sync;
@@ -1763,8 +1768,9 @@ function paintCustomizeLine() {
 }
 
 /**
- * A box typed or ticked: the state takes it, and what the last Save or push said
- * gives way to what the boxes now are (Save opens, or the quantity hint shows).
+ * A box typed or ticked, or the slider moved: the state takes it, and what the last
+ * Save or push said gives way to what the foldout now is (Save opens, or the
+ * quantity hint shows, or the slider's line says there is no cached price to set).
  */
 function onCustomizeInput(values) {
     const c = admin.custom;
@@ -1776,9 +1782,12 @@ function onCustomizeInput(values) {
 }
 
 /**
- * customize's Save: one PATCH with only the quantity and pickup only changed
- * (customizeChanges); the row the PC answers is shown. true once the row holds
- * what the boxes say (nothing to send counts), so Sync to eBay can follow.
+ * customize's Save: one PATCH with only the quantity, pickup only and the slider's
+ * grade changed (customizeChanges); the PC sets the price to the grade's cached one
+ * and the row it answers is shown, its new price in the heading and the eBay card.
+ * A refusal (no cached price for that grade) is said in the status line, the
+ * foldout as he left it. true once the row holds what the foldout says (nothing to
+ * send counts), so Sync to eBay can follow.
  */
 async function saveRowCustomize() {
     const c = admin.custom;
@@ -2789,9 +2798,9 @@ function main() {
         detailCustomize: $("detail-customize"),
         detailQuantity: $("detail-quantity"),
         detailPickupOnly: $("detail-pickup-only"),
+        detailPricing: $("detail-pricing"),
         detailPricingWords: PRICING.map(({ grade }) => $(`detail-pricing-${grade}`)),
         detailPricingNote: $("detail-pricing-note"),
-        detailAutoPost: $("detail-auto-post"),
         detailCustomizeSave: $("detail-customize-save"),
         detailCustomizeSync: $("detail-customize-sync"),
         detailCustomizeStatus: $("detail-customize-status"),
@@ -2937,6 +2946,7 @@ function main() {
     });
     el.detailQuantity.addEventListener("input", () => onCustomizeInput({ quantity: el.detailQuantity.value }));
     el.detailPickupOnly.addEventListener("change", () => onCustomizeInput({ pickupOnly: el.detailPickupOnly.checked }));
+    el.detailPricing.addEventListener("input", () => onCustomizeInput({ pricing: pricingGrade(el.detailPricing.value) }));
     el.detailCustomizeSave.addEventListener("click", () => {
         saveRowCustomize().catch(() => {});
     });

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.4.0";
+import { noteDirty, unsent } from "./queue.js?v=2.5.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.4.0";
+} from "./book.js?v=2.5.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2511,21 +2511,20 @@ export function patchBody(venue, before, after) {
 // Michal, 2026-10-07: "In inventory each item needs a customize tab and the customization
 // options as at posting should pop up there with the choices that were made at posting.
 // For instance I can there click pickup only and sync to eBay, and that detail of that
-// listing should update." So the detail opens on a customize foldout in the goods card's
-// shape: the quantity and pickup only to change (one PATCH), the price grade and post
-// without asking as they were sent with the job that drafted the row (GET
-// /inventory/<sku>'s "posting"), read-only, and Sync to eBay, the push job that puts the
-// row as saved onto its eBay listing.
-
-/** Said for a choice the row cannot tell: it was drafted at the terminal, not from the phone. */
-export const POSTING_UNKNOWN = "not known (made from the terminal)";
-
-/** Under the price grade's three words, once the row says which one was sent. */
-export const AT_POSTING = "as chosen at posting";
-
-/** Post without asking, as the job that drafted the row was sent. */
-export const AUTO_POSTED = "posted without asking";
-export const HELD_FIRST = "saved first, posted on the next press";
+// listing should update." So the detail opens on a customize foldout, and Sync to eBay,
+// the push job, puts the row as saved onto its eBay listing.
+//
+// Michal, 2026-10-07, later the same day: "I want the menu in the inventory to look like
+// the customize menu. Saying post without confirmation is useless. We will indeed be
+// changing price with a slider here. Or quantity etc. or pickup / no pickup." And then:
+// "Don't worry about changes that will require model calls. Once in inventory changes can
+// be made manually. However definitely 3 prices should be cached in first call so that if
+// I change the slider, the price can be updated." So it is the goods card, live: the
+// quantity, pickup only and the Price slider, standing at the grade the row's price
+// follows (GET /inventory/<sku>'s "pricing"), each grade's cached price beside its word
+// ("prices"); Save sends what changed in one PATCH, a moved slider as "pricing", and the
+// PC sets the price to that grade's cached one. No model call, no job. Post without
+// asking is not shown any more.
 
 /** Said under Save and Sync while the listing is not up on eBay: there is nothing to push to. */
 export const PUSH_CLOSED = "Sync to eBay opens once the listing is up on eBay";
@@ -2533,56 +2532,113 @@ export const PUSH_CLOSED = "Sync to eBay opens once the listing is up on eBay";
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
 
+/** Under the slider of a row whose price follows no grade (its "pricing" is null). */
+export const NOT_GRADED = "not priced by grade yet";
+
+/** Under the slider once moved on a row with no cached prices: nothing for Save to set. */
+export const NO_CACHED = "no cached prices on this listing; set the price by hand";
+
+/** Beside a grade's word when the row has no cached price for it. */
+export const NO_PRICE = "—";
+
 /**
- * customize's choices at posting, read-only: the price grade (0 when the row
- * cannot tell), its word and the line under the three words, and post without
- * asking's word.
- * @param {unknown} posting GET /inventory/<sku>'s {"pricing": 1|2|3|null, "auto_post": bool|null, "job"}, or null
- * @returns {{grade:0|1|2|3, pricing:string, note:string, autoPost:string}}
+ * The foldout as typed: the quantity box (a string), pickup only, and the Price
+ * slider's grade (0 while it has not been moved on a row whose price follows no grade).
+ * @typedef {{quantity:string, pickupOnly:boolean, pricing:0|1|2|3}} RowCustomize
  */
-export function postingWords(posting) {
-    const p = posting && typeof posting === "object" ? /** @type {Record<string, unknown>} */ (posting) : {};
-    const grade = pricingGrade(p.pricing);
-    const autoPost = p.auto_post === true ? AUTO_POSTED : p.auto_post === false ? HELD_FIRST : POSTING_UNKNOWN;
-    return {
-        grade,
-        pricing: grade ? pricingOf(grade).word : "",
-        note: grade ? AT_POSTING : POSTING_UNKNOWN,
-        autoPost,
-    };
+
+/** "prices"' keys, in grade order: 1 a quick sale, 2 a fair (market) price, 3 the higher end. */
+const CACHED_KEYS = ["quick", "market", "high"];
+
+/**
+ * The three prices the first model call made for the row, cached on it (GET
+ * /inventory/<sku>'s "prices": {"quick", "market", "high"}), in grade order; ""
+ * for one it has not (all of them on a row drafted before the cache, or at the terminal).
+ * @param {Record<string, any>} row
+ * @returns {string[]}
+ */
+export function cachedPrices(row) {
+    const prices = row.prices && typeof row.prices === "object" ? row.prices : {};
+    return CACHED_KEYS.map((key) => priceText(prices[key]));
 }
 
 /**
- * The foldout's two boxes as the row has them: the quantity as the box holds it
- * (a string, 1 when the row has none) and pickup only.
+ * The foldout as the row has it: the quantity as the box holds it (a string, 1
+ * when the row has none), pickup only, and the grade its price follows (0 when none).
  * @param {Record<string, any>} row
- * @returns {{quantity:string, pickupOnly:boolean}}
+ * @returns {RowCustomize}
  */
 export function rowCustomize(row) {
     return {
         quantity: Number.isInteger(row.quantity) ? String(row.quantity) : "1",
         pickupOnly: row.pickup_only === true,
+        pricing: pricingGrade(row.pricing),
     };
 }
 
 /**
- * The PATCH /inventory/<sku> body of the foldout's Save: `quantity` (a number)
- * and `pickup_only`, each only when it is not the row's; null when neither
- * changed. The box must hold a quantity (quantityValue): the foldout says so and
- * keeps Save shut before this is asked.
+ * The Price slider as the goods card shows it, for the row: where it stands, the
+ * word bold under it, what a screen reader hears, the line under it, and the three
+ * words each with the row's cached price ("Fair price $30", "—" for none). A row
+ * whose price follows no grade stands at 1, no word bold, and the line says so; moved
+ * on a row with no cached prices, the line says Save cannot set one.
  * @param {Record<string, any>} row
- * @param {{quantity:string, pickupOnly:boolean}} values the boxes
- * @returns {{quantity?:number, pickup_only?:boolean} | null}
+ * @param {unknown} grade the foldout's `pricing`
+ * @returns {{value:string, bold:0|1|2|3, said:string, note:string, words:string[]}}
  */
-export function customizeChanges(row, { quantity, pickupOnly }) {
+export function sliderWords(row, grade) {
+    const prices = cachedPrices(row);
+    const words = PRICING.map((p, i) => `${p.word} ${priceWord(prices[i]) || NO_PRICE}`);
+    const g = pricingGrade(grade);
+    const moved = g !== rowCustomize(row).pricing;
+    const stuck = moved && !prices.some(Boolean);
+    if (!g) return { value: String(DEFAULT_PRICING), bold: 0, said: NOT_GRADED, note: NOT_GRADED, words };
+    return { value: String(g), bold: g, said: words[g - 1], note: stuck ? NO_CACHED : pricingOf(g).note, words };
+}
+
+/**
+ * The PATCH /inventory/<sku> body of the foldout's Save: `quantity` (a number),
+ * `pickup_only` and `pricing` (the grade the slider was moved to), each only when
+ * it is not the row's; `pricing` never on a row with no cached prices (there is
+ * nothing for the PC to set). null when nothing is left to send. The box must hold
+ * a quantity (quantityValue): the foldout says so and keeps Save shut before this
+ * is asked.
+ * @param {Record<string, any>} row
+ * @param {RowCustomize} values the foldout
+ * @returns {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3} | null}
+ */
+export function customizeChanges(row, { quantity, pickupOnly, pricing }) {
     const n = quantityValue(quantity);
     if (!n) throw new RangeError(EDIT_QUANTITY_HINT);
     const was = rowCustomize(row);
-    /** @type {{quantity?:number, pickup_only?:boolean}} */
+    /** @type {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3}} */
     const body = {};
     if (n !== Number(was.quantity)) body.quantity = n;
     if (pickupOnly !== was.pickupOnly) body.pickup_only = pickupOnly;
+    const grade = pricingGrade(pricing);
+    if (grade && grade !== was.pricing && cachedPrices(row).some(Boolean)) body.pricing = grade;
     return Object.keys(body).length ? body : null;
+}
+
+/**
+ * The foldout once the row is read again (after a Save, a push): the boxes take
+ * the new row's quantity and pickup only unless they hold a change not yet saved
+ * (or a quantity that is not one), and the slider the new row's grade unless it
+ * holds a move not yet saved. What is not saved stays as he left it.
+ * @param {Record<string, any>} before the row the foldout was showing
+ * @param {RowCustomize} values the foldout
+ * @param {Record<string, any>} after the row read again
+ * @returns {RowCustomize}
+ */
+export function followRow(before, values, after) {
+    const was = rowCustomize(before);
+    const now = rowCustomize(after);
+    const boxes = quantityValue(values.quantity) === Number(was.quantity) && values.pickupOnly === was.pickupOnly;
+    return {
+        quantity: boxes ? now.quantity : values.quantity,
+        pickupOnly: boxes ? now.pickupOnly : values.pickupOnly,
+        pricing: values.pricing === was.pricing ? now.pricing : values.pricing,
+    };
 }
 
 /**
@@ -2596,11 +2652,11 @@ export function canPush(row) {
 }
 
 /**
- * Which of the foldout's buttons can be pressed. Save: a change to send, the box a
- * quantity. Sync to eBay: listed on eBay, the box a quantity (a change not yet
+ * Which of the foldout's buttons can be pressed. Save: something to send, the box
+ * a quantity. Sync to eBay: listed on eBay, the box a quantity (what is not yet
  * saved is saved first). Neither while the row is busy (one job per row at a time).
  * @param {Record<string, any>} row
- * @param {{quantity:string, pickupOnly:boolean}} values
+ * @param {RowCustomize} values
  * @param {boolean} busy
  * @returns {{save:boolean, sync:boolean}}
  */
