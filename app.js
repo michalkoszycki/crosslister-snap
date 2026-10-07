@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.6.0";
+import { VERSION } from "./version.js?v=2.7.0";
 import {
     anyActive,
     bannerText,
@@ -56,9 +56,16 @@ import {
     walkPosition,
     cancelButton,
     CANCELLED,
+    CONTINUE,
+    PAUSED,
+    RESET,
     SEND_DELAY_MS,
     TAP_TO_CANCEL,
     taskCancel,
+    taskTap,
+    TOO_LATE,
+    TOO_LATE_MS,
+    venueTap,
     snapScrollTop,
     snapWord,
     statusBarColors,
@@ -108,8 +115,8 @@ import {
     venueBadge,
     venueFacts,
     venueStatus,
-} from "./core.js?v=2.6.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.6.0";
+} from "./core.js?v=2.7.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.7.0";
 import {
     addVenue,
     cancelJob,
@@ -129,8 +136,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.6.0";
-import { shrinkPhoto } from "./shrink.js?v=2.6.0";
+} from "./pc.js?v=2.7.0";
+import { shrinkPhoto } from "./shrink.js?v=2.7.0";
 import {
     bookCard,
     bookPriceValue,
@@ -143,8 +150,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.6.0";
-import { canScan, readIsbn } from "./scan.js?v=2.6.0";
+} from "./book.js?v=2.7.0";
+import { canScan, readIsbn } from "./scan.js?v=2.7.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -250,12 +257,8 @@ const admin = {
 /** The inventory's search box asks the PC once he stops typing. */
 let searchTimer = null;
 
-/**
- * The sync bar, an Admin job task as a card is: the direction last pressed
- * ("from" | "to"), its press's first second, what is on its way, its job as last
- * polled, the PC told to stop it, what the PC refused, the next poll.
- */
-const sync = { action: "", press: null, wait: "", job: null, stopping: false, note: null, timer: null };
+/** The sync bar, an Admin job task as a card is (jobTask); its action the direction last pressed ("from" | "to"). */
+const sync = jobTask();
 /** The sync bar's two words, after their icons. */
 const SYNC_WORDS = { from: "Sync from eBay", to: "Sync to eBay" };
 
@@ -453,8 +456,9 @@ function renderGoods() {
     let hint = "";
     for (const venue of VENUES) {
         // painted first, then its hint taken: ||= alone would skip painting the second button
-        const said = renderVenue(state, venue, ok, {
+        const said = renderVenue("goods", venue, ok, {
             btn: el[`${venue}Btn`],
+            reset: el[`${venue}Reset`],
             status: el[`${venue}Status`],
             link: el[`${venue}Link`],
         });
@@ -559,8 +563,9 @@ function renderBook() {
     // the price is typed on the page: above the button from the press, until the PC says its own
     renderPriceLine(el.bookTitleLine, titleLine(state));
     renderPriceLine(el.bookPriceLine, priceLine(state, bookPriceValue(book.price)));
-    const venueHint = renderVenue(state, "ebay", !!settings(), {
+    const venueHint = renderVenue("book", "ebay", !!settings(), {
         btn: el.bookEbayBtn,
+        reset: el.bookEbayReset,
         status: el.bookEbayStatus,
         link: el.bookEbayLink,
     });
@@ -638,22 +643,34 @@ function renderPriceLine(node, text) {
 }
 
 /**
- * One venue button, its status line and its link; returns the button's hint.
- * The button's word is always the venue; the price is the line above the buttons.
+ * One venue button, its reset, its status line and its link; returns the button's
+ * hint. The button's word is the venue (continue while paused); the price is the line
+ * above the buttons.
  */
-function renderVenue(state, venue, ok, nodes) {
+function renderVenue(m, venue, ok, nodes) {
+    const state = slots[m];
     const job = state.jobs[venue];
     const button = venueButton(state, venue, ok);
     // the ring in the button from the press until the link or the error, and "tap again
-    // to cancel" under the word while a second tap calls it off: pressed, it is not
-    // disabled, so it takes that tap
-    const cancel = cancelButton(state, venue);
-    nodes.btn.disabled = !button.enabled && !cancel;
-    paintJobButton(nodes.btn, venue, { busy: isActive(job), cancel, label: venueLabel(job, venue) });
+    // to cancel" under the word while a tap pauses it: pressed, it is never disabled, so
+    // it takes the tap that pauses, continues, or says it is too late
+    const busy = isActive(job);
+    nodes.btn.disabled = !button.enabled && !busy;
+    paintJobButton(nodes.btn, venue, {
+        busy,
+        cancel: cancelButton(state, venue),
+        paused: job.paused,
+        label: venueLabel(job, venue),
+        reset: nodes.reset,
+    });
     nodes.btn.classList.toggle("posted", job.phase === "done" && !savedNotPosted(job));
 
     // before the press, what customize changed ("pickup only · fair price"): he sees it took
-    const line = venueLine(state.jobs[venue], venueIdleNote(state, venue));
+    const late = lates.get(`${m}:${venue}`);
+    const line =
+        busy && late && late.late
+            ? { text: TOO_LATE, link: "", kind: "busy" }
+            : venueLine(job, venueIdleNote(state, venue));
     nodes.status.textContent = line.text;
     nodes.status.className = `venue-status ${line.kind}`;
     nodes.status.hidden = !line.text;
@@ -670,10 +687,13 @@ function renderVenue(state, venue, ok, nodes) {
  * that. The button, within it, should just get 'tap again to cancel' instead of an
  * external cancel line"): `lead` (the sync buttons' icon) and the word; while
  * `busy`, the ring turning beside it (styles.css); while `cancel`, TAP_TO_CANCEL in
- * small type under the word, and said after `label` to a screen reader.
+ * small type under the word, and said after `label` to a screen reader. `paused`
+ * (Michal, 2026-10-07: "the button should change to 'continue'"), the word is
+ * CONTINUE and the ring stops; its `reset`, the small red control beside it, shows
+ * only then.
  */
-function paintJobButton(btn, word, { busy, cancel, label = word, lead = [] }) {
-    const kids = [...lead, word];
+function paintJobButton(btn, word, { busy, cancel, paused = false, label = word, lead = [], reset = null }) {
+    const kids = [...lead, paused ? CONTINUE : word];
     if (cancel) {
         const small = document.createElement("small");
         small.className = "tap-cancel";
@@ -681,9 +701,26 @@ function paintJobButton(btn, word, { busy, cancel, label = word, lead = [] }) {
         kids.push(small);
     }
     btn.replaceChildren(...kids);
-    btn.classList.toggle("busy", busy);
-    btn.setAttribute("aria-busy", busy ? "true" : "false");
-    btn.setAttribute("aria-label", cancel ? `${label}, ${TAP_TO_CANCEL}` : label);
+    const ring = busy && !paused;
+    btn.classList.toggle("busy", ring);
+    btn.setAttribute("aria-busy", ring ? "true" : "false");
+    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${TAP_TO_CANCEL}` : label;
+    btn.setAttribute("aria-label", said);
+    if (reset) reset.hidden = !paused;
+}
+
+/**
+ * Said under a job button tapped from the PC's publishing step on, for TOO_LATE_MS
+ * (`holder.late`), then the step's own words again; nothing else changes.
+ */
+function tooLate(holder, paint) {
+    clearTimeout(holder.lateTimer);
+    holder.late = true;
+    paint();
+    holder.lateTimer = setTimeout(() => {
+        holder.late = false;
+        paint();
+    }, TOO_LATE_MS);
 }
 
 /**
@@ -1256,16 +1293,20 @@ async function noteReady(m) {
 
 // --- the venue buttons -------------------------------------------------------
 
-/** "<mode>:<venue>" -> the press on its way (a token) and the timer of its one-second wait */
+/**
+ * "<mode>:<venue>" -> the press on its way (a token): the timer of its one-second wait,
+ * and `go`, which ends that wait (continue sends it at once, reset lets it fall)
+ */
 const presses = new Map();
-const sendTimers = new Map();
+/** "<mode>:<venue>" -> TOO_LATE under that button for a moment (tooLate) */
+const lates = new Map();
 
 async function send(m, venue) {
     const pc = settings();
     if (!pc || !venueButton(slots[m], venue, true).enabled) return;
     const mine = generation[m];
     const key = `${m}:${venue}`;
-    const press = {};
+    const press = { timer: null, go: null };
     presses.set(key, press);
     const taken = () => mine !== generation[m] || presses.get(key) !== press;
     // the second goods button reuses the saved row, and so does the press after
@@ -1281,9 +1322,11 @@ async function send(m, venue) {
         return;
     }
     if (taken()) return;
-    // the second he asked for: the ring turns, nothing has left the phone yet
+    // the second he asked for: the ring turns, nothing has left the phone yet; paused,
+    // the press is held here until continue (or reset lets it fall)
     await new Promise((resolve) => {
-        sendTimers.set(key, setTimeout(resolve, SEND_DELAY_MS));
+        press.go = resolve;
+        if (!slots[m].jobs[venue].paused) press.timer = setTimeout(resolve, SEND_DELAY_MS);
     });
     if (taken()) return;
     const s = slots[m];
@@ -1299,55 +1342,113 @@ async function send(m, venue) {
     });
     try {
         const answer = await postJob(pc, body);
+        if (presses.get(key) !== press) {
+            // reset while the POST was on its way: the PC is told at once
+            cancelJob(pc, answer.job).catch(() => {});
+            return;
+        }
         if (mine !== generation[m]) return;
         setState(m, reduce(slots[m], { type: "jobAccepted", venue, job: answer.job, ahead: answer.ahead }));
-        schedulePoll(m, venue, mine);
+        // paused while the POST was on its way: asked about once he continues
+        if (!slots[m].jobs[venue].paused) schedulePoll(m, venue, mine);
     } catch (e) {
-        if (mine !== generation[m]) return;
+        if (taken()) return;
         setState(m, reduce(slots[m], { type: "jobRefused", venue, error: e.message }));
     }
 }
 
-/** A venue button tapped: pressed already, the tap calls its job off (cancelPress); otherwise it sends. */
+/**
+ * A venue button tapped (venueTap): a new press sends; a busy one pauses, a paused one
+ * continues, a publishing one says it is too late.
+ */
 function onVenueTap(m, venue) {
-    const go = isActive(slots[m].jobs[venue]) ? cancelPress(m, venue) : send(m, venue);
-    go.catch(() => {});
+    const key = `${m}:${venue}`;
+    const tap = venueTap(slots[m], venue);
+    if (tap === "send") send(m, venue).catch(() => {});
+    else if (tap === "pause") pausePress(m, venue);
+    else if (tap === "continue") continuePress(m, venue);
+    else {
+        if (!lates.has(key)) lates.set(key, { late: false, lateTimer: null });
+        tooLate(lates.get(key), render);
+    }
 }
 
 /**
- * A pressed venue button tapped again while it says "tap again to cancel" (the red
- * cancel under it of 2026-10-02 until 2026-10-07). Within the first second the
- * press is simply taken back: nothing was sent, nothing paid. After that the PC is
- * told (DELETE /jobs/<id>): a job still queued is dropped at once, the one in hand
- * stops at its next step and saves the draft instead of publishing; the status
- * polls show which.
+ * The first tap on a busy venue button pauses it, shown at once (Michal, 2026-10-07:
+ * "show that it cancelled immediately, stop the loading button etc."): nothing goes to
+ * the PC. A press still in its second is held there (its timer stopped); a job the PC
+ * has is no longer asked about, though the PC may still be working on it. The button
+ * reads continue, and reset (beside it) is the real cancel.
  */
-async function cancelPress(m, venue) {
-    if (!cancelButton(slots[m], venue)) return;
-    const mine = generation[m];
+function pausePress(m, venue) {
     const key = `${m}:${venue}`;
+    const press = presses.get(key);
+    if (press) clearTimeout(press.timer);
+    clearTimeout(polls.get(key));
+    setState(m, reduce(slots[m], { type: "jobPaused", venue }));
+}
+
+/**
+ * continue: a held press goes now (its second is over); a job the PC has is asked
+ * about again at once. The ring and "tap again to cancel" come back.
+ */
+function continuePress(m, venue) {
+    setState(m, reduce(slots[m], { type: "jobResumed", venue }));
+    if (slots[m].jobs[venue].jobId) {
+        poll(m, venue, generation[m]).catch(() => {});
+        return;
+    }
+    const press = presses.get(`${m}:${venue}`);
+    if (press && press.go) press.go();
+}
+
+/**
+ * reset, beside a paused venue button: the real cancel (Michal, 2026-10-07: "Only
+ * pressing it twice actually drops all the info and resets the operation as if nothing
+ * happened, and waits for a new press of the button"). A press nothing has left the
+ * phone for is dropped, nothing paid. A job the PC has is told (DELETE /jobs/<id>): one
+ * still queued is dropped before it runs, the one in hand stops at its next step and
+ * saves the draft instead of publishing. Either way the button is its venue again at
+ * once, waiting for a new press, and the line says cancelled; a job stopping is still
+ * asked about, quietly, until the PC says it stopped ("cancelled from the phone"), for
+ * the row it saved, which the next press reuses.
+ */
+async function resetPress(m, venue) {
     const job = slots[m].jobs[venue];
-    if (job.phase === "sending") {
-        presses.delete(key);
-        clearTimeout(sendTimers.get(key));
-        sendTimers.delete(key);
+    if (!job.paused) return;
+    const key = `${m}:${venue}`;
+    const press = presses.get(key);
+    presses.delete(key);
+    if (press) {
+        clearTimeout(press.timer);
+        // a send still waiting out its second ends there
+        if (press.go) press.go();
+    }
+    if (!job.jobId) {
         setState(m, reduce(slots[m], { type: "jobCancelled", venue }));
         return;
     }
-    if (!["queued", "running"].includes(job.phase) || !job.jobId) return;
+    setState(m, reduce(slots[m], { type: "jobCancelled", venue, stopping: true }));
     const pc = settings();
     if (!pc) return;
-    setState(m, reduce(slots[m], { type: "jobStopping", venue }));
+    const mine = generation[m];
+    const stopping = () => {
+        const now = slots[m].jobs[venue];
+        return mine === generation[m] && now.stopping && now.jobId === job.jobId;
+    };
     try {
         const answer = await cancelJob(pc, job.jobId);
-        if (mine !== generation[m]) return;
+        if (!stopping()) return;
         if (answer.state === "cancelled") {
+            // dropped before it ran: nothing more to hear
             setState(m, reduce(slots[m], { type: "jobCancelled", venue }));
+            return;
         }
     } catch (e) {
         if (mine !== generation[m]) return;
         say(`Could not cancel: ${e.message}`, "warn");
     }
+    if (stopping()) schedulePoll(m, venue, mine);
 }
 
 function schedulePoll(m, venue, mine) {
@@ -1364,13 +1465,18 @@ function schedulePoll(m, venue, mine) {
 async function poll(m, venue, mine) {
     const pc = settings();
     const jobId = slots[m].jobs[venue].jobId;
-    if (mine !== generation[m] || !pc || !jobId) return;
+    // an answer is dropped once the press is paused, reset into a new one, or NEXT let the item go
+    const current = () => {
+        const now = slots[m].jobs[venue];
+        return mine === generation[m] && now.jobId === jobId && !now.paused;
+    };
+    if (!pc || !jobId || !current()) return;
     try {
         const status = await getJob(pc, jobId);
-        if (mine !== generation[m]) return;
+        if (!current()) return;
         setState(m, reduce(slots[m], { type: "jobStatus", venue, status }));
     } catch (e) {
-        if (mine !== generation[m]) return;
+        if (!current()) return;
         if (e.status === 0) {
             // the phone or the PC is off the network for a moment; the job
             // itself is safe on the PC's disk, so keep asking
@@ -1386,7 +1492,8 @@ async function poll(m, venue, mine) {
             );
         }
     }
-    if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, mine);
+    const job = slots[m].jobs[venue];
+    if (isActive(job) || job.stopping) schedulePoll(m, venue, mine);
 }
 
 // --- Admin: Settings, the inventory and the sync bar --------------------------------
@@ -1756,49 +1863,45 @@ function refreshRow(row) {
 }
 
 /**
- * One card's screen state, per venue, for the row on screen: the action last
+ * An Admin job button's task (a card's, customize's, the sync bar's): the action last
  * pressed (`action`), its press's first second (`press`, pressWait), what is on its
- * way to the PC (`wait`), its last job as GET /jobs/<id> answered, the PC told to
- * stop it (`stopping`), what the PC refused (`note`), End asking its second tap
- * (`confirm`), Edit's inputs (`edit`), End refused for good (`noEnd`), its status
- * line's node, its busy button's ({node, word}) and its poll's timer.
+ * way to the PC (`wait`), its last job as GET /jobs/<id> answered, paused by a tap
+ * (`paused`), reset while the PC had it and not yet stopped (`stopping`), what the PC
+ * refused (`note`), TOO_LATE said for a moment (`late`, `lateTimer`), how its job is
+ * asked about (`ask`, set once the PC has it) and the timer of its next poll.
  */
-function blankCard() {
+function jobTask() {
     return {
         action: "",
         press: null,
         wait: "",
         job: null,
+        paused: false,
         stopping: false,
         note: null,
-        confirm: false,
-        edit: null,
-        noEnd: false,
-        line: null,
-        button: null,
+        late: false,
+        lateTimer: null,
+        ask: null,
         timer: null,
     };
 }
 
 /**
+ * One card's screen state, per venue, for the row on screen: its job task (jobTask),
+ * End asking its second tap (`confirm`), Edit's inputs (`edit`), End refused for good
+ * (`noEnd`), its status line's node and its busy button's ({node, word, reset}).
+ */
+function blankCard() {
+    return { ...jobTask(), confirm: false, edit: null, noEnd: false, line: null, button: null };
+}
+
+/**
  * The listing's customize, for the row on screen: open (each listing opens on it),
  * its two boxes and the slider as he left them (`values`, from the row until
- * changed), and, as a card's, the action last pressed ("push" for Sync to eBay),
- * its press's first second, what is on its way, its push job, the PC told to stop
- * it, what the PC said, its poll's timer.
+ * changed), and, as a card's, its job task ("push" for Sync to eBay).
  */
 function blankCustomize() {
-    return {
-        open: true,
-        values: rowCustomize({}),
-        action: "",
-        press: null,
-        wait: "",
-        job: null,
-        stopping: false,
-        note: null,
-        timer: null,
-    };
+    return { open: true, values: rowCustomize({}), ...jobTask() };
 }
 
 /** The cards' presses and polls stopped and their state let go: the detail is leaving the screen or changing rows. */
@@ -1858,11 +1961,15 @@ function renderRowCustomize() {
     el.detailPricingNote.textContent = slider.note;
     const can = customizeButtons(row, c.values, busy);
     el.detailCustomizeSave.disabled = !can.save;
-    // Sync to eBay is a job button: pressed, its ring and "tap again to cancel"
+    // Sync to eBay is a job button: pressed, its ring and "tap again to cancel", paused its continue and reset
     const pushing = pressed(c, "push");
-    const cancel = pushing && taskCancel(c);
-    el.detailCustomizeSync.disabled = pushing ? !cancel : !can.sync;
-    paintJobButton(el.detailCustomizeSync, "Sync to eBay", { busy: pushing, cancel });
+    el.detailCustomizeSync.disabled = pushing ? !taskTap(c) : !can.sync;
+    paintJobButton(el.detailCustomizeSync, "Sync to eBay", {
+        busy: pushing,
+        cancel: pushing && taskCancel(c),
+        paused: pushing && c.paused,
+        reset: el.detailCustomizeReset,
+    });
     paintCustomizeLine();
 }
 
@@ -1934,7 +2041,7 @@ async function saveRowCustomize() {
  * change not yet saved is saved, then the push job puts the row as saved on its
  * eBay listing. Its line is customize's status line, polled every POLL_MS,
  * "updated" or "unchanged" once done, and the row is read again. A push the PC
- * refuses says why. A second tap on it calls it off (cancelTask).
+ * refuses says why. A tap on it pauses it (onTaskTap), and its reset calls it off.
  */
 async function pushRow() {
     const c = admin.custom;
@@ -1943,6 +2050,7 @@ async function pushRow() {
     c.action = "push";
     c.note = null;
     c.job = null;
+    c.stopping = false;
     c.wait = "sending";
     const waited = pressWait(c);
     renderCards();
@@ -1977,8 +2085,11 @@ async function pushRow() {
     c.wait = "";
     c.note = null;
     c.job = { action: "push", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.ask = () => {
+        askJob(c, mine, renderRowCustomize).catch(() => {});
+    };
     renderCards();
-    pollJob(c, mine, renderRowCustomize);
+    later(c);
 }
 
 /**
@@ -2033,14 +2144,17 @@ function paintLine(venue) {
     const line = cardLine(admin.row, venue, c);
     c.line.textContent = line.text;
     c.line.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
-    if (c.button) paintTaskButton(c, c.button.node, c.button.word);
+    if (c.button) paintTaskButton(c, c.button);
 }
 
-/** An Admin job button while its job is pressed: the ring, and "tap again to cancel" while taskCancel says so. */
-function paintTaskButton(task, node, word) {
-    const cancel = taskCancel(task);
-    node.disabled = !cancel;
-    paintJobButton(node, word, { busy: true, cancel });
+/**
+ * An Admin job button while its job is pressed: the ring, and "tap again to cancel"
+ * while taskCancel says so; paused, continue and its reset. It takes a tap whenever
+ * taskTap has something for it to do.
+ */
+function paintTaskButton(task, { node, word, reset }) {
+    node.disabled = !taskTap(task);
+    paintJobButton(node, word, { busy: true, cancel: taskCancel(task), paused: task.paused, reset });
 }
 
 /** A card's facts as a list of label and value; a derived one says so under it, muted. */
@@ -2120,16 +2234,19 @@ function actionsNode(venue, busy) {
             continue;
         }
         if (pressed(c, action)) {
-            // the one pressed: its ring, and a second tap calls its job off
+            // the one pressed: its ring; a tap pauses it, and its reset (beside it) calls it off
             const mine = admin.shown;
-            const node = actionButton(word, "pill", true, () => {
-                cancelTask(c, () => {
-                    if (mine === admin.shown) renderCards();
-                }).catch(() => {});
+            const paint = () => {
+                if (mine === admin.shown) renderCards();
+            };
+            const node = actionButton(word, "pill", true, () => onTaskTap(c, paint));
+            const reset = actionButton(RESET, "reset-call", false, () => {
+                resetTask(c, paint).catch(() => {});
             });
-            c.button = { node, word };
-            paintTaskButton(c, node, word);
-            box.append(node);
+            reset.setAttribute("aria-label", `${RESET} ${word}`);
+            c.button = { node, word, reset };
+            paintTaskButton(c, c.button);
+            box.append(node, reset);
             continue;
         }
         box.append(actionButton(word, "pill", busy, () => onAction(venue, action)));
@@ -2282,7 +2399,7 @@ async function addTo(venue) {
  * card's status line, polled every POLL_MS like a venue button's, and once done the
  * row is read again (the link a post put up, the status a refresh or an end read).
  * An End the PC refuses (400: Craigslist cannot be ended from here) says why, and
- * its button goes. A second tap on its button calls it off (cancelTask).
+ * its button goes. A tap on its button pauses it (onTaskTap), and its reset calls it off.
  */
 async function runAction(venue, action) {
     const c = admin.cards[venue];
@@ -2294,6 +2411,7 @@ async function runAction(venue, action) {
     c.confirm = false;
     c.note = null;
     c.job = null;
+    c.stopping = false;
     c.wait = "sending";
     const waited = pressWait(c);
     renderCards();
@@ -2316,14 +2434,18 @@ async function runAction(venue, action) {
     heard(200);
     c.wait = "";
     c.job = { action, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.ask = () => {
+        askJob(c, mine, () => paintLine(venue)).catch(() => {});
+    };
     renderCards();
-    pollJob(c, mine, () => paintLine(venue));
+    later(c);
 }
 
 /**
  * The second an Admin job button waits before its job leaves the phone
- * (SEND_DELAY_MS), as a venue button's: true once it has passed, false when a
- * second tap took the press back meanwhile (takeBack).
+ * (SEND_DELAY_MS), as a venue button's: true once it has passed (or continue cut it
+ * short), false when reset dropped the press meanwhile (takeBack). Paused, the press
+ * is held: its timer stops and `resolve` waits for continue or reset.
  */
 function pressWait(task) {
     return new Promise((resolve) => {
@@ -2350,85 +2472,132 @@ function takeBack(task) {
     task.press = null;
 }
 
+/** A task's job asked about in POLL_MS (its `ask`, set once the PC has it). */
+function later(task) {
+    clearTimeout(task.timer);
+    task.timer = setTimeout(task.ask, POLL_MS);
+}
+
 /**
- * An Admin job button tapped again while it says "tap again to cancel", as a venue
- * button's (cancelPress): within the press's first second it is taken back and the
- * line says cancelled; after that the PC is told (DELETE /jobs/<id>) and the line
- * says it is stopping: a job still queued is dropped at once, the one in hand
- * stops at its next step and its poll says when. `paint` puts the task on screen.
+ * An Admin job button's pressed one tapped, as a venue button is (onVenueTap): a busy
+ * one pauses, a paused one continues, a publishing one says it is too late; nothing
+ * while its POST is on its way. `paint` puts the task on screen.
  */
-async function cancelTask(task, paint) {
-    if (!taskCancel(task)) return;
+function onTaskTap(task, paint) {
+    const tap = taskTap(task);
+    if (tap === "pause") {
+        // nothing goes to the PC: a press in its second is held, a job the PC has no longer asked about
+        task.paused = true;
+        if (task.press) clearTimeout(task.press.timer);
+        clearTimeout(task.timer);
+        paint();
+    } else if (tap === "continue") {
+        // a held press goes now, its second over; a job the PC has is asked about again at once
+        task.paused = false;
+        if (task.press) {
+            const { resolve } = task.press;
+            task.press = null;
+            resolve(true);
+        } else {
+            task.ask();
+        }
+        paint();
+    } else if (tap === "late") {
+        tooLate(task, paint);
+    }
+}
+
+/**
+ * reset, beside a paused Admin job button, as a venue button's (resetPress): a press
+ * held in its second is dropped, nothing sent; a job the PC has is told to stop
+ * (DELETE /jobs/<id>), dropped if still queued, stopped at its next step if running.
+ * Either way the button is its word again at once and the line says cancelled; a job
+ * stopping is still asked about, quietly, until the PC says it stopped.
+ */
+async function resetTask(task, paint) {
+    if (!task.paused) return;
+    task.paused = false;
+    task.action = "";
     if (task.press) {
         takeBack(task);
-        task.action = "";
         task.wait = "";
         task.note = { text: CANCELLED, kind: "bad" };
         paint();
         return;
     }
-    const pc = settings();
-    if (!pc) return;
+    const id = task.job.job;
+    clearTimeout(task.timer);
+    task.job = { ...task.job, state: CANCELLED, trouble: "" };
     task.stopping = true;
     paint();
+    const pc = settings();
+    if (!pc) return;
+    const stopping = () => task.stopping && !!task.job && task.job.job === id;
     try {
-        const answer = await cancelJob(pc, task.job.job);
-        if (answer.state === "cancelled") {
-            clearTimeout(task.timer);
-            task.job = { ...task.job, state: CANCELLED };
-            task.action = "";
-            task.stopping = false;
-        }
+        const answer = await cancelJob(pc, id);
+        // dropped before it ran: nothing more to hear
+        if (answer.state === "cancelled" && stopping()) task.stopping = false;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        task.stopping = false;
         say(`Could not cancel: ${e.message}`, "warn");
     }
-    paint();
+    if (stopping()) later(task);
 }
 
 /**
- * A card's job (or customize's push) asked about again in POLL_MS; `paint`
- * rewrites its status line while it runs.
+ * GET /jobs/<id> for a task's job: true once it has ended, its answer in `task.job`.
+ * While it runs its line is painted and it is asked again in POLL_MS. An answer is
+ * dropped once the task is paused or has another job; a job reset (`stopping`) is
+ * not shown running again, only asked about until it ends.
  */
-function pollJob(c, mine, paint) {
-    clearTimeout(c.timer);
-    c.timer = setTimeout(() => {
-        askJob(c, mine, paint).catch(() => {});
-    }, POLL_MS);
-}
-
-async function askJob(c, mine, paint) {
+async function askTask(task, paint) {
     const pc = settings();
-    if (mine !== admin.shown || !pc || !c.job) return;
+    if (!pc || !task.job || task.paused) return false;
+    const id = task.job.job;
+    const current = () => !task.paused && !!task.job && task.job.job === id;
     let status;
     try {
-        status = await getJob(pc, c.job.job);
+        status = await getJob(pc, id);
     } catch (e) {
-        if (mine !== admin.shown) return;
+        if (!current()) return false;
         if (e.status === 0) {
             // the job is safe on the PC's disk: keep asking
-            c.job = { ...c.job, trouble: e.message };
-            paint();
-            pollJob(c, mine, paint);
-            return;
+            if (!task.stopping) {
+                task.job = { ...task.job, trouble: e.message };
+                paint();
+            }
+            later(task);
+            return false;
         }
         status = { state: "failed", error: e.message };
     }
-    if (mine !== admin.shown) return;
-    c.job = { ...c.job, ...status, trouble: "" };
-    if (jobRunning(c.job)) {
-        paint();
-        pollJob(c, mine, paint);
-        return;
+    if (!current()) return false;
+    if (task.stopping && jobRunning(status)) {
+        later(task);
+        return false;
     }
-    c.action = "";
-    c.stopping = false;
+    task.job = { ...task.job, ...status, trouble: "" };
+    if (jobRunning(task.job)) {
+        paint();
+        later(task);
+        return false;
+    }
+    task.action = "";
+    task.stopping = false;
+    return true;
+}
+
+/** A card's job (or customize's push) asked about; `paint` rewrites its status line while it runs. */
+async function askJob(c, mine, paint) {
+    if (mine !== admin.shown) return;
+    const ended = await askTask(c, paint);
+    if (!ended || mine !== admin.shown) return;
     if (c.job.state !== "done") {
         renderCards();
         return;
     }
     admin.changed = true;
+    const pc = settings();
     let whole;
     try {
         whole = await getRow(pc, admin.row.sku);
@@ -2575,13 +2744,13 @@ function closePhoto() {
  * The sync bar's two buttons: after the second a job button waits, the sync job
  * is sent, its line under them (queued, the PC's step, its summary or its error),
  * polled every POLL_MS; the other locks until it ends, the pressed one turns its
- * ring and a second tap on it calls the job off (cancelTask), and once done the
- * inventory list is asked for again. A refusal shows the PC's words. The job is
- * the PC's: closing Admin leaves it running and polled.
+ * ring, a tap on it pauses the job (onTaskTap) and reset under them calls it off,
+ * and once done the inventory list is asked for again. A refusal shows the PC's
+ * words. The job is the PC's: closing Admin leaves it running and polled.
  */
 async function startSync(direction) {
     if (sync.wait || jobRunning(sync.job)) {
-        if (pressed(sync, direction)) await cancelTask(sync, renderSync);
+        if (pressed(sync, direction)) onTaskTap(sync, renderSync);
         return;
     }
     const pc = settings();
@@ -2593,6 +2762,7 @@ async function startSync(direction) {
     }
     sync.action = direction;
     sync.note = null;
+    sync.stopping = false;
     sync.wait = "sending";
     const waited = pressWait(sync);
     renderSync();
@@ -2611,40 +2781,15 @@ async function startSync(direction) {
     heard(200);
     sync.wait = "";
     sync.job = { action: "sync", direction, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
-    renderSync();
-    scheduleSync();
-}
-
-function scheduleSync() {
-    clearTimeout(sync.timer);
-    sync.timer = setTimeout(() => {
+    sync.ask = () => {
         askSync().catch(() => {});
-    }, POLL_MS);
+    };
+    renderSync();
+    later(sync);
 }
 
 async function askSync() {
-    const pc = settings();
-    if (!pc || !sync.job) return;
-    let status;
-    try {
-        status = await getJob(pc, sync.job.job);
-    } catch (e) {
-        if (e.status === 0) {
-            sync.job = { ...sync.job, trouble: e.message };
-            renderSync();
-            scheduleSync();
-            return;
-        }
-        status = { state: "failed", error: e.message };
-    }
-    sync.job = { ...sync.job, ...status, trouble: "" };
-    if (jobRunning(sync.job)) {
-        renderSync();
-        scheduleSync();
-        return;
-    }
-    sync.action = "";
-    sync.stopping = false;
+    if (!(await askTask(sync, renderSync))) return;
     renderSync();
     if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
     // a listing open in place of the list: the list is asked for again on the way back
@@ -2652,7 +2797,10 @@ async function askSync() {
     else loadInventory().catch(() => {});
 }
 
-/** The sync bar's line, and its two buttons: each its icon and word, the pressed one its ring. */
+/**
+ * The sync bar's line, and its two buttons: each its icon and word, the pressed one
+ * its ring (continue while paused), and the one reset under them while it is paused.
+ */
 function renderSync() {
     const line = busyLine(sync);
     el.syncStatus.textContent = line ? line.text : "";
@@ -2660,10 +2808,15 @@ function renderSync() {
     const locked = !!sync.wait || jobRunning(sync.job);
     for (const { direction, btn, icon } of el.syncButtons) {
         const busy = pressed(sync, direction);
-        const cancel = busy && taskCancel(sync);
-        btn.disabled = locked && !cancel;
-        paintJobButton(btn, SYNC_WORDS[direction], { busy, cancel, lead: [icon] });
+        btn.disabled = locked && !(busy && taskTap(sync));
+        paintJobButton(btn, SYNC_WORDS[direction], {
+            busy,
+            cancel: busy && taskCancel(sync),
+            paused: busy && sync.paused,
+            lead: [icon],
+        });
     }
+    el.syncReset.hidden = !sync.paused;
 }
 
 // --- the server check ----------------------------------------------------------
@@ -3065,6 +3218,7 @@ function main() {
         detailPricingNote: $("detail-pricing-note"),
         detailCustomizeSave: $("detail-customize-save"),
         detailCustomizeSync: $("detail-customize-sync"),
+        detailCustomizeReset: $("detail-customize-reset"),
         detailCustomizeStatus: $("detail-customize-status"),
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
@@ -3075,6 +3229,7 @@ function main() {
             btn: $(`sync-${direction}`),
             icon: $(`sync-${direction}-icon`),
         })),
+        syncReset: $("sync-reset"),
         syncStatus: $("sync-status"),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
@@ -3099,9 +3254,11 @@ function main() {
         titleLine: $("title-line"),
         priceLine: $("price-line"),
         ebayBtn: $("ebay-btn"),
+        ebayReset: $("ebay-reset"),
         ebayStatus: $("ebay-status"),
         ebayLink: $("ebay-link"),
         craigslistBtn: $("craigslist-btn"),
+        craigslistReset: $("craigslist-reset"),
         craigslistStatus: $("craigslist-status"),
         craigslistLink: $("craigslist-link"),
         customizeToggle: $("customize-toggle"),
@@ -3156,6 +3313,7 @@ function main() {
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
         bookEbayBtn: $("book-ebay-btn"),
+        bookEbayReset: $("book-ebay-reset"),
         bookEbayStatus: $("book-ebay-status"),
         bookEbayLink: $("book-ebay-link"),
         bookVenueHint: $("book-venue-hint"),
@@ -3216,13 +3374,19 @@ function main() {
     el.detailCustomizeSave.addEventListener("click", () => {
         saveRowCustomize().catch(() => {});
     });
-    el.detailCustomizeSync.addEventListener("click", () => {
-        const c = admin.custom;
+    // customize's task on screen again, unless the listing has changed meanwhile
+    const customizePaint = () => {
         const mine = admin.shown;
-        const repaint = () => {
+        return () => {
             if (mine === admin.shown) renderCards();
         };
-        (pressed(c, "push") ? cancelTask(c, repaint) : pushRow()).catch(() => {});
+    };
+    el.detailCustomizeSync.addEventListener("click", () => {
+        if (pressed(admin.custom, "push")) onTaskTap(admin.custom, customizePaint());
+        else pushRow().catch(() => {});
+    });
+    el.detailCustomizeReset.addEventListener("click", () => {
+        resetTask(admin.custom, customizePaint()).catch(() => {});
     });
     for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
         toggle.addEventListener("click", () => {
@@ -3235,6 +3399,9 @@ function main() {
             startSync(direction).catch(() => {});
         });
     }
+    el.syncReset.addEventListener("click", () => {
+        resetTask(sync, renderSync).catch(() => {});
+    });
     renderSync();
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
@@ -3256,7 +3423,12 @@ function main() {
         })
     );
     el.galleryInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
-    for (const venue of VENUES) el[`${venue}Btn`].addEventListener("click", () => onVenueTap("goods", venue));
+    for (const venue of VENUES) {
+        el[`${venue}Btn`].addEventListener("click", () => onVenueTap("goods", venue));
+        el[`${venue}Reset`].addEventListener("click", () => {
+            resetPress("goods", venue).catch(() => {});
+        });
+    }
     el.nextBtn.addEventListener("click", () => {
         nextItem("goods").catch(() => {});
     });
@@ -3290,6 +3462,9 @@ function main() {
     el.bookFlaws.addEventListener("input", () => onNoteInput("book"));
     el.bookFlaws.addEventListener("blur", () => noteDue("book"));
     el.bookEbayBtn.addEventListener("click", () => onVenueTap("book", "ebay"));
+    el.bookEbayReset.addEventListener("click", () => {
+        resetPress("book", "ebay").catch(() => {});
+    });
     el.bookNextBtn.addEventListener("click", () => {
         nextItem("book").catch(() => {});
     });

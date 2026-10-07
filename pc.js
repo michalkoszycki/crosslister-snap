@@ -39,7 +39,7 @@
 //                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
 //   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
-//   DELETE <pc>/jobs/<id>             a pressed job button tapped again (any job, Admin's action
+//   DELETE <pc>/jobs/<id>             a paused job button's reset (any job, Admin's action
 //                                      jobs too, since 2026-10-07) -> {"job", "state": "cancelled" |
 //                                      "stopping"}: a queued job is dropped (nothing paid), the
 //                                      running one stops at its next step and keeps its draft
@@ -81,7 +81,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.6.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.7.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -186,7 +186,7 @@ export function deletePhoto({ pc, key }, item, n) {
     return call(`${itemUrl(pc, item)}/photos/${n}`, key, { method: "DELETE" });
 }
 
-/** The cancel button, once the job is the PC's: dropped if still queued, stopped at its next step if running. */
+/** reset, once the job is the PC's: dropped if still queued, stopped at its next step if running. */
 export function cancelJob({ pc, key }, job) {
     return call(`${pc}/jobs/${encodeURIComponent(job)}`, key, { method: "DELETE" });
 }

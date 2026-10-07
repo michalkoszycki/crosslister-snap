@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.6.0";
+import { noteDirty, unsent } from "./queue.js?v=2.7.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.6.0";
+} from "./book.js?v=2.7.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -241,46 +241,94 @@ export const POLL_MS = 3000;
  * How long a press that starts a job waits before it is sent (Michal, 2026-10-02:
  * "delay sending by 1 second, but show loading, so that if one cancels within 1
  * sec there is no call money spent"): the ring turns at once, the request goes
- * after this, and a second tap on the button takes the press back for free until
- * then. Every job button waits it: the venue buttons, a listing's Post, Refresh
- * status, End listing and Sync to eBay, and the sync bar's two.
+ * after this, and a tap on the button until then holds the press on the phone
+ * (paused), so its reset costs nothing. Every job button waits it: the venue
+ * buttons, a listing's Post, Refresh status, End listing and Sync to eBay, and the
+ * sync bar's two.
  */
 export const SEND_DELAY_MS = 1000;
 
 /**
- * The second line inside a busy job button, small, while a tap on it still calls
- * the job off (Michal, 2026-10-07: "The button, within it, should just get 'tap
- * again to cancel' instead of an external cancel line. The writing should be within
- * it, below, and should be small, and appear just when the button action is
+ * The second line inside a busy job button, small, while a tap on it still pauses
+ * the job (Michal, 2026-10-07: "The button, within it, should just get 'tap again
+ * to cancel' instead of an external cancel line. The writing should be within it,
+ * below, and should be small, and appear just when the button action is
  * doing/loading"). It walks back 2026-10-02's "below in red there should be a
  * cancel button" on purpose: the red cancel under the button is gone.
  */
 export const TAP_TO_CANCEL = "tap again to cancel";
 
-/** The line under a venue button whose press was taken back, or dropped by the PC before it ran. */
+/**
+ * The word of a paused job button. Its first tap while busy pauses it, shown at
+ * once (Michal, 2026-10-07, after a model call he could not cancel: "Better: show
+ * that it cancelled immediately, stop the loading button etc. The cancel should
+ * change to 'reset call' (as in discard) and the button should change to
+ * 'continue', in case one would want to continue what was already received etc.
+ * Each cancel should operate this way"): the ring stops, nothing is sent to the PC,
+ * and a tap on continue carries on where it was.
+ */
+export const CONTINUE = "continue";
+
+/**
+ * The small red control beside a paused job button: the real cancel ("Only pressing
+ * it twice actually drops all the info and resets the operation as if nothing
+ * happened, and waits for a new press of the button"). A press held on the phone is
+ * dropped, nothing paid; a job the PC has is told to stop (DELETE /jobs/<id>).
+ */
+export const RESET = "reset";
+
+/** The status line under a paused press nothing has left the phone for: it is held. */
+export const PAUSED = "paused";
+
+/** ... and under one whose job is the PC's: the page stops watching it, the PC does not stop. */
+export const PAUSED_ON_PC = "paused: the PC may still be working on it";
+
+/** The line under a job button whose press was reset, or dropped by the PC before it ran. */
 export const CANCELLED = "cancelled";
 
-/** The step shown while the PC has been told to stop and has not yet. */
-export const STOPPING_STEP = "cancelling: the PC stops at its next step";
+/**
+ * Said for a moment under a job button tapped from the PC's publishing step on
+ * (Michal, 2026-10-07: "Perhaps after pressing cancel it should say 'too late to
+ * cancel'?"); the tap changes nothing else, and the step's own words come back.
+ */
+export const TOO_LATE = "too late to cancel: it is publishing";
+
+/** How long TOO_LATE stays under the button. */
+export const TOO_LATE_MS = 2500;
 
 /** How the PC's step reads once a posting is going up ("publishing B-1 on ebay", "publishing on craigslist for B-1"). */
 export const PUBLISHING_PREFIX = "publishing";
 
 /**
  * Whether a pressed venue button says "tap again to cancel" under its word and a
- * second tap calls its job off: from the press until the publish begins, the link
- * or the error, and not again once the PC has been told. Within the first second
- * it costs nothing; after that the PC is told, and it stops at its next step ("it
- * will be a double charge but oh well"). From the PC's publishing step on there is
- * nothing left to stop (Michal, 2026-10-03: "after a posting is published ...
- * can't cancel it now. cancel only makes sense in mid-load").
+ * tap on it pauses its job: from the press until the publish begins, the link or
+ * the error, and not while paused (a tap then continues). Within the first second
+ * the press is held on the phone, nothing paid; after that the job is the PC's and
+ * only reset tells it to stop. From the PC's publishing step on there is nothing
+ * left to stop (Michal, 2026-10-03: "after a posting is published ... can't cancel
+ * it now. cancel only makes sense in mid-load"): a tap says TOO_LATE.
  * @param {SnapState} state
  * @param {string} venue
  * @returns {boolean}
  */
 export function cancelButton(state, venue) {
     const job = state.jobs[venue];
-    return !!job && isActive(job) && !publishing(job) && job.step !== STOPPING_STEP;
+    return !!job && isActive(job) && !publishing(job) && !job.paused;
+}
+
+/**
+ * What a tap on a venue button does: "send" a new press, "pause" a busy one
+ * (cancelButton), "continue" a paused one, and from the publishing step on only
+ * say it is "late" (TOO_LATE).
+ * @param {SnapState} state
+ * @param {string} venue
+ * @returns {"send"|"pause"|"continue"|"late"}
+ */
+export function venueTap(state, venue) {
+    const job = state.jobs[venue];
+    if (job.paused) return "continue";
+    if (cancelButton(state, venue)) return "pause";
+    return isActive(job) ? "late" : "send";
 }
 
 /** @param {VenueJob} job */
@@ -292,15 +340,27 @@ function publishing(job) {
  * cancelButton's rule for Admin's job buttons (a listing's Post, Refresh status,
  * End listing and Sync to eBay, the sync bar's two): within the press's first
  * second (`press`), or while its job is on the PC's queue or in hand short of the
- * publishing step; not while something else is on its way to the PC (the POST
- * itself, customize's save before a push), nor once the PC has been told to stop.
- * @param {{press?:unknown, wait:string, job:{state?:string, step?:string}|null, stopping?:boolean}} task
+ * publishing step; not while paused, nor while something else is on its way to
+ * the PC (the POST itself, customize's save before a push).
+ * @param {{press?:unknown, wait:string, job:{state?:string, step?:string}|null, paused?:boolean}} task
  * @returns {boolean}
  */
 export function taskCancel(task) {
-    if (task.stopping) return false;
+    if (task.paused) return false;
     if (task.press) return true;
     return !task.wait && jobRunning(task.job) && !plain(task.job && task.job.step).startsWith(PUBLISHING_PREFIX);
+}
+
+/**
+ * venueTap for an Admin job button that is pressed: "pause", "continue", "late" from
+ * the publishing step on, or "" while its POST (or customize's save) is on its way.
+ * @param {{press?:unknown, wait:string, job:{state?:string, step?:string}|null, paused?:boolean}} task
+ * @returns {"pause"|"continue"|"late"|""}
+ */
+export function taskTap(task) {
+    if (task.paused) return "continue";
+    if (taskCancel(task)) return "pause";
+    return !task.wait && jobRunning(task.job) ? "late" : "";
 }
 
 /**
@@ -647,6 +707,10 @@ export function safeLink(url) {
  *                             saved; the small line above the price shows it (titleLine)
  * @property {boolean} held    pressed with auto-post off: the PC saves the row and does not
  *                             publish it, so done with no link is "saved, not posted"
+ * @property {boolean} paused  tapped while busy: a press still on the phone is held, a job
+ *                             the PC has is no longer asked about, until continue or reset
+ * @property {boolean} stopping reset after the PC had it: the press reads cancelled, and the
+ *                             job (by jobId) is asked about until the PC says it stopped
  */
 
 /**
@@ -770,6 +834,8 @@ export function idleJob() {
         price: "",
         title: "",
         held: false,
+        paused: false,
+        stopping: false,
     };
 }
 
@@ -840,6 +906,10 @@ export function photosLocked(state) {
  *   {type:"jobSending", venue, step}
  *   {type:"jobAccepted", venue, job, ahead}
  *   {type:"jobRefused", venue, error}     the POST did not become a job
+ *   {type:"jobPaused", venue}             the busy button tapped (while cancelButton says so)
+ *   {type:"jobResumed", venue}            continue
+ *   {type:"jobCancelled", venue, stopping}  reset (stopping: the PC was told and is to be heard
+ *                                         from), or the PC dropped the job before it ran
  *   {type:"jobStatus", venue, status}     an answer to GET /jobs/<id>
  *   {type:"pollTrouble", venue, error}    that GET failed; keep asking
  *   {type:"setQuantity", text}            the quantity box under customize, as typed
@@ -976,6 +1046,8 @@ export function reduce(state, action) {
                 jobId: String(action.job),
                 ahead: toCount(action.ahead),
                 held: job.held,
+                // paused while its POST was on its way: still paused, now the PC's
+                paused: job.paused,
             }));
         case "jobRefused":
             return withJob(state, action.venue, () => ({
@@ -983,21 +1055,33 @@ export function reduce(state, action) {
                 phase: "failed",
                 error: action.error || "not sent",
             }));
+        case "jobPaused":
+            return cancelButton(state, action.venue)
+                ? withJob(state, action.venue, (job) => ({ ...job, paused: true }))
+                : state;
+        case "jobResumed":
+            return withJob(state, action.venue, (job) => ({ ...job, paused: false }));
         case "jobCancelled":
-            // the press taken back before it was sent, or dropped by the PC before it ran
-            return withJob(state, action.venue, () => ({
+            // reset: the press dropped as if never made, the button free for a new one; a job
+            // the PC has (stopping) is kept by its id until the PC says it stopped
+            return withJob(state, action.venue, (job) => ({
                 ...idleJob(),
                 phase: "failed",
                 error: CANCELLED,
+                jobId: action.stopping === true ? job.jobId : "",
+                stopping: action.stopping === true,
             }));
-        case "jobStopping":
-            // the PC has been told; its status says when it stopped
-            return withJob(state, action.venue, (job) => ({ ...job, step: STOPPING_STEP }));
         case "jobStatus": {
             const s = action.status || {};
             const phase = ["queued", "running", "done", "failed"].includes(s.state)
                 ? s.state
                 : "running";
+            const running = phase === "queued" || phase === "running";
+            const sku = typeof s.sku === "string" ? s.sku : "";
+            const withSku = (next) => (sku && !next.sku ? { ...next, sku } : next);
+            // reset, the PC still stopping: only the row it saved is taken (the next press posts it)
+            const was = state.jobs[action.venue];
+            if (was && was.stopping && running) return withSku(state);
             const next = withJob(state, action.venue, (job) => ({
                 ...job,
                 phase,
@@ -1009,9 +1093,11 @@ export function reduce(state, action) {
                 // blank until the PC saved the row; once known, a later blank does not unsay it
                 price: priceText(s.price) || job.price,
                 title: (typeof s.title === "string" && s.title.trim()) || job.title || "",
+                // a job that ended is neither paused nor stopping any more
+                paused: job.paused && running,
+                stopping: false,
             }));
-            const sku = typeof s.sku === "string" ? s.sku : "";
-            return sku && !state.sku ? { ...next, sku } : next;
+            return withSku(next);
         }
         case "pollTrouble":
             return withJob(state, action.venue, (job) => ({
@@ -1545,12 +1631,14 @@ export function savedItem(state) {
  * The line under a venue button, and the link when there is one. Before the
  * press it says `idle`, if anything (venueIdleNote: "pickup only · fair price").
  * Done with no link says "saved, not posted" when the press had auto-post off,
- * else "done".
+ * else "done". Paused, it says so: held on the phone, or the PC's and maybe still
+ * running there.
  * @param {VenueJob} job
  * @param {string} [idle]
  * @returns {{text:string, link:string, kind:""|"busy"|"ok"|"bad"}}
  */
 export function venueLine(job, idle = "") {
+    if (job.paused && isActive(job)) return { text: job.jobId ? PAUSED_ON_PC : PAUSED, link: "", kind: "busy" };
     switch (job.phase) {
         case "sending":
             return { text: job.step || "sending", link: "", kind: "busy" };
@@ -1893,6 +1981,10 @@ function anySending(state) {
  * @returns {{enabled:boolean, hint:string}}
  */
 export function doneButton(state) {
+    // a press held by its pause has not gone: his to carry on or drop first
+    if (VENUES.some((v) => state.jobs[v].phase === "sending" && state.jobs[v].paused)) {
+        return { enabled: false, hint: NEXT_PAUSED };
+    }
     if (anySending(state)) {
         return { enabled: false, hint: "NEXT waits until the listing has reached the PC" };
     }
@@ -1904,6 +1996,9 @@ export function doneButton(state) {
     const something = state.photos.length > 0 || (state.mode === "book" && bookNamed(state.book));
     return { enabled: something, hint: "" };
 }
+
+/** NEXT's line while a press is paused before it left the phone. */
+export const NEXT_PAUSED = "NEXT waits: continue or reset the paused press";
 
 /** The quiet line under NEXT while a listing is posting on the PC. */
 export const NEXT_NOTE = "A listing is still posting on the PC; NEXT starts the next item without waiting for its link";
@@ -2437,13 +2532,15 @@ export function syncLine(job) {
 
 /**
  * What a card (or a listing's customize, or the sync bar) has to say before anything
- * else: the PC told to stop, what is on its way to the PC, its job, what the PC
- * refused; null when none of these.
- * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, stopping?:boolean}} card
+ * else: a tap too late to cancel (for a moment), its press paused (held on the phone,
+ * or its job the PC's), what is on its way to the PC, its job, what the PC refused;
+ * null when none of these.
+ * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, press?:unknown, paused?:boolean, late?:boolean}} card
  * @returns {{text:string, kind:string} | null}
  */
 export function busyLine(card) {
-    if (card.stopping) return { text: STOPPING_STEP, kind: "busy" };
+    if (card.late) return { text: TOO_LATE, kind: "busy" };
+    if (card.paused) return { text: card.press ? PAUSED : PAUSED_ON_PC, kind: "busy" };
     if (card.wait) return { text: card.wait, kind: "busy" };
     if (card.job) return syncLine(card.job);
     return card.note || null;

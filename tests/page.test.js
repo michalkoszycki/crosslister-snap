@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { itemIdFor, NAME_CHECK_MS, SEND_DELAY_MS } from "../core.js";
+import { itemIdFor, NAME_CHECK_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -127,11 +127,15 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "title-line",
         "price-line",
         // Michal, 2026-10-07: no red cancel under a pressed button any more ("The button,
-        // within it, should just get 'tap again to cancel' instead of an external cancel line")
+        // within it, should just get 'tap again to cancel' instead of an external cancel line");
+        // and later that day, under it while a tap has paused it, its reset ("The cancel should
+        // change to 'reset call' (as in discard) and the button should change to 'continue'")
         "ebay-btn",
+        "ebay-reset",
         "ebay-status",
         "ebay-link",
         "craigslist-btn",
+        "craigslist-reset",
         "craigslist-status",
         "craigslist-link",
         "venue-hint",
@@ -226,6 +230,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "detail-pricing-note",
         "detail-customize-save",
         "detail-customize-sync",
+        // beside Sync to eBay while a tap has paused it (Michal, 2026-10-07)
+        "detail-customize-reset",
         "detail-customize-status",
         "detail-ebay-toggle",
         "detail-ebay",
@@ -238,6 +244,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "sync-from-icon",
         "sync-to",
         "sync-to-icon",
+        // under the two while a tap has paused the pressed one
+        "sync-reset",
         "sync-status",
         "admin-close",
     ]);
@@ -984,10 +992,10 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-btn").attrs["aria-busy"], "true");
     assert.equal(nodes.get("craigslist-btn").classList.contains("busy"), false);
     // no price until the PC has saved the row: the venue alone, and inside the button, small,
-    // what a second tap does (Michal, 2026-10-07)
+    // what a tap on it does (Michal, 2026-10-07)
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
     assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel");
-    assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the second tap");
+    assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the tap that pauses it");
     assert.equal(buttonSays(nodes.get("craigslist-btn")), "craigslist", "the other has no second line");
     // NEXT does not wait for the listing: the PC has the job; the line under NEXT says so
     assert.equal(nodes.get("next-item").disabled, false);
@@ -1551,7 +1559,8 @@ function factsOf(list) {
  * the facts (or null while editing), the actions row's words ("/ tap again to
  * cancel" for a pressed one that says so, "(busy)" for one whose ring turns,
  * "(off)" for a button that cannot be pressed, "(link)" for a link, "(ask)" for
- * End's question), the words under Save, and its buttons and Edit's inputs by word.
+ * End's question; a pressed one's reset only while it shows), the words under Save,
+ * and its buttons and Edit's inputs by word.
  */
 function cardOf(nodes, venue) {
     const kids = nodes.get(`detail-${venue}`).children;
@@ -1569,7 +1578,7 @@ function cardOf(nodes, venue) {
         kind: line.className,
         link,
         facts: list ? factsOf(list) : null,
-        actions: actions.children.map((b) => {
+        actions: actions.children.filter((b) => !b.hidden).map((b) => {
             if (b.tag === "a") return `${b.textContent} (link)`;
             if (b.tag === "span") return `${b.textContent} (ask)`;
             const busy = b.classList.contains("busy") ? " (busy)" : "";
@@ -1737,7 +1746,7 @@ test("the sync bar: from and to post their job, show its step and summary, lock,
     assert.equal(nodes.get("sync-from").classList.contains("busy"), true);
     assert.equal(buttonSays(nodes.get("sync-from")), "Sync from eBay / tap again to cancel");
     assert.equal(nodes.get("sync-from").attrs["aria-label"], "Sync from eBay, tap again to cancel");
-    assert.equal(nodes.get("sync-from").disabled, false, "it takes the second tap");
+    assert.equal(nodes.get("sync-from").disabled, false, "it takes the tap that pauses it");
     assert.equal(nodes.get("sync-to").disabled, true, "the other locks from the tap");
     assert.equal(nodes.get("sync-to").classList.contains("busy"), false);
     await settle();
@@ -1785,52 +1794,102 @@ test("the sync bar: from and to post their job, show its step and summary, lock,
     assert.equal(buttonSays(nodes.get("sync-to")), "Sync to eBay");
 });
 
-test("the sync bar's pressed button, tapped again: within the second nothing goes; after it the PC is told", async (t) => {
-    // Michal, 2026-10-07: "Anytime there is a load or sync or AI call command ... these buttons
-    // should get that. The button, within it, should just get 'tap again to cancel'"
+test("the sync bar's pressed button, tapped: paused at once; continue carries on, reset drops it or tells the PC", async (t) => {
+    // Michal, 2026-10-07: "show that it cancelled immediately, stop the loading button etc. The
+    // cancel should change to 'reset call' (as in discard) and the button should change to
+    // 'continue' ... Use these guidelines for all cancel things."
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("A1")], {}, { jobs: { a1: () => ({ state: "running", step: "writing to eBay" }) } });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
     await settle();
+    assert.equal(nodes.get("sync-reset").hidden, true, "no reset before a press");
 
+    // within the second: held on the phone, then reset drops it, nothing sent
     nodes.get("sync-to").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS - 1);
     await settle();
     nodes.get("sync-to").fire("click");
     await settle();
-    assert.equal(nodes.get("sync-status").textContent, "cancelled");
-    assert.equal(nodes.get("sync-status").className, "sync-status bad");
-    assert.equal(nodes.get("sync-to").classList.contains("busy"), false);
-    assert.equal(nodes.get("sync-from").disabled, false, "both open again");
+    assert.equal(nodes.get("sync-status").textContent, "paused");
+    assert.equal(buttonSays(nodes.get("sync-to")), "continue");
+    assert.equal(nodes.get("sync-to").classList.contains("busy"), false, "the ring stops");
+    assert.equal(nodes.get("sync-to").attrs["aria-label"], "Sync to eBay, paused, continue");
+    assert.equal(nodes.get("sync-to").disabled, false, "it takes the tap that continues");
+    assert.equal(nodes.get("sync-from").disabled, true, "the other stays locked");
+    assert.equal(nodes.get("sync-reset").hidden, false);
     t.mock.timers.tick(SEND_DELAY_MS * 3);
     await settle();
-    assert.deepEqual(pc.posted, [], "the taken-back press never goes");
-
-    // after the second: DELETE /jobs/<id>, the line says it is stopping, the second line goes
-    nodes.get("sync-to").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
+    assert.deepEqual(pc.posted, [], "held: nothing leaves the phone");
+    nodes.get("sync-reset").fire("click");
     await settle();
-    assert.deepEqual(pc.posted, [{ action: "sync", direction: "to" }]);
+    assert.equal(nodes.get("sync-status").textContent, "cancelled");
+    assert.equal(nodes.get("sync-status").className, "sync-status bad");
+    assert.equal(buttonSays(nodes.get("sync-to")), "Sync to eBay");
+    assert.equal(nodes.get("sync-reset").hidden, true);
+    assert.equal(nodes.get("sync-from").disabled, false, "both open again");
+    assert.equal(nodes.get("sync-to").disabled, false);
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.deepEqual(pc.posted, [], "the dropped press never goes");
+
+    // within the second again, then continue: it goes at once, the ring back
+    nodes.get("sync-from").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS / 2);
+    await settle();
+    nodes.get("sync-from").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, []);
+    nodes.get("sync-from").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "sync", direction: "from" }], "no second wait");
+    assert.equal(nodes.get("sync-status").textContent, "queued");
+    assert.equal(buttonSays(nodes.get("sync-from")), "Sync from eBay / tap again to cancel");
+    assert.equal(nodes.get("sync-from").classList.contains("busy"), true);
+    assert.equal(nodes.get("sync-reset").hidden, true);
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("sync-status").textContent, "writing to eBay");
-    nodes.get("sync-to").fire("click");
+
+    // the PC's: paused, the polls stop; continue asks at once
+    nodes.get("sync-from").fire("click");
+    await settle();
+    assert.equal(nodes.get("sync-status").textContent, "paused: the PC may still be working on it");
+    assert.equal(buttonSays(nodes.get("sync-from")), "continue");
+    assert.equal(nodes.get("sync-reset").hidden, false);
+    const asked = pc.calls.length;
+    t.mock.timers.tick(3000 * 3);
+    await settle();
+    assert.equal(pc.calls.length, asked, "not asked about while paused");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the PC is not told");
+    nodes.get("sync-from").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(nodes.get("sync-status").textContent, "writing to eBay");
+    assert.equal(buttonSays(nodes.get("sync-from")), "Sync from eBay / tap again to cancel");
+    assert.equal(nodes.get("sync-from").classList.contains("busy"), true);
+
+    // paused, then reset: DELETE /jobs/<id>, the bar free at once, the PC's word when it stops
+    nodes.get("sync-from").fire("click");
+    await settle();
+    nodes.get("sync-reset").fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "DELETE /jobs/a1");
-    assert.equal(nodes.get("sync-status").textContent, "cancelling: the PC stops at its next step");
-    assert.equal(buttonSays(nodes.get("sync-to")), "Sync to eBay", "told once: no second line");
-    assert.equal(nodes.get("sync-to").classList.contains("busy"), true, "the ring turns until it stops");
-    assert.equal(nodes.get("sync-to").disabled, true);
-    nodes.get("sync-to").fire("click");
-    await settle();
-    assert.equal(pc.calls.filter((c) => c === "DELETE /jobs/a1").length, 1);
+    assert.equal(nodes.get("sync-status").textContent, "cancelled");
+    assert.equal(buttonSays(nodes.get("sync-from")), "Sync from eBay");
+    assert.equal(nodes.get("sync-from").classList.contains("busy"), false);
+    assert.equal(nodes.get("sync-reset").hidden, true);
+    assert.equal(nodes.get("sync-from").disabled, false);
+    assert.equal(nodes.get("sync-to").disabled, false);
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("sync-status").textContent, "cancelled from the phone");
     assert.equal(nodes.get("sync-status").className, "sync-status bad");
-    assert.equal(nodes.get("sync-to").classList.contains("busy"), false);
-    assert.equal(nodes.get("sync-to").disabled, false);
+    const ended = pc.calls.length;
+    t.mock.timers.tick(3000 * 2);
+    await settle();
+    assert.equal(pc.calls.length, ended, "no more polls once it stopped");
+    assert.equal(pc.calls.filter((c) => c.startsWith("DELETE")).length, 1);
 });
 
 test("the search waits for him to stop typing; the chips and Show photos ask at once", async (t) => {
@@ -2354,8 +2413,8 @@ test("Post, Refresh and End: each sends its job, its step in the card's line, th
     assert.equal(pc.calls.at(-1), "GET /jobs/j2");
     assert.equal(cardOf(nodes, "craigslist").line, "publishing on craigslist for R5");
     assert.equal(cardOf(nodes, "craigslist").kind, "venue-status busy");
-    // publishing: nothing left to stop, the ring still turning
-    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (busy) (off)", "Edit (off)"]);
+    // publishing: nothing left to stop, the ring still turning; a tap only says it is too late
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (busy)", "Edit (off)"]);
 
     posting = { state: "done", step: "done", summary: "craigslist: listed", links: { craigslist: "https://sfbay.craigslist.org/1.html" } };
     whole.statuses = {
@@ -2457,65 +2516,123 @@ test("an End the PC refuses says why, and its button goes", async (t) => {
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 });
 
-test("a listing's job buttons tapped again: taken back within the second; after it the PC is told", async (t) => {
-    // Michal, 2026-10-07: "Anytime there is a load or sync or AI call command ... these buttons
-    // should get that. The button, within it, should just get 'tap again to cancel'"
+test("a listing's job buttons tapped: paused at once, continue or reset beside; too late once publishing", async (t) => {
+    // Michal, 2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
+    // button should change to 'continue' ... Use these guidelines for all cancel things."
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("R5")], { R5: wholeRow("R5") }, {
-        jobs: { a1: () => ({ state: "running", step: "asking eBay" }), a2: () => ({ state: "queued" }) },
+        jobs: {
+            a1: () => ({ state: "running", step: "asking eBay" }),
+            a2: () => ({ state: "queued" }),
+            j2: () => ({ state: "running", step: "publishing on craigslist for R5" }),
+        },
     });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     await openFirst(nodes);
     await settle();
 
-    // Post, tapped again within its second: nothing goes, the line says cancelled
+    // Post, tapped within its second: held, continue and reset beside it; reset drops it
     cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS - 1);
     await settle();
     cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "paused");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["continue", "reset", "Edit (off)"]);
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.deepEqual(pc.posted, [], "held: nothing leaves the phone");
+    cardOf(nodes, "craigslist").button("reset").fire("click");
     await settle();
     assert.equal(cardOf(nodes, "craigslist").line, "cancelled");
     assert.equal(cardOf(nodes, "craigslist").kind, "venue-status bad");
     assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist", "Edit"]);
     t.mock.timers.tick(SEND_DELAY_MS * 3);
     await settle();
-    assert.deepEqual(pc.posted, [], "the taken-back press never goes");
+    assert.deepEqual(pc.posted, [], "the dropped press never goes");
 
-    // Refresh status, tapped again once it runs: DELETE /jobs/<id>, then the poll says it stopped
+    // Refresh status, the PC's: paused, its polls stop; continue asks at once
     cardOf(nodes, "ebay").button("Refresh status").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.deepEqual(pc.posted, [{ action: "refresh", sku: "R5", venue: "ebay" }]);
     cardOf(nodes, "ebay").button("Refresh status").fire("click");
     await settle();
-    assert.equal(pc.calls.at(-1), "DELETE /jobs/a1");
-    assert.equal(cardOf(nodes, "ebay").line, "cancelling: the PC stops at its next step");
+    assert.equal(cardOf(nodes, "ebay").line, "paused: the PC may still be working on it");
     assert.deepEqual(cardOf(nodes, "ebay").actions, [
         "Open listing (link)",
-        "Refresh status (busy) (off)",
+        "continue",
+        "reset",
         "End listing (off)",
         "Edit (off)",
     ]);
+    const asked = pc.calls.length;
+    t.mock.timers.tick(3000 * 2);
+    await settle();
+    assert.equal(pc.calls.length, asked, "not asked about while paused");
+    cardOf(nodes, "ebay").button("continue").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(cardOf(nodes, "ebay").line, "asking eBay");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, [
+        "Open listing (link)",
+        "Refresh status / tap again to cancel (busy)",
+        "End listing (off)",
+        "Edit (off)",
+    ]);
+
+    // paused again, then reset: DELETE /jobs/<id>, the card free at once, the PC's word when it stops
+    cardOf(nodes, "ebay").button("Refresh status").fire("click");
+    await settle();
+    cardOf(nodes, "ebay").button("reset").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "DELETE /jobs/a1");
+    assert.equal(cardOf(nodes, "ebay").line, "cancelled");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(cardOf(nodes, "ebay").line, "cancelled from the phone");
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 
-    // Sync to eBay, tapped again while its push is queued: the PC drops it at once
+    // Sync to eBay, paused while its push is queued, then reset: the PC drops it at once
     nodes.get("detail-customize-sync").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "ebay" });
     assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to eBay / tap again to cancel (busy)"]);
+    assert.equal(nodes.get("detail-customize-reset").hidden, true);
     nodes.get("detail-customize-sync").fire("click");
+    await settle();
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "continue"]);
+    assert.equal(customizeOf(nodes).line, "paused: the PC may still be working on it");
+    assert.equal(nodes.get("detail-customize-reset").hidden, false);
+    nodes.get("detail-customize-reset").fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "DELETE /jobs/a2");
     assert.equal(customizeOf(nodes).line, "cancelled");
     assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to eBay"]);
-    const asked = pc.calls.length;
+    assert.equal(nodes.get("detail-customize-reset").hidden, true);
+    const dropped = pc.calls.length;
     t.mock.timers.tick(3000);
     await settle();
-    assert.equal(pc.calls.length, asked, "no more polls for a job the PC dropped");
+    assert.equal(pc.calls.length, dropped, "no more polls for a job the PC dropped");
+
+    // Post, once the PC publishes it: a tap is too late, said for a moment; nothing else changes
+    cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "publishing on craigslist for R5");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (busy)", "Edit (off)"]);
+    cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "too late to cancel: it is publishing");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (busy)", "Edit (off)"], "still busy");
+    t.mock.timers.tick(TOO_LATE_MS);
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "publishing on craigslist for R5");
+    assert.ok(!pc.calls.includes("DELETE /jobs/j2"), "the PC is not told");
 });
 
 /**
@@ -3129,6 +3246,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-title-line",
         "book-price-line",
         "book-ebay-btn",
+        "book-ebay-reset",
         "book-ebay-status",
         "book-ebay-link",
         "book-venue-hint",
@@ -3295,7 +3413,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-done-hint").textContent, "NEXT waits until the listing has reached the PC");
     await settle();
     assert.equal(buttonSays(nodes.get("book-ebay-btn")), "ebay / tap again to cancel", "for the second and after");
-    assert.equal(nodes.get("book-ebay-btn").disabled, false, "it takes the second tap");
+    assert.equal(nodes.get("book-ebay-btn").disabled, false, "it takes the tap that pauses it");
     t.mock.timers.tick(SEND_DELAY_MS); // the second a press waits
     await settle();
     assert.deepEqual(pc.posted, [
@@ -4968,11 +5086,12 @@ test("a photo the phone cannot read shows failed with the reason, and a tap trie
     assert.equal(pc.calls.at(-1), `PUT /items/${item}/photos/1`);
 });
 
-test("a press waits a second with the ring turning; a second tap within it sends nothing", async (t) => {
+test("a press waits a second with the ring turning; a tap within it holds it: reset drops it, continue sends it", async (t) => {
     // Michal, 2026-10-02: "delay sending by 1 second (but show loading) so that if one cancels
-    // within 1 sec there is no call money spent"; and 2026-10-07, walking back that day's "below
-    // in red there should be a cancel button": "The button, within it, should just get 'tap
-    // again to cancel' instead of an external cancel line"
+    // within 1 sec there is no call money spent"; 2026-10-07: "The button, within it, should just
+    // get 'tap again to cancel' instead of an external cancel line"; and later that day: "show
+    // that it cancelled immediately, stop the loading button etc. The cancel should change to
+    // 'reset call' (as in discard) and the button should change to 'continue'"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
@@ -4981,6 +5100,7 @@ test("a press waits a second with the ring turning; a second tap within it sends
     await settle();
     card(nodes, 0).ai.fire("click");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay", "nothing to cancel before the press");
+    assert.equal(nodes.get("ebay-reset").hidden, true);
     assert.ok(!/id="[^"]*cancel"|class="cancel"/.test(html), "no red cancel left in the page");
     nodes.get("ebay-btn").fire("click");
     await settle();
@@ -4988,34 +5108,61 @@ test("a press waits a second with the ring turning; a second tap within it sends
     assert.equal(nodes.get("ebay-status").textContent, "sending");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel", "inside the pressed button");
     assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel");
-    assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the second tap");
+    assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the tap");
     assert.equal(buttonSays(nodes.get("craigslist-btn")), "craigslist");
-    assert.deepEqual(pc.posted, [], "nothing has left the phone yet");
     t.mock.timers.tick(SEND_DELAY_MS - 1);
     await settle();
     assert.deepEqual(pc.posted, [], "not for a whole second");
+
+    // the tap: paused at once, the ring gone, continue in its place and reset under it
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "paused");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "continue");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, paused, continue");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false, "the ring stops");
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+    assert.equal(nodes.get("ebay-reset").hidden, false);
+    assert.equal(nodes.get("craigslist-reset").hidden, true, "only under the paused one");
+    assert.equal(nodes.get("done-hint").textContent, "NEXT waits: continue or reset the paused press");
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.deepEqual(pc.posted, [], "held: nothing leaves the phone, however long we wait");
+
+    // reset: as if never pressed, nothing sent, the button waits for a new press
+    nodes.get("ebay-reset").fire("click");
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "cancelled");
     assert.equal(nodes.get("ebay-status").className, "venue-status bad");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay");
     assert.equal(nodes.get("ebay-btn").disabled, false, "the button comes back");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
+    assert.equal(nodes.get("ebay-reset").hidden, true);
     t.mock.timers.tick(SEND_DELAY_MS * 3);
     await settle();
-    assert.deepEqual(pc.posted, [], "the taken-back press never goes, however long we wait");
+    assert.deepEqual(pc.posted, [], "the dropped press never goes");
     assert.ok(!pc.calls.some((c) => c.startsWith("POST /jobs")));
 
-    // pressed again: a fresh second, then it goes
+    // pressed again: a fresh second, paused within it, then continue sends it at once
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS / 2);
+    await settle();
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
-    assert.equal(pc.posted.length, 1);
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel", "still cancellable once the PC has it");
+    assert.deepEqual(pc.posted, []);
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(pc.posted.length, 1, "no second wait");
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel", "the ring and its line back");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
+    assert.equal(nodes.get("ebay-reset").hidden, true);
 });
 
-test("a second tap after the second tells the PC; the job stops at its next step and the draft's sku is kept", async (t) => {
+test("after the second a tap pauses the PC's job: continue asks again; reset tells the PC, keeps the draft's sku", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({
         jobs: { j1: () => ({ state: "running", step: "drafting the listing", sku: "B-0042" }) },
@@ -5032,31 +5179,90 @@ test("a second tap after the second tells the PC; the job stops at its next step
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "drafting the listing");
+
+    // paused: the PC is not told, only no longer asked
     nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "paused: the PC may still be working on it");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "continue");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
+    assert.equal(nodes.get("ebay-reset").hidden, false);
+    const asked = pc.calls.length;
+    t.mock.timers.tick(3000 * 3);
+    await settle();
+    assert.equal(pc.calls.length, asked, "not asked about while paused");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")));
+
+    // continue: asked at once, the ring and its line back
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/j1");
+    assert.equal(nodes.get("ebay-status").textContent, "drafting the listing");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
+    assert.equal(nodes.get("ebay-reset").hidden, true);
+
+    // paused again, then reset: DELETE /jobs/<id>, and the button is ebay again at once
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    nodes.get("ebay-reset").fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "DELETE /jobs/j1");
-    assert.equal(nodes.get("ebay-status").textContent, "cancelling: the PC stops at its next step");
-    // told once: the second line goes, the ring turns on until it stops, a tap does nothing
+    assert.equal(nodes.get("ebay-status").textContent, "cancelled");
+    assert.equal(nodes.get("ebay-status").className, "venue-status bad");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay");
-    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
-    assert.equal(nodes.get("ebay-btn").disabled, true);
-    nodes.get("ebay-btn").fire("click");
-    await settle();
-    assert.equal(pc.calls.filter((c) => c === "DELETE /jobs/j1").length, 1);
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
+    assert.equal(nodes.get("ebay-btn").disabled, false, "waiting for a new press");
+    assert.equal(nodes.get("ebay-reset").hidden, true);
     assert.equal(pc.posted.length, 1, "nor posts it again");
+    // the PC's own word once it has stopped, asked about quietly
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "cancelled from the phone");
     assert.equal(nodes.get("ebay-status").className, "venue-status bad");
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay");
-    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
-    assert.equal(nodes.get("ebay-btn").disabled, false, "the saved row can be posted again");
+    assert.equal(pc.calls.filter((c) => c === "DELETE /jobs/j1").length, 1);
+    const ended = pc.calls.length;
+    t.mock.timers.tick(3000 * 2);
+    await settle();
+    assert.equal(pc.calls.length, ended, "no more polls once it stopped");
     // the next press goes by the saved row's sku: no second draft
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.deepEqual(pc.posted.at(-1), { sku: "B-0042", venue: "ebay" });
+});
+
+test("too late: from the publishing step on a tap says so for a moment, and the button stays busy", async (t) => {
+    // Michal, 2026-10-07: "Perhaps after pressing cancel it should say 'too late to cancel'?"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let step = "drafting the listing";
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step, sku: "B-1" }) } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    step = "publishing B-1 on ebay";
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "publishing B-1 on ebay");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay", "nothing left to cancel: no second line");
+    assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the tap, to say so");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "too late to cancel: it is publishing");
+    assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true, "still busy");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay");
+    assert.equal(nodes.get("ebay-reset").hidden, true, "nothing paused");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the PC is not told");
+    t.mock.timers.tick(TOO_LATE_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "publishing B-1 on ebay", "the step's own words again");
 });
 
 test("NEXT keeps an item a button was pressed for", async (t) => {

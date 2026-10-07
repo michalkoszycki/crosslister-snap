@@ -216,21 +216,44 @@ and every behaviour are the live app's.
   again to cancel' instead of an external cancel line. The writing should be
   within it, below, and should be small, and appear just when the button action
   is doing/loading"; this replaces the small red **cancel** under the button of
-  2026-10-02/03, on purpose). A pressed button is not disabled, so it takes that
-  second tap; a screen reader hears `ebay, posting, tap again to cancel`. The
-  line shows from the press until the PC's step says `publishing ...`, the link
-  or the error: once a posting is going up there is nothing left to cancel
-  (Michal, 2026-10-03: "cancel only makes sense in mid-load"), the line goes and
-  a tap does nothing, and a cancel that reaches the PC after its publish anyway
-  lets the job finish with its link.
-  Within that second the tap takes the press back for free (the line says
-  `cancelled`). After it the PC is told (`DELETE /jobs/<id>`) and the status
-  line reads `cancelling: the PC stops at its next step`, the second line gone
-  (told once): a job still queued is dropped before it runs, nothing paid; the
-  job in hand stops at its next step, saving the draft instead of publishing it,
-  and the line reads `cancelled from the phone` ("it will be a double charge but
-  oh well"; it is not, since the next press posts the saved row without drafting
-  again). Admin's job buttons work the same way (below). The other
+  2026-10-02/03, on purpose). A pressed button is never disabled, so it takes
+  the tap; a screen reader hears `ebay, posting, tap again to cancel`.
+  **A tap pauses; reset cancels** (Michal, 2026-10-07, after trying to cancel
+  an eBay draft: "I was not able to cancel an ebay model call - I guess there is
+  no way to cancel it, since the call is sent. Perhaps after pressing cancel it
+  should say 'too late to cancel'? Better: show that it cancelled immediately,
+  stop the loading button etc. The cancel should change to 'reset call' (as in
+  discard) and the button should change to 'continue', in case one would want
+  to continue what was already received etc. Each cancel should operate this
+  way. Only pressing it twice actually drops all the info and resets the
+  operation as if nothing happened, and waits for a new press of the button.
+  Use these guidelines for all cancel things."):
+  - **The tap pauses, shown at once**: the ring stops, the second line goes,
+    the button reads **continue**, and a small red **reset** sits under it.
+    Nothing is sent to the PC: a press still in its second is held on the phone
+    (the line says `paused`; NEXT waits for continue or reset); a job the PC
+    already has is only no longer asked about (`paused: the PC may still be
+    working on it`). A screen reader hears `ebay, paused, continue`.
+  - **continue** carries on: a held press is sent at once (its second is
+    over); a job the PC has is asked about again at once. The ring and **tap
+    again to cancel** come back.
+  - **reset** is the real cancel: a held press is dropped, nothing sent,
+    nothing paid; a job the PC has is told (`DELETE /jobs/<id>`): one still
+    queued is dropped before it runs, the one in hand stops at its next step,
+    saving the draft instead of publishing it. Either way the button is its
+    venue again at once, as if never pressed, waiting for a new press, and the
+    line says `cancelled`; a job still stopping is asked about quietly until the
+    PC says `cancelled from the phone`, and the row it saved is kept, so the
+    next press posts it without drafting again ("it will be a double charge but
+    oh well"; it is not).
+  - **Too late**: from the PC's `publishing ...` step on there is nothing left
+    to stop (Michal, 2026-10-03: "cancel only makes sense in mid-load"): the
+    second line is gone, a tap changes nothing, and the line says `too late to
+    cancel: it is publishing` for a moment before the step's own words come
+    back. A reset that reaches the PC after its publish anyway lets the job
+    finish with its link.
+
+  Admin's job buttons work the same way (below). The other
   button can be pressed at any time after the first (Michal, 2026-09-30: "I
   seem not to be able to click craigslist while ebay is loading"): the PC runs
   jobs one at a time, so it queues behind (`queued, 1 ahead`) and, by then, the
@@ -375,8 +398,8 @@ title instead, and the PC does the same work from that. Top to bottom:
   three grades) and **Post without asking**. A book saved, not posted, opens
   ebay again, and that press posts the saved row by its sku (no book in the
   body); otherwise a book is always sent whole.
-- **ebay**, one full-width button with the same status line, turning ring and
-  link. It opens once the book is found (by title: once the PC answered,
+- **ebay**, one full-width button with the same status line, turning ring,
+  pause (continue, reset) and link. It opens once the book is found (by title: once the PC answered,
   matched or not), there is a photo (`Snap the cover
   first` when there is none), every photo is on the PC and the price is a
   price; otherwise the line under it says which of those is missing (first of
@@ -563,12 +586,16 @@ Empty. With capacity to generate that card from there."
   its line under the buttons says `queued`, then the PC's step, then its
   summary (`3 listings updated, 10 unchanged, 0 failed`) or its error, asked
   every 3 s; the other button is locked until it ends, and the list is then
-  asked for again (on the way back, when a listing is open). A second tap
-  within the second takes it back (`cancelled`); after it, `DELETE
-  /jobs/<id>`, then `cancelling: the PC stops at its next step` until the PC
-  drops it (`cancelled`) or stops it (its own words). A sync the PC refuses
-  shows the PC's words. Closing Admin leaves the job running on the PC, still
-  asked about.
+  asked for again (on the way back, when a listing is open). A tap on the
+  pressed one pauses it as a venue button's tap does: it reads **continue**
+  (its icon back, the ring gone), the other stays locked, one red **reset**
+  sits under the two, and the line says `paused` (held in its second) or
+  `paused: the PC may still be working on it`. continue carries on; reset drops
+  a held press, or tells the PC (`DELETE /jobs/<id>`), frees both buttons at once
+  with `cancelled`, and shows the PC's own words once it has stopped; from its
+  `publishing ...` step on a tap only says `too late to cancel: it is
+  publishing`. A sync the PC refuses shows the PC's words. Closing Admin leaves
+  the job running on the PC, still asked about.
 - **A listing tapped** is a page of its own (Michal, 2026-10-07: "Now when I am
   on a card I don't want to see admin or settings above. Looking at an item is
   a new page (at the top it just says back to inventory)"; "The general
@@ -694,12 +721,18 @@ Empty. With capacity to generate that card from there."
     running, these buttons should get that"): the pressed one turns its ring
     beside its word with **tap again to cancel** under it, small, and its job
     leaves the phone a second later (Sync to eBay saves first, then pushes). A
-    second tap within the second takes it back (`cancelled`); after it the PC
-    is told (`DELETE /jobs/<id>`) and the line says `cancelling: the PC stops
-    at its next step` until the PC drops it (`cancelled`) or stops it (`cancelled
-    from the phone`); from the PC's `publishing ...` step on the second line
-    goes and a tap does nothing. Add, Save and a plain load (the list, a
-    listing read again) have nothing to cancel: no ring, no second line.
+    tap on it pauses it, as a venue button's does: it reads **continue**, a
+    small red **reset** beside it, and the line says `paused` (held in its
+    second) or `paused: the PC may still be working on it`, the listing still
+    busy. continue carries on (a held press goes at once, a job is asked about
+    again at once); reset drops a held press, nothing sent, or tells the PC
+    (`DELETE /jobs/<id>`), and the card is free at once with `cancelled`, then
+    the PC's `cancelled from the phone` once it has stopped (a queued job it
+    drops at once). From the PC's `publishing ...` step on the second line goes
+    and a tap only says `too late to cancel: it is publishing` for a moment. A
+    tap while the job's POST (or Sync's save) is on its way does nothing. Add,
+    Save and a plain load (the list, a listing read again) have nothing to
+    cancel: no ring, no second line.
 
 ## Settings
 

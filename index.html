@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.6.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.6.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.7.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.7.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -217,6 +217,7 @@
           <div class="venue-actions">
             <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
             <button type="button" id="detail-customize-sync" class="pill">Sync to eBay</button>
+            <button type="button" id="detail-customize-reset" class="reset-call" aria-label="reset Sync to eBay" hidden>reset</button>
           </div>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
@@ -240,7 +241,7 @@
            read as one circle (Michal, 2026-10-07): to eBay the top arc, left to right, its
            arrow pointing right; from eBay the bottom arc, right to left, its arrow pointing
            left. app.js writes the word after the icon, and the job's ring and "tap again to
-           cancel" while it runs -->
+           cancel" while it runs; paused, the pressed one says continue and reset shows under them -->
       <div class="sync-buttons">
         <button type="button" id="sync-from" class="sync-btn"><span id="sync-from-icon" class="btn-icon"><svg
             aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -251,6 +252,7 @@
             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.5"></path><path
             d="M18 2v4.5h-4.5"></path></svg></span>Sync to eBay</button>
       </div>
+      <button type="button" id="sync-reset" class="reset-call" aria-label="reset the sync" hidden>reset</button>
       <p id="sync-status" class="sync-status" aria-live="polite"></p>
     </div>
 
@@ -327,14 +329,19 @@
     <!-- the listing's title as the PC saved it, small, for a look (Michal, 2026-10-02) -->
     <p id="title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="price-line" class="price-line" aria-live="polite" hidden></p>
+    <!-- under each button its reset, shown while a tap has paused its press (Michal,
+         2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
+         button should change to 'continue'") -->
     <div class="venues">
       <div class="venue">
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
+        <button type="button" id="ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
         <p id="ebay-status" class="venue-status" aria-live="polite"></p>
         <a id="ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <div class="venue">
         <button type="button" id="craigslist-btn" class="big venue-btn">craigslist</button>
+        <button type="button" id="craigslist-reset" class="reset-call" aria-label="reset craigslist" hidden>reset</button>
         <p id="craigslist-status" class="venue-status" aria-live="polite"></p>
         <a id="craigslist-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
@@ -483,6 +490,7 @@
     <p id="book-price-line" class="price-line" aria-live="polite" hidden></p>
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
+      <button type="button" id="book-ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
       <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
       <a id="book-ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
     </div>
@@ -505,6 +513,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.6.0"></script>
+<script type="module" src="app.js?v=2.7.0"></script>
 </body>
 </html>
