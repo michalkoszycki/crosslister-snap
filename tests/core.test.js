@@ -75,15 +75,30 @@ import {
     NEXT_NOTE,
     idleJob,
     DERIVED,
-    derivedOr,
+    CATEGORY_FROM_EBAY,
+    derivedFields,
     INVENTORY_DEBOUNCE_MS,
     INVENTORY_LIMIT,
+    INVENTORY_SORTS,
     INVENTORY_STATUSES,
     INVENTORY_VENUES,
     inventoryCount,
     inventoryQuery,
     inventoryRows,
-    itemFacts,
+    sortQuery,
+    venueStatusLine,
+    venueActions,
+    actionWord,
+    endQuestion,
+    actionJob,
+    jobRunning,
+    syncLine,
+    cardLine,
+    EDIT_FIELDS,
+    editValues,
+    changedFields,
+    patchBody,
+    EDIT_QUANTITY_HINT,
     listedAtWord,
     namedLines,
     packageWord,
@@ -2083,12 +2098,29 @@ test("the inventory's query: every key sent, each encoded, All as blank, the lim
     assert.equal(INVENTORY_DEBOUNCE_MS, 400);
     assert.deepEqual(INVENTORY_VENUES, ["", "ebay", "craigslist"]);
     assert.deepEqual(INVENTORY_STATUSES, ["", "draft", "listed", "sold", "ended"]);
-    assert.equal(inventoryQuery({}), "q=&venue=&status=&limit=200");
+    assert.equal(inventoryQuery({}), "q=&venue=&status=&limit=200&sort=age&order=desc");
     assert.equal(
-        inventoryQuery({ q: "  blue lamp & co ", venue: "ebay", status: "sold" }),
-        "q=blue%20lamp%20%26%20co&venue=ebay&status=sold&limit=200"
+        inventoryQuery({ q: "  blue lamp & co ", venue: "ebay", status: "sold", sort: "price-asc" }),
+        "q=blue%20lamp%20%26%20co&venue=ebay&status=sold&limit=200&sort=price&order=asc"
     );
-    assert.equal(inventoryQuery({ q: "x", venue: "etsy", status: "lost" }), "q=x&venue=&status=&limit=200", "unknown: All");
+    assert.equal(
+        inventoryQuery({ q: "x", venue: "etsy", status: "lost", sort: "cheapest" }),
+        "q=x&venue=&status=&limit=200&sort=age&order=desc",
+        "unknown: All, newest first"
+    );
+});
+
+test("the sort chips: newest first by default, then oldest, price high to low, low to high", () => {
+    assert.deepEqual(
+        INVENTORY_SORTS.map((s) => `${s.key} ${s.word}`),
+        ["newest Newest", "oldest Oldest", "price-desc Price ↓", "price-asc Price ↑"]
+    );
+    assert.deepEqual(sortQuery("newest"), { sort: "age", order: "desc" });
+    assert.deepEqual(sortQuery("oldest"), { sort: "age", order: "asc" });
+    assert.deepEqual(sortQuery("price-desc"), { sort: "price", order: "desc" });
+    assert.deepEqual(sortQuery("price-asc"), { sort: "price", order: "asc" });
+    assert.deepEqual(sortQuery(""), { sort: "age", order: "desc" });
+    assert.deepEqual(sortQuery("price"), { sort: "age", order: "desc" }, "not a chip: Newest");
 });
 
 test("the inventory's rows: only objects with a sku; the count line", () => {
@@ -2162,13 +2194,20 @@ test("a row's title, heading, badges, venues and photos", () => {
     assert.equal(rowTitle({ sku: "X1", title: " " }), "X1", "no title: the sku");
     assert.equal(rowHeading(ROW), "Brass lamp · $24");
     assert.equal(rowHeading({ sku: "X1", title: "Vase", price: null }), "Vase");
+    // a listed badge carries its listing's link (Michal, 2026-10-06); any other is a word
     assert.deepEqual(rowBadges(ROW), [
-        { text: "ebay listed", kind: "posted" },
-        { text: "craigslist draft", kind: "draft" },
+        { text: "ebay listed", kind: "posted", link: "https://www.ebay.com/itm/257780366045" },
+        { text: "craigslist draft", kind: "draft", link: "" },
     ]);
-    assert.deepEqual(rowBadges({ sku: "X", venues: ["ebay"] }), [{ text: "ebay", kind: "draft" }]);
+    assert.deepEqual(rowBadges({ sku: "X", venues: ["ebay"] }), [{ text: "ebay", kind: "draft", link: "" }]);
+    const unsafe = { sku: "X", venues: ["craigslist"], statuses: { craigslist: { status: "listed", url: "javascript:alert(1)" } } };
+    assert.deepEqual(rowBadges(unsafe), [{ text: "craigslist listed", kind: "posted", link: "" }], "only an http(s) link");
+    const ended = { sku: "X", venues: ["ebay"], statuses: { ebay: { status: "ended", url: "https://www.ebay.com/itm/1" } } };
+    assert.equal(rowBadges(ended)[0].link, "", "an ended listing's badge stays a word");
+    // the venues a row is on: its `venues`, in the app's order
     assert.deepEqual(rowVenues(ROW), ["ebay", "craigslist"]);
-    assert.deepEqual(rowVenues({ statuses: { craigslist: {} } }), ["craigslist"]);
+    assert.deepEqual(rowVenues({ venues: ["craigslist", "etsy", "ebay"] }), ["ebay", "craigslist"]);
+    assert.deepEqual(rowVenues({ venues: ["craigslist"], statuses: { ebay: {} } }), ["craigslist"]);
     assert.deepEqual(rowVenues({}), []);
     assert.deepEqual(rowPhotos(ROW), [
         { n: 1, name: "R5GM4XZN-1.jpg" },
@@ -2178,12 +2217,30 @@ test("a row's title, heading, badges, venues and photos", () => {
     assert.deepEqual(venueStatus(ROW, "craigslist"), { status: "draft", id: "", url: "", listedAt: "" }, "no javascript: link");
 });
 
-test("craigslist's overrides: the override, or derived from eBay", () => {
+test("craigslist's four fields: the override, or what it is derived from on eBay", () => {
     assert.equal(DERIVED, "derived from eBay");
-    assert.equal(derivedOr("Brass lamp"), "Brass lamp");
-    assert.equal(derivedOr(""), DERIVED);
-    assert.equal(derivedOr("  "), DERIVED);
-    assert.equal(derivedOr(null), DERIVED);
+    assert.equal(CATEGORY_FROM_EBAY, "from the eBay category");
+    // ROW: no title override, a price and a description typed, the category blank
+    assert.deepEqual(derivedFields(ROW, "craigslist"), {
+        title: { value: "Brass lamp", derived: true },
+        price: { value: "30.00", derived: false },
+        description: { value: "Brass lamp, pickup in town", derived: false },
+        category: { value: "from the eBay category", derived: true },
+    });
+    const typed = { ...ROW, craigslist: { title: " Lamp ", price: "0", description: "  ", category: "household" } };
+    assert.deepEqual(derivedFields(typed, "craigslist"), {
+        title: { value: "Lamp", derived: false },
+        price: { value: "24.00", derived: true },
+        description: { value: "Brass.\nWorks.", derived: true },
+        category: { value: "household", derived: false },
+    });
+    assert.deepEqual(derivedFields({ sku: "X" }, "craigslist"), {
+        title: { value: "", derived: true },
+        price: { value: "", derived: true },
+        description: { value: "", derived: true },
+        category: { value: CATEGORY_FROM_EBAY, derived: true },
+    });
+    assert.deepEqual(derivedFields(ROW, "ebay"), {});
 });
 
 test("when a listing went up: short, in the phone's own time", () => {
@@ -2209,50 +2266,161 @@ test("the parcel and name: value lines", () => {
     assert.equal(namedLines(["a"]), "");
 });
 
-test("the Item card: what the row is, quantity and pickup only always", () => {
-    assert.deepEqual(itemFacts(ROW), [
+test("the eBay card: the listing as eBay has it; the status and link are its status line", () => {
+    assert.deepEqual(venueFacts(ROW, "ebay"), [
+        { label: "Title", value: "Brass lamp" },
+        { label: "Price", value: "$24" },
         { label: "Condition", value: "Used" },
         { label: "Category", value: "Home > Lighting > Lamps" },
         { label: "Quantity", value: "2" },
         { label: "Pickup only", value: "yes, no shipping on eBay" },
         { label: "Description", value: "Brass.\nWorks.", pre: true },
         { label: "Note", value: "from the attic", pre: true },
+        { label: "Condition note", value: "Light wear", pre: true },
+        { label: "Aspects", value: "Brand: Acme\nColor: Brass, Gold", pre: true },
+        { label: "Condition details", value: "Professional grader: PSA", pre: true },
         { label: "Package", value: "5 oz, 8 x 6 x 2 in" },
         { label: "Model cost", value: "$0.1046" },
-        { label: "Source folder", value: "Lamp 2026-10-03", mono: true },
     ]);
-    assert.deepEqual(itemFacts({ sku: "B", category: "Books", isbn: "9780306406157", model_cost: null }), [
+    // a book: the ISBN; quantity and pickup only always, the rest only when there
+    assert.deepEqual(venueFacts({ sku: "B", category: "Books", isbn: "9780306406157", model_cost: null }, "ebay"), [
         { label: "Category", value: "Books" },
         { label: "Quantity", value: "1" },
         { label: "Pickup only", value: "no" },
         { label: "ISBN", value: "9780306406157", mono: true },
     ]);
+    assert.deepEqual(venueFacts(ROW, "etsy"), []);
 });
 
-test("the venue cards: status, id, link, listed at; eBay's fields; craigslist's four overrides", () => {
-    assert.deepEqual(venueFacts(ROW, "ebay", -300), [
-        { label: "Status", value: "listed" },
-        { label: "ID", value: "257780366045", mono: true },
-        { label: "Link", value: "https://www.ebay.com/itm/257780366045", link: true },
-        { label: "Listed at", value: "2026-10-03 16:21" },
-        { label: "Condition note", value: "Light wear", pre: true },
-        { label: "Condition details", value: "Professional grader: PSA", pre: true },
-        { label: "Aspects", value: "Brand: Acme\nColor: Brass, Gold", pre: true },
-    ]);
+test("the craigslist card: its four fields, each the override or the eBay value marked derived", () => {
     assert.deepEqual(venueFacts(ROW, "craigslist"), [
-        { label: "Status", value: "draft" },
-        { label: "Title", value: DERIVED, pre: false, derived: true },
-        { label: "Price", value: "$30", pre: false, derived: false },
+        { label: "Title", value: "Brass lamp", derived: true },
+        { label: "Price", value: "$30", derived: false },
         { label: "Description", value: "Brass lamp, pickup in town", pre: true, derived: false },
-        { label: "Category", value: DERIVED, pre: false, derived: true },
+        { label: "Category", value: "from the eBay category", derived: true },
     ]);
-    // a row the PC gave no craigslist overrides: all four derived
-    const bare = venueFacts({ sku: "X", statuses: { craigslist: { status: "listed" } } }, "craigslist");
-    assert.deepEqual(bare.map((f) => `${f.label}: ${f.value}`), [
-        "Status: listed",
-        "Title: derived from eBay",
-        "Price: derived from eBay",
-        "Description: derived from eBay",
-        "Category: derived from eBay",
+    const bare = venueFacts({ sku: "X", title: "Vase", price: "12.50", venues: ["craigslist"] }, "craigslist");
+    assert.deepEqual(bare.map((f) => `${f.label}: ${f.value}${f.derived ? " (derived)" : ""}`), [
+        "Title: Vase (derived)",
+        "Price: $12.50 (derived)",
+        "Description:  (derived)",
+        "Category: from the eBay category (derived)",
     ]);
+});
+
+test("a card's status line: the status word and when it went up", () => {
+    assert.equal(venueStatusLine(ROW, "ebay", -300), "listed since 2026-10-03 16:21");
+    assert.equal(venueStatusLine(ROW, "craigslist"), "draft");
+    const sold = { venues: ["ebay"], statuses: { ebay: { status: "sold", listed_at: "2026-10-01T09:00:00Z" } } };
+    assert.equal(venueStatusLine(sold, "ebay", 0), "sold · listed 2026-10-01 09:00");
+    assert.equal(venueStatusLine({ venues: ["craigslist"] }, "craigslist"), "not posted yet", "added, no status yet");
+});
+
+test("a card's actions: add when not on the venue, post when not listed, open/refresh/end when listed, edit", () => {
+    assert.deepEqual(venueActions(ROW, "ebay"), ["open", "refresh", "end", "edit"]);
+    assert.deepEqual(venueActions(ROW, "craigslist"), ["post", "edit"]);
+    const ebayOnly = { ...ROW, venues: ["ebay"] };
+    assert.deepEqual(venueActions(ebayOnly, "craigslist"), ["add"]);
+    const noLink = { venues: ["craigslist"], statuses: { craigslist: { status: "listed", url: "" } } };
+    assert.deepEqual(venueActions(noLink, "craigslist"), ["refresh", "end", "edit"], "listed with no link: nothing to open");
+    for (const status of ["ended", "sold", "draft", ""]) {
+        const row = { venues: ["ebay"], statuses: { ebay: { status, url: "https://www.ebay.com/itm/1" } } };
+        assert.deepEqual(venueActions(row, "ebay"), ["post", "edit"], `${status || "no status"}: post it`);
+    }
+    assert.deepEqual(venueActions({ venues: ["craigslist"] }, "craigslist"), ["post", "edit"]);
+    assert.deepEqual(
+        ["add", "post", "open", "refresh", "end", "edit"].map((a) => actionWord(a, "craigslist")),
+        ["Add craigslist to this item", "Post on craigslist", "Open listing", "Refresh status", "End listing", "Edit"]
+    );
+    assert.equal(endQuestion("ebay"), "End this listing on ebay?");
+});
+
+test("the action jobs' bodies: end and refresh carry the sku and venue, a sync its direction", () => {
+    assert.deepEqual(actionJob("end", { sku: "R5", venue: "ebay" }), { action: "end", sku: "R5", venue: "ebay" });
+    assert.deepEqual(actionJob("refresh", { sku: "R5", venue: "craigslist" }), {
+        action: "refresh",
+        sku: "R5",
+        venue: "craigslist",
+    });
+    assert.deepEqual(actionJob("sync", { direction: "from" }), { action: "sync", direction: "from" });
+    assert.deepEqual(actionJob("sync", { direction: "to", sku: "R5" }), { action: "sync", direction: "to" });
+    assert.throws(() => actionJob("sync", { direction: "sideways" }), RangeError);
+    assert.throws(() => actionJob("end", { venue: "ebay" }), RangeError);
+    assert.throws(() => actionJob("end", { sku: "R5", venue: "etsy" }), RangeError);
+    assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
+});
+
+test("an action job's line: queued, the step, the summary once done, the error once failed", () => {
+    assert.equal(jobRunning({ state: "queued" }), true);
+    assert.equal(jobRunning({ state: "running" }), true);
+    assert.equal(jobRunning({ state: "done" }), false);
+    assert.equal(jobRunning(null), false);
+    assert.deepEqual(syncLine({ state: "queued", ahead: 2 }), { text: "queued, 2 ahead", kind: "busy" });
+    assert.deepEqual(syncLine({ state: "queued", ahead: 0 }), { text: "queued", kind: "busy" });
+    assert.deepEqual(syncLine({ state: "running", step: "reading eBay" }), { text: "reading eBay", kind: "busy" });
+    assert.deepEqual(syncLine({ state: "running" }), { text: "working", kind: "busy" });
+    assert.deepEqual(syncLine({ state: "running", step: "x", trouble: "cannot reach the PC" }), {
+        text: "cannot reach the PC, still trying",
+        kind: "busy",
+    });
+    assert.deepEqual(syncLine({ state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" }), {
+        text: "3 listings updated, 10 unchanged, 0 failed",
+        kind: "ok",
+    });
+    assert.deepEqual(syncLine({ state: "done" }), { text: "done", kind: "ok" });
+    assert.deepEqual(syncLine({ state: "failed", error: "eBay said no" }), { text: "eBay said no", kind: "bad" });
+    assert.deepEqual(syncLine({ state: "cancelled" }), { text: "cancelled", kind: "bad" });
+});
+
+test("a card's status line: sending, its job, a refusal, else the venue's status", () => {
+    const idle = { wait: "", job: null, note: null };
+    assert.deepEqual(cardLine(ROW, "ebay", idle, -300), { text: "listed since 2026-10-03 16:21", kind: "ok" });
+    assert.deepEqual(cardLine(ROW, "craigslist", idle), { text: "draft", kind: "" });
+    assert.deepEqual(cardLine(ROW, "ebay", { ...idle, wait: "sending" }), { text: "sending", kind: "busy" });
+    assert.deepEqual(cardLine(ROW, "ebay", { ...idle, job: { state: "running", step: "ending" } }), {
+        text: "ending",
+        kind: "busy",
+    });
+    const refused = { text: "craigslist cannot be ended from here", kind: "bad" };
+    assert.deepEqual(cardLine(ROW, "craigslist", { ...idle, note: refused }), refused);
+    assert.deepEqual(cardLine({ ...ROW, venues: ["ebay"] }, "craigslist", idle), { text: "", kind: "" }, "an empty card");
+});
+
+test("Edit: the inputs start from the row; Save sends only what changed", () => {
+    assert.deepEqual(
+        EDIT_FIELDS.ebay.map((f) => f.key),
+        ["title", "price", "description", "note", "quantity", "pickup_only", "condition_note"]
+    );
+    assert.deepEqual(EDIT_FIELDS.craigslist.map((f) => f.key), ["title", "price", "description", "category"]);
+    const ebay = editValues(ROW, "ebay");
+    assert.deepEqual(ebay, {
+        title: "Brass lamp",
+        price: "24.00",
+        description: "Brass.\nWorks.",
+        note: "from the attic",
+        quantity: "2",
+        pickup_only: true,
+        condition_note: "Light wear",
+    });
+    const craigslist = editValues(ROW, "craigslist");
+    assert.deepEqual(craigslist, { title: "", price: "30.00", description: "Brass lamp, pickup in town", category: "" });
+
+    assert.deepEqual(changedFields(ebay, { ...ebay }), {});
+    assert.deepEqual(changedFields(ebay, { ...ebay, title: " Brass lamp " }), {}, "a stray space is no change");
+    assert.deepEqual(changedFields(ebay, { ...ebay, title: "Brass desk lamp ", pickup_only: false }), {
+        title: "Brass desk lamp",
+        pickup_only: false,
+    });
+
+    assert.deepEqual(patchBody("ebay", ebay, { ...ebay }), { body: null, error: "" }, "nothing changed: nothing sent");
+    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, price: "26.50", quantity: " 3 " }), {
+        body: { price: "26.50", quantity: 3 },
+        error: "",
+    });
+    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, quantity: "two" }), { body: null, error: EDIT_QUANTITY_HINT });
+    // craigslist's go inside "craigslist"; "" clears an override
+    assert.deepEqual(patchBody("craigslist", craigslist, { ...craigslist, price: "", category: "household" }), {
+        body: { craigslist: { price: "", category: "household" } },
+        error: "",
+    });
 });
