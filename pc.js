@@ -44,20 +44,35 @@
 //                                      stops at its next step and keeps its draft unpublished;
 //                                      409 once done or failed
 //   GET    <pc>/jobs?limit=1          the Settings check: answers only to a right key
-// Admin's inventory (read-only; Michal, 2026-10-06):
-//   GET    <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200
-//                                      -> {"rows": [summary...]}, newest first; venue and status
-//                                         "" for All (inventoryQuery in core.js)
+// Admin's inventory (Michal, 2026-10-06):
+//   GET    <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=age|price&order=desc|asc
+//                                      -> {"rows": [summary...]}; venue and status "" for All,
+//                                         age desc (newest first) by default, a row with no price
+//                                         last when sorted by price (inventoryQuery in core.js)
 //   GET    <pc>/inventory/<sku>       -> the summary's keys plus the description, the condition
 //                                         note and details, the aspects, the package, craigslist's
 //                                         overrides and "photos": [{"n", "name"}...]; 404 unknown sku
 //   GET    <pc>/inventory/<sku>/photos/<n>
 //                                      -> the image itself (jpeg, png or webp); 404 when missing
+//   PATCH  <pc>/inventory/<sku>       a card's Save: only the fields changed, any of "title",
+//                                      "price" ("24.50"), "description", "note", "quantity",
+//                                      "pickup_only", "condition_note", "craigslist": {"title",
+//                                      "price", "description", "category"} ("" clears an override)
+//                                      -> the whole row, as GET; 400 {"detail"} names a bad field
+//   POST   <pc>/inventory/<sku>/venues/<venue>
+//                                      an empty card's Add -> the whole row, the venue in "venues"
+//   POST   <pc>/jobs                  a card's End listing / Refresh status: {"action": "end" |
+//                                      "refresh", "sku", "venue"}; the sync bar: {"action": "sync",
+//                                      "direction": "from" | "to"} (actionJob in core.js)
+//                                      -> {"job", "state": "queued", "ahead"}; 400 {"detail"} when
+//                                         refused (Craigslist cannot be ended from here). GET
+//                                         /jobs/<id> adds "action", "direction" and, once done,
+//                                         "summary" ("3 listings updated, 10 unchanged, 0 failed")
 //
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.2.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.3.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -211,7 +226,7 @@ export function searchBook({ pc, key }, { title, author, year }) {
 /**
  * Send one job.
  * @param {{pc:string, key:string}} settings
- * @param {object} body from jobRequest() in core.js
+ * @param {object} body from jobRequest() in core.js, or actionJob() for an action job
  * @returns {Promise<{job:string, state:string, ahead:number}>}
  */
 export function postJob({ pc, key }, body) {
@@ -237,9 +252,9 @@ export function checkPc({ pc, key }) {
 }
 
 /**
- * Admin's inventory list: the newest rows matching the search and the two filters.
+ * Admin's inventory list: the rows matching the search and the two filters, in the sort chosen.
  * @param {{pc:string, key:string}} settings
- * @param {{q?:string, venue?:string, status?:string}} filters "" is All
+ * @param {{q?:string, venue?:string, status?:string, sort?:string}} filters "" is All; sort a chip's key
  * @returns {Promise<{rows: Record<string, any>[]}>}
  */
 export function getInventory({ pc, key }, filters) {
@@ -257,6 +272,28 @@ function rowUrl(pc, sku) {
  */
 export function getRow({ pc, key }, sku) {
     return call(rowUrl(pc, sku), key);
+}
+
+/**
+ * A card's Save: the fields changed (patchBody in core.js), in one PATCH.
+ * @param {{pc:string, key:string}} settings
+ * @param {string} sku
+ * @param {Record<string, any>} fields
+ * @returns {Promise<Record<string, any>>} the whole row, as getRow gives it
+ */
+export function patchRow({ pc, key }, sku, fields) {
+    return call(rowUrl(pc, sku), key, { method: "PATCH", json: fields });
+}
+
+/**
+ * An empty card's Add: the row goes on that venue too (nothing is posted yet).
+ * @param {{pc:string, key:string}} settings
+ * @param {string} sku
+ * @param {string} venue
+ * @returns {Promise<Record<string, any>>} the whole row, as getRow gives it
+ */
+export function addVenue({ pc, key }, sku, venue) {
+    return call(`${rowUrl(pc, sku)}/venues/${encodeURIComponent(venue)}`, key, { method: "POST" });
 }
 
 /**

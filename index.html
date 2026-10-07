@@ -28,8 +28,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.2.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.2.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.3.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.3.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -59,8 +59,10 @@
 
 <main>
   <!-- goods | book: two kinds of item, each with its own screen below and its own
-       item in progress; switching never loses either (app.js keeps one of each). -->
-  <div class="modes" role="group" aria-label="What is being listed">
+       item in progress; switching never loses either (app.js keeps one of each).
+       Hidden while Admin is open (Michal, 2026-10-06: "when we do admin we probably do not
+       need goods vs book slider distinction"). -->
+  <div id="modes" class="modes" role="group" aria-label="What is being listed">
     <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
     <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
   </div>
@@ -72,8 +74,9 @@
 
   <!-- Admin, where Settings was (Michal, 2026-10-06: "accessible through Admin which would
        replace Settings. Settings would remain part of Admin though"): two foldouts in
-       customize's pattern, Settings and the inventory. Read-only: a listing's cards show
-       what the PC holds; nothing here changes it. -->
+       customize's pattern, Settings and the inventory, and the sync bar under them. A
+       listing's detail is one card per venue, each with its actions (post, refresh, end,
+       edit), and an empty card, with its Add, for a venue the listing is not on. -->
   <section id="admin" class="admin" hidden>
     <h2 class="admin-title">Admin</h2>
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
@@ -97,7 +100,7 @@
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="inventory">▸ Inventory</button>
     <div id="inventory" class="card inventory" hidden>
-      <!-- the list: the search, the two filters, the photos or not, one row per listing -->
+      <!-- the list: the search, the two filters, the photos or not, the sort, one row per listing -->
       <div id="inventory-browse">
         <label class="field">
           <span class="field-label">Search</span>
@@ -136,20 +139,29 @@
           <input id="inventory-photos" type="checkbox">
           <span>Show photos</span>
         </label>
+        <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
+        <div class="field">
+          <span class="field-label">Sort</span>
+          <div id="inventory-sort" class="chips chips-four" role="group" aria-label="Sort">
+            <button type="button" id="inventory-sort-newest" class="chip" aria-pressed="true">Newest</button>
+            <button type="button" id="inventory-sort-oldest" class="chip" aria-pressed="false">Oldest</button>
+            <button type="button" id="inventory-sort-price-desc" class="chip" aria-pressed="false"
+                    aria-label="Price, highest first">Price ↓</button>
+            <button type="button" id="inventory-sort-price-asc" class="chip" aria-pressed="false"
+                    aria-label="Price, lowest first">Price ↑</button>
+          </div>
+        </div>
         <ul id="inventory-list" class="inventory-list"></ul>
       </div>
 
-      <!-- one listing, in place of the list: its cards as foldouts, Item and Photos open -->
+      <!-- one listing, in place of the list: the heading, its photos, then one card per venue
+           and nothing else (Michal, 2026-10-06: "when I click on an item there should only be
+           eBay or and Craigslist card"); a venue it is not on is an empty card with its Add -->
       <div id="inventory-detail" hidden>
         <button type="button" id="inventory-back" class="link back-link">← Back to the list</button>
         <h2 id="detail-heading" class="detail-heading"></h2>
         <p id="detail-status" class="small" aria-live="polite" hidden></p>
-        <button type="button" id="detail-item-toggle" class="link customize-toggle" aria-expanded="true"
-                aria-controls="detail-item">▾ Item</button>
-        <div id="detail-item" class="card fold"></div>
-        <button type="button" id="detail-photos-toggle" class="link customize-toggle" aria-expanded="true"
-                aria-controls="detail-photos">▾ Photos</button>
-        <div id="detail-photos" class="card fold"></div>
+        <div id="detail-photos" class="detail-photos"></div>
         <button type="button" id="detail-ebay-toggle" class="link customize-toggle" aria-expanded="false"
                 aria-controls="detail-ebay">▸ ebay</button>
         <div id="detail-ebay" class="card fold" hidden></div>
@@ -157,6 +169,17 @@
                 aria-controls="detail-craigslist">▸ craigslist</button>
         <div id="detail-craigslist" class="card fold" hidden></div>
       </div>
+    </div>
+
+    <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
+         They probably could be below the inventory list hovering fixed on the screen as I
+         scroll down"): it sticks to the bottom of the screen while Admin is on it -->
+    <div class="sync-bar" role="group" aria-label="Sync with eBay">
+      <div class="sync-buttons">
+        <button type="button" id="sync-from" class="sync-btn">Sync from eBay</button>
+        <button type="button" id="sync-to" class="sync-btn">Sync to eBay</button>
+      </div>
+      <p id="sync-status" class="sync-status" aria-live="polite"></p>
     </div>
 
     <button type="button" id="admin-close" class="secondary">Close</button>
@@ -413,6 +436,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.2.0"></script>
+<script type="module" src="app.js?v=2.3.0"></script>
 </body>
 </html>

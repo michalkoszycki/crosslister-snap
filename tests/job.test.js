@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    actionJob,
     errorText,
     initialState,
     jobRequest,
@@ -16,6 +17,7 @@ import {
     venueLine,
 } from "../core.js";
 import {
+    addVenue,
     checkPc,
     createItem,
     deletePhoto,
@@ -24,6 +26,7 @@ import {
     getJob,
     getRow,
     getRowPhoto,
+    patchRow,
     PcError,
     postJob,
     putNote,
@@ -139,9 +142,11 @@ test("the jobs: a JSON body for a press, GETs for the status and the Settings ch
 
 test("Admin's inventory: the list with its query, a row by sku, a row's photo as a Blob", async () => {
     const list = await wire(() => getInventory(PC, { q: "blue lamp", venue: "ebay", status: "" }));
-    assert.equal(list.url, "http://127.0.0.1:8765/inventory?q=blue%20lamp&venue=ebay&status=&limit=200");
+    assert.equal(list.url, "http://127.0.0.1:8765/inventory?q=blue%20lamp&venue=ebay&status=&limit=200&sort=age&order=desc");
     assert.equal(list.init.method, "GET");
     assert.equal(list.init.headers["X-Crosslister-Key"], PC.key);
+    const cheapest = await wire(() => getInventory(PC, { q: "", venue: "", status: "", sort: "price-asc" }));
+    assert.equal(cheapest.url, "http://127.0.0.1:8765/inventory?q=&venue=&status=&limit=200&sort=price&order=asc");
     assert.equal((await wire(() => getRow(PC, "a/b c"))).url, "http://127.0.0.1:8765/inventory/a%2Fb%20c");
 
     const before = globalThis.fetch;
@@ -162,6 +167,26 @@ test("Admin's inventory: the list with its query, a row by sku, a row's photo as
     } finally {
         globalThis.fetch = before;
     }
+});
+
+test("Admin's cards: Save is one PATCH of the fields, Add a POST to the venue, the action jobs POST /jobs", async () => {
+    const saved = await wire(() => patchRow(PC, "a/b c", { title: "Brass lamp", craigslist: { price: "" } }));
+    assert.equal(saved.url, "http://127.0.0.1:8765/inventory/a%2Fb%20c");
+    assert.equal(saved.init.method, "PATCH");
+    assert.equal(saved.init.headers["Content-Type"], "application/json");
+    assert.equal(saved.init.headers["X-Crosslister-Key"], PC.key);
+    assert.equal(saved.init.body, '{"title":"Brass lamp","craigslist":{"price":""}}');
+
+    const added = await wire(() => addVenue(PC, "R5GM4XZN", "craigslist"));
+    assert.equal(added.url, "http://127.0.0.1:8765/inventory/R5GM4XZN/venues/craigslist");
+    assert.equal(added.init.method, "POST");
+    assert.equal(added.init.body, undefined);
+
+    const end = await wire(() => postJob(PC, actionJob("end", { sku: "R5GM4XZN", venue: "ebay" })));
+    assert.equal(end.url, "http://127.0.0.1:8765/jobs");
+    assert.equal(end.init.body, '{"action":"end","sku":"R5GM4XZN","venue":"ebay"}');
+    const sync = await wire(() => postJob(PC, actionJob("sync", { direction: "from" })));
+    assert.equal(sync.init.body, '{"action":"sync","direction":"from"}');
 });
 
 test("the contract constants: the key header and a 3 s poll", () => {

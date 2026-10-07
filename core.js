@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.2.0";
+import { noteDirty, unsent } from "./queue.js?v=2.3.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.2.0";
+} from "./book.js?v=2.3.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1917,7 +1917,17 @@ export function bannerText(state) {
 // list, with search options / filtering options ... clicking would need to show all
 // the card options and all the photos". The PC answers GET /inventory with a summary
 // per row and GET /inventory/<sku> with the whole row; what follows turns those into
-// the words the list and the detail show. Read-only: nothing here changes a row.
+// the words the list and the detail show.
+//
+// Michal, 2026-10-06, the second round: "Add sorting options for the inventory (by
+// price and by age). When an item is listed probably clicking the venue button from
+// the inventory should open the listing ... Add the per item actions you have proposed
+// [post the other venue, end, refresh status, edit fields]. Also I think when I click
+// on an item there should only be eBay or and Craigslist card ... Also a foldout for a
+// venue that is not active should be there. Empty. With capacity to generate that card
+// from there." So the detail is one card per venue, and each card says which actions
+// it offers (venueActions), what an edit sends (patchBody) and what a job is doing
+// (syncLine); the sync bar's jobs read the same way.
 
 /** The most rows one query asks for: the newest; a search narrows them. */
 export const INVENTORY_LIMIT = 200;
@@ -1931,8 +1941,23 @@ export const INVENTORY_VENUES = ["", ...VENUES];
 /** The status filter's chips, All ("") first. */
 export const INVENTORY_STATUSES = ["", "draft", "listed", "sold", "ended"];
 
-/** Said for an override left blank on the craigslist card: the PC fills it from the eBay fields. */
+/**
+ * The sort chips, in their order on screen, Newest first and chosen at the start
+ * (Michal, 2026-10-06: "sorting options for the inventory (by price and by age)").
+ * The PC puts a row with no price last whichever way price runs.
+ */
+export const INVENTORY_SORTS = [
+    { key: "newest", word: "Newest", sort: "age", order: "desc" },
+    { key: "oldest", word: "Oldest", sort: "age", order: "asc" },
+    { key: "price-desc", word: "Price ↓", sort: "price", order: "desc" },
+    { key: "price-asc", word: "Price ↑", sort: "price", order: "asc" },
+];
+
+/** Said under an override left blank on the craigslist card: the PC fills it from the eBay fields. */
 export const DERIVED = "derived from eBay";
+
+/** What a blank craigslist category is: the PC picks one from the eBay category. */
+export const CATEGORY_FROM_EBAY = "from the eBay category";
 
 /** A string field of an answer, trimmed; "" for anything else. */
 function plain(x) {
@@ -1941,17 +1966,28 @@ function plain(x) {
 }
 
 /**
- * The query string of GET /inventory: every key always sent ("" for All), each
- * URL-encoded, and the limit. An unknown venue or status is sent as All.
- * @param {{q?:string, venue?:string, status?:string}} filters
- * @returns {string} e.g. "q=blue%20lamp&venue=ebay&status=&limit=200"
+ * A sort chip's `sort` and `order` for GET /inventory; Newest for a chip the page does not know.
+ * @param {string} key one of INVENTORY_SORTS' keys
+ * @returns {{sort:string, order:string}}
  */
-export function inventoryQuery({ q = "", venue = "", status = "" } = {}) {
+export function sortQuery(key) {
+    const chip = INVENTORY_SORTS.find((s) => s.key === key) || INVENTORY_SORTS[0];
+    return { sort: chip.sort, order: chip.order };
+}
+
+/**
+ * The query string of GET /inventory: every key always sent ("" for All), each
+ * URL-encoded, the limit, then the sort. An unknown venue or status is sent as All.
+ * @param {{q?:string, venue?:string, status?:string, sort?:string}} filters
+ * @returns {string} e.g. "q=blue%20lamp&venue=ebay&status=&limit=200&sort=age&order=desc"
+ */
+export function inventoryQuery({ q = "", venue = "", status = "", sort = "" } = {}) {
     const asked = {
         q: plain(q),
         venue: INVENTORY_VENUES.includes(venue) ? venue : "",
         status: INVENTORY_STATUSES.includes(status) ? status : "",
         limit: String(INVENTORY_LIMIT),
+        ...sortQuery(sort),
     };
     // encodeURIComponent, as searchBook does: a space is %20, never a "+"
     return Object.entries(asked)
@@ -2017,12 +2053,19 @@ export function statusBadge(venue, status) {
 }
 
 /**
- * One badge per venue the row names in `venues`, in that order.
+ * One badge per venue the row names in `venues`, in that order. A listed one
+ * with a link carries it: the badge opens the listing (Michal, 2026-10-06: "When
+ * an item is listed probably clicking the venue button from the inventory should
+ * open the listing"); "" leaves the badge a plain word.
  * @param {Record<string, any>} row
+ * @returns {{text:string, kind:"posted"|"muted"|"draft", link:string}[]}
  */
 export function rowBadges(row) {
     const venues = Array.isArray(row.venues) ? row.venues.map(plain).filter(Boolean) : [];
-    return venues.map((v) => statusBadge(v, venueStatus(row, v).status));
+    return venues.map((v) => {
+        const s = venueStatus(row, v);
+        return { ...statusBadge(v, s.status), link: s.status === "listed" ? s.url : "" };
+    });
 }
 
 /** A row's title, or its sku when it has none. */
@@ -2041,13 +2084,14 @@ export function rowHeading(row) {
 }
 
 /**
- * The venues a row's detail has a card for: those in its statuses.
+ * The venues a row is on: those its `venues` names, in the app's order (ebay,
+ * craigslist). The detail's card for any other venue is empty, with its Add.
  * @param {Record<string, any>} row
  * @returns {string[]}
  */
 export function rowVenues(row) {
-    const all = row && row.statuses && typeof row.statuses === "object" ? row.statuses : {};
-    return VENUES.filter((v) => all[v] && typeof all[v] === "object");
+    const named = row && Array.isArray(row.venues) ? row.venues.map(plain) : [];
+    return VENUES.filter((v) => named.includes(v));
 }
 
 /**
@@ -2061,16 +2105,6 @@ export function rowPhotos(row) {
     return list
         .filter((p) => p && Number.isInteger(p.n) && p.n > 0)
         .map((p) => ({ n: p.n, name: plain(p.name) || `photo ${p.n}` }));
-}
-
-/**
- * An override on the craigslist card: what was typed for craigslist, or, left
- * blank, the words saying the PC derives it from the eBay fields.
- * @param {unknown} value
- * @returns {string}
- */
-export function derivedOr(value) {
-    return plain(value) || DERIVED;
 }
 
 /**
@@ -2126,74 +2160,300 @@ export function namedLines(pairs) {
  * @property {string} label
  * @property {string} value
  * @property {boolean} [pre]     kept as written, line breaks and all
- * @property {boolean} [mono]    an id or a folder
- * @property {boolean} [link]    a tappable address
- * @property {boolean} [derived] an override left blank: muted
+ * @property {boolean} [mono]    an id or a number to read digit by digit
+ * @property {boolean} [derived] a craigslist field left blank: the value it is derived from, muted
  */
 
 /**
- * The Item card: what the row is, whichever venue it goes to. Quantity and
- * pickup only always; the rest only when the row has them.
+ * A venue's status line on its card: the status word and when it went up
+ * ("listed since 2026-10-03 16:21", "sold · listed 2026-10-01 09:00"); "not
+ * posted yet" for a venue the row is on with no status.
  * @param {Record<string, any>} row
+ * @param {string} venue
+ * @param {number} [offsetMinutes] for listedAtWord
+ * @returns {string}
+ */
+export function venueStatusLine(row, venue, offsetMinutes) {
+    const s = venueStatus(row, venue);
+    const when = listedAtWord(s.listedAt, offsetMinutes);
+    if (!s.status) return "not posted yet";
+    if (!when) return s.status;
+    return s.status === "listed" ? `listed since ${when}` : `${s.status} · listed ${when}`;
+}
+
+/**
+ * The craigslist card's four fields: each its override, or, left blank, what the
+ * PC derives it from (the eBay title, price and description; a category it picks
+ * from the eBay one), with `derived` set so the card says so. {} for any other venue.
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @returns {Record<string, {value:string, derived:boolean}>}
+ */
+export function derivedFields(row, venue) {
+    if (venue !== "craigslist") return {};
+    const own = row.craigslist && typeof row.craigslist === "object" ? row.craigslist : {};
+    const pair = (override, from) => (override ? { value: override, derived: false } : { value: from, derived: true });
+    return {
+        title: pair(plain(own.title), plain(row.title)),
+        price: pair(priceText(own.price), priceText(row.price)),
+        description: pair(plain(own.description), plain(row.description)),
+        category: pair(plain(own.category), CATEGORY_FROM_EBAY),
+    };
+}
+
+/**
+ * A venue's card: the listing as that venue has it. eBay: the title, price,
+ * condition, category path, quantity and pickup only always; the description,
+ * note, condition note, aspects, condition details, package, ISBN and model cost
+ * when the row has them. Craigslist: its four fields (derivedFields), always.
+ * The status and the link are the card's status line, above these.
+ * @param {Record<string, any>} row
+ * @param {string} venue
  * @returns {Fact[]}
  */
-export function itemFacts(row) {
+export function venueFacts(row, venue) {
+    if (venue === "craigslist") {
+        const d = derivedFields(row, venue);
+        return [
+            { label: "Title", value: d.title.value, derived: d.title.derived },
+            { label: "Price", value: priceWord(d.price.value), derived: d.price.derived },
+            { label: "Description", value: d.description.value, pre: true, derived: d.description.derived },
+            { label: "Category", value: d.category.value, derived: d.category.derived },
+        ];
+    }
+    if (venue !== "ebay") return [];
     const quantity = Number.isInteger(row.quantity) ? String(row.quantity) : "1";
     const cost = plain(row.model_cost);
     /** @type {Fact[]} */
     const facts = [
+        { label: "Title", value: plain(row.title) },
+        { label: "Price", value: priceWord(row.price) },
         { label: "Condition", value: plain(row.condition) },
         { label: "Category", value: plain(row.category_path) || plain(row.category) },
         { label: "Quantity", value: quantity },
         { label: "Pickup only", value: row.pickup_only === true ? "yes, no shipping on eBay" : "no" },
-        { label: "ISBN", value: plain(row.isbn), mono: true },
         { label: "Description", value: plain(row.description), pre: true },
         { label: "Note", value: plain(row.note), pre: true },
+        { label: "Condition note", value: plain(row.condition_note), pre: true },
+        { label: "Aspects", value: namedLines(row.aspects), pre: true },
+        { label: "Condition details", value: namedLines(row.condition_details), pre: true },
         { label: "Package", value: packageWord(row.package) },
+        { label: "ISBN", value: plain(row.isbn), mono: true },
         { label: "Model cost", value: cost ? `$${cost}` : "" },
-        { label: "Source folder", value: plain(row.source), mono: true },
     ];
     return facts.filter((f) => f.value);
 }
 
+// --- Admin: a card's actions, and the sync bar -------------------------------------
+
 /**
- * A venue's card: its status, id, link and when it went up; then eBay's own
- * fields (the condition note, the condition details, the aspects), or
- * craigslist's four overrides, each the override or "derived from eBay".
+ * The actions a venue's card offers, in their order in its actions row:
+ *   "add"     the row is not on this venue: its empty card puts it there
+ *   "post"    on the venue and not listed (a draft; an ended or sold row goes up again)
+ *   "open"    listed, with a link: the listing in a new tab
+ *   "refresh" listed: the PC asks the venue how the listing stands
+ *   "end"     listed: the PC takes it down, after a second tap
+ *   "edit"    on the venue: the card's fields as inputs
  * @param {Record<string, any>} row
  * @param {string} venue
- * @param {number} [offsetMinutes] for listedAtWord
- * @returns {Fact[]}
+ * @returns {string[]}
  */
-export function venueFacts(row, venue, offsetMinutes) {
+export function venueActions(row, venue) {
+    if (!rowVenues(row).includes(venue)) return ["add"];
     const s = venueStatus(row, venue);
-    /** @type {Fact[]} */
-    const facts = [
-        { label: "Status", value: s.status },
-        { label: "ID", value: s.id, mono: true },
-        { label: "Link", value: s.url, link: true },
-        { label: "Listed at", value: listedAtWord(s.listedAt, offsetMinutes) },
-    ];
-    if (venue === "ebay") {
-        facts.push(
-            { label: "Condition note", value: plain(row.condition_note), pre: true },
-            { label: "Condition details", value: namedLines(row.condition_details), pre: true },
-            { label: "Aspects", value: namedLines(row.aspects), pre: true }
-        );
+    if (s.status !== "listed") return ["post", "edit"];
+    return [...(s.url ? ["open"] : []), "refresh", "end", "edit"];
+}
+
+/**
+ * An action's words on its button.
+ * @param {string} action one of venueActions'
+ * @param {string} venue
+ * @returns {string}
+ */
+export function actionWord(action, venue) {
+    switch (action) {
+        case "add":
+            return `Add ${venue} to this item`;
+        case "post":
+            return `Post on ${venue}`;
+        case "open":
+            return "Open listing";
+        case "refresh":
+            return "Refresh status";
+        case "end":
+            return "End listing";
+        default:
+            return "Edit";
     }
-    const shown = facts.filter((f) => f.value);
+}
+
+/**
+ * The question End listing asks inline before anything is sent; "Yes, end it" sends it.
+ * @param {string} venue
+ * @returns {string}
+ */
+export function endQuestion(venue) {
+    return `End this listing on ${venue}?`;
+}
+
+/**
+ * The body of POST /jobs for an action job (the PC's contract, 2026-10-06):
+ *   {"action": "end" | "refresh", "sku", "venue"}  a card's End listing / Refresh status
+ *   {"action": "sync", "direction": "from" | "to"}  the sync bar's two buttons
+ * A card's Post stays jobRequest's {"sku", "venue"}.
+ * @param {"end"|"refresh"|"sync"} action
+ * @param {{sku?:string, venue?:string, direction?:string}} what
+ * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string}}
+ */
+export function actionJob(action, { sku = "", venue = "", direction = "" } = {}) {
+    if (action === "sync") {
+        if (direction !== "from" && direction !== "to") throw new RangeError(`unknown sync direction ${direction}`);
+        return { action, direction };
+    }
+    if (action !== "end" && action !== "refresh") throw new RangeError(`unknown action ${action}`);
+    if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
+    return { action, sku, venue };
+}
+
+/**
+ * An action job (as GET /jobs/<id> last answered) still on the PC's queue or in hand.
+ * @param {{state?:string} | null} job
+ * @returns {boolean}
+ */
+export function jobRunning(job) {
+    return !!job && (job.state === "queued" || job.state === "running");
+}
+
+/**
+ * The line an action job reads as: the sync bar's, and a card's for its Post,
+ * Refresh or End. Queued with how many are ahead, the PC's step while it runs,
+ * its summary once done ("3 listings updated, 10 unchanged, 0 failed"), its
+ * error once failed. A poll the PC did not answer (`trouble`) is said, and asked again.
+ * @param {{state?:string, step?:string, summary?:string, error?:string, ahead?:number, trouble?:string}} job
+ * @returns {{text:string, kind:"busy"|"ok"|"bad"}}
+ */
+export function syncLine(job) {
+    const state = plain(job.state);
+    if (state === "done") return { text: plain(job.summary) || "done", kind: "ok" };
+    if (state === "failed") return { text: plain(job.error) || "failed", kind: "bad" };
+    if (state === CANCELLED) return { text: CANCELLED, kind: "bad" };
+    if (job.trouble) return { text: `${job.trouble}, still trying`, kind: "busy" };
+    if (state === "running") return { text: plain(job.step) || "working", kind: "busy" };
+    const ahead = Number.isInteger(job.ahead) && job.ahead > 0 ? job.ahead : 0;
+    return { text: ahead ? `queued, ${ahead} ahead` : "queued", kind: "busy" };
+}
+
+/**
+ * A card's status line: what is on its way to the PC (`wait`), its job (running
+ * or ended), what the PC refused (`note`), and otherwise the venue's status on
+ * the row. Nothing for a venue the row is not on until its Add has something to say.
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null}} card
+ * @param {number} [offsetMinutes] for listedAtWord
+ * @returns {{text:string, kind:string}}
+ */
+export function cardLine(row, venue, card, offsetMinutes) {
+    if (card.wait) return { text: card.wait, kind: "busy" };
+    if (card.job) return syncLine(card.job);
+    if (card.note) return card.note;
+    if (!rowVenues(row).includes(venue)) return { text: "", kind: "" };
+    const listed = venueStatus(row, venue).status === "listed";
+    return { text: venueStatusLine(row, venue, offsetMinutes), kind: listed ? "ok" : "" };
+}
+
+/**
+ * A card's fields as Edit turns them into inputs, in their order on the card:
+ * eBay's go top-level in the PATCH, craigslist's four overrides inside its
+ * "craigslist" (where "" clears one). kind: "line" an input, "price" an input
+ * for dollars, "count" a whole number, "text" a textarea, "check" a tick.
+ */
+export const EDIT_FIELDS = {
+    ebay: [
+        { key: "title", label: "Title", kind: "line" },
+        { key: "price", label: "Price, dollars", kind: "price" },
+        { key: "description", label: "Description", kind: "text" },
+        { key: "note", label: "Note", kind: "text" },
+        { key: "quantity", label: "Quantity", kind: "count" },
+        { key: "pickup_only", label: "Pickup only — no shipping on eBay", kind: "check" },
+        { key: "condition_note", label: "Condition note", kind: "text" },
+    ],
+    craigslist: [
+        { key: "title", label: "Title", kind: "line" },
+        { key: "price", label: "Price, dollars", kind: "price" },
+        { key: "description", label: "Description", kind: "text" },
+        { key: "category", label: "Category", kind: "line" },
+    ],
+};
+
+/**
+ * What Edit's inputs start from: eBay's fields as the row has them, or
+ * craigslist's overrides ("" for one left blank; its placeholder shows what it
+ * is derived from).
+ * @param {Record<string, any>} row
+ * @param {string} venue
+ * @returns {Record<string, string|boolean>}
+ */
+export function editValues(row, venue) {
     if (venue === "craigslist") {
         const own = row.craigslist && typeof row.craigslist === "object" ? row.craigslist : {};
-        const override = (label, value, pre = false) => {
-            const said = derivedOr(value);
-            return { label, value: said, pre, derived: said === DERIVED };
+        return {
+            title: plain(own.title),
+            price: priceText(own.price),
+            description: plain(own.description),
+            category: plain(own.category),
         };
-        shown.push(
-            override("Title", own.title),
-            override("Price", priceWord(own.price)),
-            override("Description", own.description, true),
-            override("Category", own.category)
-        );
     }
-    return shown;
+    return {
+        title: plain(row.title),
+        price: priceText(row.price),
+        description: plain(row.description),
+        note: plain(row.note),
+        quantity: Number.isInteger(row.quantity) ? String(row.quantity) : "1",
+        pickup_only: row.pickup_only === true,
+        condition_note: plain(row.condition_note),
+    };
+}
+
+/**
+ * The fields Edit changed: those of `after` whose value is not `before`'s, typed
+ * text trimmed (a stray space is no change; a field emptied is "").
+ * @param {Record<string, unknown>} before
+ * @param {Record<string, unknown>} after
+ * @returns {Record<string, any>}
+ */
+export function changedFields(before, after) {
+    /** @type {Record<string, any>} */
+    const out = {};
+    for (const [key, value] of Object.entries(after)) {
+        const now = typeof value === "string" ? value.trim() : value;
+        const was = typeof before[key] === "string" ? before[key].trim() : before[key];
+        if (now !== was) out[key] = now;
+    }
+    return out;
+}
+
+/** Said under Save while the quantity typed is not one. */
+export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
+
+/**
+ * The one PATCH /inventory/<sku> body Save sends: only the fields changed, eBay's
+ * top-level (the quantity as a number), craigslist's inside "craigslist". `body`
+ * is null when nothing changed (nothing is sent) or when the quantity is not a
+ * quantity (`error` says so).
+ * @param {string} venue
+ * @param {Record<string, unknown>} before editValues()
+ * @param {Record<string, unknown>} after the inputs
+ * @returns {{body: Record<string, any> | null, error: string}}
+ */
+export function patchBody(venue, before, after) {
+    const changed = changedFields(before, after);
+    if ("quantity" in changed) {
+        const n = quantityValue(changed.quantity);
+        if (!n) return { body: null, error: EDIT_QUANTITY_HINT };
+        changed.quantity = n;
+    }
+    if (Object.keys(changed).length === 0) return { body: null, error: "" };
+    return { body: venue === "craigslist" ? { craigslist: changed } : changed, error: "" };
 }

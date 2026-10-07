@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.2.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.3.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -501,6 +501,8 @@ button.badge.failed {
     border-radius: 999px;
 }
 .mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
+/* hidden while Admin is open (Michal, 2026-10-06); display: grid above would beat the attribute */
+.modes[hidden] { display: none; }
 
 /* the book the PC found: the title in bold, then the authors, then the small print */
 .book-card { margin-top: 14px; }
@@ -635,6 +637,9 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 .chips.chips-three { grid-template-columns: repeat(3, 1fr); }
 .chips.chips-five { grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .chips-five .chip { padding: 6px 2px; font-size: 13px; }
+/* Newest | Oldest | Price ↓ | Price ↑: one row, even at 360 px */
+.chips.chips-four { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.chips-four .chip { padding: 6px 2px; font-size: 13px; }
 
 .inventory-list {
     list-style: none;
@@ -644,21 +649,37 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
     flex-direction: column;
     gap: 8px;
 }
-/* a listing: one tap target, a sheet-cornered white button, never wider than the screen */
-.inv-open {
+/* a listing: a sheet-cornered white row, never wider than the screen. Its button (the
+   title and the line) reaches over the whole row with ::after, so the row is one tap
+   target; a listed badge's link sits above that, its own target. */
+.inv-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    width: 100%;
     min-height: 56px;
     padding: 10px 14px;
-    text-align: left;
     background: var(--field);
     color: var(--ink);
     border: 2px solid var(--line);
     border-radius: var(--radius);
 }
-.inv-open:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.inv-row:has(.inv-open:focus-visible) { outline: 3px solid var(--accent); outline-offset: 1px; }
+.inv-open {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+    background: none;
+    color: inherit;
+    border: none;
+    border-radius: 0;
+}
+.inv-open:focus-visible { outline: none; }
+.inv-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
 .inv-thumb {
     flex: none;
     display: flex;
@@ -692,19 +713,27 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 }
 .vbadge.posted { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); }
 .vbadge.muted { background: var(--line); border-color: var(--line); color: var(--muted); }
+/* a listed badge opens the listing (Michal, 2026-10-06): above the row's tap, a little
+   larger for a thumb, an arrow saying it leaves the page */
+a.vbadge { position: relative; z-index: 1; padding: 4px 10px; font-size: 12px; text-decoration: none; }
+a.vbadge::after { content: " ↗"; }
 
-/* one listing, in place of the list */
+/* one listing, in place of the list: the heading, the photo strip, the venue cards */
 .link.back-link { display: block; min-height: 44px; padding: 10px 0; font-size: 15px; }
 .detail-heading { font-size: 22px; line-height: 1.25; margin: 2px 0 4px; overflow-wrap: anywhere; }
+.detail-photos .strip { padding: 8px 0 2px; gap: 8px; }
+.detail-photos .small { margin: 8px 0 0; }
 .fold { padding: 2px 14px 14px; margin-bottom: 4px; }
+.fold .venue-status { margin: 12px 0 0; }
+.fold .venue-status:empty { display: none; }
+.fold .venue-link { margin: 4px 0 0; }
 .facts { margin: 0; }
 .facts dt { margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .facts dd { margin: 2px 0 0; font-size: 15px; overflow-wrap: anywhere; }
 .facts dd.pre { white-space: pre-wrap; }
 .facts dd.derived { color: var(--muted); }
-.facts a { color: var(--ink); font-weight: 700; }
-.fold .small { margin: 12px 0 0; }
-.fold .strip { padding-top: 12px; gap: 8px; }
+/* "derived from eBay" under a craigslist field left blank */
+.derived-note { display: block; margin-top: 1px; font-size: 12px; font-weight: 700; white-space: normal; }
 /* a photo: an 88 px tile, a tap shows it full size */
 .thumb {
     display: flex;
@@ -723,9 +752,66 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* still on its way: a blank tile, not a faded one */
 .thumb:disabled { opacity: 1; }
-/* the posting actions of a later lane go here */
-.venue-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.venue-actions:empty { display: none; }
+/* a card's actions (Michal, 2026-10-06: "post the other venue, end, refresh status, edit
+   fields"): smoke pills on the white card, Save the chosen-thing black (yellow in the dark);
+   End's second tap is two small pills, the yes in the stop red, with its question above */
+.venue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background: var(--card);
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+}
+.pill:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.pill-ink { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 800; }
+.pill-small { min-height: 40px; padding: 6px 14px; font-size: 14px; }
+.pill-bad { background: var(--bad); border-color: var(--bad); color: var(--bad-ink); font-weight: 800; }
+.confirm-ask { flex-basis: 100%; font-size: 15px; font-weight: 700; }
+/* Edit: the card's fields as the page's own inputs; craigslist's each with a quiet clear */
+.edit-form .field { margin: 12px 0 0; }
+.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.link.clear { min-height: 32px; padding: 0 0 6px 12px; font-size: 13px; color: var(--muted); }
+.edit-error { margin: 8px 2px 0; font-size: 14px; font-weight: 700; color: var(--bad); overflow-wrap: anywhere; }
+
+/* The sync bar (Michal, 2026-10-06: "below the inventory list hovering fixed on the screen
+   as I scroll down"): a smoke sheet under a yellow rule, edge to edge, two outlined pills
+   and the job's line. Sticky, not fixed: it rides the bottom of the screen while Admin is
+   on it and settles in its own place above Close at the end, so it never covers the list's
+   last row, and it scrolls away with Admin onto the item below. */
+.sync-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 16px -16px 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--card);
+    border-top: 4px solid var(--signal);
+}
+.sync-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sync-btn {
+    min-height: 48px;
+    padding: 8px 10px;
+    background: var(--field);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+.sync-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.sync-status:empty { display: none; }
+.sync-status.busy { color: var(--ink); }
+.sync-status.ok { color: var(--ok); }
+.sync-status.bad { color: var(--bad); }
 
 /* the full-size photo: black, edge to edge, the picture whole; Close top right */
 .photo-view {

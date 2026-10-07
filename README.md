@@ -55,9 +55,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory), customize, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory, a listing's cards and their actions, the sync bar), customize, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the PC, Admin's inventory reads too |
+| `pc.js` | every call to the PC, Admin's inventory and its actions too |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -118,13 +118,13 @@ and every behaviour are the live app's.
   once, each with its own state: switching in the middle of an item asks
   nothing and loses nothing. Photos of the hidden item keep going to the PC
   (the shown item's go first), and a job running for it keeps being asked
-  about, so its link is there on switching back.
+  about, so its link is there on switching back. Hidden while Admin is open.
 - **Admin** (header, top right; it was Settings until 2.1.0): **Settings** and
-  the **Inventory**, each a foldout, opening under the switch (see
-  [Admin](#admin)). **Settings** holds the PC address and the key: **Save and
-  check** stores them and asks the PC whether it knows the key (a read of the
-  newest job: no model call, nothing published). **Close** at the bottom of
-  Admin hides it again.
+  the **Inventory**, each a foldout, then the sync bar, opening where the
+  switch was (see [Admin](#admin)). **Settings** holds the PC address and the
+  key: **Save and check** stores them and asks the PC whether it knows the key
+  (a read of the newest job: no model call, nothing published). **Close** at
+  the bottom of Admin hides it again.
 - **The server word** (header, beside Admin, and at the top of Settings):
   the page asks the PC by itself, on load, every 30 s while it is on screen,
   and when the phone is back online or back on screen, the same read as the
@@ -449,9 +449,15 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The PC drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the PC publishes the saved row | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
-| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All | `{"rows": [summary...]}`, newest first; a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}` |
+| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}` |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields) and `"photos": [{"n", "name"}...]` (a list here); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
+| `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"quantity"` (a number), `"pickup_only"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "quantity": 2}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save) |
+| `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
+| `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
+| `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused (Craigslist cannot be ended from here): the card says it and its End goes |
+| `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
+| `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`), the line the card or the bar shows |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the note is sent first if it is still being typed. The `sku` comes from the
@@ -487,12 +493,26 @@ now is a foldout - settings and inventory would be a foldout in the admin
 section. once you click on a listing probably all the cards are different
 foldouts (craigslist, ebay, etc)".
 
+Michal, later on 2026-10-06: "I want a clear sync to and sync from for overall
+syncing. They probably could be below the inventory list hovering fixed on the
+screen as I scroll down. Add sorting options for the inventory (by price and by
+age). When an item is listed probably clicking the venue button from the
+inventory should open the listing. Also when we do admin we probably do not
+need goods vs book slider distinction. Add the per item actions you have
+proposed [post the other venue, end, refresh status, edit fields]. Also I think
+when I click on an item there should only be eBay or and Craigslist card. I am
+not sure what card I am looking at when I just clicked with some additional
+eBay foldout. Also a foldout for a venue that is not active should be there.
+Empty. With capacity to generate that card from there."
+
 - **Admin**, the header link where Settings was, opens a section above the
   item (where Settings opened) with two foldouts in customize's shape (**▸**
-  folded, **▾** open) and a **Close** at its bottom. It opens on **Settings**
-  while the address or key is missing or malformed, and otherwise on the
-  **Inventory**, asked afresh each time. Should the PC then refuse the key, the
-  inventory's line says `wrong key - check Settings` and Settings opens too.
+  folded, **▾** open), the sync bar and a **Close** at its bottom. The goods |
+  book switch is hidden while Admin is open, and back on Close. It opens on
+  **Settings** while the address or key is missing or malformed, and otherwise
+  on the **Inventory**, asked afresh each time. Should the PC then refuse the
+  key, the inventory's line says `wrong key - check Settings` and Settings
+  opens too.
 - **Settings** is the old Settings card, unchanged inside (the address, the
   key, **Save and check**, the server word at its top). Saving while the
   inventory is open asks for the list again.
@@ -501,32 +521,75 @@ foldouts (craigslist, ebay, etc)".
   `12 listings`, `No listings match.`, `The newest 200 listings; search to
   narrow them.`, or `Could not read the inventory: cannot reach the PC.`: the
   list stays as it was), two rows of chips, **Venue** (All | ebay |
-  craigslist) and **Status** (All | draft | listed | sold | ended), each asking
-  at once, and **Show photos**, off by default. Then the list: one button per
-  listing, newest first, with the title in bold (it wraps anywhere, so a long
-  one never widens the page), the price (`$24`, `$24.50`), the sku in small
-  mono, and a small badge per venue with its status: listed in the posted
-  green, sold and ended muted, a draft outlined. With **Show photos** on, a
-  64 px tile of photo 1 sits on the left of each (`no photo` for a listing with
-  none), fetched one at a time; changing the list lets those pictures go.
+  craigslist) and **Status** (All | draft | listed | sold | ended), **Show
+  photos**, off by default, and a row of **Sort** chips (**Newest** | Oldest |
+  Price ↓ | Price ↑; a row with no price comes last either way). Every chip
+  asks at once. Then the list: one row per listing, in that order, with the
+  title in bold (it wraps anywhere, so a long one never widens the page), the
+  price (`$24`, `$24.50`), the sku in small mono, and a small badge per venue
+  with its status: listed in the posted green, sold and ended muted, a draft
+  outlined. A listed badge with a link is a link (`ebay listed ↗`): a tap
+  opens the listing in a new tab and not the detail; the rest of the row opens
+  the detail. With **Show photos** on, a 64 px tile of photo 1 sits on the left
+  of each (`no photo` for a listing with none), fetched one at a time;
+  changing the list lets those pictures go.
+- **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
+  eBay** on a smoke sheet under a yellow rule. It sticks to the bottom of the
+  screen while Admin is on it (`position: sticky`, so at the end of the list it
+  sits in its own place above Close and never covers the last row). A tap
+  sends the sync job; its line under the buttons says `queued`, then the PC's
+  step, then its summary (`3 listings updated, 10 unchanged, 0 failed`) or its
+  error, asked every 3 s; both buttons are locked until it ends, and the list
+  is then asked for again (on the way back, when a listing is open). A sync the
+  PC refuses shows the PC's words. Closing Admin leaves the job running on the
+  PC, still asked about.
 - **A listing tapped** opens in place of the list: **← Back to the list** at
-  the top (back on the same list, at the same row, nothing asked again), the
-  title and price as its heading, then four foldouts. **Item** (open):
-  condition, category path, quantity, pickup only, the ISBN when there is one,
-  the description as written (line breaks kept), the note, the package
-  (`40 oz, 18 x 12 x 12 in`), the model cost (`$0.1046`) and the source
-  folder. **Photos** (open): every photo as an 88 px tile, fetched one at a
-  time; a tap shows it full size on black, the whole picture, with **Close**
-  at the top right (a tap anywhere on it, or Escape, closes it too). **ebay**
-  (folded): status, id, link, when it was listed (`2026-10-03 16:21`, the
-  phone's own time), the condition note, the condition details and the
-  aspects as `name: values` lines. **craigslist** (folded): status, id, link,
-  listed at, then its four overrides (title, price, description, category),
-  each what was typed for craigslist or, muted, `derived from eBay`. A venue's
-  foldout is there only for a venue the listing has.
-- **Read-only.** Nothing in Admin changes a listing or posts one; each venue
-  card ends in an empty row (`venue-actions`) where a later version's actions
-  go.
+  the top (back on the same list, at the same row, nothing asked again, unless
+  a card changed the listing: then the list is asked for again), the title and
+  price as its heading, the photos as a strip right under it (88 px tiles,
+  fetched one at a time; a tap shows one full size on black, the whole
+  picture, with **Close** at the top right; a tap anywhere on it, or Escape,
+  closes it too), then one foldout per venue and nothing else, **ebay** then
+  **craigslist**, open for a venue the listing is on.
+  - Each card starts with its **status line**, the venue's status and when it
+    went up (`listed since 2026-10-03 16:21`, the phone's own time; `draft`;
+    `not posted yet`), or a job's line while one runs, and the link under it.
+  - **ebay**: the listing as eBay has it: title, price, condition, category
+    path, quantity, pickup only, the description as written (line breaks
+    kept), the note, the condition note, the aspects and condition details as
+    `name: values` lines, the package (`40 oz, 18 x 12 x 12 in`), the ISBN
+    when there is one, the model cost (`$0.1046`).
+  - **craigslist**: title, price, description and category, each the
+    craigslist override when one was typed, or else the value it is derived
+    from (the eBay title, price and description; the category `from the eBay
+    category`) with `derived from eBay` under it, muted.
+  - A venue the listing is not on is an **empty foldout**, folded, its arrow
+    saying `▸ craigslist · not added`, holding one button, **Add craigslist to
+    this item**: the PC puts the listing on it, and the card fills with its
+    derived fields, open.
+- **A card's actions**, in its row under the fields (which ones show is
+  `venueActions` in core.js):
+  - **Post on <venue>** when the listing is on the venue and not listed (a
+    draft; an ended or sold one goes up again): the same `{"sku", "venue"}`
+    job as the other venue button, its step in the card's status line, asked
+    every 3 s; once done the listing is read again and the link shows.
+  - **Open listing** (a link, new tab), **Refresh status** and **End
+    listing** when listed. Refresh is a job like Post. End asks first, inline
+    (`End this listing on ebay?` **Yes, end it** | **Keep it**, never a
+    browser dialog), and only **Yes, end it** sends it. An End the PC refuses
+    (Craigslist cannot be ended from here) puts the PC's words in the status
+    line and the button goes.
+  - **Edit** turns the card's fields into the page's own inputs (eBay: title,
+    price, description, note, quantity, pickup only, condition note;
+    craigslist: its four overrides, each blank one showing what it derives
+    as its placeholder, each with a **clear** that empties the override);
+    **Save** sends one PATCH with only the fields changed (nothing changed
+    sends nothing; a quantity that is not a whole number is said under Save
+    and not sent), **Cancel** puts the card back. A field the PC refuses is
+    named under Save, the inputs kept as typed.
+  - While something of the listing's is on its way or a job of its is still
+    running, every action button but Open listing waits and the fields stay
+    read-only: one job per listing at a time.
 
 ## Settings
 

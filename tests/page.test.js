@@ -190,23 +190,40 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "inventory-state-sold",
         "inventory-state-ended",
         "inventory-photos",
+        // Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)"
+        "inventory-sort",
+        "inventory-sort-newest",
+        "inventory-sort-oldest",
+        "inventory-sort-price-desc",
+        "inventory-sort-price-asc",
         "inventory-list",
-        // a listing, in place of the list
+        // a listing, in place of the list: the heading, the photo strip, then only the venue
+        // cards (Michal, 2026-10-06: "there should only be eBay or and Craigslist card")
         "inventory-detail",
         "inventory-back",
         "detail-heading",
         "detail-status",
-        "detail-item-toggle",
-        "detail-item",
-        "detail-photos-toggle",
         "detail-photos",
         "detail-ebay-toggle",
         "detail-ebay",
         "detail-craigslist-toggle",
         "detail-craigslist",
+        // the sync bar, below the inventory list, sticking to the bottom of the screen
+        "sync-from",
+        "sync-to",
+        "sync-status",
         "admin-close",
     ]);
     assert.match(html, /id="inventory-search"[^>]*inputmode="search"/);
+    assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
+    assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
+    assert.match(html, /<button type="button" id="sync-from"[^>]*>Sync from eBay</);
+    assert.match(html, /<button type="button" id="sync-to"[^>]*>Sync to eBay</);
+    // the goods | book switch has an id, so Admin can hide it
+    assert.match(html, /<div id="modes" class="modes" role="group"/);
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.sync-bar \{[^}]*position: sticky;[^}]*bottom: 0;/);
+    assert.match(css, /\.modes\[hidden\] \{ display: none; \}/);
     // the full-size photo lies over everything, outside main
     const after = html.slice(html.indexOf("</main>"));
     assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
@@ -1205,20 +1222,58 @@ function wholeRow(sku, over = {}) {
 }
 
 /**
+ * What is wrong with an action job's POST /jobs body as the PC reads it, or ""
+ * (the contract of 2026-10-06): {"action": "end" | "refresh", "sku", "venue"} or
+ * {"action": "sync", "direction": "from" | "to"}, nothing else.
+ */
+function actionContract(body) {
+    const keys = Object.keys(body).sort().join(",");
+    if (body.action === "sync") {
+        return keys === "action,direction" && ["from", "to"].includes(body.direction) ? "" : `sync with ${keys}`;
+    }
+    if (["end", "refresh"].includes(body.action)) {
+        const ok = keys === "action,sku,venue" && body.sku && ["ebay", "craigslist"].includes(body.venue);
+        return ok ? "" : `${body.action} with ${keys}`;
+    }
+    return `unknown action ${body.action}`;
+}
+
+/**
  * The fake PC with Admin's routes: GET /inventory answers `rows` (the query is
  * in pc.calls), /inventory/<sku> the whole row, /inventory/<sku>/photos/<n> an
- * image for any photo the row names.
+ * image for any photo the row names. PATCH /inventory/<sku> merges its body into
+ * the whole row (each body in pc.patches; `pc.refusePatch` answers a 400 with
+ * those words instead), POST /inventory/<sku>/venues/<venue> puts the row on that
+ * venue. POST /jobs with an "action" is checked against the contract, kept in
+ * pc.posted and queued as a1, a2, ... (answered by `jobs`), or refused with
+ * `pc.refuse[action]`'s words; any other job is fakePc's own.
  */
-function inventoryPc(rows, wholes = {}) {
-    const pc = fakePc();
+function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
+    const pc = fakePc({ jobs });
     const base = pc.fetch;
+    pc.patches = [];
+    pc.refusePatch = "";
+    pc.refuse = {};
+    let made = 0;
     pc.fetch = async (url, init = {}) => {
+        const method = init.method || "GET";
         const u = new URL(url);
         const parts = u.pathname.split("/").slice(1).map(decodeURIComponent);
-        if (parts[0] !== "inventory") return base(url, init);
-        pc.calls.push(`GET /${parts.join("/")}${u.search}`);
-        if (pc.down) throw new TypeError("Failed to fetch");
         const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+        const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+        if (parts[0] === "jobs" && method === "POST" && body && "action" in body) {
+            pc.calls.push("POST /jobs");
+            if (pc.down) throw new TypeError("Failed to fetch");
+            pc.posted.push(body);
+            const broken = actionContract(body);
+            if (broken) return json({ detail: `contract: ${broken}` }, 422);
+            if (pc.refuse[body.action]) return json({ detail: pc.refuse[body.action] }, 400);
+            made += 1;
+            return json({ job: `a${made}`, state: "queued", ahead: 0 });
+        }
+        if (parts[0] !== "inventory") return base(url, init);
+        pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        if (pc.down) throw new TypeError("Failed to fetch");
         if (!parts[1]) return json({ rows });
         const whole = wholes[parts[1]];
         if (!whole) return json({ detail: `no row ${parts[1]}` }, 404);
@@ -1226,39 +1281,96 @@ function inventoryPc(rows, wholes = {}) {
             if (!whole.photos.some((p) => p.n === Number(parts[3]))) return json({ detail: "no such photo" }, 404);
             return new Response(`jpeg ${parts[1]} ${parts[3]}`, { status: 200, headers: { "Content-Type": "image/jpeg" } });
         }
+        if (method === "PATCH") {
+            assert.equal(init.headers["Content-Type"], "application/json");
+            pc.patches.push(body);
+            if (pc.refusePatch) return json({ detail: pc.refusePatch }, 400);
+            const { craigslist, ...top } = body;
+            Object.assign(whole, top);
+            if (craigslist) whole.craigslist = { ...whole.craigslist, ...craigslist };
+            return json(whole);
+        }
+        if (parts[2] === "venues" && method === "POST") {
+            whole.venues = [...whole.venues, parts[3]];
+            return json(whole);
+        }
         return json(whole);
     };
     return pc;
 }
 
-const ALL = "venue=&status=&limit=200";
+const ALL = "venue=&status=&limit=200&sort=age&order=desc";
 
 /** The list's rows as the screen shows them: the button's words, each part by its class. */
 function listed(nodes) {
     return nodes.get("inventory-list").children.map((li) => {
-        const open = li.children[0];
-        const words = open.children.find((c) => c.className === "inv-words");
-        const [title, line, badges] = words.children;
+        const words = li.children.find((c) => c.className === "inv-words");
+        const [open, badges] = words.children;
+        const [title, line] = open.children;
         return {
             title: title.textContent,
             line: line.children.map((c) => c.textContent).join(" "),
             badges: badges.children.map((b) => `${b.textContent} (${b.className})`),
-            thumb: open.children.find((c) => c.className === "inv-thumb"),
+            links: badges.children,
+            thumb: li.children.find((c) => c.className === "inv-thumb"),
             open,
         };
     });
 }
 
-/** A detail card's facts: "label: value", a derived override marked. */
-function facts(card) {
-    const list = card.children[0];
+/** A card's facts: "label: value", a field derived from eBay marked. */
+function factsOf(list) {
     const out = [];
     for (let i = 0; i < list.children.length; i += 2) {
         const value = list.children[i + 1];
-        const text = value.children.length ? value.children[0].textContent : value.textContent;
-        out.push(`${list.children[i].textContent}: ${text}${value.className.includes("derived") ? " (muted)" : ""}`);
+        const note = value.children.find((c) => c.className === "derived-note");
+        out.push(`${list.children[i].textContent}: ${value.textContent}${note ? ` (${note.textContent})` : ""}`);
     }
     return out;
+}
+
+/**
+ * A venue card as the screen shows it: the status line and its kind, the link,
+ * the facts (or null while editing), the actions row's words ("(off)" for a
+ * button that cannot be pressed, "(link)" for a link, "(ask)" for End's
+ * question), the words under Save, and its buttons and Edit's inputs by word.
+ */
+function cardOf(nodes, venue) {
+    const kids = nodes.get(`detail-${venue}`).children;
+    const find = (cls) => kids.find((c) => c.className === cls || c.className.startsWith(`${cls} `));
+    const line = find("venue-status");
+    const link = find("venue-link");
+    const list = find("facts");
+    const form = find("edit-form");
+    const actions = find("venue-actions");
+    const refused = find("edit-error");
+    const fields = form ? form.children : [];
+    const field = (label) =>
+        fields.find((f) => (f.className === "pickup" ? f.children[1] : f.children[0].children[0]).textContent === label);
+    return {
+        line: line.textContent,
+        kind: line.className,
+        link,
+        facts: list ? factsOf(list) : null,
+        actions: actions.children.map((b) => {
+            if (b.tag === "a") return `${b.textContent} (link)`;
+            if (b.tag === "span") return `${b.textContent} (ask)`;
+            return b.disabled ? `${b.textContent} (off)` : b.textContent;
+        }),
+        refused: refused ? refused.textContent : "",
+        button: (word) => actions.children.find((b) => b.textContent === word),
+        input: (label) => {
+            const f = field(label);
+            return f.className === "pickup" ? f.children[0] : f.children[1];
+        },
+        clear: (label) => field(label).children[0].children[1],
+    };
+}
+
+/** Type into one of Edit's inputs, as the phone's keyboard does. */
+function typeField(input, text) {
+    input.value = text;
+    input.fire("input");
 }
 
 test("Admin opens on Settings while they are missing; Settings work inside it as before", async (t) => {
@@ -1324,6 +1436,117 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     assert.equal(rows[0].open.tag, "button");
     assert.equal(rows[0].thumb, undefined, "Show photos is off: no tiles, no photo fetched");
     assert.equal(nodes.get("inventory-detail").hidden, true);
+
+    // Michal, 2026-10-06: "When an item is listed probably clicking the venue button from the
+    // inventory should open the listing": a listed badge is a link, beside the row's button
+    // (not in it), so its tap opens the listing and not the detail; any other is a word
+    const [ebay, craigslist] = rows[0].links;
+    assert.equal(ebay.tag, "a");
+    assert.equal(ebay.href, "https://www.ebay.com/itm/257780366045");
+    assert.equal(ebay.target, "_blank");
+    assert.equal(ebay.rel, "noopener noreferrer");
+    assert.equal(ebay.attrs["aria-label"], "ebay listed: open the listing");
+    assert.equal(craigslist.tag, "span");
+    assert.equal(rows[1].links[0].tag, "span", "sold: a word");
+    ebay.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-detail").hidden, true, "the listing opened, not the detail");
+    assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
+});
+
+test("Admin hides the goods | book switch while it is open", async (t) => {
+    // Michal, 2026-10-06: "when we do admin we probably do not need goods vs book slider distinction"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { nodes } = await loadPage();
+    assert.equal(nodes.get("modes").hidden, false);
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("modes").hidden, true);
+    nodes.get("admin-close").fire("click");
+    assert.equal(nodes.get("modes").hidden, false);
+    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("modes").hidden, false, "the header link closes it the same way");
+});
+
+test("the sort chips: Newest first, and each chip asks again with its sort and order", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.match(html, /id="inventory-sort-newest"[^>]*aria-pressed="true"/);
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=&limit=200&sort=age&order=desc");
+    const chips = {
+        "price-desc": "sort=price&order=desc",
+        "price-asc": "sort=price&order=asc",
+        oldest: "sort=age&order=asc",
+        newest: "sort=age&order=desc",
+    };
+    for (const [chip, query] of Object.entries(chips)) {
+        nodes.get(`inventory-sort-${chip}`).fire("click");
+        await settle();
+        assert.equal(pc.calls.at(-1), `GET /inventory?q=&venue=&status=&limit=200&${query}`);
+        for (const other of Object.keys(chips)) {
+            const pressed = nodes.get(`inventory-sort-${other}`).attrs["aria-pressed"];
+            assert.equal(pressed, other === chip ? "true" : "false", `${other} after ${chip}`);
+        }
+    }
+    // the sort stays with the search and the filters
+    nodes.get("inventory-sort-price-asc").fire("click");
+    nodes.get("inventory-state-listed").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=listed&limit=200&sort=price&order=asc");
+});
+
+test("the sync bar: from and to post their job, show its step and summary, lock, then the list reloads", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let syncing = { state: "running", step: "reading eBay's listings", action: "sync", direction: "from" };
+    const pc = inventoryPc([summary("A1")], {}, { jobs: { a1: () => syncing } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("sync-status").textContent, "");
+    assert.equal(nodes.get("sync-from").disabled, false);
+
+    nodes.get("sync-from").fire("click");
+    assert.equal(nodes.get("sync-status").textContent, "sending");
+    assert.equal(nodes.get("sync-from").disabled, true, "locked from the tap");
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "sync", direction: "from" }]);
+    assert.equal(nodes.get("sync-status").textContent, "queued");
+    assert.equal(nodes.get("sync-from").disabled, true);
+    assert.equal(nodes.get("sync-to").disabled, true);
+    nodes.get("sync-to").fire("click");
+    await settle();
+    assert.equal(pc.posted.length, 1, "nothing more while one runs");
+
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
+    assert.equal(nodes.get("sync-status").textContent, "reading eBay's listings");
+    assert.equal(nodes.get("sync-status").className, "sync-status busy");
+
+    syncing = { ...syncing, state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" };
+    const before = pc.calls.length;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("sync-status").textContent, "3 listings updated, 10 unchanged, 0 failed");
+    assert.equal(nodes.get("sync-status").className, "sync-status ok");
+    assert.equal(nodes.get("sync-from").disabled, false);
+    assert.equal(nodes.get("sync-to").disabled, false);
+    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", `GET /inventory?q=&${ALL}`], "the list asked again");
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.length, before + 2, "no more polls once it ended");
+
+    // a sync the PC refuses says why, and the buttons open again
+    pc.refuse.sync = "eBay is not connected: run crosslister ebay-login";
+    nodes.get("sync-to").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "sync", direction: "to" });
+    assert.equal(nodes.get("sync-status").textContent, "eBay is not connected: run crosslister ebay-login");
+    assert.equal(nodes.get("sync-status").className, "sync-status bad");
+    assert.equal(nodes.get("sync-to").disabled, false);
 });
 
 test("the search waits for him to stop typing; the chips and Show photos ask at once", async (t) => {
@@ -1349,15 +1572,15 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     await settle();
     assert.equal(nodes.get("inventory-venue-craigslist").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("inventory-venue-all").attrs["aria-pressed"], "false");
-    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=&limit=200");
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=&limit=200&sort=age&order=desc");
     nodes.get("inventory-state-sold").fire("click");
     await settle();
     assert.equal(nodes.get("inventory-state-sold").attrs["aria-pressed"], "true");
-    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=sold&limit=200");
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=craigslist&status=sold&limit=200&sort=age&order=desc");
     nodes.get("inventory-venue-all").fire("click");
     nodes.get("inventory-state-all").fire("click");
     await settle();
-    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=&status=&limit=200");
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=blue%20lamp&venue=&status=&limit=200&sort=age&order=desc");
     const before = pc.calls.length;
     nodes.get("inventory-photos").checked = true;
     nodes.get("inventory-photos").fire("change");
@@ -1422,7 +1645,10 @@ test("a key the PC does not know: the inventory says so and Settings opens to pu
     assert.equal(nodes.get("pc-key").value, GOOD["snap.key"]);
 });
 
-test("a row tapped: its detail in place of the list, four foldouts, the photos, full size and back", async (t) => {
+test("a row tapped: the heading, the photo strip, then only the venue cards; full size and back", async (t) => {
+    // Michal, 2026-10-06: "when I click on an item there should only be eBay or and Craigslist
+    // card. I am not sure what card I am looking at when I just clicked with some additional
+    // eBay foldout."
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("R5GM4XZN")], { R5GM4XZN: wholeRow("R5GM4XZN") });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
@@ -1443,55 +1669,56 @@ test("a row tapped: its detail in place of the list, four foldouts, the photos, 
         "GET /inventory/R5GM4XZN/photos/2",
     ]);
     assert.equal(nodes.get("detail-status").hidden, true);
+    assert.ok(!nodes.has("detail-item") && !nodes.has("detail-photos-toggle"), "no Item foldout, no Photos foldout");
 
-    // Item and Photos open, the venue cards folded, each with its arrow
-    const toggles = ["item", "photos", "ebay", "craigslist"].map((k) => nodes.get(`detail-${k}-toggle`));
+    // one foldout per venue, ebay then craigslist, both open: the row is on both
+    const toggles = ["ebay", "craigslist"].map((v) => nodes.get(`detail-${v}-toggle`));
     assert.deepEqual(
         toggles.map((n) => `${n.textContent} ${n.hidden ? "hidden" : "shown"}`),
-        ["▾ Item shown", "▾ Photos shown", "▸ ebay shown", "▸ craigslist shown"]
+        ["▾ ebay shown", "▾ craigslist shown"]
     );
-    assert.equal(nodes.get("detail-item").hidden, false);
-    assert.equal(nodes.get("detail-ebay").hidden, true);
-    assert.deepEqual(facts(nodes.get("detail-item")), [
+    const ebay = cardOf(nodes, "ebay");
+    assert.match(ebay.line, /^listed since 2026-10-0\d \d\d:\d\d$/);
+    assert.equal(ebay.kind, "venue-status ok");
+    assert.equal(ebay.link.tag, "a");
+    assert.equal(ebay.link.href, "https://www.ebay.com/itm/257780366045");
+    assert.equal(ebay.link.rel, "noopener noreferrer");
+    assert.equal(ebay.link.target, "_blank");
+    assert.deepEqual(ebay.facts, [
+        "Title: Item R5GM4XZN",
+        "Price: $24",
         "Condition: Used",
         "Category: Home > Lamps",
         "Quantity: 1",
         "Pickup only: no",
         "Description: A brass lamp.\nWorks.",
+        "Condition note: Light wear on the base",
+        "Aspects: Brand: Acme\nColor: Brass, Gold",
         "Package: 5 oz, 8 x 6 x 2 in",
         "Model cost: $0.1046",
-        `Source folder: Lamp ${TODAY}`,
     ]);
-    const description = nodes.get("detail-item").children[0].children[9];
+    const description = nodes.get("detail-ebay").children.find((c) => c.className === "facts").children[13];
     assert.equal(description.className, "pre", "kept as written, line breaks and all");
+    assert.deepEqual(ebay.actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+    assert.equal(ebay.button("Open listing").href, "https://www.ebay.com/itm/257780366045");
 
-    nodes.get("detail-ebay-toggle").fire("click");
-    assert.equal(nodes.get("detail-ebay").hidden, false);
-    assert.equal(nodes.get("detail-ebay-toggle").textContent, "▾ ebay");
-    const ebay = facts(nodes.get("detail-ebay"));
-    assert.deepEqual(ebay.slice(0, 3), ["Status: listed", "ID: 257780366045", "Link: https://www.ebay.com/itm/257780366045"]);
-    assert.match(ebay[3], /^Listed at: 2026-10-0\d \d\d:\d\d$/);
-    assert.deepEqual(ebay.slice(4), ["Condition note: Light wear on the base", "Aspects: Brand: Acme\nColor: Brass, Gold"]);
-    const link = nodes.get("detail-ebay").children[0].children[5].children[0];
-    assert.equal(link.tag, "a");
-    assert.equal(link.rel, "noopener noreferrer");
-    // read-only: the actions row is there, empty, for a later lane
-    assert.equal(nodes.get("detail-ebay").children[1].className, "venue-actions");
-    assert.deepEqual(nodes.get("detail-ebay").children[1].children, []);
-
-    nodes.get("detail-craigslist-toggle").fire("click");
-    assert.deepEqual(facts(nodes.get("detail-craigslist")), [
-        "Status: draft",
+    // craigslist: each field the override, or the eBay value it is derived from, said muted
+    const craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.line, "draft");
+    assert.equal(craigslist.link, undefined);
+    assert.deepEqual(craigslist.facts, [
         "Title: Brass lamp, works",
-        "Price: derived from eBay (muted)",
-        "Description: derived from eBay (muted)",
-        "Category: derived from eBay (muted)",
+        "Price: $24 (derived from eBay)",
+        "Description: A brass lamp.\nWorks. (derived from eBay)",
+        "Category: from the eBay category (derived from eBay)",
     ]);
-    nodes.get("detail-item-toggle").fire("click");
-    assert.equal(nodes.get("detail-item").hidden, true);
-    assert.equal(nodes.get("detail-item-toggle").attrs["aria-expanded"], "false");
+    assert.deepEqual(craigslist.actions, ["Post on craigslist", "Edit"]);
+    toggles[1].fire("click");
+    assert.equal(nodes.get("detail-craigslist").hidden, true);
+    assert.equal(toggles[1].textContent, "▸ craigslist");
+    assert.equal(toggles[1].attrs["aria-expanded"], "false");
 
-    // the photos: 88 px tiles, each its picture; a tap shows it full size
+    // the photos: a strip right under the heading, 88 px tiles; a tap shows one full size
     const tiles = nodes.get("detail-photos").children[0].children.map((li) => li.children[0]);
     assert.equal(tiles.length, 2);
     assert.deepEqual(tiles.map((b) => b.children[0].src), ["blob:1", "blob:2"]);
@@ -1509,7 +1736,7 @@ test("a row tapped: its detail in place of the list, four foldouts, the photos, 
     nodes.get("photo-view").fire("click");
     assert.equal(nodes.get("photo-view").hidden, true);
 
-    // back: the list as it was, no new query
+    // back: the list as it was, no new query (nothing changed)
     const asked = pc.calls.length;
     nodes.get("inventory-back").fire("click");
     assert.equal(nodes.get("inventory-detail").hidden, true);
@@ -1519,26 +1746,277 @@ test("a row tapped: its detail in place of the list, four foldouts, the photos, 
     assert.equal(pc.calls.length, asked);
 });
 
-test("a row with one venue has that venue's card only; a row the PC no longer has says so", async (t) => {
+test("a venue the row is not on: an empty foldout whose Add puts it there; a row the PC lost says so", async (t) => {
+    // Michal, 2026-10-06: "a foldout for a venue that is not active should be there. Empty.
+    // With capacity to generate that card from there."
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const only = summary("EB1", { venues: ["ebay"], statuses: { ebay: { status: "draft", id: "", url: "", listed_at: null } } });
-    const pc = inventoryPc([only, summary("GONE")], { EB1: wholeRow("EB1", { statuses: only.statuses, photos: [] }) });
+    const whole = wholeRow("EB1", {
+        venues: ["ebay"],
+        statuses: only.statuses,
+        photos: [],
+        craigslist: { title: "", price: null, description: "", category: "" },
+    });
+    const pc = inventoryPc([only, summary("GONE")], { EB1: whole });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
-    assert.equal(nodes.get("detail-ebay-toggle").hidden, false);
-    assert.equal(nodes.get("detail-craigslist-toggle").hidden, true);
-    assert.equal(nodes.get("detail-craigslist").hidden, true);
     assert.equal(nodes.get("detail-photos").children[0].textContent, "No photos.");
+    assert.equal(nodes.get("detail-ebay-toggle").textContent, "▾ ebay");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Post on ebay", "Edit"]);
+    assert.equal(cardOf(nodes, "ebay").line, "draft");
+    // the empty one: there, folded, saying so
+    const toggle = nodes.get("detail-craigslist-toggle");
+    assert.equal(toggle.hidden, false);
+    assert.equal(toggle.textContent, "▸ craigslist · not added");
+    assert.equal(nodes.get("detail-craigslist").hidden, true);
+    toggle.fire("click");
+    assert.equal(nodes.get("detail-craigslist").hidden, false);
+    let craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.line, "");
+    assert.equal(craigslist.facts, null, "empty");
+    assert.deepEqual(craigslist.actions, ["Add craigslist to this item"]);
 
+    craigslist.button("Add craigslist to this item").fire("click");
+    assert.equal(cardOf(nodes, "craigslist").line, "adding craigslist");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Post on ebay (off)", "Edit (off)"], "the row waits");
+    await settle();
+    assert.equal(pc.calls.at(-1), "POST /inventory/EB1/venues/craigslist");
+    assert.equal(toggle.textContent, "▾ craigslist");
+    craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.line, "not posted yet");
+    assert.deepEqual(craigslist.facts, [
+        "Title: Item EB1 (derived from eBay)",
+        "Price: $24 (derived from eBay)",
+        "Description: A brass lamp.\nWorks. (derived from eBay)",
+        "Category: from the eBay category (derived from eBay)",
+    ]);
+    assert.deepEqual(craigslist.actions, ["Post on craigslist", "Edit"]);
+
+    // the row changed: back asks for the list again
     nodes.get("inventory-back").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`);
     listed(nodes)[1].open.fire("click");
     await settle();
     assert.equal(nodes.get("detail-status").hidden, false);
     assert.equal(nodes.get("detail-status").textContent, "Could not read GONE: no row GONE.");
     assert.equal(nodes.get("detail-heading").textContent, "Item GONE · $24", "the summary stays on screen");
+});
+
+test("Edit: the card's fields as inputs; Save sends one PATCH of only the changed fields", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("R5")], { R5: wholeRow("R5") });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    let ebay = cardOf(nodes, "ebay");
+    assert.equal(ebay.facts, null, "the facts turned into inputs");
+    assert.deepEqual(ebay.actions, ["Save", "Cancel"]);
+    assert.equal(ebay.input("Title").value, "Item R5");
+    assert.equal(ebay.input("Price, dollars").value, "24.00");
+    assert.equal(ebay.input("Description").tag, "textarea");
+    assert.equal(ebay.input("Description").value, "A brass lamp.\nWorks.");
+    assert.equal(ebay.input("Note").value, "");
+    assert.equal(ebay.input("Quantity").value, "1");
+    assert.equal(ebay.input("Pickup only — no shipping on eBay").checked, false);
+    assert.equal(ebay.input("Condition note").value, "Light wear on the base");
+    typeField(ebay.input("Title"), "Brass desk lamp ");
+    typeField(ebay.input("Quantity"), "2");
+    const pickup = ebay.input("Pickup only — no shipping on eBay");
+    pickup.checked = true;
+    pickup.fire("change");
+    ebay.button("Save").fire("click");
+    assert.equal(cardOf(nodes, "ebay").line, "saving");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Save (off)", "Cancel (off)"]);
+    await settle();
+    assert.deepEqual(pc.patches, [{ title: "Brass desk lamp", quantity: 2, pickup_only: true }]);
+    assert.equal(pc.calls.at(-1), "PATCH /inventory/R5");
+    ebay = cardOf(nodes, "ebay");
+    assert.deepEqual(ebay.facts.slice(0, 6), [
+        "Title: Brass desk lamp",
+        "Price: $24",
+        "Condition: Used",
+        "Category: Home > Lamps",
+        "Quantity: 2",
+        "Pickup only: yes, no shipping on eBay",
+    ]);
+    assert.equal(nodes.get("detail-heading").textContent, "Brass desk lamp · $24");
+
+    // nothing changed: nothing sent; a quantity that is not one: said, nothing sent; Cancel
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    await settle();
+    assert.equal(pc.patches.length, 1);
+    assert.notEqual(cardOf(nodes, "ebay").facts, null);
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    typeField(cardOf(nodes, "ebay").input("Quantity"), "two");
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    await settle();
+    assert.equal(cardOf(nodes, "ebay").refused, "Quantity must be a whole number, 1 or more");
+    assert.equal(pc.patches.length, 1);
+    cardOf(nodes, "ebay").button("Cancel").fire("click");
+    assert.equal(cardOf(nodes, "ebay").facts[4], "Quantity: 2", "Cancel restores");
+    assert.equal(cardOf(nodes, "ebay").refused, "");
+
+    // craigslist: its overrides, a blank one showing what it derives; "clear" empties one
+    cardOf(nodes, "craigslist").button("Edit").fire("click");
+    let craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.input("Title").value, "Brass lamp, works");
+    assert.equal(craigslist.input("Price, dollars").value, "");
+    assert.equal(craigslist.input("Price, dollars").placeholder, "24.00");
+    assert.equal(craigslist.input("Description").placeholder, "A brass lamp.\nWorks.");
+    assert.equal(craigslist.input("Category").placeholder, "from the eBay category");
+    craigslist.clear("Title").fire("click");
+    assert.equal(craigslist.input("Title").value, "");
+    typeField(craigslist.input("Category"), "household items");
+    craigslist.button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { craigslist: { title: "", category: "household items" } });
+    assert.deepEqual(cardOf(nodes, "craigslist").facts, [
+        "Title: Brass desk lamp (derived from eBay)",
+        "Price: $24 (derived from eBay)",
+        "Description: A brass lamp.\nWorks. (derived from eBay)",
+        "Category: household items",
+    ]);
+
+    // a field the PC refuses: its words under Save, the inputs as typed
+    pc.refusePatch = "price: not a price (e.g. 24.50)";
+    cardOf(nodes, "craigslist").button("Edit").fire("click");
+    typeField(cardOf(nodes, "craigslist").input("Price, dollars"), "cheap");
+    cardOf(nodes, "craigslist").button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { craigslist: { price: "cheap" } });
+    craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.refused, "price: not a price (e.g. 24.50)");
+    assert.equal(craigslist.facts, null, "still editing");
+    assert.equal(craigslist.input("Price, dollars").value, "cheap");
+    assert.deepEqual(craigslist.actions, ["Save", "Cancel"]);
+});
+
+test("Post, Refresh and End: each sends its job, its step in the card's line, then the row read again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let posting = { state: "running", step: "publishing on craigslist for R5" };
+    let refreshing = { state: "running", step: "asking eBay" };
+    let ending = { state: "running", step: "ending on eBay" };
+    const whole = wholeRow("R5");
+    const pc = inventoryPc([summary("R5")], { R5: whole }, {
+        jobs: { j2: () => posting, a1: () => refreshing, a2: () => ending },
+    });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+
+    // Post on craigslist: the row the PC saved, by its sku
+    cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
+    assert.equal(cardOf(nodes, "craigslist").line, "sending");
+    await settle();
+    assert.deepEqual(pc.posted, [{ sku: "R5", venue: "craigslist" }]);
+    assert.equal(cardOf(nodes, "craigslist").line, "queued, 1 ahead");
+    // while it runs the row's fields stay read-only and the other actions wait
+    assert.deepEqual(cardOf(nodes, "ebay").actions, [
+        "Open listing (link)",
+        "Refresh status (off)",
+        "End listing (off)",
+        "Edit (off)",
+    ]);
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (off)", "Edit (off)"]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/j2");
+    assert.equal(cardOf(nodes, "craigslist").line, "publishing on craigslist for R5");
+    assert.equal(cardOf(nodes, "craigslist").kind, "venue-status busy");
+
+    posting = { state: "done", step: "done", summary: "craigslist: listed", links: { craigslist: "https://sfbay.craigslist.org/1.html" } };
+    whole.statuses = {
+        ...whole.statuses,
+        craigslist: { status: "listed", id: "1", url: "https://sfbay.craigslist.org/1.html", listed_at: "2026-10-06T10:00:00-05:00" },
+    };
+    let before = pc.calls.length;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/j2", "GET /inventory/R5"]);
+    let craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.line, "craigslist: listed");
+    assert.equal(craigslist.kind, "venue-status ok");
+    assert.equal(craigslist.link.href, "https://sfbay.craigslist.org/1.html");
+    assert.deepEqual(craigslist.actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(pc.calls.length, before + 2, "no more polls once it ended");
+
+    // Refresh status on ebay
+    cardOf(nodes, "ebay").button("Refresh status").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "refresh", sku: "R5", venue: "ebay" });
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(cardOf(nodes, "ebay").line, "asking eBay");
+    refreshing = { state: "done", summary: "ebay: still listed" };
+    before = pc.calls.length;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", "GET /inventory/R5"]);
+    assert.equal(cardOf(nodes, "ebay").line, "ebay: still listed");
+
+    // End listing: a second tap, inline; Keep it sends nothing
+    const posted = pc.posted.length;
+    cardOf(nodes, "ebay").button("End listing").fire("click");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["End this listing on ebay? (ask)", "Yes, end it", "Keep it"]);
+    await settle();
+    assert.equal(pc.posted.length, posted, "nothing sent on the first tap");
+    cardOf(nodes, "ebay").button("Keep it").fire("click");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+    await settle();
+    assert.equal(pc.posted.length, posted);
+    cardOf(nodes, "ebay").button("End listing").fire("click");
+    cardOf(nodes, "ebay").button("Yes, end it").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "end", sku: "R5", venue: "ebay" });
+    assert.equal(cardOf(nodes, "ebay").line, "queued");
+    ending = { state: "done", summary: "ebay: ended" };
+    whole.statuses = { ...whole.statuses, ebay: { ...whole.statuses.ebay, status: "ended" } };
+    t.mock.timers.tick(3000);
+    await settle();
+    const ebay = cardOf(nodes, "ebay");
+    assert.equal(ebay.line, "ebay: ended");
+    assert.deepEqual(ebay.actions, ["Post on ebay", "Edit"], "ended: it can go up again");
+});
+
+test("an End the PC refuses says why, and its button goes", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const whole = wholeRow("R5", {
+        statuses: {
+            ...summary("R5").statuses,
+            craigslist: { status: "listed", id: "1", url: "https://sfbay.craigslist.org/1.html", listed_at: null },
+        },
+    });
+    const pc = inventoryPc([summary("R5")], { R5: whole });
+    pc.refuse.end = "craigslist cannot be ended from here: delete it on craigslist.org";
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    cardOf(nodes, "craigslist").button("End listing").fire("click");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["End this listing on craigslist? (ask)", "Yes, end it", "Keep it"]);
+    cardOf(nodes, "craigslist").button("Yes, end it").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "end", sku: "R5", venue: "craigslist" }]);
+    const craigslist = cardOf(nodes, "craigslist");
+    assert.equal(craigslist.line, "craigslist cannot be ended from here: delete it on craigslist.org");
+    assert.equal(craigslist.kind, "venue-status bad");
+    assert.deepEqual(craigslist.actions, ["Open listing (link)", "Refresh status", "Edit"]);
+    // the other venue's End stays
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 });
 
 test("a photo the PC refuses shows failed; a tap sends it again", async (t) => {

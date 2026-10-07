@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.2.0";
+import { VERSION } from "./version.js?v=2.3.0";
 import {
     anyActive,
     bannerText,
@@ -67,21 +67,35 @@ import {
     venueLine,
     VENUES,
     INVENTORY_DEBOUNCE_MS,
+    INVENTORY_SORTS,
     INVENTORY_STATUSES,
     INVENTORY_VENUES,
+    actionJob,
+    actionWord,
+    cardLine,
+    DERIVED,
+    derivedFields,
+    EDIT_FIELDS,
+    editValues,
+    endQuestion,
     inventoryCount,
     inventoryRows,
-    itemFacts,
+    jobRunning,
+    patchBody,
     priceWord,
     rowBadges,
     rowHeading,
     rowPhotos,
     rowTitle,
     rowVenues,
+    syncLine,
+    venueActions,
     venueFacts,
-} from "./core.js?v=2.2.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.2.0";
+    venueStatus,
+} from "./core.js?v=2.3.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.3.0";
 import {
+    addVenue,
     cancelJob,
     checkPc,
     createItem,
@@ -93,13 +107,14 @@ import {
     getPhoto,
     getRow,
     getRowPhoto,
+    patchRow,
     PcError,
     postJob,
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.2.0";
-import { shrinkPhoto } from "./shrink.js?v=2.2.0";
+} from "./pc.js?v=2.3.0";
+import { shrinkPhoto } from "./shrink.js?v=2.3.0";
 import {
     bookCard,
     bookPriceValue,
@@ -112,8 +127,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.2.0";
-import { canScan, readIsbn } from "./scan.js?v=2.2.0";
+} from "./book.js?v=2.3.0";
+import { canScan, readIsbn } from "./scan.js?v=2.3.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -167,18 +182,17 @@ let serverStatus = null;
 let healthTimer = null;
 let checking = false;
 
-/** The detail's foldouts as a row opens: Item and Photos open, the venue cards folded. */
-const DETAIL_FOLDS = { item: true, photos: true, ebay: false, craigslist: false };
-
 /**
- * Admin's screen state (only the screen's: nothing of it is stored). The filters,
- * the rows the PC last gave, and the row on screen. `asked` and `shown` are bumped
- * per query and per detail opened or left, so a late answer for an older one is dropped.
+ * Admin's screen state (only the screen's: nothing of it is stored). The filters
+ * and the sort, the rows the PC last gave, and the row on screen with its cards.
+ * `asked` and `shown` are bumped per query and per detail opened or left, so a
+ * late answer for an older one is dropped.
  */
 const admin = {
     inventoryOpen: false,
     venue: "",
     status: "",
+    sort: INVENTORY_SORTS[0].key,
     rows: [],
     asked: 0,
     /** sku -> the 64 px tile its photo 1 goes into, while Show photos is on */
@@ -186,11 +200,16 @@ const admin = {
     /** the list's object URLs, revoked when the list changes */
     thumbs: [],
     shown: 0,
-    folds: { ...DETAIL_FOLDS },
+    /** venue -> its card open (the venues the row is on, as it opens) or folded */
+    folds: Object.fromEntries(VENUES.map((v) => [v, false])),
+    /** venue -> its card's state (blankCard in the Admin section) */
+    cards: Object.fromEntries(VENUES.map((v) => [v, blankCard()])),
     /** the row on screen, whole once the PC gave it; null on the list */
     row: null,
     /** the row button the detail was opened from, to come back to */
     from: null,
+    /** a card changed the row (or a sync ended meanwhile): back asks for the list again */
+    changed: false,
     /** the detail's photo number -> object URL, revoked when the detail closes */
     pictures: new Map(),
     /** the detail's photo number -> its 88 px tile */
@@ -200,6 +219,9 @@ const admin = {
 };
 /** The inventory's search box asks the PC once he stops typing. */
 let searchTimer = null;
+
+/** The sync bar: what is on its way, its job as last polled, what the PC refused, the next poll. */
+const sync = { wait: "", job: null, note: null, timer: null };
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -1301,12 +1323,16 @@ async function poll(m, venue, mine) {
     if (isActive(slots[m].jobs[venue])) schedulePoll(m, venue, mine);
 }
 
-// --- Admin: Settings and the inventory ---------------------------------------------
+// --- Admin: Settings, the inventory and the sync bar --------------------------------
 //
 // Michal, 2026-10-06: "After clicking Admin (where settings are now) a user would have
 // access to inventory list, with search options / filtering options, etc. ... just like
 // 'customize' now is a foldout - settings and inventory would be a foldout in the admin
 // section. once you click on a listing probably all the cards are different foldouts".
+// And later that day: "I want a clear sync to and sync from for overall syncing ... Add
+// the per item actions you have proposed [post the other venue, end, refresh status, edit
+// fields]. Also I think when I click on an item there should only be eBay or and
+// Craigslist card." core.js decides what each card offers and says; this wires it.
 
 /** The foldout's arrow and word: ▸ folded, ▾ open, as customize. */
 function fold(toggle, word, open) {
@@ -1315,13 +1341,22 @@ function fold(toggle, word, open) {
 }
 
 /**
+ * Admin on screen, or not. While it is, the goods | book switch is not (Michal,
+ * 2026-10-06: "when we do admin we probably do not need goods vs book slider distinction").
+ */
+function adminShown(open) {
+    el.admin.hidden = !open;
+    el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    el.modes.hidden = open;
+}
+
+/**
  * Admin opens on Settings while they are missing or wrong, and otherwise on the
  * inventory, asked afresh. Closed, it lets go of the photos it fetched and opens
  * on the list next time.
  */
 function showAdmin(open) {
-    el.admin.hidden = !open;
-    el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    adminShown(open);
     if (!open) {
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
@@ -1342,10 +1377,7 @@ function toggleAdmin() {
 
 /** Settings, inside Admin: opening them opens Admin too, for a caller that sends him there. */
 function showSettings(open) {
-    if (open && el.admin.hidden) {
-        el.admin.hidden = false;
-        el.adminToggle.setAttribute("aria-expanded", "true");
-    }
+    if (open && el.admin.hidden) adminShown(true);
     el.settings.hidden = !open;
     fold(el.settingsToggle, "Settings", open);
     if (open) {
@@ -1370,16 +1402,17 @@ function showInventory(open) {
     }
 }
 
-/** The chips show the filters chosen. */
+/** The chips show the filters and the sort chosen. */
 function renderFilters() {
     for (const { value, node } of el.inventoryVenues) node.setAttribute("aria-pressed", value === admin.venue ? "true" : "false");
     for (const { value, node } of el.inventoryStates) node.setAttribute("aria-pressed", value === admin.status ? "true" : "false");
+    for (const { value, node } of el.inventorySorts) node.setAttribute("aria-pressed", value === admin.sort ? "true" : "false");
 }
 
 /**
- * Ask the PC for the rows that match the search and the filters, and show them.
- * A PC that does not answer says so on the line under the search box; the list
- * stays as it was.
+ * Ask the PC for the rows that match the search and the filters, in the sort
+ * chosen, and show them. A PC that does not answer says so on the line under
+ * the search box; the list stays as it was.
  */
 async function loadInventory() {
     clearTimeout(searchTimer);
@@ -1394,7 +1427,12 @@ async function loadInventory() {
     el.inventoryStatus.textContent = "Asking the PC...";
     let answer;
     try {
-        answer = await getInventory(pc, { q: el.inventorySearch.value, venue: admin.venue, status: admin.status });
+        answer = await getInventory(pc, {
+            q: el.inventorySearch.value,
+            venue: admin.venue,
+            status: admin.status,
+            sort: admin.sort,
+        });
     } catch (e) {
         if (mine !== admin.asked) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -1411,29 +1449,47 @@ async function loadInventory() {
     if (el.inventoryPhotos.checked) fetchThumbs(pc, mine).catch(() => {});
 }
 
-/** The list: one button per row, with photo 1's tile on its left while Show photos is on. */
+/** The list: one row per listing, with photo 1's tile on its left while Show photos is on. */
 function renderRows() {
     dropThumbs();
     const photos = !!el.inventoryPhotos.checked;
     el.inventoryList.replaceChildren(...admin.rows.map((row) => rowNode(row, photos)));
 }
 
+/** An address opened in a new tab that hands nothing back to this page. */
+function linkNode(url, className, word) {
+    const a = document.createElement("a");
+    a.className = className;
+    a.href = url;
+    a.textContent = word;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+}
+
+/**
+ * A row: the title and its line are the button that opens the detail, stretched
+ * over the whole row (styles.css), and the badges sit beside it, not in it: a
+ * listed one is a link to the listing (Michal, 2026-10-06: "clicking the venue
+ * button from the inventory should open the listing"), and a link inside a
+ * button is one a browser does not follow, so the tap goes to the link alone.
+ */
 function rowNode(row, photos) {
     const li = document.createElement("li");
     li.className = "inv-row";
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "inv-open";
     if (photos) {
         // a blank tile until photo 1 comes (fetchThumbs), or for a row with none
         const tile = document.createElement("span");
         tile.className = "inv-thumb";
         tile.textContent = Number(row.photos) > 0 ? "" : "no photo";
         admin.tiles.set(row.sku, tile);
-        open.append(tile);
+        li.append(tile);
     }
-    const words = document.createElement("span");
+    const words = document.createElement("div");
     words.className = "inv-words";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "inv-open";
     const title = document.createElement("span");
     title.className = "inv-title";
     title.textContent = rowTitle(row);
@@ -1450,20 +1506,27 @@ function rowNode(row, photos) {
     sku.className = "inv-sku mono";
     sku.textContent = row.sku;
     line.append(sku);
-    const badges = document.createElement("span");
-    badges.className = "inv-badges";
-    for (const badge of rowBadges(row)) {
-        const b = document.createElement("span");
-        b.className = `vbadge ${badge.kind}`;
-        b.textContent = badge.text;
-        badges.append(b);
-    }
-    words.append(title, line, badges);
-    open.append(words);
+    open.append(title, line);
     open.addEventListener("click", () => {
         openRow(row, open).catch(() => {});
     });
-    li.append(open);
+    const badges = document.createElement("span");
+    badges.className = "inv-badges";
+    for (const badge of rowBadges(row)) {
+        const kind = `vbadge ${badge.kind}`;
+        if (badge.link) {
+            const a = linkNode(badge.link, kind, badge.text);
+            a.setAttribute("aria-label", `${badge.text}: open the listing`);
+            badges.append(a);
+            continue;
+        }
+        const b = document.createElement("span");
+        b.className = kind;
+        b.textContent = badge.text;
+        badges.append(b);
+    }
+    words.append(open, badges);
+    li.append(words);
     return li;
 }
 
@@ -1499,7 +1562,7 @@ function dropThumbs() {
     admin.tiles.clear();
 }
 
-/** A filter chip tapped ("venue" or "status"): the list is asked for again at once. */
+/** A chip tapped ("venue", "status" or "sort"): the list is asked for again at once. */
 function onFilter(filter, value) {
     admin[filter] = value;
     renderFilters();
@@ -1508,14 +1571,17 @@ function onFilter(filter, value) {
 
 /**
  * A row tapped: its detail in place of the list, the summary at once, then the
- * whole row from the PC and its photos one at a time.
+ * whole row from the PC and its photos one at a time. The cards of the venues
+ * the row is on open; an empty one stays folded.
  */
 async function openRow(row, from) {
     admin.shown += 1;
     const mine = admin.shown;
     dropPictures();
+    dropCards();
     admin.from = from;
-    admin.folds = { ...DETAIL_FOLDS };
+    admin.changed = false;
+    admin.folds = Object.fromEntries(VENUES.map((v) => [v, rowVenues(row).includes(v)]));
     detailLine("");
     el.inventoryBrowse.hidden = true;
     el.inventoryDetail.hidden = false;
@@ -1548,34 +1614,96 @@ function detailLine(text) {
     el.detailStatus.hidden = !text;
 }
 
-/** The detail's foldouts and what is in them; a venue's card only for a venue the row has. */
+/** The detail whole: the heading, the photo strip, the venue cards. */
 function renderDetail(row) {
     admin.row = row;
     el.detailHeading.textContent = rowHeading(row);
-    el.detailItem.replaceChildren(factsNode(itemFacts(row)));
     renderDetailPhotos(row);
-    for (const venue of VENUES) {
-        // the actions row stays empty in this read-only lane: the posting actions come later
-        const actions = document.createElement("div");
-        actions.className = "venue-actions";
-        el.detailFolds[venue].card.replaceChildren(factsNode(venueFacts(row, venue)), actions);
-    }
+    renderCards();
+}
+
+/** The row as the PC has it after a card changed it: the heading and the cards; the photos stay. */
+function refreshRow(row) {
+    admin.row = row;
+    el.detailHeading.textContent = rowHeading(row);
+    renderCards();
+}
+
+/**
+ * One card's screen state, per venue, for the row on screen: what is on its way
+ * to the PC (`wait`), its last job as GET /jobs/<id> answered, what the PC refused
+ * (`note`), End asking its second tap (`confirm`), Edit's inputs (`edit`), End
+ * refused for good (`noEnd`), its status line's node and its poll's timer.
+ */
+function blankCard() {
+    return { wait: "", job: null, note: null, confirm: false, edit: null, noEnd: false, line: null, timer: null };
+}
+
+/** The cards' polls stopped and their state let go: the detail is leaving the screen or changing rows. */
+function dropCards() {
+    for (const venue of VENUES) clearTimeout(admin.cards[venue].timer);
+    admin.cards = Object.fromEntries(VENUES.map((v) => [v, blankCard()]));
+}
+
+/**
+ * Something is on its way to the PC or a job of the row's is still running: the
+ * row's fields stay read-only and the other actions wait (one job per row at a time).
+ */
+function rowBusy() {
+    return VENUES.some((v) => !!admin.cards[v].wait || jobRunning(admin.cards[v].job));
+}
+
+/** Every venue card, in its fixed order, and the foldouts' arrows. */
+function renderCards() {
+    for (const venue of VENUES) el.detailFolds[venue].card.replaceChildren(...cardNodes(venue));
     renderFolds();
 }
 
-/** Each foldout's arrow and card; the venue cards only for the venues the row has. */
+/** Each venue's foldout: open or folded, and "not added" on one the row is not on. */
 function renderFolds() {
-    const venues = admin.row ? rowVenues(admin.row) : [];
-    for (const [key, { word, toggle, card }] of Object.entries(el.detailFolds)) {
-        const there = !VENUES.includes(key) || venues.includes(key);
-        const open = there && admin.folds[key];
-        fold(toggle, word, open);
-        toggle.hidden = !there;
+    const on = admin.row ? rowVenues(admin.row) : [];
+    for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
+        const open = admin.folds[venue] === true;
+        fold(toggle, on.includes(venue) ? venue : `${venue} · not added`, open);
         card.hidden = !open;
     }
 }
 
-/** A card's facts as a list of label and value. */
+/**
+ * A venue's card: its status line and link, then the listing's fields (or Edit's
+ * inputs), then its actions, and under Save what the PC refused. A venue the row
+ * is not on has only the line and its Add.
+ */
+function cardNodes(venue) {
+    const row = admin.row;
+    const c = admin.cards[venue];
+    const busy = rowBusy();
+    c.line = document.createElement("p");
+    paintLine(venue);
+    if (!rowVenues(row).includes(venue)) return [c.line, actionsNode(venue, busy)];
+    const nodes = [c.line];
+    const url = venueStatus(row, venue).url;
+    if (url) nodes.push(linkNode(url, "venue-link", url));
+    nodes.push(c.edit ? editNode(venue, busy) : factsNode(venueFacts(row, venue)), actionsNode(venue, busy));
+    if (c.edit && c.edit.error) {
+        const refused = document.createElement("p");
+        refused.className = "edit-error";
+        refused.textContent = c.edit.error;
+        nodes.push(refused);
+    }
+    return nodes;
+}
+
+/** A card's status line, rewritten in place: a poll changes it and nothing else. */
+function paintLine(venue) {
+    const c = admin.cards[venue];
+    if (!c.line || !admin.row) return;
+    const line = cardLine(admin.row, venue, c);
+    c.line.textContent = line.text;
+    c.line.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
+}
+
+/** A card's facts as a list of label and value; a derived one says so under it, muted. */
 function factsNode(facts) {
     const list = document.createElement("dl");
     list.className = "facts";
@@ -1584,22 +1712,327 @@ function factsNode(facts) {
         label.textContent = f.label;
         const value = document.createElement("dd");
         value.className = [f.pre && "pre", f.mono && "mono", f.derived && "derived"].filter(Boolean).join(" ");
-        if (f.link) {
-            const a = document.createElement("a");
-            a.href = f.value;
-            a.textContent = f.value;
-            a.target = "_blank";
-            a.rel = "noopener noreferrer";
-            value.append(a);
-        } else {
-            value.textContent = f.value;
+        value.textContent = f.value;
+        if (f.derived) {
+            const note = document.createElement("span");
+            note.className = "derived-note";
+            note.textContent = DERIVED;
+            value.append(note);
         }
         list.append(label, value);
     }
     return list;
 }
 
-/** The Photos card: an 88 px tile per photo, its picture on its way (fetchPictures). */
+function actionButton(word, className, disabled, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = word;
+    b.disabled = disabled;
+    b.addEventListener("click", onClick);
+    return b;
+}
+
+/**
+ * A card's actions row: the actions core.js says it offers (End gone once the
+ * PC refused it for this venue), or End's inline question, or Edit's Save and Cancel.
+ */
+function actionsNode(venue, busy) {
+    const c = admin.cards[venue];
+    const row = admin.row;
+    const box = document.createElement("div");
+    box.className = "venue-actions";
+    if (c.confirm) {
+        // the second tap, inline (never a browser dialog): nothing is sent before it
+        const ask = document.createElement("span");
+        ask.className = "confirm-ask";
+        ask.textContent = endQuestion(venue);
+        box.append(
+            ask,
+            actionButton("Yes, end it", "pill pill-small pill-bad", busy, () => {
+                runAction(venue, "end").catch(() => {});
+            }),
+            actionButton("Keep it", "pill pill-small", false, () => {
+                c.confirm = false;
+                renderCards();
+            })
+        );
+        return box;
+    }
+    if (c.edit) {
+        box.append(
+            actionButton("Save", "pill pill-ink", busy, () => {
+                saveEdit(venue).catch(() => {});
+            }),
+            actionButton("Cancel", "pill", !!c.wait, () => {
+                c.edit = null;
+                renderCards();
+            })
+        );
+        return box;
+    }
+    for (const action of venueActions(row, venue)) {
+        if (action === "end" && c.noEnd) continue;
+        if (action === "open") {
+            box.append(linkNode(venueStatus(row, venue).url, "pill", actionWord(action, venue)));
+            continue;
+        }
+        box.append(actionButton(actionWord(action, venue), "pill", busy, () => onAction(venue, action)));
+    }
+    return box;
+}
+
+/** An action button tapped: Edit and End's question stay on the phone; the rest go to the PC. */
+function onAction(venue, action) {
+    const c = admin.cards[venue];
+    if (action === "add") {
+        addTo(venue).catch(() => {});
+    } else if (action === "edit") {
+        const before = editValues(admin.row, venue);
+        c.edit = { before, values: { ...before }, error: "" };
+        c.note = null;
+        renderCards();
+    } else if (action === "end") {
+        c.confirm = true;
+        renderCards();
+    } else {
+        runAction(venue, action).catch(() => {});
+    }
+}
+
+/**
+ * Edit's inputs, the page's own inputs, each starting from the row (editValues);
+ * a craigslist field left blank shows what it is derived from as its placeholder
+ * and has a clear that empties its override. Locked while the row is busy.
+ */
+function editNode(venue, busy) {
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    const from = venue === "craigslist" ? derivedFields({ ...admin.row, craigslist: {} }, venue) : {};
+    for (const f of EDIT_FIELDS[venue]) form.append(fieldNode(venue, f, from[f.key], busy));
+    return form;
+}
+
+function fieldNode(venue, f, from, locked) {
+    const values = admin.cards[venue].edit.values;
+    if (f.kind === "check") {
+        const row = document.createElement("label");
+        row.className = "pickup";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = values[f.key] === true;
+        box.disabled = locked;
+        box.addEventListener("change", () => {
+            values[f.key] = box.checked;
+        });
+        const words = document.createElement("span");
+        words.textContent = f.label;
+        row.append(box, words);
+        return row;
+    }
+    const field = document.createElement("div");
+    field.className = "field";
+    const head = document.createElement("div");
+    head.className = "field-head";
+    const label = document.createElement("span");
+    label.className = "field-label";
+    label.textContent = f.label;
+    head.append(label);
+    const input = document.createElement(f.kind === "text" ? "textarea" : "input");
+    if (f.kind === "text") {
+        input.rows = 4;
+    } else {
+        input.type = "text";
+    }
+    if (f.kind === "price") input.setAttribute("inputmode", "decimal");
+    if (f.kind === "count") {
+        input.setAttribute("inputmode", "numeric");
+        input.className = "quantity";
+    }
+    input.setAttribute("aria-label", f.label);
+    input.setAttribute("autocomplete", "off");
+    input.value = String(values[f.key]);
+    input.disabled = locked;
+    if (from) input.placeholder = from.value;
+    input.addEventListener("input", () => {
+        values[f.key] = input.value;
+    });
+    if (venue === "craigslist") {
+        // "" clears the override: the PC derives the field from eBay again
+        head.append(
+            actionButton("clear", "link clear", locked, () => {
+                values[f.key] = "";
+                input.value = "";
+            })
+        );
+    }
+    field.append(head, input);
+    return field;
+}
+
+/**
+ * Save: one PATCH with only the fields changed (patchBody); nothing changed sends
+ * nothing. The row the PC answers is shown; a refusal is said under Save and the
+ * inputs stay as typed.
+ */
+async function saveEdit(venue) {
+    const c = admin.cards[venue];
+    const row = admin.row;
+    const pc = settings();
+    if (!c.edit || !row || !pc || rowBusy()) return;
+    const { body, error } = patchBody(venue, c.edit.before, c.edit.values);
+    if (!body) {
+        if (error) c.edit.error = error;
+        else c.edit = null;
+        renderCards();
+        return;
+    }
+    const mine = admin.shown;
+    c.wait = "saving";
+    c.edit.error = "";
+    renderCards();
+    let whole;
+    try {
+        whole = await patchRow(pc, row.sku, body);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        c.wait = "";
+        c.edit.error = e.message;
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    c.wait = "";
+    c.edit = null;
+    c.note = null;
+    c.job = null;
+    admin.changed = true;
+    refreshRow({ ...whole, sku: row.sku });
+}
+
+/** An empty card's Add: the row goes on that venue, and the card fills with its derived fields. */
+async function addTo(venue) {
+    const c = admin.cards[venue];
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy()) return;
+    const mine = admin.shown;
+    c.note = null;
+    c.wait = `adding ${venue}`;
+    renderCards();
+    let whole;
+    try {
+        whole = await addVenue(pc, row.sku, venue);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        c.wait = "";
+        c.note = { text: e.message, kind: "bad" };
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    c.wait = "";
+    admin.changed = true;
+    admin.folds[venue] = true;
+    refreshRow({ ...whole, sku: row.sku });
+}
+
+/**
+ * Post on a venue (the row the PC saved, by its sku), Refresh status or End
+ * listing: the job is sent, its line is the card's status line, polled every
+ * POLL_MS like a venue button's, and once done the row is read again (the link a
+ * post put up, the status a refresh or an end read). An End the PC refuses (400:
+ * Craigslist cannot be ended from here) says why, and its button goes.
+ */
+async function runAction(venue, action) {
+    const c = admin.cards[venue];
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy()) return;
+    const mine = admin.shown;
+    c.confirm = false;
+    c.note = null;
+    c.job = null;
+    c.wait = "sending";
+    renderCards();
+    const body = action === "post" ? jobRequest({ venue, sku: row.sku }) : actionJob(action, { sku: row.sku, venue });
+    let answer;
+    try {
+        answer = await postJob(pc, body);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        c.wait = "";
+        c.note = { text: e.message, kind: "bad" };
+        if (action === "end" && e.status === 400) c.noEnd = true;
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    c.wait = "";
+    c.job = { action, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    renderCards();
+    pollCard(venue, mine);
+}
+
+function pollCard(venue, mine) {
+    const c = admin.cards[venue];
+    clearTimeout(c.timer);
+    c.timer = setTimeout(() => {
+        askCard(venue, mine).catch(() => {});
+    }, POLL_MS);
+}
+
+async function askCard(venue, mine) {
+    const c = admin.cards[venue];
+    const pc = settings();
+    if (mine !== admin.shown || !pc || !c.job) return;
+    let status;
+    try {
+        status = await getJob(pc, c.job.job);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0) {
+            // the job is safe on the PC's disk: keep asking
+            c.job = { ...c.job, trouble: e.message };
+            paintLine(venue);
+            pollCard(venue, mine);
+            return;
+        }
+        status = { state: "failed", error: e.message };
+    }
+    if (mine !== admin.shown) return;
+    c.job = { ...c.job, ...status, trouble: "" };
+    if (jobRunning(c.job)) {
+        paintLine(venue);
+        pollCard(venue, mine);
+        return;
+    }
+    if (c.job.state !== "done") {
+        renderCards();
+        return;
+    }
+    admin.changed = true;
+    let whole;
+    try {
+        whole = await getRow(pc, admin.row.sku);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        detailLine(`Could not read ${admin.row.sku}: ${e.message}.`);
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    refreshRow({ ...whole, sku: admin.row.sku });
+}
+
+/** The photo strip under the heading: an 88 px tile per photo, its picture on its way (fetchRowPhotos). */
 function renderDetailPhotos(row) {
     admin.photoTiles.clear();
     const photos = rowPhotos(row);
@@ -1672,16 +2105,26 @@ function dropPictures() {
 function showList() {
     admin.shown += 1;
     dropPictures();
+    dropCards();
     admin.row = null;
     admin.from = null;
+    admin.changed = false;
     el.inventoryDetail.hidden = true;
     el.inventoryBrowse.hidden = false;
 }
 
-/** Back to the list: on the row the detail was opened from, however long the list. */
+/**
+ * Back to the list: on the row the detail was opened from, however long the list.
+ * A card that changed the row has the list asked for again, so it says what the PC says now.
+ */
 function backToList() {
     const from = admin.from;
+    const changed = admin.changed;
     showList();
+    if (changed) {
+        loadInventory().catch(() => {});
+        return;
+    }
     if (from && typeof from.scrollIntoView === "function") from.scrollIntoView({ block: "center" });
 }
 
@@ -1700,6 +2143,84 @@ function closePhoto() {
     const opener = admin.opener;
     admin.opener = null;
     if (opener) opener.focus();
+}
+
+/**
+ * The sync bar's two buttons: the sync job is sent, its line under them (queued,
+ * the PC's step, its summary or its error), polled every POLL_MS; both lock until
+ * it ends, and once done the inventory list is asked for again. A refusal shows
+ * the PC's words. The job is the PC's: closing Admin leaves it running and polled.
+ */
+async function startSync(direction) {
+    if (sync.wait || jobRunning(sync.job)) return;
+    const pc = settings();
+    sync.job = null;
+    if (!pc) {
+        sync.note = { text: "Set the PC address and key under Settings first.", kind: "bad" };
+        renderSync();
+        return;
+    }
+    sync.note = null;
+    sync.wait = "sending";
+    renderSync();
+    let answer;
+    try {
+        answer = await postJob(pc, actionJob("sync", { direction }));
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        sync.wait = "";
+        sync.note = { text: e.message, kind: "bad" };
+        renderSync();
+        return;
+    }
+    heard(200);
+    sync.wait = "";
+    sync.job = { action: "sync", direction, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    renderSync();
+    scheduleSync();
+}
+
+function scheduleSync() {
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(() => {
+        askSync().catch(() => {});
+    }, POLL_MS);
+}
+
+async function askSync() {
+    const pc = settings();
+    if (!pc || !sync.job) return;
+    let status;
+    try {
+        status = await getJob(pc, sync.job.job);
+    } catch (e) {
+        if (e.status === 0) {
+            sync.job = { ...sync.job, trouble: e.message };
+            renderSync();
+            scheduleSync();
+            return;
+        }
+        status = { state: "failed", error: e.message };
+    }
+    sync.job = { ...sync.job, ...status, trouble: "" };
+    renderSync();
+    if (jobRunning(sync.job)) {
+        scheduleSync();
+        return;
+    }
+    if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
+    // a listing open in place of the list: the list is asked for again on the way back
+    if (admin.row) admin.changed = true;
+    else loadInventory().catch(() => {});
+}
+
+function renderSync() {
+    const line = sync.wait ? { text: sync.wait, kind: "busy" } : sync.job ? syncLine(sync.job) : sync.note;
+    el.syncStatus.textContent = line ? line.text : "";
+    el.syncStatus.className = line && line.kind ? `sync-status ${line.kind}` : "sync-status";
+    const locked = !!sync.wait || jobRunning(sync.job);
+    el.syncFrom.disabled = locked;
+    el.syncTo.disabled = locked;
 }
 
 // --- the server check ----------------------------------------------------------
@@ -2081,24 +2602,24 @@ function main() {
         inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
         inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
         inventoryPhotos: $("inventory-photos"),
+        inventorySorts: INVENTORY_SORTS.map(({ key }) => ({ value: key, node: $(`inventory-sort-${key}`) })),
         inventoryList: $("inventory-list"),
         inventoryDetail: $("inventory-detail"),
         inventoryBack: $("inventory-back"),
         detailHeading: $("detail-heading"),
         detailStatus: $("detail-status"),
-        detailItem: $("detail-item"),
         detailPhotos: $("detail-photos"),
         detailFolds: Object.fromEntries(
-            [
-                ["item", "Item"],
-                ["photos", "Photos"],
-                ...VENUES.map((v) => [v, v]),
-            ].map(([key, word]) => [key, { word, toggle: $(`detail-${key}-toggle`), card: $(`detail-${key}`) }])
+            VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
+        syncFrom: $("sync-from"),
+        syncTo: $("sync-to"),
+        syncStatus: $("sync-status"),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
         photoViewClose: $("photo-view-close"),
         server: $("server"),
+        modes: $("modes"),
         modeGoods: $("mode-goods"),
         modeBook: $("mode-book"),
         work: $("work"),
@@ -2215,16 +2736,24 @@ function main() {
     });
     for (const { value, node } of el.inventoryVenues) node.addEventListener("click", () => onFilter("venue", value));
     for (const { value, node } of el.inventoryStates) node.addEventListener("click", () => onFilter("status", value));
+    for (const { value, node } of el.inventorySorts) node.addEventListener("click", () => onFilter("sort", value));
     el.inventoryPhotos.addEventListener("change", () => {
         loadInventory().catch(() => {});
     });
     el.inventoryBack.addEventListener("click", backToList);
-    for (const [key, { toggle, card }] of Object.entries(el.detailFolds)) {
+    for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
         toggle.addEventListener("click", () => {
-            admin.folds[key] = card.hidden;
+            admin.folds[venue] = card.hidden;
             renderFolds();
         });
     }
+    el.syncFrom.addEventListener("click", () => {
+        startSync("from").catch(() => {});
+    });
+    el.syncTo.addEventListener("click", () => {
+        startSync("to").catch(() => {});
+    });
+    renderSync();
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
     el.photoViewClose.addEventListener("click", closePhoto);
