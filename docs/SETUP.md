@@ -1,14 +1,15 @@
 # Setting up crosslister snap
 
-The page needs two things per phone: the **PC address** and a **key**. Both
+The page needs two things per phone: the **Server address** and a **key**. Both
 come from the home PC, which must be running `crosslister serve` with Tailscale
-Funnel on. The PC side is set up once, in the crosslister repo:
+Funnel on; the app, and this page, call it **the server**. The server side is set
+up once, in the crosslister repo:
 `docs/USAGE.md`, "The phone app: crosslister serve" (Tailscale, sleep off,
 keys, started at logon).
 
 ---
 
-## 1. On the PC: the address
+## 1. On the server: the address
 
 With `crosslister serve` running, in another window:
 
@@ -17,19 +18,19 @@ tailscale funnel --bg 8765
 tailscale funnel status
 ```
 
-`status` shows the address the PC is published at, like
+`status` shows the address the server is published at, like
 
 ```
 https://pc.tail1234.ts.net
 ```
 
-That whole line, `https://` included and nothing after `.ts.net`, is the **PC
+That whole line, `https://` included and nothing after `.ts.net`, is the **Server
 address**. It stays the same across restarts.
 
 Check it answers, from any browser (no key needed, costs nothing):
 `https://pc.tail1234.ts.net/health` should show `{"ok":true,"queue":0}`.
 
-## 2. On the PC: the key
+## 2. On the server: the key
 
 Open `.env` in the crosslister folder and find `CROSSLISTER_KEYS`:
 
@@ -47,8 +48,8 @@ Never put a key in this repo: it is public.
 ## 3. The first phone
 
 1. Open **Chrome** and go to `https://michalkoszycki.github.io/crosslister-snap/`
-2. Tap **Admin** (top right); **Settings** opens in it by itself. Type the PC
-   address and the key, tap **Save and check**. It should say "Saved. The PC
+2. Tap **Admin** (top right); **Settings** opens in it by itself. Type the server
+   address and the key, tap **Save and check**. It should say "Saved. The server
    answers and knows this key."
 3. Tap Chrome's **three-dot menu** > **Add to Home screen** (or **Install
    app**), then **Add**. The icon opens the page without the address bar.
@@ -62,31 +63,31 @@ between them.
 
 ## 5. Using it
 
-- Type the item name, tap **Snap**, take the photos. Each one goes to the PC
-  right away, into the item's own folder in the PC's inbox (`Boots 2026-09-24`);
+- Type the item name, tap **Snap**, take the photos. Each one goes to the server
+  right away, into the item's own folder in the server's inbox (`Boots 2026-09-24`);
   the word at its top left goes `waiting`, then `sent`. The **x** at a photo's
-  top right removes it, from the PC too.
+  top right removes it, from the server too.
 - Tap **AI** at the bottom right of the photos that identify the item (label,
   model number, the whole thing). At least one; the rest still go to the
   listing.
-- Write the note, if any. It goes to the PC a moment after you stop typing
+- Write the note, if any. It goes to the server a moment after you stop typing
   (`sent` next to the label).
 - More than one of it, or pickup only? Tap the small **▸ customize** right
   above the buttons: set the **Quantity**, tick **Pickup only** (no shipping
   on eBay; `pickup only` then shows under ebay). Left alone it is one,
   shipped, as always, and the next item starts that way again.
 - Tap **ebay** or **craigslist** (they open once every photo says `sent`). The
-  line under it goes `sending`, `queued`, then the PC's steps, then the link.
-  The button itself turns a ring and, once the PC has saved the listing, shows
+  line under it goes `sending`, `queued`, then the server's steps, then the link.
+  The button itself turns a ring and, once the server has saved the listing, shows
   its price (`ebay · $14`); when it is posted the button reads just `$14`.
   **Every press publishes for real** and a new item costs one model call.
 - Tap the other button for the same item on the other site: it sends only the
   item's sku, so no second model call.
-- Not pressing either is fine: the photos and the note are already in the PC's
+- Not pressing either is fine: the photos and the note are already in the server's
   inbox, where `crosslister post` (nothing named) offers the folder.
 - **NEXT** (it used to say DONE) for the next item. No need to wait for the
-  link: once a button is pressed and the PC has the job, NEXT clears the
-  screen and the listing finishes on the PC by itself (the line under NEXT
+  link: once a button is pressed and the server has the job, NEXT clears the
+  screen and the listing finishes on the server by itself (the line under NEXT
   says one is still posting; its link is then not shown on the phone). NEXT
   waits only while a photo is still on its way.
 
@@ -94,7 +95,7 @@ between them.
 
 - Tap **book** at the top. The phone remembers it: next time the page opens on
   books. Tapping **goods** goes back; an item half done on either side stays as
-  it was, its photos still going to the PC.
+  it was, its photos still going to the server.
 - Tap **ISBN** (the big button; it used to say Scan) and photograph the
   barcode on the back cover, close and flat. The ISBN box fills, and a moment
   later the book's card shows its title, authors, publisher, year, format and
@@ -106,7 +107,7 @@ between them.
 - **No ISBN** (an old book, a local print): tap the small **No ISBN** under the
   ISBN box. Type the **Title** as the cover has it, the **Author** if there is
   one, the **Year** if it is printed, and tap **Paperback** or **Hardcover**.
-  A moment after you stop typing the PC looks the book up by those: the card
+  A moment after you stop typing the server looks the book up by those: the card
   shows the catalogue's book with `matched in the catalogues`, or what you
   typed with `Not in the catalogues: it will be listed as typed`, and the
   price box fills with eBay's price either way. A catalogue that says
@@ -123,14 +124,14 @@ between them.
   to the first one left. Once **ebay** is pressed the mark stays put.
 - Tap the **condition**: Like new, Very good, Good (already chosen) or
   Acceptable.
-- Check the **price**. It is filled with the PC's suggestion from eBay's own
+- Check the **price**. It is filled with the server's suggestion from eBay's own
   listings, shown under the box (`eBay: 12 listings, $6–$24 · suggested $11`).
   Under $5 the line says a lot or a buyback site may be better.
-- Write the **flaws**, if any: wear, marks, writing inside. They go to the PC
+- Write the **flaws**, if any: wear, marks, writing inside. They go to the server
   as the goods note does.
 - Several copies, or pickup only: **▸ customize** above ebay, as for goods.
 - Tap **ebay** (it opens once every photo says `sent`). The line under it goes
-  `sending`, `queued`, the PC's steps, then the link. The button shows the
+  `sending`, `queued`, the server's steps, then the link. The button shows the
   price you set from the press (`ebay · $11`), then just `$11` once posted.
   No model call; **the press publishes for real**.
 - **NEXT** for the next book, as for goods: no need to wait for the link.
@@ -139,7 +140,7 @@ between them.
 
 ## 6. When something goes wrong
 
-**The buttons stay grey with "Set the PC address and key in Admin"**
+**The buttons stay grey with "Set the server address and key in Admin"**
 Settings are empty or were not saved. In a private (incognito) tab nothing is
 remembered; use a normal tab or the home-screen icon.
 
@@ -147,23 +148,23 @@ remembered; use a normal tab or the home-screen icon.
 The address must be the `https://....ts.net` one from step 1, with nothing
 after `.ts.net`.
 
-**"Cannot reach the PC" at the top, photos stuck on `waiting`**
-The phone is offline, the PC is off or asleep, `crosslister serve` is not
-running, or the Funnel is off (`tailscale funnel status` on the PC). Keep
-snapping: the photos wait on the page and go by themselves once the PC answers
+**"Cannot reach the server" at the top, photos stuck on `waiting`**
+The phone is offline, the server is off or asleep, `crosslister serve` is not
+running, or the Funnel is off (`tailscale funnel status` on the server). Keep
+snapping: the photos wait on the page and go by themselves once the server answers
 (the page tries again after a few seconds, then every 30 s, and at once when
 the phone is back online). Do not reload or close the page meanwhile: photos
 not yet sent live only in the page. Check with
 `https://<pc>.<tailnet>.ts.net/health` in the phone's browser.
 
 **A photo says `failed`**
-The PC answered but refused that photo (its words are in the photo's label for
+The server answered but refused that photo (its words are in the photo's label for
 screen readers, and the line under the buttons says a photo did not reach the
-PC). Tap `failed` to send it again, or the x to drop it.
+server). Tap `failed` to send it again, or the x to drop it.
 
 **The page was reloaded or closed**
-It reads the item back from the PC: the photos that were `sent` (shown as "on
-the PC"), the AI marks (a book's main mark), the note and the jobs. Photos still `waiting` at that
+It reads the item back from the server: the photos that were `sent` (shown as "on
+the server"), the AI marks (a book's main mark), the note and the jobs. Photos still `waiting` at that
 moment are gone from the page; take them again.
 
 **"wrong key - check Settings"** (at the top, or under a button)
@@ -180,27 +181,27 @@ The picture was too far, blurred or at an angle. Tap **ISBN** again closer, or
 type the ISBN. Nothing else changes: the missed picture is not kept.
 
 **Books: "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."**
-The PC's catalogues do not know that ISBN (old, local or self-published books);
-the small line under it is the PC's own reason (if it says no Google Books key
-is set, adding one on the PC may find the next such book). Tap **No ISBN**,
+The server's catalogues do not know that ISBN (old, local or self-published books);
+the small line under it is the server's own reason (if it says no Google Books key
+is set, adding one on the server may find the next such book). Tap **No ISBN**,
 now filled blue: the fields open with the ISBN kept (`ISBN ... kept: it goes on
-the listing` above them), even if a cover is already on the PC. Type the title
-(and the author, year, format) as for a book with no ISBN; the PC finds a price
+the listing` above them), even if a cover is already on the server. Type the title
+(and the author, year, format) as for a book with no ISBN; the server finds a price
 by the title, and the listing gets the ISBN and what you typed. A different
 ISBN typed or read replaces the kept one; **No ISBN** again closes the fields
 and asks about the ISBN once more.
 
 **Books: "The book was not looked up - edit the title to try again"**
-The PC could not search (its words are on the card; the catalogues or eBay did
+The server could not search (its words are on the card; the catalogues or eBay did
 not answer). What you typed is kept: change the title a little (a space at the
 end will do) and it asks again.
 
 **A job fails with a message**
-That is the PC's own reason (a Craigslist form that changed, a missing eBay
-setting...). Fix it at the PC with the row's usual commands; the button comes
+That is the server's own reason (a Craigslist form that changed, a missing eBay
+setting...). Fix it at the server with the row's usual commands; the button comes
 back for another try.
 
-## 7. Trying the page on the PC itself
+## 7. Trying the page on the server itself
 
 ```powershell
 cd C:\Users\MICHAL\Documents\PyCharm\crosslister-snap

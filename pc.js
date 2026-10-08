@@ -81,7 +81,7 @@
 // Every call carries the key in the X-Crosslister-Key header. Errors come back
 // as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.8.0";
+import { errorText, inventoryQuery, KEY_HEADER } from "./core.js?v=2.9.0";
 
 /** An error with the HTTP status (0 = the PC could not be reached). */
 export class PcError extends Error {
@@ -134,7 +134,7 @@ async function call(url, key, { method = "GET", json, body, type } = {}) {
     const res = await request(url, key, { method, headers, body: payload });
     if (!res.ok) throw await refused(res);
     const answer = await parsed(res);
-    if (!answer || typeof answer !== "object") throw new PcError(res.status, "the PC gave no answer");
+    if (!answer || typeof answer !== "object") throw new PcError(res.status, "the server gave no answer");
     return answer;
 }
 

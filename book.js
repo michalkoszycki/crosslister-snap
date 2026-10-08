@@ -352,13 +352,13 @@ export function bookCard(book) {
  * @returns {string} "" when there is nothing to say
  */
 export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false, kept = false }) {
-    if (restoring) return "Reading this book back from the PC...";
+    if (restoring) return "Reading this book back from the server...";
     if (locked) return "These photos went with the listing. NEXT starts the next book.";
     if (scan === "reading") return "Reading the barcode...";
     if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";
-    if (manual && kept) return "Type the title as the cover has it. The PC finds a price; the ISBN stays on the listing.";
-    if (manual) return "No ISBN: type the title as the cover has it. The PC finds the book and a price.";
+    if (manual && kept) return "Type the title as the cover has it. The server finds a price; the ISBN stays on the listing.";
+    if (manual) return "No ISBN: type the title as the cover has it. The server finds the book and a price.";
     if (!canScan) return "This phone cannot read barcodes; type the ISBN";
     return `Tap ISBN to read the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;
 }

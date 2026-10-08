@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.8.0";
+import { VERSION } from "./version.js?v=2.9.0";
 import {
     anyActive,
     bannerText,
@@ -103,7 +103,6 @@ import {
     jobRunning,
     leftUnsynced,
     patchBody,
-    priceStep,
     priceWord,
     quantityValue,
     rowBadges,
@@ -117,12 +116,19 @@ import {
     syncLine,
     unsyncedList,
     unsyncedWith,
+    unsyncedWithout,
     venueActions,
     venueBadge,
     venueFacts,
+    venueName,
     venueStatus,
-} from "./core.js?v=2.8.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.8.0";
+    DIAL_DELAY_MS,
+    DIAL_REPEAT_MS,
+    dialBody,
+    dialPrice,
+    dialStep,
+} from "./core.js?v=2.9.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.9.0";
 import {
     addVenue,
     cancelJob,
@@ -142,8 +148,8 @@ import {
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.8.0";
-import { shrinkPhoto } from "./shrink.js?v=2.8.0";
+} from "./pc.js?v=2.9.0";
+import { shrinkPhoto } from "./shrink.js?v=2.9.0";
 import {
     bookCard,
     bookPriceValue,
@@ -156,8 +162,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.8.0";
-import { canScan, readIsbn } from "./scan.js?v=2.8.0";
+} from "./book.js?v=2.9.0";
+import { canScan, readIsbn } from "./scan.js?v=2.9.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -166,15 +172,20 @@ const MODE_KEY = "snap.mode";
 const THEME_KEY = "snap.theme";
 /** The inventory's Show photos: on unless he unticked it on this phone ("off"). */
 const PHOTOS_KEY = "snap.inventory.photos";
+/** The inventory's Options foldout: folded unless he left it open on this phone ("open"). */
+const OPTIONS_KEY = "snap.inventory.options";
 /** The listing open in Admin, by sku, so Admin opens back onto it; gone on Back. */
 const CARD_KEY = "snap.admin.card";
 /**
- * The listings whose price this phone changed since eBay last had it, by sku (unsyncedList):
- * their list badge offers Sync to eBay until a push of theirs, or the sync bar's, is done.
+ * The listings this phone changed since their venue last had them, by sku and venue
+ * (unsyncedList): their list badge for that venue offers its sync until a push of theirs
+ * (or, for eBay, the sync bar's Sync to eBay) is done.
  */
 const UNSYNCED_KEY = "snap.inventory.unsynced";
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
+/** What app.js draws its own icons in (a listed badge's tick). */
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
  * One item of each kind, both alive at once; `mode` is the one on screen.
@@ -424,8 +435,11 @@ function changed() {
 function render() {
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
-    el.work.hidden = mode !== "goods";
-    el.book.hidden = mode !== "book";
+    // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
+    // screen is below. That should not be there"); both items carry on out of sight
+    const away = !el.admin.hidden;
+    el.work.hidden = away || mode !== "goods";
+    el.book.hidden = away || mode !== "book";
 
     renderGoods();
     renderBook();
@@ -454,7 +468,7 @@ function renderGoods() {
     el.snapInput.disabled = !ready;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = ready;
-    if (restoring.goods) el.hint.textContent = "Reading this item back from the PC...";
+    if (restoring.goods) el.hint.textContent = "Reading this item back from the server...";
     else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
     else if (taken) el.hint.textContent = taken;
     else el.hint.textContent = "Type the item name to start snapping.";
@@ -767,7 +781,7 @@ function renderStrip(m, strip, locked) {
             // the PC could not give it
             const there = document.createElement("span");
             there.className = "shot-remote";
-            there.textContent = "on the PC";
+            there.textContent = "on the server";
             card.append(there);
         }
 
@@ -779,7 +793,7 @@ function renderStrip(m, strip, locked) {
             retry.className = "badge failed";
             retry.textContent = "failed";
             retry.title = p.error;
-            retry.setAttribute("aria-label", `${p.name} did not reach the PC (${p.error}); try again`);
+            retry.setAttribute("aria-label", `${p.name} did not reach the server (${p.error}); try again`);
             retry.addEventListener("click", () => {
                 setState(m, reduce(slots[m], { type: "retry", id: p.id }));
                 pump();
@@ -1336,7 +1350,7 @@ async function send(m, venue) {
         if (taken()) return;
         setState(
             m,
-            reduce(slots[m], { type: "jobRefused", venue, error: "the user note has not reached the PC" })
+            reduce(slots[m], { type: "jobRefused", venue, error: "the user note has not reached the server" })
         );
         return;
     }
@@ -1534,12 +1548,15 @@ function fold(toggle, word, open) {
 
 /**
  * Admin on screen, or not. While it is, the goods | book switch is not (Michal,
- * 2026-10-06: "when we do admin we probably do not need goods vs book slider distinction").
+ * 2026-10-06: "when we do admin we probably do not need goods vs book slider distinction"),
+ * nor the screen below it (render): nothing of either item is reset, its uploads and polls
+ * go on, and Close shows it as it now is.
  */
 function adminShown(open) {
     el.admin.hidden = !open;
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
     el.modes.hidden = open;
+    render();
 }
 
 /**
@@ -1624,6 +1641,23 @@ function showInventory(open) {
     }
 }
 
+/**
+ * The inventory's Options, the filters, the sort and Show photos (Michal, 2026-10-08:
+ * "Inventory list options need to be all small, and also locked away inside a foldout tab
+ * 'Options'"): folded or open, as customize; what is chosen in them holds either way.
+ */
+function showOptions(open) {
+    el.options.hidden = !open;
+    fold(el.optionsToggle, "Options", open);
+}
+
+/** Options tapped open or folded: remembered on this phone. */
+function toggleOptions() {
+    const open = el.options.hidden;
+    writeText("localStorage", OPTIONS_KEY, open ? "open" : "closed");
+    showOptions(open);
+}
+
 /** The chips show the filters and the sort chosen. */
 function renderFilters() {
     for (const { value, node } of el.inventoryVenues) node.setAttribute("aria-pressed", value === admin.venue ? "true" : "false");
@@ -1644,10 +1678,10 @@ async function loadInventory(lead = "") {
     const mine = admin.asked;
     const pc = settings();
     if (!pc) {
-        el.inventoryStatus.textContent = "Set the PC address and key under Settings first.";
+        el.inventoryStatus.textContent = "Set the server address and key under Settings first.";
         return;
     }
-    el.inventoryStatus.textContent = "Asking the PC...";
+    el.inventoryStatus.textContent = "Asking the server...";
     let answer;
     try {
         answer = await getInventory(pc, {
@@ -1729,18 +1763,13 @@ function rowNode(row, photos) {
     words.append(open, badges);
     const steps = document.createElement("div");
     steps.className = "inv-steps";
-    const up = actionButton("+", "inv-step", false, () => {
-        stepPrice(row.sku, 1).catch(() => {});
-    });
-    up.setAttribute("aria-label", "price up");
-    const down = actionButton("−", "inv-step", false, () => {
-        stepPrice(row.sku, -1).catch(() => {});
-    });
-    down.setAttribute("aria-label", "price down");
+    const up = dialButton(row.sku, 1, "+", "price up");
+    const down = dialButton(row.sku, -1, "−", "price down");
     steps.append(up, down);
     li.append(words, steps);
-    // the row as the PC last gave it: a tap of + or − puts its answer here
-    const parts = { row, line, badges, up, down };
+    // the row as the PC last gave it: a dial's PATCH puts its answer here; `shown`, the
+    // price a dial is at (held, or its PATCH on its way), null otherwise
+    const parts = { row, line, badges, up, down, shown: null };
     open.addEventListener("click", () => {
         openRow(parts.row, open).catch(() => {});
     });
@@ -1750,16 +1779,17 @@ function rowNode(row, photos) {
 }
 
 /**
- * A list row's price (`$24`, from the row the PC last gave), its badges, and its + and −,
- * each shut at its end (priceStep has no step) and both while the row's PATCH or its push
- * is on its way or running (one job per row at a time, as on a listing's own page).
+ * A list row's price (`$24`, from the row the PC last gave, or where a dial is at), its
+ * badges, and its + and −: − shut at $1, both while the row's PATCH or its push is on its
+ * way or running (one job per row at a time, as on a listing's own page). Never shut under
+ * a held finger: a button shut mid-press would not hear it lift.
  */
 function paintTile(sku) {
     const parts = admin.parts.get(sku);
     if (!parts) return;
     const { row } = parts;
     const kids = [];
-    const price = priceWord(row.price);
+    const price = priceWord(parts.shown === null ? row.price : parts.shown);
     if (price) {
         const said = document.createElement("span");
         said.className = "inv-price";
@@ -1775,8 +1805,9 @@ function paintTile(sku) {
         ...rowBadges(row, readUnsynced()).flatMap((badge) => (badge.sync ? syncBadge(sku, badge) : [badgeNode(badge)]))
     );
     const busy = rowTaskBusy(rowTask(sku));
-    parts.up.disabled = busy || !priceStep(row, 1);
-    parts.down.disabled = busy || !priceStep(row, -1);
+    const held = !!dial && dial.sku === sku;
+    parts.up.disabled = busy;
+    parts.down.disabled = busy || (!held && dialPrice(row.price, -1, 1) >= (Number(row.price) || 0));
 }
 
 /** A row's job task on the list, made the first time it is asked for. */
@@ -1790,46 +1821,176 @@ function rowTaskBusy(task) {
     return !!task.wait || jobRunning(task.job);
 }
 
-/** The listings eBay has not caught up with, by sku, as this phone keeps them. */
+/** The listings their venues have not caught up with, by sku and venue, as this phone keeps them. */
 function readUnsynced() {
     return unsyncedList(readJson("localStorage", UNSYNCED_KEY, []));
 }
 
-/** A listing marked as eBay not having its price (`on`), or let go once it has. */
-function markUnsynced(sku, on) {
-    writeJson("localStorage", UNSYNCED_KEY, unsyncedWith(readUnsynced(), sku, on));
+/** A listing's `venue` marked as not having the row (`on`), or let go once it has. */
+function markUnsynced(sku, venue, on) {
+    writeJson("localStorage", UNSYNCED_KEY, unsyncedWith(readUnsynced(), sku, venue, on));
+}
+
+/** Each listing a change the PC answered left behind (leftUnsynced), marked. */
+function markBehind(sku, before, after) {
+    for (const venue of leftUnsynced(before, after)) markUnsynced(sku, venue, true);
+}
+
+// --- a tile's + and −, a dial ---------------------------------------------------------
+//
+// Michal, 2026-10-08: "This adjustment itself should be by 1 dollar. However we need to sense
+// long press and speed up, for larger priced items, like dials on my oven for time setting."
+// A press is a dollar at once; held past DIAL_DELAY_MS it repeats every DIAL_REPEAT_MS by
+// dialStep's growing step, the tile showing each price; the finger lifting (or leaving the
+// button) sends the one PATCH. Pointer and touch events both start and end it (whichever
+// the browser fires first; the other finds it running), the touch's long-press menu and
+// text selection held off; a click is the keyboard's (Enter or Space), a tap of its own.
+
+/** The dial being held: its row, its direction, the price it is at, how long it has been held, its timer. */
+let dial = null;
+
+/** A tile's + (`direction` 1) or − (-1), wired as a dial. */
+function dialButton(sku, direction, word, label) {
+    const btn = actionButton(word, "inv-step", false, (e) => {
+        // a pointer's click comes after its press already dialled (detail 1); the keyboard's is 0
+        if (e.detail) return;
+        startDial(sku, direction);
+        endDial(sku);
+    });
+    btn.setAttribute("aria-label", label);
+    btn.addEventListener("pointerdown", (e) => {
+        // a touch keeps the pointer on the button it went down on: let go of it, so sliding
+        // off the button (pointerleave) ends the dial as lifting does
+        if (typeof btn.releasePointerCapture === "function" && btn.hasPointerCapture(e.pointerId)) {
+            btn.releasePointerCapture(e.pointerId);
+        }
+        startDial(sku, direction);
+    });
+    btn.addEventListener(
+        "touchstart",
+        (e) => {
+            // no long-press menu, no selection, no click after it: the dial is the whole press
+            e.preventDefault();
+            startDial(sku, direction);
+        },
+        { passive: false }
+    );
+    for (const type of ["pointerup", "pointerleave", "pointercancel", "touchend", "touchcancel"]) {
+        btn.addEventListener(type, () => endDial(sku));
+    }
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    return btn;
+}
+
+/** A press on a tile's + or −: a dollar at once, and the dial turning while it is held. */
+function startDial(sku, direction) {
+    const parts = admin.parts.get(sku);
+    if (dial || !parts || !settings() || (direction > 0 ? parts.up : parts.down).disabled) return;
+    dial = { sku, direction, price: dialPrice(parts.row.price, direction, 1), held: 0, timer: null };
+    parts.shown = dial.price;
+    paintTile(sku);
+    dial.timer = setTimeout(turnDial, DIAL_DELAY_MS);
+}
+
+/** One more step of the dial held: dialStep's for how long it has been, shown on the tile. */
+function turnDial() {
+    if (!dial) return;
+    dial.held += dial.held ? DIAL_REPEAT_MS : DIAL_DELAY_MS;
+    dial.price = dialPrice(dial.price, dial.direction, dialStep(dial.held));
+    const parts = admin.parts.get(dial.sku);
+    if (parts) {
+        parts.shown = dial.price;
+        paintTile(dial.sku);
+    }
+    dial.timer = setTimeout(turnDial, DIAL_REPEAT_MS);
+}
+
+/** The finger off a tile's + or −: the dial stops where it is, and that price is sent. */
+function endDial(sku) {
+    if (!dial || dial.sku !== sku) return;
+    clearTimeout(dial.timer);
+    const { price } = dial;
+    dial = null;
+    sendPrice(sku, price).catch(() => {});
 }
 
 /**
- * The eBay badge of a row whose price eBay has not caught up with: the listed badge, in
- * its green, with the sync bar's to-eBay icon before its words, and a job button (Michal,
- * 2026-10-07: "When the price changes there should be our sync-to logo appearing on the
- * ebay green button below. Pressing it would sync, and the button would revert to the
- * 'ebay listed'"): pressed, its ring and "tap again to cancel"; tapped again, paused, its
- * continue and the reset beside it, as every job button.
+ * The price a dial stopped at, as one PATCH ({"price": "150.00"}); the price on the tile is
+ * then the one the PC answers, and each listing up on a venue the change left behind offers
+ * its sync on its badge. A change the PC refuses (400) says its words on the inventory's
+ * line, and the tile its price as it was. A dial back where it started sends nothing.
+ */
+async function sendPrice(sku, price) {
+    const parts = admin.parts.get(sku);
+    const task = rowTask(sku);
+    const pc = settings();
+    if (!parts) return;
+    if (!pc || rowTaskBusy(task) || price === Number(parts.row.price)) {
+        parts.shown = null;
+        paintTile(sku);
+        return;
+    }
+    const before = parts.row;
+    task.wait = "saving";
+    paintTile(sku);
+    let whole;
+    try {
+        whole = await patchRow(pc, sku, dialBody(price));
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        task.wait = "";
+        el.inventoryStatus.textContent = `${sku}: ${e.message}`;
+        const shown = admin.parts.get(sku);
+        if (shown) shown.shown = null;
+        paintTile(sku);
+        return;
+    }
+    heard(200);
+    task.wait = "";
+    markBehind(sku, before, whole);
+    // the list as the PC now has it (a listing opened from it reads the row afresh)
+    admin.rows = admin.rows.map((r) => (r.sku === sku ? followSummary(r, whole) : r));
+    const shown = admin.parts.get(sku);
+    if (shown) {
+        shown.row = followSummary(shown.row, whole);
+        shown.shown = null;
+    }
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    paintTile(sku);
+}
+
+/**
+ * The badge of a venue a row's listing there has not caught up with (eBay: its price;
+ * craigslist: its fields): the listed badge, in its green, with the sync bar's to-eBay icon
+ * where the tick was, and a job button (Michal, 2026-10-07: "When the price changes there
+ * should be our sync-to logo appearing on the ebay green button below. Pressing it would
+ * sync, and the button would revert to the 'ebay listed'"): pressed, its ring and "tap
+ * again to cancel"; tapped again, paused, its continue and the reset beside it, as every
+ * job button.
  */
 function syncBadge(sku, badge) {
     const task = rowTask(sku);
+    const action = `push ${badge.venue}`;
     const paint = () => {
         paintTile(sku);
         // the row has no line of its own: a tap from the publishing step on is said on the list's
         if (task.late) el.inventoryStatus.textContent = `${sku}: ${TOO_LATE}`;
     };
     const btn = actionButton("", `vbadge ${badge.kind} vsync`, false, () => {
-        if (pressed(task, "push")) onTaskTap(task, paint);
-        else pushTile(sku).catch(() => {});
+        if (pressed(task, action)) onTaskTap(task, paint);
+        else pushTile(sku, badge.venue).catch(() => {});
     });
     const reset = actionButton(RESET, "reset-call", false, () => {
         resetTask(task, paint).catch(() => {});
     });
     reset.setAttribute("aria-label", `${RESET} the sync of ${sku}`);
-    const busy = pressed(task, "push");
+    const busy = pressed(task, action);
     btn.disabled = busy ? !taskTap(task) : rowTaskBusy(task);
     paintJobButton(btn, badge.text, {
         busy,
         cancel: busy && taskCancel(task),
         paused: busy && task.paused,
-        label: `${badge.text}, sync to eBay`,
+        label: `${badge.said}, sync to ${venueName(badge.venue)}`,
         lead: [syncIcon()],
         reset,
     });
@@ -1844,53 +2005,15 @@ function syncIcon() {
 }
 
 /**
- * A tile's + or − tapped: one PATCH at once, {"pricing": n} for the next cached grade or
- * {"price": "25.00"} for the next whole dollar (priceStep), and the price on the tile is
- * the one the PC answers. A listing up on eBay is then behind its row, and its badge
- * offers Sync to eBay. A change the PC refuses (400) says its words on the inventory's
- * line. Nothing while the row's PATCH or its push is on its way.
- */
-async function stepPrice(sku, step) {
-    const parts = admin.parts.get(sku);
-    const task = rowTask(sku);
-    const pc = settings();
-    if (!parts || !pc || rowTaskBusy(task)) return;
-    const body = priceStep(parts.row, step);
-    if (!body) return;
-    const before = parts.row;
-    task.wait = "saving";
-    paintTile(sku);
-    let whole;
-    try {
-        whole = await patchRow(pc, sku, body);
-    } catch (e) {
-        if (e.status === 0 || e.status === 401) heard(e.status);
-        task.wait = "";
-        el.inventoryStatus.textContent = `${sku}: ${e.message}`;
-        paintTile(sku);
-        return;
-    }
-    heard(200);
-    task.wait = "";
-    if (leftUnsynced(before, whole)) markUnsynced(sku, true);
-    // the list as the PC now has it (a listing opened from it reads the row afresh)
-    admin.rows = admin.rows.map((r) => (r.sku === sku ? followSummary(r, whole) : r));
-    const shown = admin.parts.get(sku);
-    if (shown) shown.row = followSummary(shown.row, whole);
-    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
-    paintTile(sku);
-}
-
-/**
  * A sync badge tapped: after the second a job button waits, the push job puts the row as
- * saved on its eBay listing ({"action": "push", "sku", "venue": "ebay"}), asked about every
- * POLL_MS. Done, eBay has the price and the badge is the plain listed one again, a link.
+ * saved on its listing on that venue ({"action": "push", "sku", "venue"}), asked about every
+ * POLL_MS. Done, the venue has the row and the badge is the plain listed one again, a link.
  * What it ended with, or the PC's refusal, is said on the inventory's line.
  */
-async function pushTile(sku) {
+async function pushTile(sku, venue) {
     const task = rowTask(sku);
     if (rowTaskBusy(task)) return;
-    task.action = "push";
+    task.action = `push ${venue}`;
     task.note = null;
     task.job = null;
     task.stopping = false;
@@ -1907,7 +2030,7 @@ async function pushTile(sku) {
     }
     let answer;
     try {
-        answer = await postJob(pc, actionJob("push", { sku, venue: "ebay" }));
+        answer = await postJob(pc, actionJob("push", { sku, venue }));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         task.action = "";
@@ -1918,7 +2041,7 @@ async function pushTile(sku) {
     }
     heard(200);
     task.wait = "";
-    task.job = { action: "push", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    task.job = { action: "push", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     task.ask = () => {
         askTile(sku).catch(() => {});
     };
@@ -1926,11 +2049,11 @@ async function pushTile(sku) {
     later(task);
 }
 
-/** A sync badge's push asked about; once it ends, done lets the row's mark go. */
+/** A sync badge's push asked about; once it ends, done lets that venue's mark go. */
 async function askTile(sku) {
     const task = rowTask(sku);
     if (!(await askTask(task, () => paintTile(sku)))) return;
-    if (task.job.state === "done") markUnsynced(sku, false);
+    if (task.job.state === "done") markUnsynced(sku, task.job.venue, false);
     el.inventoryStatus.textContent = `${sku}: ${syncLine(task.job).text}`;
     paintTile(sku);
 }
@@ -1938,19 +2061,57 @@ async function askTile(sku) {
 /**
  * A venue's badge, the one piece the list's rows and a listing's foldouts both wear
  * (Michal, 2026-10-07: "Keeping visual references the same across screens makes
- * things simple"): a link to the listing when it carries one, else a word.
+ * things simple"): a link to the listing when it carries one, else a word. Listed, the
+ * venue and a tick (tickIcon), "listed" said to a screen reader.
  */
 function badgeNode(badge) {
     const kind = `vbadge ${badge.kind}`;
+    const words = badge.tick ? [badge.text, tickIcon(), hiddenWord(" listed")] : [badge.text];
     if (badge.link) {
-        const a = linkNode(badge.link, kind, badge.text);
-        a.setAttribute("aria-label", `${badge.text}: open the listing`);
+        const a = linkNode(badge.link, kind, "");
+        a.replaceChildren(...words);
+        a.setAttribute("aria-label", `${badge.said}: open the listing`);
         return a;
     }
     const b = document.createElement("span");
     b.className = kind;
-    b.textContent = badge.text;
+    b.replaceChildren(...words);
     return b;
+}
+
+/**
+ * The tick after a listed badge's venue (Michal, 2026-10-08: "write 'ebay' and follow that
+ * with a checkmark symbol"): a stroke in the badge's own colour, 12 px, hidden from a screen
+ * reader, which hears "listed" instead.
+ */
+function tickIcon() {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({
+        class: "tick",
+        viewBox: "0 0 24 24",
+        width: "12",
+        height: "12",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "3.5",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "aria-hidden": "true",
+    })) {
+        svg.setAttribute(k, v);
+    }
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M5 12.5l4.5 4.5L19 7");
+    svg.append(path);
+    return svg;
+}
+
+/** Words a screen reader hears and the screen does not show. */
+function hiddenWord(text) {
+    const span = document.createElement("span");
+    span.className = "sr-only";
+    span.textContent = text;
+    return span;
 }
 
 /**
@@ -2022,10 +2183,10 @@ async function openRow(row, from) {
     if (view && typeof view.scrollTo === "function") view.scrollTo({ top: 0, left: 0, behavior: "instant" });
     const pc = settings();
     if (!pc) {
-        detailLine("Set the PC address and key under Settings first.");
+        detailLine("Set the server address and key under Settings first.");
         return;
     }
-    detailLine(`Reading ${row.sku} from the PC...`);
+    detailLine(`Reading ${row.sku} from the server...`);
     let whole;
     try {
         whole = await getRow(pc, row.sku);
@@ -2243,7 +2404,7 @@ async function saveRowCustomize() {
     heard(200);
     c.wait = "";
     c.note = customizeSaved(whole);
-    if (leftUnsynced(row, whole)) markUnsynced(row.sku, true);
+    markBehind(row.sku, row, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
     return true;
@@ -2298,7 +2459,7 @@ async function pushRow() {
     heard(200);
     c.wait = "";
     c.note = null;
-    c.job = { action: "push", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.job = { action: "push", venue: "ebay", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     c.ask = () => {
         askJob(c, mine, renderRowCustomize).catch(() => {});
     };
@@ -2405,6 +2566,10 @@ function actionButton(word, className, disabled, onClick) {
 /**
  * A card's actions row: the actions core.js says it offers (End gone once the
  * PC refused it for this venue), or End's inline question, or Edit's Save and Cancel.
+ * Post on <venue> is the posting screen's own venue button, the big outlined pill across
+ * the card, its reset under it (Michal, 2026-10-08: "I did post something to craigslist;
+ * the button was weird. Make the same style button as when we post to venues
+ * originally"); the rest are small pills under it.
  */
 function actionsNode(venue, busy) {
     const c = admin.cards[venue];
@@ -2440,9 +2605,10 @@ function actionsNode(venue, busy) {
         );
         return box;
     }
-    for (const action of venueActions(row, venue)) {
+    for (const action of venueActions(row, venue, readUnsynced())) {
         if (action === "end" && c.noEnd) continue;
         const word = actionWord(action, venue);
+        const look = action === "post" ? "big venue-btn" : "pill";
         if (action === "open") {
             box.append(linkNode(venueStatus(row, venue).url, "pill", word));
             continue;
@@ -2453,7 +2619,7 @@ function actionsNode(venue, busy) {
             const paint = () => {
                 if (mine === admin.shown) renderCards();
             };
-            const node = actionButton(word, "pill", true, () => onTaskTap(c, paint));
+            const node = actionButton(word, look, true, () => onTaskTap(c, paint));
             const reset = actionButton(RESET, "reset-call", false, () => {
                 resetTask(c, paint).catch(() => {});
             });
@@ -2463,7 +2629,7 @@ function actionsNode(venue, busy) {
             box.append(node, reset);
             continue;
         }
-        box.append(actionButton(word, "pill", busy, () => onAction(venue, action)));
+        box.append(actionButton(word, look, busy, () => onAction(venue, action)));
     }
     return box;
 }
@@ -2574,7 +2740,7 @@ async function saveEdit(venue) {
     c.edit = null;
     c.note = null;
     c.job = null;
-    if (leftUnsynced(row, whole)) markUnsynced(row.sku, true);
+    markBehind(row.sku, row, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
 }
@@ -2609,12 +2775,13 @@ async function addTo(venue) {
 }
 
 /**
- * Post on a venue (the row the PC saved, by its sku), Refresh status or End
- * listing: after the second a job button waits, the job is sent, its line is the
- * card's status line, polled every POLL_MS like a venue button's, and once done the
- * row is read again (the link a post put up, the status a refresh or an end read).
- * An End the PC refuses (400: Craigslist cannot be ended from here) says why, and
- * its button goes. A tap on its button pauses it (onTaskTap), and its reset calls it off.
+ * Post on a venue (the row the PC saved, by its sku), Sync to craigslist (the push job),
+ * Refresh status or End listing: after the second a job button waits, the job is sent,
+ * its line is the card's status line, polled every POLL_MS like a venue button's, and once
+ * done the row is read again (the link a post put up, the status a refresh or an end
+ * read). An End the PC refuses (400) says why, and its button goes; a push it refuses (a
+ * PC not yet pushing to craigslist) says why. A tap on its button pauses it (onTaskTap),
+ * and its reset calls it off.
  */
 async function runAction(venue, action) {
     const c = admin.cards[venue];
@@ -2631,7 +2798,10 @@ async function runAction(venue, action) {
     const waited = pressWait(c);
     renderCards();
     if (!(await waited) || mine !== admin.shown) return;
-    const body = action === "post" ? jobRequest({ venue, sku: row.sku }) : actionJob(action, { sku: row.sku, venue });
+    const body =
+        action === "post"
+            ? jobRequest({ venue, sku: row.sku })
+            : actionJob(action === "sync" ? "push" : action, { sku: row.sku, venue });
     let answer;
     try {
         answer = await postJob(pc, body);
@@ -2648,7 +2818,7 @@ async function runAction(venue, action) {
     if (mine !== admin.shown) return;
     heard(200);
     c.wait = "";
-    c.job = { action, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.job = { action: body.action || action, venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     c.ask = () => {
         askJob(c, mine, () => paintLine(venue)).catch(() => {});
     };
@@ -2811,8 +2981,9 @@ async function askJob(c, mine, paint) {
         renderCards();
         return;
     }
-    // customize's Sync to eBay: eBay has the row's price now, and its list badge is plain again
-    if (c.job.action === "push") markUnsynced(admin.row.sku, false);
+    // a push (customize's Sync to eBay, the card's Sync to craigslist): that venue has the row
+    // now, and its list badge is plain again
+    if (c.job.action === "push") markUnsynced(admin.row.sku, c.job.venue, false);
     admin.changed = true;
     const pc = settings();
     let whole;
@@ -2874,7 +3045,7 @@ async function fetchRowPhotos(pc, mine) {
             blob = await getRowPhoto(pc, row.sku, p.n);
         } catch (e) {
             if (e.status === 0 || mine !== admin.shown) return;
-            tile.textContent = "not on the PC";
+            tile.textContent = "not on the server";
             continue;
         }
         if (mine !== admin.shown) return;
@@ -2973,7 +3144,7 @@ async function startSync(direction) {
     const pc = settings();
     sync.job = null;
     if (!pc) {
-        sync.note = { text: "Set the PC address and key under Settings first.", kind: "bad" };
+        sync.note = { text: "Set the server address and key under Settings first.", kind: "bad" };
         renderSync();
         return;
     }
@@ -3008,8 +3179,11 @@ async function startSync(direction) {
 async function askSync() {
     if (!(await askTask(sync, renderSync))) return;
     renderSync();
-    // Sync to eBay put every row on its listing: no listing is behind its row any more
-    if (sync.job.state === "done" && sync.job.direction === "to") removeText("localStorage", UNSYNCED_KEY);
+    // Sync to eBay put every row on its eBay listing: no eBay listing is behind its row any
+    // more (a craigslist one still is)
+    if (sync.job.state === "done" && sync.job.direction === "to") {
+        writeJson("localStorage", UNSYNCED_KEY, unsyncedWithout(readUnsynced(), "ebay"));
+    }
     if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
     // a listing open in place of the list: the list is asked for again on the way back
     if (!el.inventoryDetail.hidden) admin.changed = true;
@@ -3111,11 +3285,11 @@ async function saveSettings() {
             "Could not save on this phone (private mode?). The buttons need it saved.";
         return;
     }
-    el.settingsStatus.textContent = "Saved. Checking the PC...";
+    el.settingsStatus.textContent = "Saved. Checking the server...";
     try {
         await checkPc(s);
         heard(200);
-        el.settingsStatus.textContent = "Saved. The PC answers and knows this key.";
+        el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
@@ -3179,12 +3353,12 @@ async function restore(m, saved) {
         restoring[m] = false;
         if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
-            say(`${itemName} is no longer on the PC.`, "warn");
+            say(`${itemName} is no longer on the server.`, "warn");
             setState(m, reduce(slots[m], { type: "reset" }));
         } else {
             // leave the saved item alone: a reload once the PC answers brings it back
             keepSaved[m] = true;
-            say(`Could not read ${itemName} back from the PC (${e.message}). Its photos are safe there; reload when the PC answers.`, "warn");
+            say(`Could not read ${itemName} back from the server (${e.message}). Its photos are safe there; reload when the server answers.`, "warn");
             setState(m, reduce(slots[m], { type: "reset" }));
         }
     }
@@ -3227,7 +3401,7 @@ async function fetchPictures(m, pc) {
 async function nextItem(m) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
-        say("The user note has not reached the PC yet. NEXT again once it has.", "warn");
+        say("The user note has not reached the server yet. NEXT again once it has.", "warn");
         return;
     }
     // the note's wait may have let something change: check again before clearing
@@ -3418,6 +3592,8 @@ function main() {
         inventoryBrowse: $("inventory-browse"),
         inventorySearch: $("inventory-search"),
         inventoryStatus: $("inventory-status"),
+        optionsToggle: $("options-toggle"),
+        options: $("options"),
         inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
         inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
         inventoryPhotos: $("inventory-photos"),
@@ -3575,6 +3751,14 @@ function main() {
     el.inventorySearch.addEventListener("keydown", (e) => {
         if (e.key === "Enter") loadInventory().catch(() => {});
     });
+    showOptions(readText("localStorage", OPTIONS_KEY) === "open");
+    el.optionsToggle.addEventListener("click", toggleOptions);
+    // a finger lifted anywhere ends a dial too: its button may have been redrawn under it
+    for (const type of ["pointerup", "pointercancel"]) {
+        window.addEventListener(type, () => {
+            if (dial) endDial(dial.sku);
+        });
+    }
     for (const { value, node } of el.inventoryVenues) node.addEventListener("click", () => onFilter("venue", value));
     for (const { value, node } of el.inventoryStates) node.addEventListener("click", () => onFilter("status", value));
     for (const { value, node } of el.inventorySorts) node.addEventListener("click", () => onFilter("sort", value));

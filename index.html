@@ -30,8 +30,8 @@
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.8.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.8.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.9.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.9.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -63,14 +63,16 @@
   <!-- goods | book: two kinds of item, each with its own screen below and its own
        item in progress; switching never loses either (app.js keeps one of each).
        Hidden while Admin is open (Michal, 2026-10-06: "when we do admin we probably do not
-       need goods vs book slider distinction"). -->
+       need goods vs book slider distinction"), and so are both screens (Michal, 2026-10-08:
+       "When I look at a card the posting screen is below. That should not be there"): app.js
+       hides #work and #book until Admin closes, their items carrying on underneath. -->
   <div id="modes" class="modes" role="group" aria-label="What is being listed">
     <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
     <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
   </div>
 
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
-    You are offline. Photos wait on this page and go to the PC when you are back.
+    You are offline. Photos wait on this page and go to the server when you are back.
   </p>
   <p id="message" class="message" hidden></p>
 
@@ -89,14 +91,14 @@
     <div id="settings" class="card" hidden>
       <p id="settings-server" class="server server-line"></p>
       <label class="field">
-        <span class="field-label">PC address</span>
+        <span class="field-label">Server address</span>
         <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
                spellcheck="false" placeholder="https://pc.tail1234.ts.net">
       </label>
       <label class="field">
         <span class="field-label">Key</span>
         <input id="pc-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-               placeholder="from CROSSLISTER_KEYS on the PC">
+               placeholder="from CROSSLISTER_KEYS on the server">
       </label>
       <!-- the look (Michal, 2026-10-06: "Dark, light or sync with device"): a tap applies
            and remembers it on this phone at once, not part of Save and check -->
@@ -118,60 +120,67 @@
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="inventory">▸ Inventory</button>
     <div id="inventory" class="card inventory" hidden>
-      <!-- the list: the search, the two filters, the photos or not, the sort, one row per listing -->
+      <!-- the list: the search, then Options (the two filters, the sort, the photos or not),
+           then one row per listing. Michal, 2026-10-08: "Inventory list options need to be all
+           small, and also locked away inside a foldout tab 'Options'": the search stays out,
+           small; the rest folds away, folded until he opens it (app.js remembers which) -->
       <div id="inventory-browse">
-        <label class="field">
+        <label class="field field-small">
           <span class="field-label">Search</span>
-          <input id="inventory-search" type="text" inputmode="search" enterkeyhint="search"
+          <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
                  autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
         </label>
         <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
-        <div class="field">
-          <span class="field-label">Venue</span>
-          <div id="inventory-venue" class="chips chips-three" role="group" aria-label="Venue">
-            <button type="button" id="inventory-venue-all" class="chip" data-value=""
-                    aria-pressed="true">All</button>
-            <button type="button" id="inventory-venue-ebay" class="chip" data-value="ebay"
-                    aria-pressed="false">ebay</button>
-            <button type="button" id="inventory-venue-craigslist" class="chip" data-value="craigslist"
-                    aria-pressed="false">craigslist</button>
+        <button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"
+                aria-controls="options">▸ Options</button>
+        <div id="options" class="options" hidden>
+          <div class="field">
+            <span class="field-label">Venue</span>
+            <div id="inventory-venue" class="chips chips-three" role="group" aria-label="Venue">
+              <button type="button" id="inventory-venue-all" class="chip" data-value=""
+                      aria-pressed="true">All</button>
+              <button type="button" id="inventory-venue-ebay" class="chip" data-value="ebay"
+                      aria-pressed="false">ebay</button>
+              <button type="button" id="inventory-venue-craigslist" class="chip" data-value="craigslist"
+                      aria-pressed="false">craigslist</button>
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <span class="field-label">Status</span>
-          <div id="inventory-state" class="chips chips-five" role="group" aria-label="Status">
-            <button type="button" id="inventory-state-all" class="chip" data-value=""
-                    aria-pressed="true">All</button>
-            <button type="button" id="inventory-state-draft" class="chip" data-value="draft"
-                    aria-pressed="false">draft</button>
-            <button type="button" id="inventory-state-listed" class="chip" data-value="listed"
-                    aria-pressed="false">listed</button>
-            <button type="button" id="inventory-state-sold" class="chip" data-value="sold"
-                    aria-pressed="false">sold</button>
-            <button type="button" id="inventory-state-ended" class="chip" data-value="ended"
-                    aria-pressed="false">ended</button>
+          <div class="field">
+            <span class="field-label">Status</span>
+            <div id="inventory-state" class="chips chips-five" role="group" aria-label="Status">
+              <button type="button" id="inventory-state-all" class="chip" data-value=""
+                      aria-pressed="true">All</button>
+              <button type="button" id="inventory-state-draft" class="chip" data-value="draft"
+                      aria-pressed="false">draft</button>
+              <button type="button" id="inventory-state-listed" class="chip" data-value="listed"
+                      aria-pressed="false">listed</button>
+              <button type="button" id="inventory-state-sold" class="chip" data-value="sold"
+                      aria-pressed="false">sold</button>
+              <button type="button" id="inventory-state-ended" class="chip" data-value="ended"
+                      aria-pressed="false">ended</button>
+            </div>
           </div>
-        </div>
-        <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
-        <div class="field">
-          <span class="field-label">Sort</span>
-          <div id="inventory-sort" class="chips chips-four" role="group" aria-label="Sort">
-            <button type="button" id="inventory-sort-newest" class="chip" aria-pressed="true">Newest</button>
-            <button type="button" id="inventory-sort-oldest" class="chip" aria-pressed="false">Oldest</button>
-            <button type="button" id="inventory-sort-price-desc" class="chip" aria-pressed="false"
-                    aria-label="Price, highest first">Price ↓</button>
-            <button type="button" id="inventory-sort-price-asc" class="chip" aria-pressed="false"
-                    aria-label="Price, lowest first">Price ↑</button>
+          <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
+          <div class="field">
+            <span class="field-label">Sort</span>
+            <div id="inventory-sort" class="chips chips-four" role="group" aria-label="Sort">
+              <button type="button" id="inventory-sort-newest" class="chip" aria-pressed="true">Newest</button>
+              <button type="button" id="inventory-sort-oldest" class="chip" aria-pressed="false">Oldest</button>
+              <button type="button" id="inventory-sort-price-desc" class="chip" aria-pressed="false"
+                      aria-label="Price, highest first">Price ↓</button>
+              <button type="button" id="inventory-sort-price-asc" class="chip" aria-pressed="false"
+                      aria-label="Price, lowest first">Price ↑</button>
+            </div>
           </div>
+          <!-- the same pill row as pickup only, on by default and last of the options (Michal,
+               2026-10-07: "in inventory, let's keep photos showing by default. And that checkbox
+               should be at end of options. Not right in the awkward middle"); app.js remembers
+               it unticked on this phone -->
+          <label class="pickup">
+            <input id="inventory-photos" type="checkbox" checked>
+            <span>Show photos</span>
+          </label>
         </div>
-        <!-- the same pill row as pickup only, on by default and last of the options (Michal,
-             2026-10-07: "in inventory, let's keep photos showing by default. And that checkbox
-             should be at end of options. Not right in the awkward middle"); app.js remembers
-             it unticked on this phone -->
-        <label class="pickup">
-          <input id="inventory-photos" type="checkbox" checked>
-          <span>Show photos</span>
-        </label>
         <ul id="inventory-list" class="inventory-list"></ul>
       </div>
 
@@ -323,7 +332,7 @@
       </div>
       <label class="pickup">
         <input id="auto-post" type="checkbox" checked>
-        <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
+        <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <!-- Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
            that toggle default off, in customization." -->
@@ -490,7 +499,7 @@
       </div>
       <label class="pickup">
         <input id="book-auto-post" type="checkbox" checked>
-        <span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>
+        <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <label class="pickup">
         <input id="book-comps" type="checkbox">
@@ -525,6 +534,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.8.0"></script>
+<script type="module" src="app.js?v=2.9.0"></script>
 </body>
 </html>
