@@ -69,9 +69,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
 | `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
-| `app.js` | screen wiring: the landing (its sign-up words), sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings and its Account block with the Seller address, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
+| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -286,6 +286,32 @@ older server looks exactly as it did.
   eBay developer console takes this page's address as the privacy policy URL:
   `https://michalkoszycki.github.io/crosslister-snap/about.html`.
 
+## Finishing sign-up (2.14.0)
+
+Michal, 2026-10-08: an account made by an emailed link is not a seller yet. `GET /me` says where
+it stands (`signupStep` in core.js), and a server that says nothing of it is an account as today.
+
+- **Pending** (`"pending": true`: signed in by email, eBay not yet connected; `/me` has no user, only
+  the `email`): the server answers every keyed call but `/me`, `GET /ebay/connect` and `DELETE
+  /auth/session` with 403 `{"detail": "Connect eBay to finish signing up."}`. The page's own check
+  is one of them: the header still says **server ok** (the server answered), and the refusal asks
+  `/me`. Then the goods | book switch and both posting screens give way to **Finish signing up**
+  (`#signup-steps`, the landing's look, left aligned as sign-in is): step 1, **Connect eBay, where
+  your listings go** with its own **Connect eBay** (the Account block's, repeated: `GET
+  /ebay/connect` and the browser to eBay; a 503, the server not able to connect eBay yet, says its
+  words in the screen's line, `#signup-status`), step 2, **then your address** with **Your
+  address**, greyed and shut until step 1 is done. Admin opens on Settings (the inventory would be
+  refused); the Account block's first line says `Signed in as anna@example.com, not registered yet`.
+  The refusal, wherever a refusal is said, is the server's sentence alone (`refusalLine`): Feedback's
+  `Not sent: ...` becomes `Connect eBay to finish signing up.`
+- **Back from eBay** (`#ebay=connected`): `/me` is asked again, as ever, and now names a user with
+  `"registered": false`; Settings is open at the Account block, and its **Seller address** unfolds
+  with its note (`Your address is needed for shipping and pickup. Fill it in once.`). Closed, the
+  sign-up screen has step 1 ticked (its button gone) and step 2 open: **Your address** opens the same
+  foldout.
+- **Registered**: Save address answered, `/me` is asked once more; with `"registered": true` the goods
+  screen is the screen, as for every account.
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -408,7 +434,13 @@ older server looks exactly as it did.
   button text"): nothing before a press and until the server has saved the row,
   then `$14` (`$14.50` when the price has cents) while it posts and after. The
   price is the server's (`price` in the job's status), the row's, so it stands for
-  both buttons; a failure with nothing else running takes it away. A press
+  both buttons; a failure with nothing else running takes it away. Once a venue has
+  the listing up (a job done with its link), a small **See in inventory** sits under
+  the price (`#see-inventory`, the book's `#book-see-inventory`; Michal, 2026-10-08:
+  "After something is posted you should see 'see in inventory' below the price."): it
+  opens Admin on that listing's own page, by the sku the job reported, exactly as its
+  row's tap in the list would (Back is the list, asked for). NEXT clears it with the
+  rest; an item back or forward brought up shows it again. A press
   waits one second before anything leaves the phone (Michal, 2026-10-02:
   "delay sending by 1 second, but show loading, so that if one cancels within
   1 sec there is no call money spent"): the ring turns at once, and inside the
@@ -689,11 +721,13 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization.") | top-level `"comps": true`, only when ticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": true}`; never `"comps": false`: left alone, the server drafts without eBay's similar listings | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
-| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
+| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
 | `GET <pc>/inventory/<sku>/conditions`, the eBay card's **Edit** (Michal, 2026-10-08) | - | `{"current": "NEW_OTHER", "allowed": ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING"], "labels": {enum: words}, "error": "<why, only when allowed is empty>"}`; `allowed` is what eBay allows the row's category, the chips in that order and in `labels`' words. `allowed` empty: every condition the page knows (`CONDITION_LABELS`), `eBay's list for this category could not be read: showing all (<error>)` under them; an older server's 404: every condition, nothing said |
 | `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"condition"` (eBay's enum, only when another chip was pressed), `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}`, `{"condition": "USED_EXCELLENT"}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save; one about the condition, which names the accepted enums, under the chips, as is an older server's 422 or 400 for a `condition` it does not take) |
+| `PATCH <pc>/inventory/<sku>`, a list row swiped past the mark, its **Undo**, or an archived row's **Unarchive** | `{"archived": true}` / `{"archived": false}`, nothing else | the whole row, `"archived"` in it; a 404 (a server without archiving): `Archiving is not available on this server yet` on the inventory's line, the row back in place; any other refusal `<sku>: <detail>` there |
+| `GET <pc>/inventory?...&status=archived&...`, the **Archived** chip | the list's query, `status=archived` | only the archived rows; every other listing (All included) leaves them out |
 | `PATCH <pc>/inventory/<sku>`, a list row's **+** or **−**, one per press (a tap, or a press held: sent once the finger lifts or leaves the button) | `{"price": "150.00"}`, the whole dollars the dial stopped at, never below `"1.00"`; never a grade (`pricing` is customize's slider's); a dial back where it started sends nothing | the same; 400 `{"detail"}` on the inventory's line as `<sku>: <detail>`, the price as it was |
 | `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The server sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
@@ -702,11 +736,14 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
 | `POST <pc>/jobs`, a listing's customize **Sync to eBay** (one row, as saved, onto its eBay listing), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` / `{"action": "push", "sku", "venue": "craigslist"}` (the craigslist push is the server's from 2026-10-08) | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to craigslist yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
-| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats, the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today |
+| any keyed call of a sign-up waiting for eBay (`"pending": true`), but `/me`, `GET /ebay/connect` and `DELETE /auth/session` | as ever | 403 `{"detail": "Connect eBay to finish signing up."}`: the page's check asks `/me`, the header says server ok, and the words are said as they are wherever a refusal shows |
 | `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
 | `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
-| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected` or `#ebay=failed`; 404 (an older server): `Connecting eBay is not available yet.` |
+| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected` or `#ebay=failed`; 503 while the server cannot connect eBay yet: its words in the Account block (and on Finish signing up); 404 (an older server): `Connecting eBay is not available yet.` |
 | `POST <pc>/feedback`, Admin's Feedback **Send** | `{"text": "...", "screen": "goods" / "book" / "admin" / "card", "version": "2.10.0", "job": "<job id>"}`, `job` only when Include my last job is ticked and the page has one | 201 `{"id"}`; an error's `detail` under Send |
+| `GET <pc>/feedback?new=1`, an admin's Admin opened (and once /me says admin while it is), Feedback opened | - | `{"entries": [{"id", "user", "created", "text", "screen", "version", "user_agent", "job": {"id", "action", "venue", "state", "step", "error", "summary"} or null, "reviewed"}...]}`, newest first: the inbox above Feedback's box; 403 (anyone but an admin) or 404 (an older server): no inbox |
+| `PATCH <pc>/feedback/<id>`, an inbox entry's **Reviewed** | `{"reviewed": true}` | 2xx, any body or none: the entry leaves the inbox; a refusal's words under Send (`Not marked reviewed: <detail>.`) |
 | `GET <pc>/stats?since=7d` / `30d` / `all`, Admin's Stats, opened or a chip tapped | - | `{"since", "jobs": {"total", "done", "failed", "cancelled", "queued", "running"}, "posted": {"ebay": n, "craigslist": n}, "drafted", "ended", "pushed", "model_cost": "12.34", "per_user": [{"user", "jobs", "posted", "model_cost"}], "per_day": [{"date", "jobs", "posted"}], "first", "last"}`; 403 for anyone but an admin (and 404 from an older server): the foldout goes |
 | `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
@@ -787,7 +824,7 @@ Empty. With capacity to generate that card from there."
   'Options'"; open or folded is remembered on this phone, `snap.inventory.options`
   `open` or `closed`). In it, all small (13 px chips, 36 px tall): two rows of
   chips, **Venue** (All | ebay | craigslist) and **Status** (All | draft |
-  listed | sold | ended), a row of **Sort** chips (**Newest** | Oldest | Price ↓
+  listed | sold | ended | **Archived**, three to a row; see the swipe below), a row of **Sort** chips (**Newest** | Oldest | Price ↓
   | Price ↑; a row with no price comes last either way), and last, on its own
   line, **Show photos**, ticked by default (Michal, 2026-10-07: "in inventory,
   let's keep photos showing by default. And that checkbox should be at end of
@@ -806,6 +843,23 @@ Empty. With capacity to generate that card from there."
   not the detail; the rest of the row opens the detail. With **Show photos** on,
   a 64 px tile of photo 1 sits on the left of each (`no photo` for a listing
   with none), fetched one at a time; changing the list lets those pictures go.
+- **A swipe archives a row** (Michal, 2026-10-08: "Inventory list should have swipe left or
+  right to archive, so you no longer see it in the list, kind of like what the Gmail app has on
+  the phone."). Each list item is the row over a grey **Archive** panel. A finger on the row
+  (its button, which reaches over the whole row) that goes sideways (`swipeState` in core.js:
+  past 10 px, more across than up or down) drags the row with it, the panel showing on the
+  side it uncovers; up or down is the page's scroll (`touch-action: pan-y`) and the row stays
+  put. Lifted past 40% of the row's width or 120 px, whichever is less, the row slides out
+  that way and `PATCH /inventory/<sku> {"archived": true}` goes; once answered it leaves the
+  list (the count with it) and a bar under the list says `Archived <title>` with **Undo** for
+  6 s (`PATCH {"archived": false}`: the row back in its place). Short of the mark it slides
+  back; the click a swipe ends with opens nothing. The **+** and **−**, the badges and
+  their sync sit above the row's button, so a press on them never starts a swipe. A server
+  without archiving (404) says `Archiving is not available on this server yet` on the
+  inventory's line and the row slides back. Archiving hides a row; it ends no listing: the
+  **Archived** status chip (`status=archived`) lists only those rows, each with an
+  **Unarchive** pill in place of the swipe, and under the chips, once, `Archived listings
+  stay live on their venues`.
 - **The price on a row** (Michal, 2026-10-07, "one of the highest priority
   items": "On the inventory card on the right there should be a round + and a
   round − button. Pressing them increments through the price. Plus button in
@@ -1054,11 +1108,25 @@ Empty. With capacity to generate that card from there."
   `POST /jobs` it sent, else a job of an item in hand; none, no `job` key). 201:
   `Thanks, sent.` and the box clears; an error says `Not sent: <the server's
   words>.` and keeps the box.
+- **The Feedback inbox**, for an admin (Michal, 2026-10-08): above the box, the entries
+  nobody has reviewed (`GET /feedback?new=1`, asked as Admin opens and as Feedback opens),
+  newest first, each a small sheet: who, when (the phone's own time) and from which screen
+  (`anna · 2026-10-08 09:03 · goods`), the words, `Job error: <why>` when the job it names
+  failed, and a small **Reviewed** pill (`PATCH /feedback/<id> {"reviewed": true}`): answered,
+  the entry leaves; refused, it stays and the line under Send says why. While there are new
+  ones the toggle counts them, **Feedback (3)**. Anyone else, or a server that refuses it (403)
+  or has none (404), sees the box alone, as before.
 - **Stats**, after Feedback, for an admin only (`/me` says `"admin": true`; Michal's
   wish, 2026-10-08): chips **7d** | **30d** (the default) | **all**, each asking
-  `GET /stats?since=...` afresh, drawn as a small table: jobs (done, failed,
+  `GET /stats?since=...` afresh, drawn as a small table: **Actions sent** (done, failed,
   cancelled), posted per venue, drafted, ended, pushed, the model cost, then one row
-  per user (name, jobs, posted, cost). Counts only, no listing's title anywhere. A
+  per user (name, actions, posted, cost). The server's jobs are called actions on screen
+  (Michal, 2026-10-08: "I don't understand the jobs count on the stats."): a job is one
+  task the phone sent the server, so each venue press is one (ebay and craigslist for one
+  item are two), and so is an end, a refresh, a push or a sync; a note under the table
+  says so: `Actions: every press that reached the server (a posting per venue, an end, a
+  refresh, a push, a sync). Posted: listings that went up. Drafted: items the model wrote
+  up.` Counts only, no listing's title anywhere. A
   403 or 404 takes the foldout away. Feedback and Stats step aside on a listing's
   own page, as Settings does.
 

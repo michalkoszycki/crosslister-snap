@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.13.0";
+import { noteDirty, unsent } from "./queue.js?v=2.14.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.13.0";
+} from "./book.js?v=2.14.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -283,22 +283,66 @@ export function signinError(status, message) {
 /**
  * GET /me: who this key or session is and what the account may do. Leniently read: a
  * craigslist or admin the server does not say is as today (craigslist on, admin off); no
- * credits, packs or eBay from an older server is no Account block to speak of.
+ * credits, packs or eBay from an older server is no Account block to speak of. A sign-up
+ * still under way (Michal, 2026-10-08) says `pending` (signed in by email, eBay not yet
+ * connected: no user yet, only the email) or, connected, `registered` false until the
+ * address is in; a server that says neither is an account as today, pending nothing.
  * @param {unknown} answer
- * @returns {{user:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null} | null}
+ * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
     const a = /** @type {Record<string, unknown>} */ (answer);
     return {
         user: typeof a.user === "string" ? a.user : "",
+        email: plain(a.email),
         admin: a.admin === true,
         craigslist: a.craigslist !== false,
         venues: Array.isArray(a.venues) ? a.venues.filter((v) => typeof v === "string") : [],
         credits: creditsOf(a.credits),
         packs: (Array.isArray(a.packs) ? a.packs : []).map(packOf).filter((p) => p !== null),
         ebay: ebayOf(a.ebay),
+        pending: a.pending === true,
+        registered: a.registered !== false,
     };
+}
+
+/** What a server answers every keyed route but /me, Connect eBay and Sign out while a sign-up waits for eBay (403). */
+export const SIGNUP_UNFINISHED = "Connect eBay to finish signing up.";
+
+/**
+ * Where a sign-up stands (Michal, 2026-10-08): "ebay" while the account is pending (step 1,
+ * Connect eBay), "address" once eBay made it a real account but the address is not in yet
+ * (step 2, Settings' Seller address), "" once registered (the goods screen), and for no /me.
+ * @param {{user:string, pending:boolean, registered:boolean} | null} me meOf's
+ * @returns {""|"ebay"|"address"}
+ */
+export function signupStep(me) {
+    if (!me) return "";
+    if (me.pending) return "ebay";
+    return me.user && !me.registered ? "address" : "";
+}
+
+/**
+ * The Account block's first line while a sign-up waits for eBay: the email it was signed in
+ * with, and that it is not an account yet.
+ * @param {string} email
+ * @returns {string}
+ */
+export function pendingLine(email) {
+    return email ? `Signed in as ${email}, not registered yet` : "Signed in, not registered yet";
+}
+
+/**
+ * A line saying what could not be done and why ("Could not read the inventory: <why>."), but
+ * a sign-up's refusal (403, SIGNUP_UNFINISHED) said as the server says it, the one thing to do.
+ * @param {string} lead
+ * @param {number} status the PcError's
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function refusalLine(lead, status, message) {
+    return status === 403 && message === SIGNUP_UNFINISHED ? message : `${lead}: ${message}.`;
 }
 
 /** A whole count the server gives, or null for anything that is not one. */
@@ -628,6 +672,51 @@ export function feedbackBody({ text, screen, version, job = "" }) {
     return { text: words, screen, version, ...(job ? { job } : {}) };
 }
 
+/**
+ * One new entry of the admin's Feedback inbox, as the screen shows it.
+ * @typedef {{id:string, user:string, created:string, text:string, screen:string, error:string}} InboxEntry
+ */
+
+/**
+ * GET /feedback?new=1 (the admin's inbox, newest first): each entry with an id not yet
+ * reviewed, its job's error when it failed; anything else is dropped.
+ * @param {unknown} answer
+ * @returns {InboxEntry[]}
+ */
+export function inboxOf(answer) {
+    const a = answer && typeof answer === "object" ? /** @type {Record<string, any>} */ (answer) : {};
+    return (Array.isArray(a.entries) ? a.entries : [])
+        .filter((e) => e && typeof e === "object" && plain(e.id) && e.reviewed !== true)
+        .map((e) => ({
+            id: plain(e.id),
+            user: plain(e.user),
+            created: plain(e.created),
+            text: plain(e.text),
+            screen: plain(e.screen),
+            error: e.job && typeof e.job === "object" ? plain(e.job.error) : "",
+        }));
+}
+
+/**
+ * An inbox entry's first line: who, when (the phone's own time), from which screen.
+ * @param {InboxEntry} entry
+ * @param {number} [offsetMinutes] listedAtWord's
+ * @returns {string}
+ */
+export function inboxHead(entry, offsetMinutes) {
+    return [entry.user || "someone", listedAtWord(entry.created, offsetMinutes), entry.screen].filter(Boolean).join(" · ");
+}
+
+/**
+ * The Feedback foldout's word: with the count of new entries in the admin's inbox, when
+ * there are any ("Feedback (3)").
+ * @param {number} count
+ * @returns {string}
+ */
+export function feedbackWord(count) {
+    return count > 0 ? `Feedback (${count})` : "Feedback";
+}
+
 /** The Stats chips, in their order on screen; 30 days unless another is tapped. */
 export const STATS_SINCE = ["7d", "30d", "all"];
 export const DEFAULT_STATS_SINCE = "30d";
@@ -655,7 +744,10 @@ function costWord(x) {
 
 /**
  * GET /stats drawn as Admin's small table: one line per figure, then one row per user
- * (name, jobs, posted, model cost). Counts only: no listing's title ever reaches it.
+ * (name, actions, posted, model cost). Counts only: no listing's title ever reaches it. The
+ * server's jobs are "Actions sent" on screen (Michal, 2026-10-08: "I don't understand the
+ * jobs count on the stats."): each press that reached the server is one, a posting per venue,
+ * an end, a refresh, a push, a sync; index.html's note under the table says so.
  * @param {unknown} answer
  * @returns {{rows:[string, string][], users:[string, string, string, string][]}}
  */
@@ -666,7 +758,7 @@ export function statsTable(answer) {
     /** @type {[string, string][]} */
     const rows = [
         [
-            "jobs",
+            "Actions sent",
             `${countOf(jobs.total)}: ${countOf(jobs.done)} done, ${countOf(jobs.failed)} failed, ${countOf(jobs.cancelled)} cancelled`,
         ],
         ...Object.keys(posted).map((venue) => /** @type {[string, string]} */ ([`posted on ${venueName(venue)}`, String(countOf(posted[venue]))])),
@@ -1260,6 +1352,8 @@ export function serverLine(settingsOk, status) {
     if (status === null) return { text: "checking server...", kind: "" };
     if (status === 200) return { text: "server ok", kind: "ok" };
     if (status === 401) return { text: "wrong key", kind: "bad" };
+    // a sign-up waiting for eBay is refused everything but /me: the server answered all the same
+    if (status === 403) return { text: "server ok", kind: "ok" };
     return { text: "server off", kind: "bad" };
 }
 
@@ -2302,6 +2396,18 @@ export function titleLine(state) {
 }
 
 /**
+ * The listing's sku for "See in inventory" under the price (Michal, 2026-10-08: "After
+ * something is posted you should see 'see in inventory' below the price."): once any venue
+ * is up (a job done with its link) and the server named the row; "" before, and after NEXT.
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function inventorySku(state) {
+    const up = VENUES.some((v) => state.jobs[v] && state.jobs[v].phase === "done" && !!state.jobs[v].link);
+    return up ? state.sku : "";
+}
+
+/**
  * How many items NEXT left the browser's back button walks through (Michal,
  * 2026-10-03: "it should work in both directions and should, actually work
  * for lets say, 10 items back and then 10 items forward").
@@ -2714,8 +2820,11 @@ export const INVENTORY_DEBOUNCE_MS = 400;
 /** The venue filter's chips, All ("") first. */
 export const INVENTORY_VENUES = ["", ...VENUES];
 
-/** The status filter's chips, All ("") first. */
-export const INVENTORY_STATUSES = ["", "draft", "listed", "sold", "ended"];
+/**
+ * The status filter's chips, All ("") first; Archived last, the rows swiped off the list
+ * (GET /inventory?status=archived lists only those, every other listing leaves them out).
+ */
+export const INVENTORY_STATUSES = ["", "draft", "listed", "sold", "ended", "archived"];
 
 /**
  * The sort chips, in their order on screen, Newest first and chosen at the start
@@ -3813,4 +3922,71 @@ export function leftUnsynced(before, after) {
 export function followSummary(summary, whole) {
     const { photos, ...rest } = whole;
     return { ...summary, ...rest, sku: summary.sku };
+}
+
+// --- archiving a row by a swipe (Michal, 2026-10-08: "Inventory list should have swipe left
+// or right to archive, so you no longer see it in the list, kind of like what the Gmail app
+// has on the phone.") ---------------------------------------------------------------------
+// Archiving hides a row from the list (PATCH /inventory/<sku> {"archived": true}); it ends no
+// listing. The Archived chip lists them, each with Unarchive.
+
+/** A finger has to move this far before the page decides it is a swipe or a scroll. */
+export const SWIPE_SLOP_PX = 10;
+
+/** A swipe past this share of the row's width archives it ... */
+export const SWIPE_SHARE = 0.4;
+
+/** ... or past this far, whichever comes first (a wide screen's row need not cross the room). */
+export const SWIPE_MAX_PX = 120;
+
+/** How long the undo bar stays after a row is archived. */
+export const UNDO_MS = 6000;
+
+/** An archive (or Unarchive, or Undo) a server without the route answers with a 404. */
+export const ARCHIVE_MISSING = "Archiving is not available on this server yet";
+
+/**
+ * A finger on a list row, from where it went down (`start`) to where it is (`now`): "none"
+ * until it has moved SWIPE_SLOP_PX, then "swipe" when it went more sideways than up or down,
+ * "scroll" otherwise, and that call stands for the rest of the touch (`decided`, the last
+ * one's). `dx` is how far the row follows it sideways (0 unless a swipe), `past` whether
+ * letting go now archives the row: SWIPE_SHARE of its `width` or SWIPE_MAX_PX, whichever is
+ * less (a width not known: SWIPE_MAX_PX).
+ * @param {{x:number, y:number}} start
+ * @param {{x:number, y:number}} now
+ * @param {number} width the row's, in px
+ * @param {"none"|"swipe"|"scroll"} [decided]
+ * @returns {{dx:number, decided:"none"|"swipe"|"scroll", past:boolean}}
+ */
+export function swipeState(start, now, width, decided = "none") {
+    const dx = (Number(now.x) || 0) - (Number(start.x) || 0);
+    const dy = (Number(now.y) || 0) - (Number(start.y) || 0);
+    let call = decided;
+    if (call === "none" && Math.max(Math.abs(dx), Math.abs(dy)) >= SWIPE_SLOP_PX) {
+        call = Math.abs(dx) > Math.abs(dy) ? "swipe" : "scroll";
+    }
+    const reach = width > 0 ? Math.min(width * SWIPE_SHARE, SWIPE_MAX_PX) : SWIPE_MAX_PX;
+    const swiping = call === "swipe";
+    return { dx: swiping ? dx : 0, decided: call, past: swiping && Math.abs(dx) >= reach };
+}
+
+/**
+ * The undo bar's words for a row just archived.
+ * @param {string} title rowTitle's
+ * @returns {string}
+ */
+export function archivedLine(title) {
+    return `Archived ${title}`;
+}
+
+/**
+ * The inventory's line when an archive, Unarchive or Undo was refused: a server without the
+ * route (404) has it not available yet; anything else names the row and the server's words.
+ * @param {string} sku
+ * @param {number} status the PcError's
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function archiveError(sku, status, message) {
+    return status === 404 ? ARCHIVE_MISSING : `${sku}: ${message}`;
 }
