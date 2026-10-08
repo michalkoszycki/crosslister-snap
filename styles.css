@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.12.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.13.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1031,6 +1031,11 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .account-packs { display: flex; flex-wrap: wrap; gap: 6px; }
 .account-status { margin: 8px 0 0; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
 .account-status:empty { display: none; }
+/* Seller address, under the eBay line: customize's quiet disclosure, then the four boxes
+   small (16 px words, under which a phone zooms in), the state and ZIP side by side */
+.link.seller-toggle { margin-top: 6px; }
+.seller-note { margin: 2px 0 0; font-weight: 700; color: var(--ink); }
+.seller-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
 .landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */
@@ -1063,3 +1068,13 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
 footer p { margin: 6px 0; }
 .version-line { color: var(--muted); font-size: 12px; }
+/* About and privacy: a plain link in ink, a thumb's height; under the landing and Admin only */
+.about-link { display: inline-block; min-height: 40px; padding: 10px 0; color: var(--ink); font-size: 14px; font-weight: 700; }
+.about-link[hidden] { display: none; }
+
+/* about.html: the same header band and column, its sections in the landing's voice */
+.about h2 { margin: 26px 0 6px; font-size: 22px; }
+.about h2.landing-name { margin-top: 6px; font-size: 44px; }
+.about p, .about li { margin: 8px 0; font-size: 16px; }
+.about ul { padding-left: 1.2em; }
+.about a { color: var(--ink); font-weight: 700; }

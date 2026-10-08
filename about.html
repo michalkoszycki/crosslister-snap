@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  About Snap, its privacy and its terms (Michal, 2026-10-08: "What else do we need for the
+  multi tenant? Let's continue."): a plain page beside the app, linked from the landing's and
+  Admin's foot; eBay's developer console takes this page's address as the privacy policy URL.
+  No script at all, so the policy allows none; the look is the app's own stylesheet and font.
+  The version below is rewritten by tools/bump-version.mjs (data-version), as every ?v= is.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  style-src 'self';
+  font-src 'self';
+  img-src 'self';
+  base-uri 'none';
+  form-action 'none';
+  object-src 'none'">
+<meta name="theme-color" content="#FFFC00">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
+<meta name="referrer" content="no-referrer">
+<title>About Snap</title>
+<link rel="stylesheet" href="styles.css?v=2.13.0">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header>
+  <h1 class="brand">
+    <svg class="mark" viewBox="0 0 132 132" width="36" height="36" role="img" aria-label="Snap">
+      <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <circle class="mark-ring" cx="66" cy="76" r="32" fill="#0B0B0B"/>
+      <circle class="mark-lens" cx="66" cy="76" r="23" fill="#FFFC00"/>
+      <text class="mark-glyph" x="66" y="88" text-anchor="middle" font-family="Manrope, system-ui, sans-serif"
+            font-weight="800" font-size="34" fill="#0B0B0B">$</text>
+      <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
+    </svg>
+    <span class="wordmark" aria-hidden="true"><span class="wordmark-snap">$nap</span></span>
+  </h1>
+</header>
+
+<main class="about">
+  <a class="link back-link" href="./">← Back to Snap</a>
+  <h2 class="landing-name">Snap</h2>
+  <p class="landing-tagline">a crosslisting app</p>
+
+  <h2 id="what">What Snap is</h2>
+  <p>Snap lists what you photograph. Take the photos of an item on your phone; Snap writes the
+    listing, with a title, a price and a description, and posts it on eBay and Craigslist, on
+    your own accounts.</p>
+  <!-- the address is a placeholder until Michal names the support address: replace it here -->
+  <p>Snap is run by its developer; contact: the Feedback box in Admin, or the email below.</p>
+  <p><a id="support" href="mailto:support@example.com">support@example.com</a></p>
+
+  <h2 id="privacy">Privacy</h2>
+  <p>What the server keeps, and why:</p>
+  <ul>
+    <li>Your photos, and the listings made from them, so they can be posted, changed and ended.</li>
+    <li>Your eBay token, so Snap can list for you on your eBay account.</li>
+    <li>Your email address, to send you sign-in links.</li>
+    <li>Your seller address, for shipping and pickup on your listings.</li>
+    <li>Usage counts: how many postings you made and how many you have left.</li>
+  </ul>
+  <p>To write a listing, the photos you mark and your note are sent to the AI service that
+    drafts it.</p>
+  <p>What it never keeps: your card details. Payments go to Stripe, and card numbers are typed
+    only on Stripe's own page.</p>
+  <p>eBay can ask us to delete your eBay data (for example when you close your eBay account),
+    and we do.</p>
+  <p>Deleting your account is, for now, a request to the developer: write in the Feedback box or
+    to the email above.</p>
+  <p>The app loads nothing from other sites: no ads, no analytics, no trackers.</p>
+
+  <h2 id="terms">Terms</h2>
+  <ul>
+    <li>Snap is a tool that lists what you photograph on your own accounts. You are the seller:
+      what you list, its price and its description, and dealing with your buyers are yours, under
+      eBay's and Craigslist's own rules.</li>
+    <li>Your first three postings are free; after that, postings are prepaid. Postings already
+      used are not refunded.</li>
+    <li>The service may stop or change at any time.</li>
+  </ul>
+</main>
+
+<footer class="small">
+  <p class="version-line">Snap v<span class="mono" data-version>2.13.0</span></p>
+</footer>
+</body>
+</html>

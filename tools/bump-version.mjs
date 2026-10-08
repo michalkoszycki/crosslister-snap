@@ -15,6 +15,7 @@ const { VERSION } = await import("../version.js");
 
 const files = [
     "index.html",
+    "about.html", // its stylesheet's ?v= and the version it shows (data-version)
     "styles.css", // the font's URL
     "app.js",
     "core.js",
@@ -26,12 +27,14 @@ const files = [
     "version.js",
 ];
 const pattern = /\?v=\d+\.\d+\.\d+/g;
+// a version written for the eye on a page with no script (about.html)
+const shown = /(data-version>)\d+\.\d+\.\d+/g;
 
 let touched = 0;
 for (const file of files) {
     const path = join(root, file);
     const before = readFileSync(path, "utf8");
-    const after = before.replace(pattern, `?v=${VERSION}`);
+    const after = before.replace(pattern, `?v=${VERSION}`).replace(shown, `$1${VERSION}`);
     if (after !== before) {
         writeFileSync(path, after);
         touched += 1;
