@@ -272,8 +272,8 @@ older server looks exactly as it did.
 - **About and privacy** (`about.html`): a plain page beside the app, in its look (the header
   band with the mark, the stylesheet and Manrope) and with no script at all (its CSP allows
   none): what Snap is and who runs it (`Snap is run by its developer; contact: the Feedback box
-  in Admin, or the email below`, with a `mailto:`; the address is a placeholder,
-  `support@example.com`, until the support address is chosen), **Privacy** in plain words (what
+  in Admin, or the email below`, with a `mailto:` to the support address,
+  `crosslistersnap@gmail.com`, Michal's choice of 2026-10-08), **Privacy** in plain words (what
   the server keeps: the photos and listings, the eBay token to list for you, the email for
   sign-in, the seller address, usage counts; that marked photos and the note go to the AI
   service that drafts the listing; never card details, which go to Stripe; that eBay can ask us
