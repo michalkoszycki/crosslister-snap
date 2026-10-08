@@ -222,6 +222,16 @@ import {
     UNDO_MS,
 } from "../core.js";
 import {
+    NAME_WAIT_HINT,
+    photoStem,
+    recordName,
+    TYPE_NAME_HINT,
+    typedName,
+    UNNAMED,
+    unnamedWord,
+    waitsForName,
+} from "../core.js";
+import {
     bookCard,
     bookPriceValue,
     bookSearch,
@@ -3589,4 +3599,156 @@ test("a sign-up's steps from /me: Connect eBay while pending, then the address, 
     // the server answered, refusing: it is there
     assert.deepEqual(serverLine(true, 403), { text: "server ok", kind: "ok" });
     assert.deepEqual(serverLine(true, 0), { text: "server off", kind: "bad" });
+});
+
+// --- the optional item name (Michal, 2026-10-08) ---------------------------------------------
+//
+// "I want the SNAP button to be available immediately when opening the app. The snap button is
+// the important part, keep it where it is."
+
+const NAMELESS = "Unnamed 2026-10-08 1701";
+
+/** Goods snapped with the name box empty: `n` photos on the page, nothing on the PC yet. */
+function unnamedPhotos(n) {
+    let s = initialState("");
+    for (let i = 1; i <= n; i += 1) {
+        s = reduce(s, { type: "add", id: `p${i}`, name: buildFileName(photoStem(s), i), n: i });
+    }
+    return s;
+}
+
+/** As unnamedPhotos, with the PC's answer to {"name": ""}: an unnamed item. */
+function madeUnnamed(n, answer = { item: NAMELESS, name: NAMELESS, unnamed: true, photos: [] }) {
+    const s = unnamedPhotos(n);
+    const task = { kind: "item", name: "" };
+    return reduce(reduce(s, { type: "taskStart", task }), { type: "taskDone", task, answer });
+}
+
+test("goods with no name: their photos are Unnamed-n, the item is made unnamed and the PC's name kept", () => {
+    assert.equal(UNNAMED, "Unnamed");
+    assert.equal(photoStem(initialState("")), "Unnamed");
+    assert.equal(photoStem(initialState("Boots")), "Boots");
+    assert.equal(photoStem(initialState("", "book")), "Book", "a book waiting for its ISBN as before");
+    const s = madeUnnamed(2);
+    assert.equal(s.itemId, NAMELESS);
+    assert.equal(s.itemName, "", "no name: the listing's title names it");
+    assert.equal(s.unnamed, true);
+    assert.equal(s.serverName, NAMELESS);
+    assert.deepEqual(s.photos.map((p) => p.name), ["Unnamed-1.jpg", "Unnamed-2.jpg"]);
+    // a named item is never unnamed, whatever the answer says
+    const named = sent(1);
+    assert.equal(named.unnamed, false);
+    assert.equal(named.serverName, "");
+    // the PC said no name back: still unnamed, called "Unnamed" until a title
+    assert.equal(madeUnnamed(1, { item: "x1", photos: [] }).serverName, "");
+});
+
+test("the name box: before the item is made it names it (photos relabelled); after, an unnamed item's is the history's", () => {
+    // typed before the folder is made (the photos waited, offline): it names the item
+    const before = reduce(unnamedPhotos(2), { type: "setItem", itemName: "Lamp" });
+    assert.equal(before.itemName, "Lamp");
+    assert.deepEqual(before.photos.map((p) => p.name), ["Lamp-1.jpg", "Lamp-2.jpg"]);
+    assert.equal(typedName(before), "Lamp");
+    // typed after an unnamed item was made: kept as its label, the item's name untouched
+    const after = reduce(madeUnnamed(1), { type: "setItem", itemName: "Brass lamp" });
+    assert.equal(after.itemName, "");
+    assert.equal(after.label, "Brass lamp");
+    assert.equal(typedName(after), "Brass lamp");
+    assert.deepEqual(after.photos.map((p) => p.name), ["Unnamed-1.jpg"]);
+    // a named item's name is fixed once its folder exists
+    const fixed = sent(1);
+    assert.equal(reduce(fixed, { type: "setItem", itemName: "Shoes" }), fixed);
+});
+
+test("unnamed goods are saved with unnamed: true and what names them; read back the same", () => {
+    let s = madeUnnamed(1);
+    assert.deepEqual(savedItem(s), { itemName: "", itemId: NAMELESS, ai: [], unnamed: true, serverName: NAMELESS });
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1", price: "9.00", title: "Brass Table Lamp" } });
+    s = reduce(s, { type: "setItem", itemName: "Lamp" });
+    const saved = savedItem(s);
+    assert.deepEqual(saved, {
+        itemName: "",
+        itemId: NAMELESS,
+        ai: [],
+        unnamed: true,
+        serverName: NAMELESS,
+        label: "Lamp",
+        title: "Brass Table Lamp",
+    });
+    assert.equal("unnamed" in savedItem(sent(1)), false, "a named item is saved as it always was");
+    // a reload: the PC's answer, and what only the phone knew
+    const back = reduce(initialState(""), {
+        type: "recovered",
+        mode: "goods",
+        itemName: "",
+        itemId: NAMELESS,
+        ai: [],
+        answer: { item: NAMELESS, photos: [1, 2], note: "", sku: null, jobs: [] },
+        unnamed: true,
+        serverName: NAMELESS,
+        label: "Lamp",
+    });
+    assert.equal(back.unnamed, true);
+    assert.equal(back.serverName, NAMELESS);
+    assert.equal(back.label, "Lamp");
+    assert.deepEqual(back.photos.map((p) => [p.name, p.status]), [
+        ["Unnamed-1.jpg", "sent"],
+        ["Unnamed-2.jpg", "sent"],
+    ]);
+    assert.equal(typedName(back), "Lamp");
+    // a book's record never reads as unnamed
+    const book = reduce(initialState("", "book"), { type: "recovered", mode: "book", itemName: "Book 1", itemId: "b", answer: {}, unnamed: true });
+    assert.equal(book.unnamed, false);
+});
+
+test("what the history and the walk call an item: its name; unnamed, its label, its title, or Unnamed with the time", () => {
+    assert.equal(unnamedWord(NAMELESS), "Unnamed 17:01");
+    assert.equal(unnamedWord("Unnamed 2026-10-08 0905"), "Unnamed 09:05");
+    assert.equal(unnamedWord("Item 7"), "Item 7", "another shape: as the server says it");
+    assert.equal(unnamedWord(""), "Unnamed");
+    assert.equal(unnamedWord(undefined), "Unnamed");
+    const base = { itemName: "", itemId: NAMELESS, unnamed: true, serverName: NAMELESS };
+    assert.equal(recordName(base), "Unnamed 17:01");
+    assert.equal(recordName({ ...base, title: "Brass Table Lamp" }), "Brass Table Lamp", "never Unnamed... once a title exists");
+    assert.equal(recordName({ ...base, title: "Brass Table Lamp", label: "Lamp" }), "Lamp", "the name he typed for it first");
+    assert.equal(recordName({ itemName: "Boots", itemId: "Boots 2026-09-24" }), "Boots");
+    assert.equal(recordName({ itemId: "Boots 2026-09-24" }), "Boots 2026-09-24", "an odd record: its id");
+    assert.equal(walkNote({ ...base, title: "Brass Table Lamp" }, false, false), 'Back to "Brass Table Lamp", as it was left. NEXT starts a new item.');
+    assert.equal(walkNote(base, true, true), 'Forward to "Unnamed 17:01", as it was left. NEXT returns to the item you were on.');
+    assert.equal(presentNote({ ...base, label: "Lamp" }), 'Back on "Lamp", the item you were on.');
+});
+
+test("a server that refuses a blank name (400): the photos wait for the name, as before 2.15.0", () => {
+    const s = unnamedPhotos(2);
+    const task = { kind: "item", name: "" };
+    const refused = reduce(reduce(s, { type: "taskStart", task }), {
+        type: "taskFailed",
+        task,
+        status: 400,
+        error: "the item needs a name",
+    });
+    assert.equal(refused.needsName, true);
+    assert.equal(refused.stalled, false, "not the server being away: nothing to retry");
+    assert.equal(waitsForName(refused), true);
+    assert.equal(TYPE_NAME_HINT, "Type the item name to start snapping.");
+    assert.deepEqual(venueButton(reduce(refused, { type: "toggleAi", id: "p1" }), "ebay", true), { enabled: false, hint: NAME_WAIT_HINT });
+    assert.deepEqual(doneButton(refused), { enabled: false, hint: NAME_WAIT_HINT });
+    assert.equal(progressLine(refused), "2 photos, waiting for the item name");
+    // the name typed: nothing waits for it any more
+    const named = reduce(refused, { type: "setItem", itemName: "Lamp" });
+    assert.equal(waitsForName(named), false);
+    assert.equal(progressLine(named), "2 photos, 0 for the AI, 0 on the server");
+    // the server stays one that wants names for the next item, and after a reload
+    const next = reduce(refused, { type: "reset" });
+    assert.equal(next.needsName, true);
+    assert.equal(reduce(refused, { type: "recovered", mode: "goods", itemName: "Lamp", itemId: "L", answer: {} }).needsName, true);
+    // a 400 for a name he typed is that name's refusal, as ever: the queue stalls on it
+    const typed = reduce(initialState("Lamp"), { type: "add", id: "p1", name: "Lamp-1.jpg", n: 1 });
+    const t = { kind: "item", name: "Lamp" };
+    const no = reduce(reduce(typed, { type: "taskStart", task: t }), { type: "taskFailed", task: t, status: 400, error: "bad name" });
+    assert.equal(no.needsName, false);
+    assert.equal(no.stalled, true);
+    // a book never waits for a goods name
+    assert.equal(waitsForName({ ...initialState("", "book"), needsName: true, photos: s.photos }), false);
 });

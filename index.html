@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.14.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.14.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.15.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.15.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -453,13 +453,15 @@
   </section>
 
   <section id="work">
+    <!-- Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening
+         the app." The name is optional: left empty, the listing's title names the item -->
     <label class="field">
       <span class="field-label">Item name</span>
       <input id="item-name" type="text" inputmode="text" autocomplete="off"
-             autocapitalize="sentences" placeholder="e.g. Blue Levi jacket">
+             autocapitalize="sentences" placeholder="Name (optional): the listing's title names it">
     </label>
     <p id="cleaned" class="small mono" hidden></p>
-    <p id="hint" class="small">Type the item name to start snapping.</p>
+    <p id="hint" class="small" hidden></p>
 
     <!-- the photos first, Snap under them (Michal, 2026-09-30: back from the camera, the
          button should sit where the shutter was, about three quarters down the screen) -->
@@ -524,9 +526,15 @@
         <input id="comps" type="checkbox">
         <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
+      <!-- Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
+           of mine are quite dark." On by default; the phone's, for every photo taken -->
+      <label class="pickup">
+        <input id="fix-dark" type="checkbox" checked>
+        <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
+      </label>
       <!-- Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
            the end, in case someone wants to change something permanently." The grade and the
-           three ticks, kept on this phone; every new item starts from them -->
+           three ticks (and Fix dark photos), kept on this phone; every new item starts from them -->
       <div class="default-row">
         <button type="button" id="customize-default" class="pill pill-small">Save as default</button>
         <span id="customize-default-status" class="small" aria-live="polite"></span>
@@ -741,6 +749,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.14.0"></script>
+<script type="module" src="app.js?v=2.15.0"></script>
 </body>
 </html>

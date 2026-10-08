@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.14.0";
+import { noteDirty, unsent } from "./queue.js?v=2.15.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.14.0";
+} from "./book.js?v=2.15.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -71,6 +71,17 @@ export function nameWasChanged(raw) {
  */
 export function buildFileName(itemName, n) {
     return `${itemName}-${n}.jpg`;
+}
+
+/**
+ * What an item's photos are called on the page: its name, or, while it has none, "Book"
+ * (a book waiting for its ISBN or title) or "Unnamed" (goods snapped with the name box
+ * left empty, which the listing's title names in the end).
+ * @param {{itemName:string, mode:string}} state
+ * @returns {string}
+ */
+export function photoStem(state) {
+    return state.itemName || (state.mode === "book" ? "Book" : UNNAMED);
 }
 
 /**
@@ -1428,6 +1439,14 @@ export function safeLink(url) {
  * @property {"goods"|"book"} mode  which kind of item this is; the page keeps one of each
  * @property {BookSlice} book       the book's own fields (untouched in goods mode)
  * @property {Customize} customize  goods' customize (a book's is in its slice)
+ * @property {null|{photos:number}} nameTaken  the PC already has an item of this name today
+ * @property {boolean} unnamed    goods made on the PC with no name (POST /items {"name": ""}):
+ *                                the listing's title names it; a name typed since is `label`
+ * @property {string} serverName  the name the PC gave an unnamed item ("Unnamed 2026-10-08 1701")
+ * @property {string} label       a name typed after an unnamed item was made: the phone's only,
+ *                                for the history (the PC has no rename)
+ * @property {boolean} needsName  the PC refused a blank name (an older server, 400): goods need
+ *                                their name typed first again, as before 2.15.0
  */
 
 /**
@@ -1560,6 +1579,10 @@ export function initialState(itemName = "", mode = "goods") {
         jobs: Object.fromEntries(VENUES.map((v) => [v, idleJob()])),
         customize: initialCustomize(),
         nameTaken: null,
+        unnamed: false,
+        serverName: "",
+        label: "",
+        needsName: false,
     };
 }
 
@@ -1587,7 +1610,7 @@ export function photosLocked(state) {
 /**
  * The one reducer. Pure: returns a new state, never mutates.
  * Actions:
- *   {type:"setItem", itemName}
+ *   {type:"setItem", itemName}            the name box; once an unnamed item is made, its label
  *   {type:"add", id, name, n}             a photo taken; it waits for the upload queue
  *   {type:"remove", id}                   the x; a photo the PC may hold is deleted there too
  *   {type:"toggleAi", id}
@@ -1601,6 +1624,7 @@ export function photosLocked(state) {
  *   {type:"taskFailed", task, status, error}  status 0: the PC could not be reached
  *   {type:"resume"}                       try the stalled queue again
  *   {type:"recovered", itemName, itemId, ai, answer}  a reload, read back from GET /items/<id>
+ *                                         (an unnamed item's unnamed, serverName and label too)
  *   {type:"jobSending", venue, step}
  *   {type:"jobAccepted", venue, job, ahead}
  *   {type:"jobRefused", venue, error, credit}  the POST did not become a job (credit: a 402,
@@ -1643,8 +1667,14 @@ export function photosLocked(state) {
  */
 export function reduce(state, action) {
     switch (action.type) {
-        case "setItem":
-            return { ...state, itemName: action.itemName, nameTaken: null };
+        case "setItem": {
+            // the folder is made: a named item's name is fixed; a name typed for an unnamed
+            // one is the phone's own, for the history (Michal, 2026-10-08: the name is optional)
+            if (state.itemId) return state.unnamed ? { ...state, label: action.itemName } : state;
+            // photos taken before the name was typed wear it, as a book's do its ISBN
+            const next = { ...state, itemName: action.itemName, nameTaken: null };
+            return { ...next, photos: next.photos.map((p) => ({ ...p, name: buildFileName(photoStem(next), p.n) })) };
+        }
         case "nameTaken":
             // the PC's answer to a name typed earlier means nothing for the one typed since
             if (action.itemName !== state.itemName || state.itemId) return state;
@@ -1700,8 +1730,9 @@ export function reduce(state, action) {
         case "noteDue":
             return { ...state, note: { ...state.note, due: true } };
         case "reset":
-            // the next item is of the same kind: DONE on a book starts the next book
-            return { ...initialState("", state.mode), online: state.online };
+            // the next item is of the same kind: DONE on a book starts the next book; a
+            // server that wants names still does
+            return { ...initialState("", state.mode), online: state.online, needsName: state.needsName };
 
         case "taskStart": {
             const next = { ...state, busy: action.task };
@@ -2085,6 +2116,9 @@ function taskDone(state, task, answer) {
 
 function taskFailed(state, task, status, error) {
     const why = error || "not sent";
+    // a blank name refused: a server from before 2.15.0, which names every folder by what
+    // was typed; the photos wait on the page for the name, as they did then
+    if (task.kind === "item" && !task.name && status === 400) return { ...state, needsName: true };
     if (status !== 0) {
         // the PC answered and refused: a photo shows it (tap to retry); a
         // delete of something already gone is done; the rest is tried again
@@ -2106,6 +2140,8 @@ function taskFailed(state, task, status, error) {
  * The item exists on the PC. The same name the same day is the same item
  * there, so it may already hold photos: they join the strip as sent, and the
  * photos waiting here are numbered on after them so nothing is overwritten.
+ * Goods asked for with no name are an unnamed item, a new folder of the PC's
+ * naming ("Unnamed 2026-10-08 1701", kept as `serverName`).
  */
 function adoptItem(state, answer) {
     const itemId = typeof answer.item === "string" ? answer.item : "";
@@ -2117,18 +2153,26 @@ function adoptItem(state, answer) {
             problem: "the server gave no item",
         };
     }
+    const unnamed = state.mode !== "book" && !state.itemName;
+    const made = {
+        ...state,
+        itemId,
+        unnamed,
+        serverName: unnamed && typeof answer.name === "string" ? answer.name.trim() : "",
+    };
     const existing = numbers(answer.photos);
-    if (existing.length === 0) return { ...state, itemId };
+    if (existing.length === 0) return made;
     let next = Math.max(...existing);
     let { main } = state.book;
+    const stem = photoStem(state);
     const waiting = state.photos.map((p) => {
         next += 1;
         // a book's main mark follows its photo to the new number
         if (p.n === state.book.main) main = next;
-        return { ...p, n: next, name: buildFileName(state.itemName, next) };
+        return { ...p, n: next, name: buildFileName(stem, next) };
     });
-    const there = existing.map((n) => photoOnPc(state.mode, state.itemName, n, false));
-    return { ...state, itemId, photos: [...there, ...waiting], book: { ...state.book, main } };
+    const there = existing.map((n) => photoOnPc(state.mode, stem, n, false));
+    return { ...made, photos: [...there, ...waiting], book: { ...state.book, main } };
 }
 
 /**
@@ -2142,12 +2186,21 @@ function recovered(state, action) {
     const marked = new Set(numbers(action.ai));
     const note = typeof answer.note === "string" ? answer.note : "";
     const mode = MODES.includes(action.mode) ? action.mode : state.mode;
-    let next = {
+    // an unnamed item: what the PC called it and a name typed for it since, as savedItem kept them
+    const unnamed = mode === "goods" && action.unnamed === true;
+    const named = {
         ...initialState(action.itemName, mode),
+        unnamed,
+        serverName: unnamed && typeof action.serverName === "string" ? action.serverName : "",
+        label: unnamed && typeof action.label === "string" ? action.label : "",
+    };
+    let next = {
+        ...named,
         book: mode === "book" ? recoveredBook(action.book) : initialBook(),
         online: state.online,
+        needsName: state.needsName,
         itemId: action.itemId,
-        photos: numbers(answer.photos).map((n) => photoOnPc(mode, action.itemName, n, marked.has(n))),
+        photos: numbers(answer.photos).map((n) => photoOnPc(mode, photoStem(named), n, marked.has(n))),
         note: { text: note, sentText: note, due: false },
         sku: typeof answer.sku === "string" ? answer.sku : "",
         // only the phone knows it until a button is pressed (a book's is in its slice)
@@ -2206,10 +2259,10 @@ function recoveredBook(saved) {
  * (app.js fetchPictures). The id names the kind too, since the goods item and
  * the book both read back and their pictures share one map on the page.
  */
-function photoOnPc(mode, itemName, n, ai) {
+function photoOnPc(mode, stem, n, ai) {
     return {
         id: `pc#${mode}#${n}`,
-        name: buildFileName(itemName, n),
+        name: buildFileName(stem, n),
         n,
         ai,
         status: "sent",
@@ -2280,8 +2333,10 @@ export function raiseCount(counters, itemName, n) {
  *
  * Either kind also keeps customize (the quantity, pickup only, the price grade
  * and auto-post), but only once it is not the default: an item left alone is
- * saved as it always was.
- * @returns {null|{itemName:string, itemId:string, ai:number[], customize?:Customize}
+ * saved as it always was. Goods made with no name keep `unnamed: true` and what
+ * names them (savedUnnamed).
+ * @returns {null|{itemName:string, itemId:string, ai:number[], customize?:Customize, unnamed?:true,
+ *            serverName?:string, label?:string, title?:string}
  *          |{mode:"book", itemName:string, itemId:string, isbn:string, isbnMiss:boolean, manual:boolean, title:string,
  *            author:string, year:string, format:string, condition:string, price:string,
  *            main:number, lookup:(null|object), customize?:Customize}}
@@ -2323,7 +2378,24 @@ export function savedItem(state) {
         itemName: state.itemName,
         itemId: state.itemId,
         ai: state.photos.filter((p) => p.ai).map((p) => p.n),
+        ...savedUnnamed(state),
         ...savedCustomize(state.customize),
+    };
+}
+
+/**
+ * An unnamed item keeps what names it on the phone: that it is unnamed (its itemName is ""),
+ * the PC's name for it, a name typed since and the listing's title once a job said it, so the
+ * history and the walk can call it by them (recordName). Nothing for a named item.
+ */
+function savedUnnamed(state) {
+    if (!state.unnamed) return {};
+    const title = titleLine(state);
+    return {
+        unnamed: true,
+        serverName: state.serverName,
+        ...(state.label ? { label: state.label } : {}),
+        ...(title ? { title } : {}),
     };
 }
 
@@ -2489,9 +2561,8 @@ export function walkPosition(state, length) {
  * @returns {string}
  */
 export function walkNote(record, forward, resumes) {
-    const name = record.itemName || record.itemId;
     const next = resumes ? "returns to the item you were on" : "starts a new item";
-    return `${forward ? "Forward" : "Back"} to "${name}", as it was left. NEXT ${next}.`;
+    return `${forward ? "Forward" : "Back"} to "${recordName(record)}", as it was left. NEXT ${next}.`;
 }
 
 /**
@@ -2501,7 +2572,68 @@ export function walkNote(record, forward, resumes) {
  * @returns {string}
  */
 export function presentNote(record) {
-    return record ? `Back on "${record.itemName || record.itemId}", the item you were on.` : "";
+    return record ? `Back on "${recordName(record)}", the item you were on.` : "";
+}
+
+// Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening the
+// app. The snap button is the important part, keep it where it is." The item name is optional:
+// goods snapped with the box empty are made on the PC unnamed (POST /items {"name": ""}), and
+// the draft's title names them.
+
+/** What the photos of goods with no name are called, and the first word of their label. */
+export const UNNAMED = "Unnamed";
+
+/** The Snap line while a server that wants names (needsName) has none: as before 2.15.0. */
+export const TYPE_NAME_HINT = "Type the item name to start snapping.";
+
+/** Under the buttons while photos snapped unnamed wait for a server that wants a name. */
+export const NAME_WAIT_HINT = "This server needs the item name: type it so the photos can go to the server";
+
+/**
+ * An unnamed item's label before it has a title: "Unnamed" with the time the PC made it,
+ * read from the PC's name for it ("Unnamed 2026-10-08 1701" -> "Unnamed 17:01"); the PC's
+ * name as it is when it is not that shape; "Unnamed" when there is none.
+ * @param {unknown} serverName
+ * @returns {string}
+ */
+export function unnamedWord(serverName) {
+    const name = typeof serverName === "string" ? serverName.trim() : "";
+    const at = /^Unnamed \d{4}-\d{2}-\d{2} (\d{2})(\d{2})$/.exec(name);
+    if (at) return `${UNNAMED} ${at[1]}:${at[2]}`;
+    return name || UNNAMED;
+}
+
+/**
+ * What the history and the walk call a saved item: its name; for an unnamed one, the name
+ * typed for it since, else the listing's title, else "Unnamed" with the time (never the PC's
+ * "Unnamed 2026-10-08 1701" once a title exists); the id as a last resort.
+ * @param {{itemName?:string, itemId:string, unnamed?:boolean, label?:string, title?:string, serverName?:string}} record
+ * @returns {string}
+ */
+export function recordName(record) {
+    if (record.itemName) return record.itemName;
+    if (record.unnamed === true) return record.label || record.title || unnamedWord(record.serverName);
+    return record.itemId;
+}
+
+/**
+ * What the name box holds for the item: its name, or, once an unnamed item is made, the
+ * name typed for the history.
+ * @param {SnapState} state
+ * @returns {string}
+ */
+export function typedName(state) {
+    return state.itemId && state.unnamed ? state.label : state.itemName;
+}
+
+/**
+ * Goods snapped unnamed whose server refused a blank name (needsName): their photos wait
+ * on the page for the name, as a book's wait for its ISBN.
+ * @param {SnapState} state
+ * @returns {boolean}
+ */
+export function waitsForName(state) {
+    return state.mode !== "book" && state.needsName && !state.itemName && !state.itemId && state.photos.length > 0;
 }
 
 /**
@@ -2577,6 +2709,7 @@ export function venueButton(state, venue, settingsOk) {
     if (state.sku) return { enabled: true, hint: "" };
     const n = state.photos.length;
     if (n === 0) return { enabled: false, hint: "Snap a photo first" };
+    if (waitsForName(state)) return { enabled: false, hint: NAME_WAIT_HINT };
     if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
     if (!state.photos.some((p) => p.ai)) {
         return { enabled: false, hint: "Mark at least one photo AI (bottom right of the photo)" };
@@ -2704,6 +2837,7 @@ export function doneButton(state) {
     }
     // a book's photos waiting for its ISBN or title are not waiting for the PC
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
+    if (waitsForName(state)) return { enabled: false, hint: NAME_WAIT_HINT };
     if (unsent(state)) {
         return { enabled: false, hint: "NEXT waits until the photos are on the server" };
     }
@@ -2759,6 +2893,7 @@ export function progressLine(state) {
     if (waitsForIsbn(state)) {
         return `${photos}, waiting for ${state.book.manual ? "the title" : "the ISBN or the title"}`;
     }
+    if (waitsForName(state)) return `${photos}, waiting for the item name`;
     const where = `${sent === total ? "all" : sent} on the server`;
     if (state.mode === "book") return `${photos}, ${where}`;
     return `${photos}, ${ai} for the AI, ${where}`;

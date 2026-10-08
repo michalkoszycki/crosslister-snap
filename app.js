@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.14.0";
+import { VERSION } from "./version.js?v=2.15.0";
 import {
     anyActive,
     bannerText,
@@ -75,6 +75,10 @@ import {
     itemIdFor,
     NAME_CHECK_MS,
     nameTakenHint,
+    photoStem,
+    recordName,
+    TYPE_NAME_HINT,
+    typedName,
     venueButton,
     venueIdleNote,
     venueLabel,
@@ -181,8 +185,8 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.14.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.14.0";
+} from "./core.js?v=2.15.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.15.0";
 import {
     addVenue,
     archiveRow,
@@ -217,8 +221,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.14.0";
-import { shrinkPhoto } from "./shrink.js?v=2.14.0";
+} from "./pc.js?v=2.15.0";
+import { shrinkPhoto } from "./shrink.js?v=2.15.0";
 import {
     bookCard,
     bookPriceValue,
@@ -231,8 +235,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.14.0";
-import { canScan, readIsbn } from "./scan.js?v=2.14.0";
+} from "./book.js?v=2.15.0";
+import { canScan, readIsbn } from "./scan.js?v=2.15.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -260,6 +264,8 @@ const SESSION_KEY = "snap.session";
 const DEFAULTS_KEY = "snap.customize.defaults";
 /** When the home-screen banner was put away (an ISO date): it stays away a week. */
 const INSTALL_KEY = "snap.install.dismissed";
+/** Fix dark photos as Save as default left it ("off"; on until then): every new item starts from it. */
+const FIXDARK_KEY = "snap.photos.fixdark";
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 /** What app.js draws its own icons in (a listed badge's tick). */
@@ -274,12 +280,21 @@ const slots = { goods: initialState(""), book: initialState("", "book") };
 let mode = "goods";
 
 /**
- * id -> { file, url, shrunk, ready } -- the pictures taken on this page, until NEXT.
- * `file` is the camera's original until the photo is shrunk, then null: only the
- * shrunk JPEG (`shrunk`) is kept, and `url` shows it. `ready` is the shrink in
- * progress, shared by the thumbnail and the upload.
+ * id -> { file, url, shrunk, ready, fixDark, original, originalUrl, before } -- the pictures
+ * taken on this page, until NEXT. `file` is the camera's original until the photo is shrunk,
+ * then null: only the shrunk JPEG (`shrunk`) is kept, and `url` shows it. `ready` is the
+ * shrink in progress, shared by the thumbnail and the upload. `fixDark`: Fix dark photos as
+ * it was when the photo was taken. A dark photo it brightened keeps its picture from before
+ * (`original`, shown by `originalUrl` while `before` is on: the lit badge's before/after look)
+ * only while the item is on screen; the brightened one is what goes to the PC.
  */
 const blobs = new Map();
+
+/**
+ * Fix dark photos, the tick in customize: brighten a dark photo before it goes (shrink.js).
+ * The phone's, for every photo taken from now on; NEXT puts it back to Save as default's.
+ */
+let fixDark = true;
 
 /** "<mode>:<venue>" -> the timer of its next status poll */
 const polls = new Map();
@@ -516,6 +531,7 @@ function takeNumber(itemName, s) {
 /** After the PC told us its photo numbers: never hand one of them out again. */
 function syncCounter(m) {
     const s = slots[m];
+    if (!s.itemName) return; // unnamed goods number on from their own photos (acceptFiles)
     const counters = readJson("sessionStorage", COUNTER_KEY, {});
     writeJson("sessionStorage", COUNTER_KEY, raiseCount(counters, s.itemName, highestNumber(s)));
 }
@@ -577,6 +593,11 @@ function readDefaults() {
     return customizeDefaults(readJson("localStorage", DEFAULTS_KEY, null));
 }
 
+/** Fix dark photos as Save as default left it on this phone: on unless he saved it off. */
+function savedFixDark() {
+    return readText("localStorage", FIXDARK_KEY) !== "off";
+}
+
 /** A kind's next item: a fresh screen, its customize from the defaults he saved. */
 function freshState(m) {
     return applyDefaults(reduce(slots[m], { type: "reset" }), readDefaults());
@@ -632,13 +653,17 @@ function renderGoods() {
     const state = slots.goods;
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
     el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
-    // the item's folder on the PC is named once, with the first photo
-    el.itemInput.readOnly = restoring.goods || !!state.itemId || state.photos.length > 0;
+    // the item's folder on the PC is named once, when it is made; an unnamed one's box
+    // stays open for a name the history calls it by
+    el.itemInput.readOnly = restoring.goods || (!!state.itemId && !state.unnamed);
 
     const locked = photosLocked(state);
     const taken = nameTakenHint(state);
     el.itemInput.classList.toggle("taken", !!taken);
-    const ready = !!state.itemName && !locked && !restoring.goods && !taken;
+    // Snap from the moment the page opens (Michal, 2026-10-08): the name is optional, unless
+    // the server refused a blank one (needsName), which keeps the rule from before
+    const named = !!state.itemName || !state.needsName;
+    const ready = named && !locked && !restoring.goods && !taken;
     // the word only: the camera icon beside it in the label stays
     el.snapText.textContent = snapWord(state);
     el.snapLabel.classList.toggle("disabled", !ready);
@@ -649,12 +674,13 @@ function renderGoods() {
     if (restoring.goods) el.hint.textContent = "Reading this item back from the server...";
     else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
     else if (taken) el.hint.textContent = taken;
-    else el.hint.textContent = "Type the item name to start snapping.";
+    else el.hint.textContent = named ? "" : TYPE_NAME_HINT;
 
     el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
     renderStrip("goods", el.strip, locked);
     renderCustomize("goods");
+    el.fixDark.checked = fixDark;
 
     const ok = !!settings();
     // the row's price, above both buttons: one job's answer serves the other too
@@ -824,11 +850,13 @@ function customizeNodes(m) {
 /**
  * Save as default (Michal, 2026-10-08: "in case someone wants to change something
  * permanently"): this kind's price grade and its three ticks as they stand, kept on this
- * phone for every new item of the kind (NEXT, a fresh load); never the quantity. Said
- * beside it for a moment.
+ * phone for every new item of the kind (NEXT, a fresh load); never the quantity. The goods'
+ * also keeps Fix dark photos. Said beside it for a moment.
  */
 function saveDefaults(m) {
     writeJson("localStorage", DEFAULTS_KEY, { ...readDefaults(), [m]: defaultsOf(customizeOf(slots[m])) });
+    // Fix dark photos is the phone's, in the goods card: saved with the goods' defaults
+    if (m === "goods") writeText("localStorage", FIXDARK_KEY, fixDark ? "on" : "off");
     const node = customizeNodes(m).defaultStatus;
     node.textContent = DEFAULTS_SAVED;
     clearTimeout(defaultTimers[m]);
@@ -995,9 +1023,10 @@ function renderStrip(m, strip, locked) {
             // the shrunk picture, once there is one: a full-size original is never
             // shown, so the phone decodes one picture at a time, not every one
             const img = document.createElement("img");
-            if (held.shrunk) img.src = held.url;
+            if (held.shrunk) img.src = held.before ? held.originalUrl : held.url;
             img.alt = p.name;
             card.append(img);
+            if (held.original) card.append(litMark(held, p.name));
         } else {
             // read back from the PC: its picture is on its way here (fetchPictures), or
             // the PC could not give it
@@ -1080,6 +1109,26 @@ function renderStrip(m, strip, locked) {
     }
 }
 
+/**
+ * The lit badge, bottom left of a photo Fix dark photos brightened (the AI mark has the
+ * bottom right): a tap shows the picture as it was, another the brightened one again, a
+ * before/after look on the page only. The brightened one is what goes, or went, to the
+ * server: nothing is sent again.
+ */
+function litMark(held, name) {
+    const lit = document.createElement("button");
+    lit.type = "button";
+    lit.className = held.before ? "lit-mark before" : "lit-mark";
+    lit.textContent = "lit";
+    lit.setAttribute("aria-pressed", held.before ? "false" : "true");
+    lit.setAttribute("aria-label", held.before ? `${name}, as taken: show it brightened` : `${name}, brightened: show it as taken`);
+    lit.addEventListener("click", () => {
+        held.before = !held.before;
+        render();
+    });
+    return lit;
+}
+
 function say(message, kind = "info") {
     el.message.textContent = message || "";
     el.message.className = `message ${kind}`;
@@ -1108,7 +1157,7 @@ function showMode(m) {
 function onItemNameChanged() {
     if (el.itemInput.readOnly) return;
     const cleaned = cleanItemName(el.itemInput.value);
-    if (cleaned !== slots.goods.itemName) {
+    if (cleaned !== typedName(slots.goods)) {
         setState("goods", reduce(slots.goods, { type: "setItem", itemName: cleaned }));
         scheduleNameCheck();
     } else render();
@@ -1121,14 +1170,18 @@ let nameCheck = 0;
  * was already started today; if so the name is flagged and refused (Michal,
  * 2026-09-30: "just flag it and don't accept it"). No answer, or a 404, is a
  * free name as far as the page can tell. Nothing is asked once the item's
- * folder exists: the name is fixed then anyway.
+ * folder exists, or once photos are waiting for it: the name is fixed then
+ * anyway (an unnamed item's is the phone's only). Photos that waited for a
+ * name (a server that wants one) go once he stops typing it.
  */
 function scheduleNameCheck() {
     clearTimeout(nameCheck);
     const s = slots.goods;
-    if (!s.itemName || s.itemId || s.photos.length > 0) return;
+    if (!s.itemName || s.itemId) return;
     nameCheck = setTimeout(() => {
-        checkName(s.itemName).catch(() => {});
+        checkName(s.itemName)
+            .catch(() => {})
+            .then(pump);
     }, NAME_CHECK_MS);
 }
 
@@ -1161,14 +1214,15 @@ function snapUnderThumb() {
 
 /**
  * Photos taken or picked: onto the page at once, and into the upload queue.
- * A goods item needs its name first; a book's photos may come before its ISBN
- * (the cover snapped before the barcode is scanned or the ISBN typed) and wait
- * on the page until it names them.
+ * A goods item may go with no name (Michal, 2026-10-08), made unnamed on the PC,
+ * unless the server refused that (needsName); a book's photos may come before its
+ * ISBN (the cover snapped before the barcode is scanned or the ISBN typed) and
+ * wait on the page until it names them.
  */
 function acceptFiles(m, fileList) {
     const s = slots[m];
-    if (m === "goods" && (!s.itemName || restoring.goods)) {
-        say("Type an item name first.", "warn");
+    if (m === "goods" && !s.itemName && s.needsName) {
+        say(TYPE_NAME_HINT, "warn");
         return;
     }
     if (m === "goods" && s.nameTaken) {
@@ -1177,13 +1231,15 @@ function acceptFiles(m, fileList) {
     }
     if (restoring[m] || photosLocked(s)) return;
     keepSaved[m] = false; // a new item starts: it is the one to remember now
-    const item = s.itemName || "Book";
+    const item = photoStem(s);
     let next = s;
     const ids = [];
     for (const file of fileList) {
-        const n = takeNumber(item, next);
+        // unnamed goods are a new folder every time: their photos number from 1, not on
+        // from the last unnamed item's
+        const n = s.itemName || m === "book" ? takeNumber(item, next) : highestNumber(next) + 1;
         const id = `${item}#${n}#${Date.now()}#${Math.random().toString(36).slice(2, 8)}`;
-        blobs.set(id, { file, url: "", shrunk: null, ready: null });
+        blobs.set(id, { file, url: "", shrunk: null, ready: null, fixDark, original: null, originalUrl: "", before: false });
         ids.push(id);
         next = reduce(next, { type: "add", id, name: buildFileName(item, n), n });
     }
@@ -1228,17 +1284,22 @@ function prepared(id) {
         held.ready = shrinking
             .then(() => {
                 if (!blobs.has(id)) throw new Error("the photo is no longer on this page");
-                return shrinkPhoto(held.file);
+                return shrinkPhoto(held.file, { fixDark: held.fixDark });
             })
             .then(
-            (blob) => {
-                held.shrunk = blob;
-                held.file = null; // the original is not needed any more: let it go
+            ({ jpeg, original }) => {
+                held.shrunk = jpeg;
+                held.file = null; // the camera's original is not needed any more: let it go
                 if (held.url) URL.revokeObjectURL(held.url);
-                held.url = URL.createObjectURL(blob);
+                held.url = URL.createObjectURL(jpeg);
+                // brightened: the picture as taken, for the lit badge's before/after look
+                if (original) {
+                    held.original = original;
+                    held.originalUrl = URL.createObjectURL(original);
+                }
                 held.ready = null;
                 render();
-                return blob;
+                return jpeg;
             },
             (e) => {
                 held.ready = null;
@@ -1258,13 +1319,18 @@ function photoFailed(m, id, error) {
     say(`${photo.name}: ${error}`, "warn");
 }
 
+/** A photo's pictures off the page: its URLs revoked (the one from before a brightening too). */
+function letGo(id) {
+    const held = blobs.get(id);
+    if (!held) return;
+    URL.revokeObjectURL(held.url);
+    if (held.originalUrl) URL.revokeObjectURL(held.originalUrl);
+    blobs.delete(id);
+}
+
 /** The x on a thumbnail: off the page, and off the PC when it may be there. */
 function removePhoto(m, id) {
-    const held = blobs.get(id);
-    if (held) {
-        URL.revokeObjectURL(held.url);
-        blobs.delete(id);
-    }
+    letGo(id);
     setState(m, reduce(slots[m], { type: "remove", id }));
     pump();
 }
@@ -4615,13 +4681,17 @@ async function saveSettings() {
 async function restore(m, saved) {
     if (!saved || typeof saved.itemId !== "string" || !saved.itemId) return;
     const itemName = typeof saved.itemName === "string" ? saved.itemName : "";
+    // goods made with no name (2.15.0): no name, and the box shows the one typed for it since
+    const unnamed = m === "goods" && saved.unnamed === true;
+    const label = unnamed && typeof saved.label === "string" ? saved.label : "";
+    const name = recordName(saved);
     const pc = settings();
-    if (!pc || !itemName) {
+    if (!pc || (!itemName && !unnamed)) {
         keepSaved[m] = true; // read it back once Settings are right and the page is reloaded
         return;
     }
     restoring[m] = true;
-    if (m === "goods") el.itemInput.value = itemName;
+    if (m === "goods") el.itemInput.value = itemName || label;
     setState(m, reduce(slots[m], { type: "setItem", itemName }));
     const mine = generation[m];
     try {
@@ -4640,6 +4710,9 @@ async function restore(m, saved) {
                 answer,
                 book: saved,
                 customize: saved.customize,
+                unnamed,
+                serverName: saved.serverName,
+                label,
             })
         );
         noteBox(m).value = slots[m].note.text;
@@ -4660,12 +4733,12 @@ async function restore(m, saved) {
         restoring[m] = false;
         if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
-            say(`${itemName} is no longer on the server.`, "warn");
+            say(`${name} is no longer on the server.`, "warn");
             setState(m, freshState(m));
         } else {
             // leave the saved item alone: a reload once the PC answers brings it back
             keepSaved[m] = true;
-            say(`Could not read ${itemName} back from the server (${e.message}). Its photos are safe there; reload when the server answers.`, "warn");
+            say(`Could not read ${name} back from the server (${e.message}). Its photos are safe there; reload when the server answers.`, "warn");
             setState(m, freshState(m));
         }
     }
@@ -4728,6 +4801,7 @@ async function nextItem(m) {
     say("");
     keepSaved[m] = false;
     customizeOpen[m] = false; // the next item starts folded, at one, from his defaults (Save as default)
+    if (m === "goods") fixDark = savedFixDark();
     setState(m, freshState(m));
     fillCustomize(m);
     // the walk is at the items in hand again, one place further when the list grew;
@@ -4751,12 +4825,7 @@ function clearItem(m) {
     clearTimeout(noteTimers[m]);
     noteTimers[m] = null;
     // this item's pictures only: the other kind's item is still in progress
-    for (const p of slots[m].photos) {
-        const held = blobs.get(p.id);
-        if (!held) continue;
-        URL.revokeObjectURL(held.url);
-        blobs.delete(p.id);
-    }
+    for (const p of slots[m].photos) letGo(p.id);
     noteBox(m).value = "";
     if (m === "goods") {
         el.itemInput.value = "";
@@ -5034,6 +5103,7 @@ function main() {
         pricingNote: $("pricing-note"),
         autoPost: $("auto-post"),
         comps: $("comps"),
+        fixDark: $("fix-dark"),
         customizeDefault: $("customize-default"),
         customizeDefaultStatus: $("customize-default-status"),
         venueHint: $("venue-hint"),
@@ -5114,6 +5184,7 @@ function main() {
     mode = walked ? recordKind(walked) : chosenMode();
     // a fresh screen starts from his defaults; an item read back keeps its own customize
     for (const m of MODES) slots[m] = applyDefaults(reduce(slots[m], { type: "online", online: navigator.onLine }), readDefaults());
+    fixDark = savedFixDark();
     render();
 
     renderServer();
@@ -5294,6 +5365,10 @@ function main() {
     el.modeBook.addEventListener("click", () => setMode("book"));
 
     el.itemInput.addEventListener("input", onItemNameChanged);
+    // Fix dark photos: for every photo taken from now on (Michal, 2026-10-08: "Some of mine are quite dark.")
+    el.fixDark.addEventListener("change", () => {
+        fixDark = el.fixDark.checked;
+    });
     el.note.addEventListener("input", () => onNoteInput("goods"));
     el.note.addEventListener("blur", () => noteDue("goods"));
     el.snapInput.addEventListener(

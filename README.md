@@ -4,7 +4,8 @@ Snap, a crosslisting app (crosslister-snap on GitHub). Michal, 2026-10-08: "The 
 of the app should be Snap, a crosslisting app. Snap is simple." The header writes it
 **$nap** (the S a dollar sign); "crosslister" is in no name or title the phone shows.
 
-Open the phone, tap the icon, type the item name, tap **Snap**, take the
+Open the phone, tap the icon, tap **Snap** (the item name is optional: left
+empty, the listing's title names the item), take the
 photos. Each photo goes to the home PC the moment it is taken, into the item's
 own folder there, whether or not a button is ever pressed. Tap the small **AI**
 at the bottom right of the photos the model should look at. Tap **ebay** (or
@@ -50,7 +51,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
    page.
 3. The upload queue (`queue.js` decides, `app.js` sends) makes the item on the
    server with the first photo, then sends each photo on its own, shrunk first
-   (`shrink.js`: at most 2000 px, JPEG 0.85), one request at a time, retrying
+   (`shrink.js`: at most 2000 px, JPEG 0.85, a dark one brightened), one request at a time, retrying
    by itself while the server does not answer. A venue button then sends only the
    item's id and the AI marks, and asks for the job's status every 3 s.
 4. The server is reached at its Tailscale Funnel address
@@ -72,7 +73,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
 | `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
-| `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
+| `shrink.js` | a photo to at most 2000 px JPEG, orientation kept; Fix dark photos' measure, table and pass (`luminanceStats`, `levelsTable`, `applyTable`) |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
 | `core.js` | pure logic, no DOM, no network: the state and everything the screen says |
@@ -312,6 +313,20 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
 - **Registered**: Save address answered, `/me` is asked once more; with `"registered": true` the goods
   screen is the screen, as for every account.
 
+## Snap first, and dark photos (2.15.0)
+
+Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening the app. The
+snap button is the important part, keep it where it is." and "Can we add auto exposure correction on
+the photos (non-AI)? Some of mine are quite dark."
+
+- **The item name is optional.** Snap works with the box empty; the item is made on the server
+  unnamed (`{"name": ""}`), its photos go at once, and the draft's title names it, above the price
+  and in the history (see **Item name** below). A server that refuses the blank name keeps the old
+  rule for the visit.
+- **Fix dark photos**, a tick in customize, on by default: a dark photo is brightened on the phone
+  before it goes, and its **lit** chip shows it as taken and back (see **lit** and **customize**
+  below).
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -340,9 +355,32 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
   Settings check. **server ok** in green, **server off** in red (no answer),
   **wrong key** in red, **server not set** before Settings are saved. When the
   server comes back, waiting photos go at once instead of after the retry pause.
-- **Item name**, as before: Snap waits for it, and it names the item's folder
-  on the server, `<item name> <date>` (`Boots 2026-09-24`). Once the first photo is
-  taken the name is fixed until **NEXT**. A name already started today on the
+- **Item name**, optional since 2.15.0 (Michal, 2026-10-08: "I want the SNAP button
+  to be available immediately when opening the app. The snap button is the important
+  part, keep it where it is."): the box stays where it was, its placeholder `Name
+  (optional): the listing's title names it`, and **Snap** and **Add from gallery** work
+  from the moment the page opens. Left empty, the first photo makes the item on the
+  server unnamed (`POST /items {"name": ""}`; the server names its folder `Unnamed
+  2026-10-08 1701`) and every photo goes at once, called `Unnamed-1.jpg`... on the page;
+  nothing else waits for a name, the buttons included. The draft's title names it: once
+  a job says its `title`, it is the small line above the price (`#title-line`, where
+  every item's title already showed), and the history and back and forward call the
+  item by it (`Back to "Brass Table Lamp", as it was left.`), never by the server's
+  `Unnamed 2026-10-08 1701`; before a title, by `Unnamed 17:01` (the time the server
+  made it). A name typed after an unnamed item is made is kept on the phone for the
+  history only (the server has no rename), and is what the history calls it first; the
+  box stays open for it. A reload, back and forward, NEXT and the queue's carrying on
+  after a reload all work for an unnamed item, saved as `{"itemName": "", "itemId",
+  "ai", "unnamed": true, "serverName"}` plus `"label"` (the name typed for it) and
+  `"title"` once known. A server from before 2.15.0 refuses the blank name with a 400:
+  the page then keeps the rule from before for this visit, the photos already taken
+  wait on the page (`1 photo, waiting for the item name`, and under the buttons and
+  NEXT `This server needs the item name: type it so the photos can go to the server`),
+  Snap waits with `Type the item name to start snapping.`, and the name typed makes the
+  folder half a second after he stops typing.
+  A name typed before the first photo names the item's folder
+  on the server, `<item name> <date>` (`Boots 2026-09-24`), as before; once the folder is
+  made the name is fixed until **NEXT**. A name already started today on the
   server is refused (Michal, 2026-09-30: "if I put a name for an item and it is
   the same as another, just flag it and don't accept it"): half a second after
   he stops typing the page asks the server for today's folder of that name, and if
@@ -367,6 +405,19 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
   off by default, a faint outlined "AI" when off, a filled yellow chip (and a
   yellow frame round the photo) when on. Every photo goes to the listing; only
   the marked ones go to the model, and a new item needs at least one.
+- **lit**, bottom left of a photo that **Fix dark photos** (in customize, below)
+  brightened (Michal, 2026-10-08: "Can we add auto exposure correction on the photos
+  (non-AI)? Some of mine are quite dark."): a small white chip. Tapped, the photo shows
+  as it was taken (the chip dashed and faint); tapped again, brightened: a before/after
+  look on the page only. The brightened picture is the one that goes to the server, and
+  one sent stays so: the tap sends nothing. The picture as taken is kept only while the
+  item is on screen (NEXT, back and forward let it go); a photo read back from the
+  server has no chip. The correction is `shrink.js`'s, after the resize and before the
+  JPEG, no AI: the brightness of every 4th pixel is measured; a picture is dark when its
+  median is under 90 (of 255) or its 95th percentile under 170, and only then is it
+  stretched (black at its 1st percentile, white at its 99th, the stretch at most 2.5x)
+  and lifted (gamma 0.8 when the median is under 60, else 0.9) through one 256-entry
+  table in a single pass. Any other picture is never touched. A book's photos get it too.
 - **User note** (it was "Notes for this item"; Michal, 2026-10-07: "Call it
   'User Note' everywhere. It is not something that posts. And 'note' by itself
   confuses me."): for the server and its model, not printed on the listing; sent to
@@ -409,7 +460,11 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
   posted` while that box is unticked and `with eBay comparisons` while this one
   is ticked, e.g. `pickup only · fair price · saved, not posted`, so it is
   plain it took. All five go with either button, the second one's too (the server
-  updates the saved row first), and lock while a job is on its way. Folded
+  updates the saved row first), and lock while a job is on its way. Then **Fix dark
+  photos**, ticked, with the small print `brightens a dark photo on the phone before it
+  goes; tap its "lit" to compare` (`#fix-dark`, 2.15.0): it is the phone's, sent to no
+  server, and decides for every photo taken from then on (a book's too) whether a dark
+  one is brightened (see **lit** above); NEXT puts it back to the default. Folded
   again on every load and every **NEXT**; the values themselves are kept for a
   reload and reset by NEXT. Last in the card (Michal, 2026-10-08: "The customize
   section should have a 'Save as default' button at the end, in case someone wants
@@ -419,7 +474,9 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
   `snap.customize.defaults`, `{"goods": {...}, "book": {...}}`, says `saved as your
   defaults` beside it for 2.5 s, and every new item of that kind starts from them:
   NEXT, a fresh load, an item reset. An item read back keeps its own customize. The
-  book's customize has its own Save as default and its own defaults.
+  book's customize has its own Save as default and its own defaults. The goods' Save as
+  default also keeps Fix dark photos as it stands, in `snap.photos.fixdark` (`"off"` or
+  `"on"`; on until saved off).
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the server's step (`drafting the listing`...), then
   the link (opens in a new tab), or the server's error in its own words. The pressed
@@ -705,6 +762,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | Call | Sent | Answer |
 | --- | --- | --- |
 | `POST <pc>/items`, with the first photo | `{"name": "Boots"}` | `{"item": "Boots 2026-09-24", "photos": [n...]}` (what that folder already holds) |
+| `POST <pc>/items`, the first photo of goods with the name box empty (2.15.0) | `{"name": ""}` | `{"item", "name": "Unnamed 2026-10-08 1701", "unnamed": true}`, a new folder every time; a 400 (a server from before) keeps the name needed for this visit, the photos waiting for it |
 | `PUT <pc>/items/<id>/photos/<n>`, each photo | the shrunk JPEG itself, `Content-Type: image/jpeg` | `{"item", "n", "bytes"}`; a retry overwrites |
 | `GET <pc>/items/<id>/photos/<n>`, each photo of an item read back (a reload, back or forward) | - | the JPEG itself, `Content-Type: image/jpeg`; 404 for a photo the item does not hold |
 | `DELETE <pc>/items/<id>/photos/<n>`, the x | - | `{"item", "n", "deleted"}`; safe to repeat |
@@ -719,7 +777,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
 | customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization.") | top-level `"comps": true`, only when ticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": true}`; never `"comps": false`: left alone, the server drafts without eBay's similar listings | the same |
-| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft). The same in each of `GET /items/<id>`'s `jobs` |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
@@ -763,7 +821,8 @@ ISBN, its title, author, year and format; after an ISBN miss, both, and
 either one's customize, `{"quantity", "pickupOnly"}` plus `"pricing"`,
 `"autoPost": false` and `"comps": true` when they are not the default, once it
 is not the default; a reload with `autoPost` off reads a job done with no link as
-`saved, not posted`). What NEXT left is in `snap.history`, the same records, oldest first,
+`saved, not posted`; goods made unnamed add `"unnamed": true`, `"serverName"` and, once
+known, `"label"` and `"title"`). What NEXT left is in `snap.history`, the same records, oldest first,
 at most 10; the walk's place is not in `localStorage` but in the browser's own
 history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
 the last the items in hand), which a reload keeps and a new tab starts afresh

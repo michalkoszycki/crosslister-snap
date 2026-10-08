@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.14.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.15.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -381,6 +381,38 @@ button, .big, .secondary {
 .main-mark:disabled { opacity: 1; }
 .ai-mark:disabled:not(.on),
 .main-mark:disabled:not(.on) { visibility: hidden; }
+/* lit: Fix dark photos brightened this one; bottom left, the AI mark's chip in white. A tap
+   shows it as taken (the chip dashed and faint), another brightened again */
+.lit-mark {
+    position: absolute;
+    top: 84px;
+    left: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #0b0b0b;
+    isolation: isolate;
+}
+.lit-mark::before {
+    content: "";
+    position: absolute;
+    inset: 9px 6px 9px 6px;
+    border-radius: 999px;
+    border: 1.5px solid #fff;
+    background: #fff;
+    z-index: -1;
+}
+.lit-mark.before { color: rgba(255, 255, 255, 0.85); }
+.lit-mark.before::before { background: rgba(0, 0, 0, 0.45); border-style: dashed; border-color: rgba(255, 255, 255, 0.85); }
 /* a photo read back from the PC after a reload: the picture is there, not here */
 .shot-remote {
     display: flex;
