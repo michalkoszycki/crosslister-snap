@@ -126,6 +126,10 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
         // that toggle default off, in customization"
         "comps",
+        // Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
+        // the end, in case someone wants to change something permanently"
+        "customize-default",
+        "customize-default-status",
         // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
         "title-line",
         "price-line",
@@ -187,6 +191,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "theme-device",
         "settings-save",
         "settings-status",
+        // the way back to the landing (Michal, 2026-10-08): Sign out, or Forget this server
+        "settings-signout",
         "inventory-toggle",
         "inventory",
         "inventory-browse",
@@ -244,6 +250,21 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "detail-ebay",
         "detail-craigslist-toggle",
         "detail-craigslist",
+        // after the inventory (Michal, 2026-10-08): Feedback, then Stats, an admin's only
+        "feedback-toggle",
+        "feedback",
+        "feedback-text",
+        "feedback-job",
+        "feedback-send",
+        "feedback-status",
+        "stats-toggle",
+        "stats",
+        "stats-since",
+        "stats-since-7d",
+        "stats-since-30d",
+        "stats-since-all",
+        "stats-status",
+        "stats-table",
         // the sync bar, below the inventory list, sticking to the bottom of the screen
         "sync-bar",
         // each with its half of the sync symbol (Michal, 2026-10-07)
@@ -365,14 +386,21 @@ test("the manifest points at icons that exist", () => {
 });
 
 test("the header carries the A2 mark and the $nap wordmark; the font comes from this repo", async () => {
-    // Michal, 2026-10-05: "A2 implement" -- the app is written "crosslister $nap"
+    // Michal, 2026-10-05: "A2 implement"; 2026-10-08: "The name of the app should be Snap, a
+    // crosslisting app": the wordmark is "$nap" alone, the name Snap everywhere
     const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
     const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/.exec(header)[1];
-    assert.match(h1, /<svg class="mark" viewBox="0 0 132 132"[^>]*role="img" aria-label="crosslister \$nap">/);
+    assert.match(h1, /<svg class="mark" viewBox="0 0 132 132"[^>]*role="img" aria-label="Snap">/);
     assert.match(h1, /<circle class="mark-lens" cx="66" cy="76" r="23"/);
     assert.match(h1, />\$<\/text>/, "the lens holds the $");
-    assert.match(h1, /crosslister <span class="wordmark-snap">\$nap<\/span>/);
-    assert.match(html, /<title>crosslister \$nap<\/title>/);
+    assert.match(h1, /<span class="wordmark" aria-hidden="true"><span class="wordmark-snap">\$nap<\/span><\/span>/);
+    assert.match(html, /<title>Snap<\/title>/);
+    // "crosslister" is gone from every name and title the phone shows
+    const page = html.replace(/<!--[\s\S]*?-->/g, "");
+    const shown = [...page.matchAll(/>([^<]+)</g), ...page.matchAll(/\s(?:aria-label|title|placeholder)="([^"]*)"/g)].map((m) => m[1]);
+    assert.deepEqual(shown.filter((w) => /crosslister/i.test(w) && !/CROSSLISTER_KEYS/.test(w)), []);
+    const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
+    assert.deepEqual([manifest.name, manifest.short_name, manifest.description], ["Snap", "Snap", "a crosslisting app"]);
     // the font is self-hosted: the CSP lets fonts come from 'self' and nowhere else
     const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
     assert.match(csp, /font-src 'self';/);
@@ -530,7 +558,22 @@ function fakeHistory() {
     return nav;
 }
 
-function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHistory() } = {}) {
+/**
+ * `session` is the tab's sessionStorage; `agent` what navigator says beyond onLine (an
+ * iPhone's userAgent, its standalone); `display` the display mode matchMedia answers
+ * ("standalone" from the home screen); `hash` the address's hash (a sign-in link's
+ * `#login=<token>`), cleared through history.replaceState as a browser does.
+ */
+function installDom({
+    local = memoryStore(),
+    fetchImpl,
+    barcodes,
+    nav = fakeHistory(),
+    session = memoryStore(),
+    agent = {},
+    display = "browser",
+    hash = "",
+} = {}) {
     delete globalThis.BarcodeDetector;
     if (barcodes) fakeBarcodes(barcodes);
     const ids = idsIn(html);
@@ -538,6 +581,8 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHist
     // elements the HTML starts hidden (the settings card, the offline banner...)
     for (const m of html.matchAll(/<[a-z]+\b[^>]*\bid="([^"]+)"[^>]*>/g)) {
         if (/\shidden[\s>]/.test(m[0])) nodes.get(m[1]).hidden = true;
+        // a box the HTML ticks (Keep me signed in, Include my last job)
+        if (/\schecked[\s>]/.test(m[0])) nodes.get(m[1]).checked = true;
         // a meta's content as the HTML writes it (the theme-color pair)
         const content = /\scontent="([^"]*)"/.exec(m[0]);
         if (m[0].startsWith("<meta") && content) nodes.get(m[1]).content = content[1];
@@ -559,10 +604,19 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHist
         visibilityState: "visible",
     };
     const win = fakeElement("window");
+    win.matchMedia = (query) => ({ matches: query === `(display-mode: ${display})` });
     globalThis.window = win;
+    const place = { hash, pathname: "/crosslister-snap/", search: "" };
+    Object.defineProperty(globalThis, "location", { value: place, configurable: true, writable: true });
+    // the hash goes as a browser clears it: by replaceState with a URL that has none
+    const replace = nav.replaceState;
+    nav.replaceState = (state, title, url) => {
+        if (url !== undefined) place.hash = "";
+        replace(state);
+    };
     Object.defineProperty(globalThis, "history", { value: nav, configurable: true, writable: true });
     Object.defineProperty(globalThis, "navigator", {
-        value: { onLine: true },
+        value: { onLine: true, ...agent },
         configurable: true,
         writable: true,
     });
@@ -577,7 +631,7 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHist
         });
     }
     Object.defineProperty(globalThis, "sessionStorage", {
-        value: memoryStore(),
+        value: session,
         configurable: true,
         writable: true,
     });
@@ -676,8 +730,11 @@ test("Settings: a bad address is refused on the page; a good one is saved and ch
     await settle();
     assert.equal(local.getItem("snap.pc"), "https://pc.tail1234.ts.net");
     assert.equal(local.getItem("snap.key"), "test-key-0123456789");
-    assert.deepEqual(calls.map((c) => c.url), ["https://pc.tail1234.ts.net/jobs?limit=1"]);
+    // the check, then who this key is (GET /me), both with the key
+    assert.deepEqual(calls.map((c) => c.url), ["https://pc.tail1234.ts.net/jobs?limit=1", "https://pc.tail1234.ts.net/me"]);
     assert.equal(calls[0].init.headers["X-Crosslister-Key"], "test-key-0123456789");
+    assert.equal(calls[1].init.headers["X-Crosslister-Key"], "test-key-0123456789");
+    assert.equal(calls[1].init.headers["X-Crosslister-Session"], undefined);
     assert.match(nodes.get("settings-status").textContent, /knows this key/);
     // with settings, the hint moves on to what the item still needs
     assert.equal(nodes.get("venue-hint").textContent, "Snap a photo first");
@@ -809,15 +866,25 @@ function jobContract(body) {
 /**
  * The PC as the page sees it: `crosslister serve`'s items and jobs, in memory.
  * `down` makes every call fail as an unreachable PC does; `jobs` answers
- * GET /jobs/<id>; `refuseJob` answers POST /jobs with a 400.
+ * GET /jobs/<id>; `refuseJob` answers POST /jobs with a 400. GET /me answers `me`
+ * (null: a 404, as a server from before 2026-10-08 does), counted apart in `pc.mes`
+ * with the headers it came with; POST /feedback keeps each body in `pc.feedback`
+ * (`pc.refuseFeedback` answers a 400 with those words); GET /stats answers `stats`
+ * (a number: that status). Every call's auth headers are in `pc.auth`.
  */
-function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {} } = {}) {
+function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {}, me = null, stats = null } = {}) {
     const pc = {
         items: new Map(Object.entries(items)),
         calls: [],
         cancelled: new Set(), // jobs the cancel button told the server about
         posted: [],
         checks: 0,
+        mes: 0,
+        me,
+        stats,
+        feedback: [],
+        refuseFeedback: "",
+        auth: [],
         down: false,
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
@@ -825,12 +892,26 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const method = init.method || "GET";
         const u = new URL(url);
         const parts = u.pathname.split("/").slice(1).map(decodeURIComponent);
-        // the page's own server check is counted apart, so `calls` stays the item's traffic
+        const headers = init.headers || {};
+        pc.auth.push(headers["X-Crosslister-Key"] ? `key ${headers["X-Crosslister-Key"]}` : headers["X-Crosslister-Session"] ? `session ${headers["X-Crosslister-Session"]}` : "none");
+        // the page's own server check and /me are counted apart, so `calls` stays the item's traffic
         const check = method === "GET" && parts[0] === "jobs" && !parts[1];
+        const asked = method === "GET" && parts[0] === "me";
         if (check) pc.checks += 1;
+        else if (asked) pc.mes += 1;
         else pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
+        if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
+        if (parts[0] === "feedback" && method === "POST") {
+            pc.feedback.push(body);
+            if (pc.refuseFeedback) return json({ detail: pc.refuseFeedback }, 400);
+            return json({ id: `f${pc.feedback.length}` }, 201);
+        }
+        if (parts[0] === "stats") {
+            if (pc.stats === null) return json({ detail: "Not Found" }, 404);
+            return typeof pc.stats === "number" ? json({ detail: "admins only" }, pc.stats) : json(pc.stats);
+        }
         if (parts[0] === "items" && method === "POST") {
             const item = `${body.name} ${TODAY}`;
             if (!pc.items.has(item)) pc.items.set(item, { photos: new Map(), note: "", sku: null, jobs: [] });
@@ -1727,7 +1808,8 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
 test("Admin hides the goods | book switch while it is open", async (t) => {
     // Michal, 2026-10-06: "when we do admin we probably do not need goods vs book slider distinction"
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const { nodes } = await loadPage();
+    // with settings: without them the landing is the screen and the switch is not there at all
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
     assert.equal(nodes.get("modes").hidden, false);
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("modes").hidden, true);
@@ -3826,6 +3908,9 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-auto-post",
         // Michal, 2026-10-07: the eBay comparisons toggle, off by default, in both customize cards
         "book-comps",
+        // Michal, 2026-10-08: "a 'Save as default' button at the end", the book's own
+        "book-customize-default",
+        "book-customize-default-status",
         "book-title-line",
         "book-price-line",
         "book-ebay-btn",
@@ -5957,4 +6042,549 @@ test("NEXT keeps an item a button was pressed for", async (t) => {
     await settle();
     assert.ok(!pc.calls.some((c) => c === `DELETE /items/${item}`), "the job needs the folder");
     assert.equal(pc.items.has(item), true);
+});
+
+// --- the way in: Snap's landing, the home screen, sign-in (Michal, 2026-10-08) -------------------
+
+const SERVER = "https://michal-pc.mulley-themis.ts.net";
+
+/**
+ * fakePc with the sign-in lane on the product's server: POST /auth/link answers `link` (202,
+ * or a status), each body and its auth in `pc.links`; POST /auth/session answers `made` (or
+ * a status), each body in `pc.sessions`. A session in `pc.revoked` is a 401, as the server
+ * answers one it no longer knows. `pc.origins` is every call's origin.
+ */
+function signinPc({ link = 202, made = { session: "sess-1", user: "wife", remember: true }, ...rest } = {}) {
+    const pc = fakePc(rest);
+    const base = pc.fetch;
+    Object.assign(pc, { link, made, links: [], sessions: [], origins: [], revoked: new Set() });
+    const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+    pc.fetch = async (url, init = {}) => {
+        const u = new URL(url);
+        pc.origins.push(u.origin);
+        const headers = init.headers || {};
+        const auth = headers["X-Crosslister-Key"] || headers["X-Crosslister-Session"] || "none";
+        if (u.pathname === "/auth/link") {
+            assert.equal(init.method, "POST");
+            pc.links.push({ body: JSON.parse(init.body), auth });
+            return pc.link === 202 ? json({ sent: true }, 202) : json({ detail: "Not Found" }, pc.link);
+        }
+        if (u.pathname === "/auth/session") {
+            pc.sessions.push({ body: JSON.parse(init.body), auth });
+            return typeof pc.made === "number" ? json({ detail: "bad token" }, pc.made) : json(pc.made);
+        }
+        if (pc.revoked.has(headers["X-Crosslister-Session"])) return json({ detail: "session expired" }, 401);
+        return base(url, init);
+    };
+    return pc;
+}
+
+/** The ids of a stretch of index.html, in order. */
+function idsBetween(from, to) {
+    const part = html.slice(html.indexOf(from), html.indexOf(to));
+    return [...part.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+}
+
+test("the landing, sign-in and the home-screen banner come first in main, before the posting screens", () => {
+    assert.deepEqual(idsBetween("<main>", '<div id="modes"'), [
+        // Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app. Snap is simple.
+        // Note that for the first landing page."
+        "landing",
+        "landing-install",
+        "landing-install-steps",
+        "landing-key",
+        "landing-signin",
+        "landing-status",
+        "signin",
+        "signin-back",
+        "signin-email",
+        "signin-remember",
+        "signin-send",
+        "signin-status",
+        "install-banner",
+        "install-add",
+        "install-dismiss",
+        "install-steps",
+    ]);
+    const landing = /<section id="landing"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
+    assert.match(
+        landing,
+        /<h2 class="landing-name">Snap<\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">Photograph it, and it is listed on eBay and Craigslist with a price and a description\.<\/p>/
+    );
+    assert.match(landing, /id="landing-install"[^>]*>Install</);
+    assert.match(landing, /id="landing-key"[^>]*>I have a key</);
+    assert.match(landing, /id="landing-signin"[^>]*>Sign in</);
+    assert.match(html, /<input id="signin-remember" type="checkbox" checked>\s*<span>Keep me signed in<\/span>/);
+    assert.match(html, /id="signin-send"[^>]*>Send me a link</);
+    assert.match(html, /<p class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
+    assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Forget this server</);
+});
+
+test("a first open is the landing: Install, then a key; saved, the goods screen; Forget this server, the landing again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore();
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const shown = (ids) => ids.filter((id) => !nodes.get(id).hidden);
+    const screens = ["landing", "signin", "install-banner", "modes", "work", "book", "admin"];
+    assert.deepEqual(shown(screens), ["landing"], "the whole screen, in place of the goods screen");
+    assert.equal(pc.checks + pc.mes + pc.calls.length, 0, "nothing to ask without a server");
+
+    // not on the home screen, no prompt from the browser: Install unfolds the two taps
+    assert.equal(nodes.get("landing-install").hidden, false);
+    assert.equal(nodes.get("landing-install-steps").hidden, true);
+    nodes.get("landing-install").fire("click");
+    assert.equal(nodes.get("landing-install-steps").hidden, false);
+    assert.equal(nodes.get("landing-install").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("landing-install-steps").textContent, "Open the browser menu, then Add to Home screen (or Install app).");
+    nodes.get("landing-install").fire("click");
+    assert.equal(nodes.get("landing-install-steps").hidden, true, "folded again");
+
+    // I have a key: Admin, Settings unfolded, as ever; closed unsaved, the landing again
+    nodes.get("landing-key").fire("click");
+    await settle();
+    assert.deepEqual(shown(screens), ["admin"]);
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("settings-signout").hidden, true, "nothing to forget yet");
+    nodes.get("admin-close").fire("click");
+    assert.deepEqual(shown(screens), ["landing"]);
+
+    nodes.get("landing-key").fire("click");
+    nodes.get("pc-address").value = "http://127.0.0.1:8765";
+    nodes.get("pc-key").value = "test-key-0123456789";
+    nodes.get("settings-save").fire("click");
+    await settle();
+    assert.match(nodes.get("settings-status").textContent, /knows this key/);
+    assert.equal(pc.mes, 1, "who this key is, asked once it checked");
+    assert.equal(nodes.get("settings-signout").hidden, false);
+    assert.equal(nodes.get("settings-signout").textContent, "Forget this server");
+    nodes.get("admin-close").fire("click");
+    assert.deepEqual(shown(screens), ["install-banner", "modes", "work"], "the goods screen, as today");
+
+    // Forget this server: the address and key gone, the landing back, the server word unset
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    nodes.get("settings-toggle").fire("click");
+    nodes.get("settings-signout").fire("click");
+    assert.equal(local.getItem("snap.pc"), null);
+    assert.equal(local.getItem("snap.key"), null);
+    assert.deepEqual(shown(screens), ["landing"]);
+    assert.equal(server(nodes), "server not set ()");
+    assert.equal(nodes.get("landing-status").textContent, "");
+});
+
+test("the home screen: a banner over the posting screens, away a week once dismissed; Chrome's own prompt when offered", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const { nodes, win } = await loadPage({ local, fetchImpl: fakePc().fetch });
+    assert.equal(nodes.get("install-banner").hidden, false);
+    assert.equal(nodes.get("install-steps").hidden, true);
+    nodes.get("install-add").fire("click");
+    assert.equal(nodes.get("install-steps").hidden, false);
+    assert.equal(nodes.get("install-steps").textContent, "Open the browser menu, then Add to Home screen (or Install app).");
+    // not over Admin
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("install-banner").hidden, true);
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("install-banner").hidden, false);
+    // the x: away, and the day it was put away remembered
+    nodes.get("install-dismiss").fire("click");
+    assert.equal(nodes.get("install-banner").hidden, true);
+    const at = Date.parse(local.getItem("snap.install.dismissed"));
+    assert.ok(Math.abs(Date.now() - at) < 5000, "today");
+
+    const ago = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const within = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(3) }), fetchImpl: fakePc().fetch });
+    assert.equal(within.nodes.get("install-banner").hidden, true, "three days on: still away");
+    const later = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(8) }), fetchImpl: fakePc().fetch });
+    assert.equal(later.nodes.get("install-banner").hidden, false, "a week on: back");
+
+    // Chrome offers to install: the event kept, and Add asks with Chrome's own prompt, once
+    const offer = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
+    let prevented = 0;
+    let prompted = 0;
+    offer.win.fire("beforeinstallprompt", {
+        preventDefault: () => (prevented += 1),
+        prompt: async () => (prompted += 1),
+        userChoice: Promise.resolve({ outcome: "accepted" }),
+    });
+    assert.equal(prevented, 1, "kept for our button, not the browser's own bar");
+    offer.nodes.get("install-add").fire("click");
+    await settle();
+    assert.equal(prompted, 1);
+    assert.equal(offer.nodes.get("install-steps").hidden, true, "no taps to spell out");
+    assert.equal(offer.nodes.get("install-banner").hidden, true, "installed: the nudge goes");
+    assert.ok(win);
+});
+
+test("from the home screen there is no nudge; an iPhone is told Share, then Add to Home Screen", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const home = await loadPage({ display: "standalone" });
+    assert.equal(home.nodes.get("landing").hidden, false);
+    assert.equal(home.nodes.get("landing-install").hidden, true, "the landing's install step goes");
+    const homeKeyed = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch, display: "standalone" });
+    assert.equal(homeKeyed.nodes.get("install-banner").hidden, true);
+
+    const iphone = { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15" };
+    const safari = await loadPage({ agent: iphone });
+    safari.nodes.get("landing-install").fire("click");
+    assert.equal(safari.nodes.get("landing-install-steps").textContent, "Tap Share, then Add to Home Screen.");
+    const added = await loadPage({ agent: { ...iphone, standalone: true } });
+    assert.equal(added.nodes.get("landing-install").hidden, true, "an iPhone's own flag says home screen");
+});
+
+test("Sign in: a link by email from the product's server, Keep me signed in with it; no server lane says ask for a key", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc();
+    const { nodes } = await loadPage({ fetchImpl: pc.fetch });
+    nodes.get("landing-signin").fire("click");
+    assert.equal(nodes.get("signin").hidden, false);
+    assert.equal(nodes.get("landing").hidden, true);
+    assert.equal(nodes.get("signin-remember").checked, true, "on by default");
+
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "Enter your email address.");
+    nodes.get("signin-email").value = "wife@example";
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "That is not an email address.");
+    assert.deepEqual(pc.links, []);
+
+    nodes.get("signin-email").value = " wife@example.com ";
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
+    assert.deepEqual(pc.origins, [SERVER], "the product's own server");
+    assert.equal(nodes.get("signin-status").textContent, "Check your email for the link; it works on this phone.");
+    nodes.get("signin-remember").checked = false;
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.links[1].body, { email: "wife@example.com", remember: false });
+
+    pc.link = 404;
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "Sign-in is not set up on this server yet. Ask the developer for a key.");
+    nodes.get("signin-back").fire("click");
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("signin").hidden, true);
+});
+
+test("the link opens the page signed in: the session kept, the hash gone, every call with the session instead of a key", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc();
+    const local = memoryStore();
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#login=tok-123" });
+    assert.deepEqual(pc.sessions, [{ body: { token: "tok-123" }, auth: "none" }]);
+    assert.equal(globalThis.location.hash, "", "the token is not left in the address");
+    assert.equal(local.getItem("snap.session"), "sess-1", "Keep me signed in: on this phone");
+    assert.equal(local.getItem("snap.key"), null);
+    assert.equal(nodes.get("landing").hidden, true);
+    assert.equal(nodes.get("work").hidden, false, "the goods screen");
+    assert.equal(server(nodes), "server ok (ok)");
+    assert.equal(pc.mes, 1, "who this is, after the check");
+
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    assert.deepEqual(pc.calls, ["POST /items", `PUT /items/Vase ${TODAY}/photos/1`]);
+    // the check, /me, the item and its photo: each with the session, none with a key
+    assert.equal(pc.auth.length, 4);
+    assert.ok(pc.auth.every((a) => a === "session sess-1"), `every call with the session: ${pc.auth}`);
+    assert.ok(pc.origins.every((o) => o === SERVER), "all to the product's server");
+
+    // a reload: still signed in, no link needed
+    const again = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(again.nodes.get("landing").hidden, true);
+    assert.equal(pc.sessions.length, 1);
+    // Settings' last button signs out
+    again.nodes.get("admin-toggle").fire("click");
+    await settle();
+    again.nodes.get("settings-toggle").fire("click");
+    assert.equal(again.nodes.get("settings-signout").textContent, "Sign out");
+    again.nodes.get("settings-signout").fire("click");
+    assert.equal(local.getItem("snap.session"), null);
+    assert.equal(again.nodes.get("landing").hidden, false);
+});
+
+test("unticked, the session lasts the tab; the server forgetting it brings the landing back, saying so", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: { session: "sess-2", user: "wife", remember: false } });
+    const local = memoryStore();
+    const session = memoryStore();
+    const { nodes } = await loadPage({ local, session, fetchImpl: pc.fetch, hash: "#login=tok-9" });
+    assert.equal(session.getItem("snap.session"), "sess-2", "this tab only");
+    assert.equal(local.getItem("snap.session"), null);
+    assert.equal(nodes.get("work").hidden, false);
+
+    // the next check is refused: the session is let go and the landing says why
+    pc.revoked.add("sess-2");
+    t.mock.timers.tick(30000);
+    await settle();
+    assert.equal(session.getItem("snap.session"), null);
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("work").hidden, true);
+    assert.equal(nodes.get("landing-status").textContent, "Your sign-in expired; send yourself a new link");
+    assert.equal(server(nodes), "server not set ()");
+
+    // a link that no longer works: said on the landing, nothing kept
+    const stale = signinPc({ made: 401 });
+    const used = await loadPage({ local: memoryStore(), fetchImpl: stale.fetch, hash: "#login=old" });
+    assert.equal(used.nodes.get("landing").hidden, false);
+    assert.equal(used.nodes.get("landing-status").textContent, "That sign-in link has expired or was used already. Send yourself a new link.");
+    const missing = signinPc({ made: 404 });
+    const none = await loadPage({ local: memoryStore(), fetchImpl: missing.fetch, hash: "#login=tok" });
+    assert.equal(none.nodes.get("landing-status").textContent, "Sign-in is not set up on this server yet. Ask the developer for a key.");
+});
+
+// --- the account: GET /me (Michal, 2026-10-08) --------------------------------------------------
+
+test("an account without craigslist: its button grey yet tappable, saying why; its empty card says the same", async (t) => {
+    // Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write 'contact developer'."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const listedEbay = { ebay: summary("E1").statuses.ebay };
+    const only = summary("E1", { venues: ["ebay"], statuses: listedEbay });
+    const pc = inventoryPc([only], { E1: wholeRow("E1", { venues: ["ebay"], statuses: listedEbay, photos: [] }) });
+    pc.me = { user: "wife", admin: false, craigslist: false, venues: ["ebay"] };
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    assert.equal(pc.mes, 1);
+    const cl = nodes.get("craigslist-btn");
+    assert.equal(cl.classList.contains("venue-off"), true);
+    assert.equal(cl.disabled, false, "it takes the tap");
+    assert.equal(cl.attrs["aria-disabled"], "true");
+    assert.equal(nodes.get("craigslist-status").hidden, true, "nothing said before the tap");
+    assert.equal(nodes.get("ebay-btn").classList.contains("venue-off"), false);
+
+    cl.fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(nodes.get("craigslist-status").textContent, "Craigslist is not available for your account. Contact the developer.");
+    assert.equal(nodes.get("craigslist-status").hidden, false);
+    assert.deepEqual(pc.posted, [], "nothing sent");
+    assert.equal(cl.classList.contains("busy"), false);
+
+    // the inventory: the empty craigslist foldout says it instead of Add
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    nodes.get("detail-craigslist-toggle").fire("click");
+    const kids = nodes.get("detail-craigslist").children;
+    assert.equal(kids.at(-1).textContent, "Craigslist is not available for your account. Contact the developer.");
+    assert.ok(!kids.some((k) => k.className === "venue-actions"), "no Add");
+    // the sync bar is unchanged
+    assert.equal(buttonSays(nodes.get("sync-to")), "Sync to eBay");
+
+    // an older server (its /me a 404): everything as today
+    const old = fakePc();
+    const today = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
+    assert.equal(old.mes, 1);
+    assert.equal(today.nodes.get("craigslist-btn").classList.contains("venue-off"), false);
+    assert.equal(today.nodes.get("craigslist-btn").disabled, true, "shut only for the usual reason");
+    assert.equal(today.nodes.get("craigslist-btn").attrs["aria-disabled"], undefined);
+});
+
+// --- Save as default (Michal, 2026-10-08) ------------------------------------------------------
+
+test("Save as default: the grade and the three ticks, never the quantity; every new item starts from them, per kind", async (t) => {
+    // Michal, 2026-10-08: "The customize section should have a 'Save as default' button at the end,
+    // in case someone wants to change something permanently."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: fakePc().fetch });
+    nodes.get("customize-toggle").fire("click");
+    nodes.get("pricing").value = "2";
+    nodes.get("pricing").fire("input");
+    nodes.get("auto-post").checked = false;
+    nodes.get("auto-post").fire("change");
+    nodes.get("pickup-only").checked = true;
+    nodes.get("pickup-only").fire("change");
+    nodes.get("comps").checked = true;
+    nodes.get("comps").fire("change");
+    nodes.get("quantity").value = "3";
+    nodes.get("quantity").fire("input");
+    nodes.get("customize-default").fire("click");
+    const plain = { pricing: 1, autoPost: true, comps: false, pickupOnly: false };
+    const goods = { pricing: 2, autoPost: false, comps: true, pickupOnly: true };
+    assert.deepEqual(JSON.parse(local.getItem("snap.customize.defaults")), { goods, book: plain });
+    assert.equal(nodes.get("customize-default-status").textContent, "saved as your defaults");
+    t.mock.timers.tick(2500);
+    assert.equal(nodes.get("customize-default-status").textContent, "", "for a moment");
+
+    // NEXT: the next item starts from them, at one
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("item-name").value, "", "a new item");
+    assert.equal(nodes.get("pricing").value, "2");
+    assert.equal(nodes.get("auto-post").checked, false);
+    assert.equal(nodes.get("pickup-only").checked, true);
+    assert.equal(nodes.get("comps").checked, true);
+    assert.equal(nodes.get("quantity").value, "1", "never the quantity");
+    assert.equal(nodes.get("ebay-status").textContent, "pickup only · fair price · saved, not posted · with eBay comparisons");
+
+    // a fresh load starts from them too; the book has its own, plain until saved
+    const again = await loadPage({ local, fetchImpl: fakePc().fetch });
+    assert.equal(again.nodes.get("pricing").value, "2");
+    assert.equal(again.nodes.get("auto-post").checked, false);
+    assert.equal(again.nodes.get("book-pricing").value, "1");
+    assert.equal(again.nodes.get("book-auto-post").checked, true);
+    again.nodes.get("mode-book").fire("click");
+    again.nodes.get("book-customize-toggle").fire("click");
+    again.nodes.get("book-pricing").value = "3";
+    again.nodes.get("book-pricing").fire("input");
+    again.nodes.get("book-customize-default").fire("click");
+    assert.equal(again.nodes.get("book-customize-default-status").textContent, "saved as your defaults");
+    assert.deepEqual(JSON.parse(local.getItem("snap.customize.defaults")), { goods, book: { ...plain, pricing: 3 } });
+    const third = await loadPage({ local, fetchImpl: fakePc().fetch });
+    assert.equal(third.nodes.get("book-pricing").value, "3");
+    assert.equal(third.nodes.get("pricing").value, "2");
+});
+
+// --- Admin's Feedback and Stats (Michal, 2026-10-08) -------------------------------------------
+
+test("Feedback: the words, where they were written from, the version and the last job; sent, the box clears", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { VERSION } = await import("../version.js");
+    const pc = inventoryPc([summary("A1")], { A1: wholeRow("A1") }, {
+        jobs: { a1: () => ({ state: "running", step: "reading eBay's listings", action: "sync", direction: "from" }) },
+    });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("feedback-toggle").textContent, "▸ Feedback");
+    assert.equal(nodes.get("feedback").hidden, true);
+    nodes.get("feedback-toggle").fire("click");
+    assert.equal(nodes.get("feedback").hidden, false);
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback");
+    assert.equal(nodes.get("feedback-job").checked, true, "Include my last job, on by default");
+    assert.match(html, /id="feedback-text"[^>]*placeholder="What happened, or what you wish it did"/);
+
+    nodes.get("feedback-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.feedback, [], "a blank box sends nothing");
+    assert.equal(nodes.get("feedback-status").textContent, "Write what happened first.");
+
+    const send = async (text) => {
+        nodes.get("feedback-text").value = text;
+        nodes.get("feedback-send").fire("click");
+        await settle();
+    };
+    await send(" The list was slow ");
+    assert.deepEqual(pc.feedback[0], { text: "The list was slow", screen: "goods", version: VERSION }, "no job yet: no job key");
+    assert.equal(nodes.get("feedback-status").textContent, "Thanks, sent.");
+    assert.equal(nodes.get("feedback-text").value, "");
+    assert.equal(pc.auth.at(-1), "key test-key-0123456789");
+
+    // a job sent: it goes with the next one, while ticked
+    nodes.get("sync-from").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    await send("Sync seemed stuck");
+    assert.deepEqual(pc.feedback[1], { text: "Sync seemed stuck", screen: "goods", version: VERSION, job: "a1" });
+    nodes.get("feedback-job").checked = false;
+    await send("Unticked");
+    assert.equal("job" in pc.feedback[2], false);
+    nodes.get("feedback-job").checked = true;
+
+    // a listing looked at: Feedback steps aside on its page, and says "card" after
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    assert.deepEqual(["feedback-toggle", "feedback", "stats-toggle", "stats"].map((id) => nodes.get(id).hidden), [true, true, true, true]);
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    assert.equal(nodes.get("feedback-toggle").hidden, false);
+    assert.equal(nodes.get("feedback").hidden, false, "as it was left");
+    await send("This card");
+    assert.equal(pc.feedback[3].screen, "card");
+
+    // Admin opened from the book screen: "book"
+    nodes.get("admin-close").fire("click");
+    nodes.get("mode-book").fire("click");
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    await send("Books");
+    assert.equal(pc.feedback[4].screen, "book");
+
+    // refused: the server's words, the box kept
+    pc.refuseFeedback = "feedback is too long";
+    await send("Again");
+    assert.equal(nodes.get("feedback-status").textContent, "Not sent: feedback is too long.");
+    assert.equal(nodes.get("feedback-text").value, "Again");
+});
+
+test("Stats: an admin's only; 30d first, a chip asks again, a small table of counts; refused, the foldout goes", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const STATS = {
+        since: "30d",
+        jobs: { total: 40, done: 31, failed: 6, cancelled: 3, queued: 0, running: 0 },
+        posted: { ebay: 22, craigslist: 7 },
+        drafted: 30,
+        ended: 4,
+        pushed: 9,
+        model_cost: "12.34",
+        per_user: [
+            { user: "michal", jobs: 30, posted: 21, model_cost: "9.10" },
+            { user: "wife", jobs: 10, posted: 8, model_cost: "3.24" },
+        ],
+        per_day: [{ date: "2026-10-07", jobs: 3, posted: 2 }],
+        first: "2026-09-08",
+        last: "2026-10-08",
+    };
+    const pc = inventoryPc([summary("A1")]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    pc.stats = STATS;
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("stats-toggle").hidden, false);
+    assert.equal(nodes.get("stats-toggle").textContent, "▸ Stats");
+    assert.equal(nodes.get("stats").hidden, true);
+    nodes.get("stats-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("stats").hidden, false);
+    assert.equal(pc.calls.at(-1), "GET /stats?since=30d");
+    assert.equal(nodes.get("stats-since-30d").attrs["aria-pressed"], "true");
+    const tables = nodes.get("stats-table").children.map((table) => table.children.map((tr) => tr.children.map((c) => `${c.tag}:${c.textContent}`)));
+    assert.deepEqual(tables, [
+        [
+            ["th:jobs", "td:40: 31 done, 6 failed, 3 cancelled"],
+            ["th:posted on eBay", "td:22"],
+            ["th:posted on craigslist", "td:7"],
+            ["th:drafted", "td:30"],
+            ["th:ended", "td:4"],
+            ["th:pushed", "td:9"],
+            ["th:model cost", "td:$12.34"],
+        ],
+        [
+            ["th:user", "th:jobs", "th:posted", "th:cost"],
+            ["td:michal", "td:30", "td:21", "td:$9.10"],
+            ["td:wife", "td:10", "td:8", "td:$3.24"],
+        ],
+    ]);
+
+    nodes.get("stats-since-7d").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /stats?since=7d");
+    assert.deepEqual(["7d", "30d", "all"].map((s) => nodes.get(`stats-since-${s}`).attrs["aria-pressed"]), ["true", "false", "false"]);
+
+    pc.stats = 403;
+    nodes.get("stats-since-all").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /stats?since=all");
+    assert.equal(nodes.get("stats-toggle").hidden, true, "refused: gone");
+    assert.equal(nodes.get("stats").hidden, true);
+
+    // anyone else, or an older server: no Stats at all
+    const wife = inventoryPc([summary("A1")]);
+    wife.me = { user: "wife", admin: false, craigslist: true, venues: ["ebay"] };
+    const other = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: wife.fetch });
+    other.nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(other.nodes.get("stats-toggle").hidden, true);
+    assert.ok(!wife.calls.some((c) => c.startsWith("GET /stats")));
 });

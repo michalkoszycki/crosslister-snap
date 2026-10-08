@@ -155,6 +155,31 @@ import {
     USER_NOTE,
 } from "../core.js";
 import {
+    applyDefaults,
+    authHeaders,
+    checkEmail,
+    CRAIGSLIST_OFF,
+    customizeDefaults,
+    DEFAULT_SERVER,
+    DEFAULT_STATS_SINCE,
+    defaultsOf,
+    feedbackBody,
+    feedbackScreen,
+    INSTALL_SNOOZE_MS,
+    installState,
+    installSteps,
+    isIosDevice,
+    loginToken,
+    meOf,
+    sessionOf,
+    SIGNIN_MISSING,
+    signinError,
+    STATS_SINCE,
+    statsQuery,
+    statsTable,
+    venueAllowed,
+} from "../core.js";
+import {
     bookCard,
     bookPriceValue,
     bookSearch,
@@ -2934,4 +2959,159 @@ test("the listings their venues have not caught up with: per sku and venue, each
     const summary = { sku: "R5GM4XZN", price: "24.00", photos: 2, pricing: 2 };
     assert.deepEqual(followSummary(summary, { ...ROW, sku: "R5GM4XZN", price: "31.50", pricing: 3 }).photos, 2);
     assert.equal(followSummary(summary, { ...ROW, price: "31.50" }).price, "31.50");
+});
+
+// --- the way in, the account, Feedback and Stats, the defaults (Michal, 2026-10-08) ------------
+
+test("a call carries the key when there is one, else the session; the sign-in calls carry neither", () => {
+    assert.deepEqual(authHeaders({ key: "k-0123456789abcdef" }), { "X-Crosslister-Key": "k-0123456789abcdef" });
+    assert.deepEqual(authHeaders({ key: "k-0123456789abcdef", session: "s1" }), { "X-Crosslister-Key": "k-0123456789abcdef" });
+    assert.deepEqual(authHeaders({ session: "s1" }), { "X-Crosslister-Session": "s1" });
+    assert.deepEqual(authHeaders({}), {});
+    assert.deepEqual(authHeaders(), {});
+    // the product's server is a Tailscale address, so the CSP and checkSettings already allow it
+    assert.equal(checkSettings(DEFAULT_SERVER, "k-0123456789abcdef").ok, true);
+});
+
+test("sign-in: the email, the link's token, the session it buys, and what a failure says", () => {
+    assert.deepEqual(checkEmail("  michal@example.com "), { ok: true, email: "michal@example.com" });
+    assert.deepEqual(checkEmail(""), { ok: false, error: "Enter your email address." });
+    for (const bad of ["michal", "michal@", "@example.com", "michal@example", "a b@example.com", 42]) {
+        assert.equal(checkEmail(bad).ok, false, String(bad));
+    }
+    assert.equal(loginToken("#login=abc.DEF-123"), "abc.DEF-123");
+    assert.equal(loginToken("#login=a%2Bb"), "a+b");
+    for (const none of ["", "#", "#login=", "#other=abc", "#login=a&x=1", undefined, "#login=%E0%A4%A"]) {
+        assert.equal(loginToken(none), "", String(none));
+    }
+    assert.deepEqual(sessionOf({ session: "s-1", user: "wife", remember: false }), { session: "s-1", user: "wife", remember: false });
+    assert.deepEqual(sessionOf({ session: "s-1" }), { session: "s-1", user: "", remember: true }, "remembered unless it says not");
+    for (const none of [null, {}, { session: "" }, { session: "has space" }, { session: 7 }]) assert.equal(sessionOf(none), null);
+    assert.equal(signinError(404, "x"), SIGNIN_MISSING);
+    assert.equal(SIGNIN_MISSING, "Sign-in is not set up on this server yet. Ask the developer for a key.");
+    for (const status of [400, 401, 403, 410]) assert.match(signinError(status, "x"), /expired or was used already/);
+    assert.equal(signinError(0, "cannot reach the server"), "Could not sign in: cannot reach the server.");
+});
+
+test("GET /me read leniently; craigslist off only when it says so", () => {
+    assert.deepEqual(meOf({ user: "michal", admin: true, craigslist: false, venues: ["ebay", 3] }), {
+        user: "michal",
+        admin: true,
+        craigslist: false,
+        venues: ["ebay"],
+    });
+    assert.deepEqual(meOf({ jobs: [] }), { user: "", admin: false, craigslist: true, venues: [] }, "silent: as today");
+    assert.equal(meOf(null), null);
+    assert.equal(venueAllowed(null, "craigslist"), true, "an older server's 404: as today");
+    assert.equal(venueAllowed(meOf({ craigslist: true }), "craigslist"), true);
+    assert.equal(venueAllowed(meOf({ craigslist: false }), "craigslist"), false);
+    assert.equal(venueAllowed(meOf({ craigslist: false }), "ebay"), true, "only craigslist can be off");
+    assert.equal(CRAIGSLIST_OFF, "Craigslist is not available for your account. Contact the developer.");
+});
+
+test("the install nudge: none from the home screen, a week's rest when dismissed, the prompt or the two taps", () => {
+    const now = Date.parse("2026-10-08T12:00:00Z");
+    const base = { standalone: false, hasPrompt: false, isIos: false, dismissedAt: "", now };
+    assert.equal(installState({ ...base, standalone: true, hasPrompt: true }), "hidden");
+    assert.equal(installState(base), "steps");
+    assert.equal(installState({ ...base, hasPrompt: true }), "prompt", "Chrome offered: its own prompt");
+    assert.equal(installState({ ...base, hasPrompt: true, isIos: true }), "steps", "an iPhone is told the taps");
+    const daysAgo = (d) => new Date(now - d * 24 * 60 * 60 * 1000).toISOString();
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(3) }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(6.9) }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(7) }), "steps", "a week on, back");
+    assert.equal(installState({ ...base, dismissedAt: "not a date" }), "steps");
+    assert.equal(INSTALL_SNOOZE_MS, 7 * 24 * 60 * 60 * 1000);
+    assert.equal(installSteps(true), "Tap Share, then Add to Home Screen.");
+    assert.equal(installSteps(false), "Open the browser menu, then Add to Home screen (or Install app).");
+    assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" }), true);
+    assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 }), true, "an iPad");
+    assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 0 }), false);
+    assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)" }), false);
+    assert.equal(isIosDevice(), false);
+});
+
+test("feedback: where it was written from, and its body", () => {
+    assert.equal(feedbackScreen("goods", false), "goods");
+    assert.equal(feedbackScreen("book", false), "book");
+    assert.equal(feedbackScreen("admin", false), "admin");
+    assert.equal(feedbackScreen("", false), "admin");
+    assert.equal(feedbackScreen("goods", true), "card", "a listing looked at");
+    assert.deepEqual(feedbackBody({ text: "  The craigslist button is grey ", screen: "goods", version: "2.10.0", job: "j1" }), {
+        text: "The craigslist button is grey",
+        screen: "goods",
+        version: "2.10.0",
+        job: "j1",
+    });
+    assert.deepEqual(feedbackBody({ text: "x", screen: "admin", version: "2.10.0", job: "" }), { text: "x", screen: "admin", version: "2.10.0" }, "no job: no key");
+    assert.equal(feedbackBody({ text: "   ", screen: "goods", version: "2.10.0" }), null);
+});
+
+test("stats: the chips' query, and the answer as the small table, counts only", () => {
+    assert.deepEqual(STATS_SINCE, ["7d", "30d", "all"]);
+    assert.equal(DEFAULT_STATS_SINCE, "30d");
+    assert.equal(statsQuery("7d"), "since=7d");
+    assert.equal(statsQuery("all"), "since=all");
+    assert.equal(statsQuery("1y"), "since=30d");
+    const answer = {
+        since: "30d",
+        jobs: { total: 40, done: 31, failed: 6, cancelled: 3, queued: 0, running: 0 },
+        posted: { ebay: 22, craigslist: 7 },
+        drafted: 30,
+        ended: 4,
+        pushed: 9,
+        model_cost: "12.34",
+        per_user: [
+            { user: "michal", jobs: 30, posted: 21, model_cost: "9.10" },
+            { user: "wife", jobs: 10, posted: 8, model_cost: null },
+            "junk",
+        ],
+        per_day: [{ date: "2026-10-07", jobs: 3, posted: 2 }],
+        first: "2026-09-08",
+        last: "2026-10-08",
+    };
+    assert.deepEqual(statsTable(answer), {
+        rows: [
+            ["jobs", "40: 31 done, 6 failed, 3 cancelled"],
+            ["posted on eBay", "22"],
+            ["posted on craigslist", "7"],
+            ["drafted", "30"],
+            ["ended", "4"],
+            ["pushed", "9"],
+            ["model cost", "$12.34"],
+        ],
+        users: [
+            ["michal", "30", "21", "$9.10"],
+            ["wife", "10", "8", "—"],
+        ],
+    });
+    // anything missing or odd reads as nothing, never a crash
+    assert.deepEqual(statsTable(null).rows[0], ["jobs", "0: 0 done, 0 failed, 0 cancelled"]);
+    assert.deepEqual(statsTable({ jobs: { total: "x" }, per_user: "no" }).users, []);
+});
+
+test("customize defaults: read leniently, kept without the quantity, a new item starts from them", () => {
+    const plain = { pricing: 1, autoPost: true, comps: false, pickupOnly: false };
+    assert.deepEqual(customizeDefaults(null), { goods: plain, book: plain });
+    assert.deepEqual(customizeDefaults("garbage"), { goods: plain, book: plain });
+    assert.deepEqual(customizeDefaults({ goods: { pricing: 7, autoPost: "no", comps: 1, pickupOnly: true } }), {
+        goods: { pricing: 1, autoPost: true, comps: false, pickupOnly: true },
+        book: plain,
+    });
+    const goods = { pricing: 2, autoPost: false, comps: true, pickupOnly: true };
+    assert.deepEqual(defaultsOf({ quantity: "3", ...goods }), goods, "never the quantity");
+    const saved = customizeDefaults({ goods, book: { pricing: 3 } });
+
+    const fresh = applyDefaults(initialState(""), saved);
+    assert.deepEqual(customizeOf(fresh), { quantity: "1", ...goods });
+    const book = applyDefaults(initialState("", "book"), saved);
+    assert.deepEqual(customizeOf(book), { quantity: "1", ...plain, pricing: 3 }, "the book's own");
+    assert.deepEqual(book.customize, initialState("").customize, "a book's goods slice untouched");
+    // the quantity typed stays; plain defaults change nothing
+    const typed = reduce(initialState("Vase"), { type: "setQuantity", text: "4" });
+    assert.equal(customizeOf(applyDefaults(typed, saved)).quantity, "4");
+    assert.deepEqual(applyDefaults(initialState(""), customizeDefaults(null)), initialState(""));
+    // a job on its way fixes customize, defaults or not
+    const sending = reduce(initialState("Vase"), { type: "jobSending", venue: "ebay" });
+    assert.equal(applyDefaults(sending, saved), sending);
 });
