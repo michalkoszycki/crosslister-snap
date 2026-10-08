@@ -142,9 +142,16 @@ import {
     venueStatus,
     followSummary,
     leftUnsynced,
-    priceStep,
+    DIAL_DELAY_MS,
+    DIAL_REPEAT_MS,
+    dialBody,
+    dialPrice,
+    dialStep,
+    isUnsynced,
     unsyncedList,
     unsyncedWith,
+    unsyncedWithout,
+    venueName,
     USER_NOTE,
 } from "../core.js";
 import {
@@ -246,7 +253,7 @@ test("the service on the PC itself is accepted over plain http", () => {
 
 test("anything but https to a ts.net host is refused, with the reason", () => {
     const cases = [
-        ["", /Enter the PC address/],
+        ["", /Enter the server address/],
         ["pc.tail1234.ts.net", /not a web address/],
         ["http://pc.tail1234.ts.net", /https/],
         ["ftp://pc.tail1234.ts.net", /https/],
@@ -379,17 +386,17 @@ test("the AI mark toggles, one photo at a time, without touching the old state",
 test("the x takes a photo out of the list; an unknown id changes nothing", () => {
     const s = reduce(withPhotos(3), { type: "remove", id: "p2" });
     assert.deepEqual(s.photos.map((p) => p.id), ["p1", "p3"]);
-    assert.deepEqual(s.deletes, [], "it never left the page, so nothing to delete on the PC");
+    assert.deepEqual(s.deletes, [], "it never left the page, so nothing to delete on the server");
     assert.equal(reduce(s, { type: "remove", id: "nope" }), s);
     const there = reduce(sent(3), { type: "remove", id: "p2" });
-    assert.deepEqual(there.deletes, [2], "a sent photo is deleted on the PC too");
+    assert.deepEqual(there.deletes, [2], "a sent photo is deleted on the server too");
 });
 
 test("progressLine counts the photos, the ones for the AI and the ones on the PC", () => {
     assert.equal(progressLine(initialState("It")), "No photos yet.");
-    assert.equal(progressLine(withPhotos(1)), "1 photo, 0 for the AI, 0 on the PC");
-    assert.equal(progressLine(withPhotos(4, [1, 3])), "4 photos, 2 for the AI, 0 on the PC");
-    assert.equal(progressLine(sent(4, [1])), "4 photos, 1 for the AI, all on the PC");
+    assert.equal(progressLine(withPhotos(1)), "1 photo, 0 for the AI, 0 on the server");
+    assert.equal(progressLine(withPhotos(4, [1, 3])), "4 photos, 2 for the AI, 0 on the server");
+    assert.equal(progressLine(sent(4, [1])), "4 photos, 1 for the AI, all on the server");
 });
 
 test("DONE resets the item but keeps knowing whether the phone is online", () => {
@@ -412,7 +419,7 @@ test("without settings neither venue button works, and the hint says why", () =>
     for (const venue of ["ebay", "craigslist"]) {
         assert.deepEqual(venueButton(s, venue, false), { enabled: false, hint: SETTINGS_HINT });
     }
-    assert.equal(SETTINGS_HINT, "Set the PC address and key in Admin");
+    assert.equal(SETTINGS_HINT, "Set the server address and key in Admin");
 });
 
 test("a new item needs a photo, at most 24, and at least one AI mark", () => {
@@ -440,18 +447,18 @@ test("NEXT needs a photo and does not wait for a listing the PC has taken", () =
         ["queued", accepted, NEXT_NOTE],
         ["running", running, NEXT_NOTE],
         ["done", done, ""],
-        ["refused", reduce(s, { type: "jobRefused", venue: "ebay", error: "cannot reach the PC" }), ""],
+        ["refused", reduce(s, { type: "jobRefused", venue: "ebay", error: "cannot reach the server" }), ""],
     ]) {
         assert.deepEqual(doneButton(state), { enabled: true, hint: "" }, what);
         assert.equal(nextNote(state), note, what);
     }
     assert.equal(
         NEXT_NOTE,
-        "A listing is still posting on the PC; NEXT starts the next item without waiting for its link"
+        "A listing is still posting on the server; NEXT starts the next item without waiting for its link"
     );
     // only the moment the press is on its way, not yet the PC's: clearing would lose it
     const sending = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.deepEqual(doneButton(sending), { enabled: false, hint: "NEXT waits until the listing has reached the PC" });
+    assert.deepEqual(doneButton(sending), { enabled: false, hint: "NEXT waits until the listing has reached the server" });
     // the second button pressed while the first still runs: the same
     const second = reduce(reduce(running, { type: "jobStatus", venue: "ebay", status: { state: "running", sku: "B-1" } }), {
         type: "jobSending",
@@ -542,9 +549,9 @@ test("a name the PC already has today is flagged and refused; retyping clears it
     assert.equal(nameTakenHint(s), "");
     s = reduce(s, { type: "nameTaken", itemName: "Lamp", photos: 3 });
     assert.deepEqual(s.nameTaken, { photos: 3 });
-    assert.equal(nameTakenHint(s), '"Lamp" is already an item on the PC today with 3 photos. Use a different name.');
-    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 1 } }), '"Lamp" is already an item on the PC today with 1 photo. Use a different name.');
-    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 0 } }), '"Lamp" is already an item on the PC today. Use a different name.');
+    assert.equal(nameTakenHint(s), '"Lamp" is already an item on the server today with 3 photos. Use a different name.');
+    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 1 } }), '"Lamp" is already an item on the server today with 1 photo. Use a different name.');
+    assert.equal(nameTakenHint({ ...s, nameTaken: { photos: 0 } }), '"Lamp" is already an item on the server today. Use a different name.');
     // typing on clears the flag; an answer about an older name is ignored
     s = reduce(s, { type: "setItem", itemName: "Lamp two" });
     assert.equal(s.nameTaken, null);
@@ -616,7 +623,7 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
     assert.equal(venueTap(s, "ebay"), "pause");
     s = reduce(s, { type: "jobPaused", venue: "ebay" });
     assert.deepEqual(venueLine(s.jobs.ebay), { text: PAUSED_ON_PC, link: "", kind: "busy" });
-    assert.equal(doneButton(s).hint, "", "a job the PC has does not hold NEXT");
+    assert.equal(doneButton(s).hint, "", "a job the server has does not hold NEXT");
     // reset: the PC is told; the page drops the press at once and hears the PC out quietly
     s = reduce(s, { type: "jobCancelled", venue: "ebay", stopping: true });
     assert.equal(s.jobs.ebay.stopping, true);
@@ -777,7 +784,7 @@ test("the lines the walk says", () => {
     assert.equal(presentNote(a), 'Back on "Lamp", the item you were on.');
     assert.equal(presentNote(null), "", "a fresh screen: nothing to say");
     // Michal, 2026-10-03: "beyond that it should say something like - 'end of item history - see inventory lists'"
-    assert.equal(HISTORY_END, "End of the item history: see the inventory list on the PC.");
+    assert.equal(HISTORY_END, "End of the item history: see the inventory list on the server.");
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {
@@ -805,7 +812,7 @@ test("a reload reads each job's price back with its status", () => {
 test("NEXT waits while a photo or a delete has not reached the PC", () => {
     assert.deepEqual(doneButton(withPhotos(1)), {
         enabled: false,
-        hint: "NEXT waits until the photos are on the PC",
+        hint: "NEXT waits until the photos are on the server",
     });
     const struck = reduce(sent(2), { type: "remove", id: "p1" });
     assert.equal(doneButton(struck).enabled, false, "the delete has not gone yet");
@@ -852,7 +859,7 @@ test("the note status word: waits for the first photo, sending, sent, offline", 
         type: "taskFailed",
         task: again,
         status: 0,
-        error: "cannot reach the PC",
+        error: "cannot reach the server",
     });
     assert.equal(noteStatusText(s), "not sent (offline), will retry");
 });
@@ -861,12 +868,12 @@ test("leaving warns while something is not on the PC yet, not merely while a job
     assert.equal(leaveWarning(initialState("x")), false);
     assert.equal(leaveWarning(withPhotos(1, [1])), true, "a photo not sent yet");
     const s = sent(1, [1]);
-    assert.equal(leaveWarning(s), false, "everything is on the PC: a reload reads it back");
+    assert.equal(leaveWarning(s), false, "everything is on the server: a reload reads it back");
     assert.equal(leaveWarning(reduce(s, { type: "noteText", text: "x" })), true);
     const sending = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.equal(leaveWarning(sending), true, "the press has not reached the PC yet");
+    assert.equal(leaveWarning(sending), true, "the press has not reached the server yet");
     const running = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(leaveWarning(running), false, "the job is the PC's: it posts whether or not the page watches");
+    assert.equal(leaveWarning(running), false, "the job is the server's: it posts whether or not the page watches");
     const done = reduce(running, {
         type: "jobStatus",
         venue: "ebay",
@@ -878,7 +885,7 @@ test("leaving warns while something is not on the PC yet, not merely while a job
 // --- a reload ------------------------------------------------------------------------
 
 test("what is kept for a reload: the item, its id and the AI marks, once it is on the PC", () => {
-    assert.equal(savedItem(withPhotos(2, [2])), null, "not on the PC yet");
+    assert.equal(savedItem(withPhotos(2, [2])), null, "not on the server yet");
     assert.deepEqual(savedItem(sent(3, [1, 3])), { itemName: "Boots", itemId: ITEM, ai: [1, 3] });
 });
 
@@ -1160,7 +1167,7 @@ test("the book's ebay button: ISBN, found, a photo, a price, every photo on the 
     const found = reduce(isbn, { type: "bookLookupDone", isbn: ISBN, answer: ANSWER });
     assert.equal(hint(found), "Snap the cover first");
     const waiting = reduce(found, { type: "add", id: "b1", name: "x", n: 1 });
-    assert.equal(hint(waiting), "Waiting for the photos to reach the PC (0 of 1 sent)");
+    assert.equal(hint(waiting), "Waiting for the photos to reach the server (0 of 1 sent)");
     assert.equal(hint(reduce(waiting, { type: "bookPrice", text: "free" })), "Set a price (whole dollars are fine)");
     assert.deepEqual(venueButton(foundBook(), "ebay", true), { enabled: true, hint: "" });
     // no AI mark is needed, and there is no craigslist for a book
@@ -1255,13 +1262,13 @@ test("the main photo follows its photo when the PC's folder renumbers it", () =>
 });
 
 test("NEXT and the progress line know the book mode", () => {
-    assert.equal(progressLine(foundBook(2)), "2 photos, all on the PC");
+    assert.equal(progressLine(foundBook(2)), "2 photos, all on the server");
     assert.equal(doneButton(bookState()).enabled, false);
     const isbnOnly = reduce(bookState(), { type: "bookIsbn", isbn: ISBN });
     assert.equal(doneButton(isbnOnly).enabled, true, "a book not worth a photo can be cleared");
     assert.equal(doneButton(foundBook()).enabled, true);
     const going = reduce(foundBook(), { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.match(doneButton(going).hint, /NEXT waits until the listing has reached the PC/);
+    assert.match(doneButton(going).hint, /NEXT waits until the listing has reached the server/);
     assert.equal(leaveWarning(going), true);
     const taken = reduce(going, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 2 });
     assert.deepEqual(doneButton(taken), { enabled: true, hint: "" }, "the next book while this one posts");
@@ -1270,7 +1277,7 @@ test("NEXT and the progress line know the book mode", () => {
 });
 
 test("a book is kept for a reload with its ISBN, condition, price and found record, and read back", () => {
-    assert.equal(savedItem(reduce(bookState(), { type: "bookIsbn", isbn: ISBN })), null, "not on the PC yet");
+    assert.equal(savedItem(reduce(bookState(), { type: "bookIsbn", isbn: ISBN })), null, "not on the server yet");
     let s = reduce(foundBook(2), { type: "bookCondition", condition: "acceptable" });
     s = reduce(s, { type: "bookPrice", text: "8" });
     s = reduce(s, { type: "bookMain", id: "b2" });
@@ -1346,13 +1353,13 @@ test("the line above the ISBN button says what to do, or why the ISBN must be ty
     // No ISBN open: the title is what to type
     assert.equal(
         scanHint({ ...base, manual: true }),
-        "No ISBN: type the title as the cover has it. The PC finds the book and a price."
+        "No ISBN: type the title as the cover has it. The server finds the book and a price."
     );
     assert.equal(scanHint({ ...base, manual: true, hasItem: true }), "");
     // ... opened after an ISBN no catalogue knows: that ISBN stays
     assert.equal(
         scanHint({ ...base, manual: true, kept: true }),
-        "Type the title as the cover has it. The PC finds a price; the ISBN stays on the listing."
+        "Type the title as the cover has it. The server finds a price; the ISBN stays on the listing."
     );
     assert.equal(scanHint({ ...base, canScan: false }), "This phone cannot read barcodes; type the ISBN");
     assert.equal(scanHint({ ...base, scan: "reading" }), "Reading the barcode...");
@@ -1377,26 +1384,26 @@ test("photos waiting for the ISBN: NEXT and ebay say the ISBN is what blocks the
     const s = coverBeforeIsbn();
     assert.equal(
         ISBN_WAIT_HINT,
-        "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the PC; or remove them with their x"
+        "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the server; or remove them with their x"
     );
     assert.deepEqual(doneButton(s), { enabled: false, hint: ISBN_WAIT_HINT });
     assert.deepEqual(venueButton(s, "ebay", true), { enabled: false, hint: ISBN_WAIT_HINT });
     // with the ISBN typed they are ordinary photos on their way to the PC again
     const named = reduce(s, { type: "bookIsbn", isbn: ISBN });
-    assert.equal(doneButton(named).hint, "NEXT waits until the photos are on the PC");
+    assert.equal(doneButton(named).hint, "NEXT waits until the photos are on the server");
     // with the photo struck out there is nothing waiting: back to the first step
     const struck = reduce(s, { type: "remove", id: "b1" });
     assert.equal(venueButton(struck, "ebay", true).hint, "Scan the ISBN, or tap No ISBN and type the title");
     assert.deepEqual(doneButton(struck), { enabled: false, hint: "" });
     // goods photos not yet on the PC keep their own words
-    assert.equal(doneButton(withPhotos(1)).hint, "NEXT waits until the photos are on the PC");
+    assert.equal(doneButton(withPhotos(1)).hint, "NEXT waits until the photos are on the server");
 });
 
 test("photos waiting for the ISBN: the progress line says so", () => {
     assert.equal(progressLine(coverBeforeIsbn(1)), "1 photo, waiting for the ISBN or the title");
     assert.equal(progressLine(coverBeforeIsbn(2)), "2 photos, waiting for the ISBN or the title");
     const named = reduce(coverBeforeIsbn(1), { type: "bookIsbn", isbn: ISBN });
-    assert.equal(progressLine(named), "1 photo, 0 on the PC");
+    assert.equal(progressLine(named), "1 photo, 0 on the server");
 });
 
 // --- books with no ISBN ----------------------------------------------------------------
@@ -1538,7 +1545,7 @@ test("No ISBN: the title names the folder when he stops typing, cleaned and capp
     let s = reduce(typedBook({ title: "" }), { type: "add", id: "b1", name: "Book-1.jpg", n: 1 });
     // nothing typed: the photo waits, and the lines say for what
     assert.deepEqual(venueButton(s, "ebay", true), { enabled: false, hint: TITLE_WAIT_HINT });
-    assert.equal(TITLE_WAIT_HINT, "Type the title so the photos can go to the PC, or remove them with their x");
+    assert.equal(TITLE_WAIT_HINT, "Type the title so the photos can go to the server, or remove them with their x");
     assert.deepEqual(doneButton(s), { enabled: false, hint: TITLE_WAIT_HINT });
     assert.equal(progressLine(s), "1 photo, waiting for the title");
     s = reduce(s, { type: "bookField", field: "title", text: 'Dune: "Messiah" / part 2?' });
@@ -1546,7 +1553,7 @@ test("No ISBN: the title names the folder when he stops typing, cleaned and capp
     s = reduce(s, { type: "bookName" });
     assert.equal(s.itemName, "Book Dune Messiah part 2");
     assert.equal(s.photos[0].name, "Book Dune Messiah part 2-1.jpg");
-    assert.equal(progressLine(s), "1 photo, 0 on the PC");
+    assert.equal(progressLine(s), "1 photo, 0 on the server");
     assert.equal(reduce(s, { type: "bookName" }), s, "the same name again changes nothing");
     const long = reduce(reduce(s, { type: "bookField", field: "title", text: "A".repeat(80) }), { type: "bookName" });
     assert.equal(long.itemName, `Book ${"A".repeat(55)}`);
@@ -1778,7 +1785,7 @@ test("an ISBN no catalogue knows: No ISBN is the next step, and it keeps the ISB
     const s = missedBook();
     assert.equal(s.book.isbnMiss, true);
     assert.equal(bookCard(s.book).status, ISBN_MISS);
-    assert.equal(bookCard(s.book).note, MISS_DETAIL, "the PC's words, in the small line");
+    assert.equal(bookCard(s.book).note, MISS_DETAIL, "the server's words, in the small line");
     assert.equal(venueButton(s, "ebay", true).hint, ISBN_MISS_HINT);
     assert.equal(doneButton(s).enabled, true, "DONE can still clear it");
 
@@ -2165,7 +2172,7 @@ test("auto-post off: done with no link is saved, not posted; the button opens an
     s = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
     assert.equal(s.jobs.ebay.held, true, "this press saves the row");
     s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    assert.equal(s.jobs.ebay.held, true, "kept once the PC has the job");
+    assert.equal(s.jobs.ebay.held, true, "kept once the server has the job");
     s = reduce(s, {
         type: "jobStatus",
         venue: "ebay",
@@ -2385,13 +2392,27 @@ test("a row's price: whole dollars when .00, cents otherwise, nothing for none",
     assert.equal(priceWord("0.00"), "");
 });
 
-test("a venue's badge: listed green, sold and ended muted, a draft outlined", () => {
-    assert.deepEqual(statusBadge("ebay", "listed"), { text: "ebay listed", kind: "posted" });
-    assert.deepEqual(statusBadge("ebay", "sold"), { text: "ebay sold", kind: "muted" });
-    assert.deepEqual(statusBadge("craigslist", "ended"), { text: "craigslist ended", kind: "muted" });
-    assert.deepEqual(statusBadge("craigslist", "draft"), { text: "craigslist draft", kind: "draft" });
-    assert.deepEqual(statusBadge("ebay", ""), { text: "ebay", kind: "draft" });
-    assert.deepEqual(statusBadge("ebay", "paused"), { text: "ebay paused", kind: "draft" });
+test("a venue's badge: listed green with a tick, sold and ended muted, a draft outlined", () => {
+    // Michal, 2026-10-08: "Instead of 'ebay listed' and an arrow, write 'ebay' and follow that
+    // with a checkmark symbol": the venue and the tick, "listed" still said to a screen reader
+    assert.deepEqual(statusBadge("ebay", "listed"), { text: "ebay", said: "ebay listed", kind: "posted", tick: true });
+    assert.deepEqual(statusBadge("ebay", "sold"), { text: "ebay sold", said: "ebay sold", kind: "muted", tick: false });
+    assert.deepEqual(statusBadge("craigslist", "ended"), {
+        text: "craigslist ended",
+        said: "craigslist ended",
+        kind: "muted",
+        tick: false,
+    });
+    assert.deepEqual(statusBadge("craigslist", "draft"), {
+        text: "craigslist draft",
+        said: "craigslist draft",
+        kind: "draft",
+        tick: false,
+    });
+    assert.deepEqual(statusBadge("ebay", ""), { text: "ebay", said: "ebay", kind: "draft", tick: false });
+    assert.deepEqual(statusBadge("ebay", "paused"), { text: "ebay paused", said: "ebay paused", kind: "draft", tick: false });
+    assert.equal(venueName("ebay"), "eBay");
+    assert.equal(venueName("craigslist"), "craigslist");
 });
 
 const ROW = {
@@ -2437,22 +2458,27 @@ test("a row's title, heading, badges, venues and photos", () => {
     assert.equal(rowHeading(ROW), "Brass lamp · $24");
     assert.equal(rowHeading({ sku: "X1", title: "Vase", price: null }), "Vase");
     // a listed badge carries its listing's link (Michal, 2026-10-06); any other is a word
+    const listed = (venue) => ({ text: venue, said: `${venue} listed`, kind: "posted", tick: true });
+    const draft = (venue) => ({ text: `${venue} draft`, said: `${venue} draft`, kind: "draft", tick: false });
     assert.deepEqual(rowBadges(ROW), [
-        { text: "ebay listed", kind: "posted", link: "https://www.ebay.com/itm/257780366045" },
-        { text: "craigslist draft", kind: "draft", link: "" },
+        { venue: "ebay", ...listed("ebay"), link: "https://www.ebay.com/itm/257780366045" },
+        { venue: "craigslist", ...draft("craigslist"), link: "" },
     ]);
-    assert.deepEqual(rowBadges({ sku: "X", venues: ["ebay"] }), [{ text: "ebay", kind: "draft", link: "" }]);
+    assert.deepEqual(rowBadges({ sku: "X", venues: ["ebay"] }), [
+        { venue: "ebay", text: "ebay", said: "ebay", kind: "draft", tick: false, link: "" },
+    ]);
     const unsafe = { sku: "X", venues: ["craigslist"], statuses: { craigslist: { status: "listed", url: "javascript:alert(1)" } } };
-    assert.deepEqual(rowBadges(unsafe), [{ text: "craigslist listed", kind: "posted", link: "" }], "only an http(s) link");
+    assert.deepEqual(rowBadges(unsafe), [{ venue: "craigslist", ...listed("craigslist"), link: "" }], "only an http(s) link");
     const ended = { sku: "X", venues: ["ebay"], statuses: { ebay: { status: "ended", url: "https://www.ebay.com/itm/1" } } };
     assert.equal(rowBadges(ended)[0].link, "", "an ended listing's badge stays a word");
     // a listing's venue foldout wears the list's badge (Michal, 2026-10-07), never a link;
     // a venue the row is not on says so
-    assert.deepEqual(venueBadge(ROW, "ebay"), { text: "ebay listed", kind: "posted" });
-    assert.deepEqual(venueBadge(ROW, "craigslist"), { text: "craigslist draft", kind: "draft" });
-    assert.deepEqual(venueBadge(ended, "ebay"), { text: "ebay ended", kind: "muted" });
-    assert.deepEqual(venueBadge(ended, "craigslist"), { text: "craigslist not added", kind: "absent" });
-    assert.deepEqual(venueBadge({ sku: "X" }, "ebay"), { text: "ebay not added", kind: "absent" });
+    assert.deepEqual(venueBadge(ROW, "ebay"), listed("ebay"));
+    assert.deepEqual(venueBadge(ROW, "craigslist"), draft("craigslist"));
+    assert.deepEqual(venueBadge(ended, "ebay"), { text: "ebay ended", said: "ebay ended", kind: "muted", tick: false });
+    const absent = (text) => ({ text, said: text, kind: "absent", tick: false });
+    assert.deepEqual(venueBadge(ended, "craigslist"), absent("craigslist not added"));
+    assert.deepEqual(venueBadge({ sku: "X" }, "ebay"), absent("ebay not added"));
     // the venues a row is on: its `venues`, in the app's order
     assert.deepEqual(rowVenues(ROW), ["ebay", "craigslist"]);
     assert.deepEqual(rowVenues({ venues: ["craigslist", "etsy", "ebay"] }), ["ebay", "craigslist"]);
@@ -2579,10 +2605,40 @@ test("a card's actions: add when not on the venue, post when not listed, open/re
     }
     assert.deepEqual(venueActions({ venues: ["craigslist"] }, "craigslist"), ["post", "edit"]);
     assert.deepEqual(
-        ["add", "post", "open", "refresh", "end", "edit"].map((a) => actionWord(a, "craigslist")),
-        ["Add craigslist to this item", "Post on craigslist", "Open listing", "Refresh status", "End listing", "Edit"]
+        ["add", "post", "open", "sync", "refresh", "end", "edit"].map((a) => actionWord(a, "craigslist")),
+        [
+            "Add craigslist to this item",
+            "Post on craigslist",
+            "Open listing",
+            "Sync to craigslist",
+            "Refresh status",
+            "End listing",
+            "Edit",
+        ]
     );
+    assert.equal(actionWord("sync", "ebay"), "Sync to eBay");
     assert.equal(endQuestion("ebay"), "End this listing on ebay?");
+});
+
+test("the craigslist card offers Sync to craigslist while its listing is behind the row", () => {
+    // Michal, 2026-10-08: craigslist price and edits from the card
+    const up = {
+        sku: "C1",
+        venues: ["ebay", "craigslist"],
+        statuses: {
+            ebay: { status: "listed", url: "https://www.ebay.com/itm/1" },
+            craigslist: { status: "listed", url: "https://chicago.craigslist.org/1.html" },
+        },
+    };
+    const behind = [{ sku: "C1", venues: ["craigslist"] }];
+    assert.deepEqual(venueActions(up, "craigslist", behind), ["open", "sync", "refresh", "end", "edit"]);
+    assert.deepEqual(venueActions(up, "craigslist"), ["open", "refresh", "end", "edit"], "caught up: no sync");
+    assert.deepEqual(venueActions(up, "craigslist", [{ sku: "OTHER", venues: ["craigslist"] }]), ["open", "refresh", "end", "edit"]);
+    // eBay's is customize's Sync to eBay, not the card's
+    assert.deepEqual(venueActions(up, "ebay", [{ sku: "C1", venues: ["ebay"] }]), ["open", "refresh", "end", "edit"]);
+    // a draft has no listing to sync: Post puts the row up whole
+    const draft = { ...up, statuses: { ...up.statuses, craigslist: { status: "draft" } } };
+    assert.deepEqual(venueActions(draft, "craigslist", behind), ["post", "edit"]);
 });
 
 test("the action jobs' bodies: end and refresh carry the sku and venue, a sync its direction", () => {
@@ -2598,9 +2654,12 @@ test("the action jobs' bodies: end and refresh carry the sku and venue, a sync i
     assert.throws(() => actionJob("end", { venue: "ebay" }), RangeError);
     assert.throws(() => actionJob("end", { sku: "R5", venue: "etsy" }), RangeError);
     assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
-    // a listing's customize, Sync to eBay (the contract of 2026-10-07): eBay only
+    // a listing's customize, Sync to eBay (the contract of 2026-10-07), and since 2026-10-08
+    // the craigslist card's Sync to craigslist
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "ebay" }), { action: "push", sku: "R5", venue: "ebay" });
-    assert.throws(() => actionJob("push", { sku: "R5", venue: "craigslist" }), RangeError);
+    assert.deepEqual(actionJob("push", { sku: "R5", venue: "craigslist" }), { action: "push", sku: "R5", venue: "craigslist" });
+    assert.deepEqual(actionJob("end", { sku: "R5", venue: "craigslist" }), { action: "end", sku: "R5", venue: "craigslist" });
+    assert.throws(() => actionJob("push", { sku: "R5", venue: "etsy" }), RangeError);
     assert.throws(() => actionJob("push", { venue: "ebay" }), RangeError);
 });
 
@@ -2613,8 +2672,8 @@ test("an action job's line: queued, the step, the summary once done, the error o
     assert.deepEqual(syncLine({ state: "queued", ahead: 0 }), { text: "queued", kind: "busy" });
     assert.deepEqual(syncLine({ state: "running", step: "reading eBay" }), { text: "reading eBay", kind: "busy" });
     assert.deepEqual(syncLine({ state: "running" }), { text: "working", kind: "busy" });
-    assert.deepEqual(syncLine({ state: "running", step: "x", trouble: "cannot reach the PC" }), {
-        text: "cannot reach the PC, still trying",
+    assert.deepEqual(syncLine({ state: "running", step: "x", trouble: "cannot reach the server" }), {
+        text: "cannot reach the server, still trying",
         kind: "busy",
     });
     assert.deepEqual(syncLine({ state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" }), {
@@ -2779,67 +2838,97 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     assert.deepEqual(customizeSaved(draft), { text: "saved", kind: "ok" });
 });
 
-// --- Admin: a list row's price, stepped on its tile (Michal, 2026-10-07) -----------------
-// "On the inventory card on the right there should be a round + and a round − button.
-// Pressing them increments through the price ... When the price changes there should be our
-// sync-to logo appearing on the ebay green button below."
+// --- Admin: a list row's price, dialled on its tile (Michal, 2026-10-07, 2026-10-08) -------
+// "On the inventory card on the right there should be a round + and a round − button ...
+// When the price changes there should be our sync-to logo appearing on the ebay green button
+// below." Then: "This adjustment itself should be by 1 dollar. However we need to sense long
+// press and speed up, for larger priced items, like dials on my oven for time setting."
 
-test("a tile's + and −: through the cached grades, quick → fair → high and back, stopping at the ends", () => {
-    // GRADED follows the fair price (2): + is the high one, − the quick one
-    assert.deepEqual(priceStep(GRADED, 1), { pricing: 3 });
-    assert.deepEqual(priceStep(GRADED, -1), { pricing: 1 });
-    assert.equal(priceStep({ ...GRADED, pricing: 3, price: "31.50" }, 1), null, "the top: nothing");
-    assert.deepEqual(priceStep({ ...GRADED, pricing: 3 }, -1), { pricing: 2 });
-    assert.equal(priceStep({ ...GRADED, pricing: 1, price: "18.00" }, -1), null, "the bottom: nothing");
-    assert.deepEqual(priceStep({ ...GRADED, pricing: 1 }, 1), { pricing: 2 });
-    // a grade with no cached price is passed over
-    const gap = { ...GRADED, pricing: 1, prices: { quick: "18.00", market: null, high: "31.50" } };
-    assert.deepEqual(priceStep(gap, 1), { pricing: 3 });
-    assert.deepEqual(priceStep({ ...gap, pricing: 3 }, -1), { pricing: 1 });
-    // a row whose price follows no grade steps from where its price stands
-    const free = { ...GRADED, pricing: null, price: "20.00" };
-    assert.deepEqual(priceStep(free, 1), { pricing: 2 });
-    assert.deepEqual(priceStep(free, -1), { pricing: 1 });
-    assert.equal(priceStep({ ...free, price: "40.00" }, 1), null, "above every cached price");
-    assert.deepEqual(priceStep({ ...free, price: null }, 1), { pricing: 1 }, "no price: up to the lowest");
-    assert.equal(priceStep({ ...free, price: null }, -1), null);
+test("a tile's + and −: a whole dollar a step, never below $1, never a grade", () => {
+    assert.equal(dialPrice("24.00", 1, 1), 25);
+    assert.equal(dialPrice("24.00", -1, 1), 23);
+    assert.equal(dialPrice("24.50", 1, 1), 25, "to the next whole dollar");
+    assert.equal(dialPrice("24.50", -1, 1), 24);
+    assert.equal(dialPrice(250, -1, 10), 240, "a number the dial is at");
+    assert.equal(dialPrice("2.00", -1, 1), 1);
+    assert.equal(dialPrice("1.00", -1, 1), 1, "never below $1");
+    assert.equal(dialPrice("3.00", -1, 5), 1, "a big step stops at $1 too");
+    assert.equal(dialPrice(null, 1, 1), 1, "no price: up to $1");
+    assert.equal(dialPrice(null, -1, 1), 1);
+    // the grades are the customize slider's: a row with cached prices still moves a dollar
+    assert.equal(dialPrice(GRADED.price, 1, 1), Math.floor(Number(GRADED.price)) + 1);
+    assert.deepEqual(dialBody(150), { price: "150.00" });
 });
 
-test("a tile's + and − on a row with no cached prices: a whole dollar, never below $1", () => {
-    // ROW is from before the cache: its prices are none
-    assert.deepEqual(priceStep(ROW, 1), { price: "25.00" });
-    assert.deepEqual(priceStep(ROW, -1), { price: "23.00" });
-    assert.deepEqual(priceStep({ ...ROW, price: "24.50" }, 1), { price: "25.00" }, "to the next whole dollar");
-    assert.deepEqual(priceStep({ ...ROW, price: "24.50" }, -1), { price: "24.00" });
-    assert.deepEqual(priceStep({ ...ROW, price: "2.00" }, -1), { price: "1.00" });
-    assert.equal(priceStep({ ...ROW, price: "1.00" }, -1), null, "never below $1");
-    assert.equal(priceStep({ ...ROW, price: "0.50" }, -1), null);
-    assert.deepEqual(priceStep({ ...ROW, price: null }, 1), { price: "1.00" });
-    assert.equal(priceStep({ ...ROW, price: null }, -1), null);
-    assert.deepEqual(priceStep({ ...ROW, prices: { quick: null, market: null, high: null } }, 1), { price: "25.00" }, "all null: no cache");
+test("a held + or − speeds up as an oven's dial: 1, then 2, 5 and 10 a step; $250 to $150 in about five seconds", () => {
+    assert.equal(DIAL_DELAY_MS, 400);
+    assert.equal(DIAL_REPEAT_MS, 120);
+    assert.deepEqual([0, 400, 1499, 1500, 2999, 3000, 4999, 5000, 9000].map(dialStep), [1, 1, 1, 2, 2, 5, 5, 10, 10]);
+    // a press: a dollar at once; held, a step at DIAL_DELAY_MS and every DIAL_REPEAT_MS after
+    let price = dialPrice(250, -1, 1);
+    let held = DIAL_DELAY_MS;
+    for (;;) {
+        price = dialPrice(price, -1, dialStep(held));
+        if (price <= 150) break;
+        held += DIAL_REPEAT_MS;
+    }
+    assert.ok(held > 4000 && held < 5500, `250 to 150 took ${held} ms`);
 });
 
-test("the listings eBay has not caught up with: kept per sku, each once; the badge syncs instead of linking", () => {
+test("the listings their venues have not caught up with: per sku and venue, each once; the badge syncs instead of linking", () => {
     assert.deepEqual(unsyncedList(null), []);
-    assert.deepEqual(unsyncedList(["A", "", 3, "B", "A"]), ["A", "B"]);
-    assert.deepEqual(unsyncedWith([], "A", true), ["A"]);
-    assert.deepEqual(unsyncedWith(["A", "B"], "A", true), ["B", "A"], "still once");
-    assert.deepEqual(unsyncedWith(["A", "B"], "A", false), ["B"]);
-    assert.deepEqual(unsyncedWith("junk", "A", false), []);
+    // 2.8.0 kept bare skus: eBay's, the only venue then
+    assert.deepEqual(unsyncedList(["A", "", 3, "B", "A"]), [
+        { sku: "A", venues: ["ebay"] },
+        { sku: "B", venues: ["ebay"] },
+    ]);
+    assert.deepEqual(
+        unsyncedList([{ sku: "A", venues: ["craigslist", "etsy"] }, "A", { sku: "B", venues: [] }, { venues: ["ebay"] }]),
+        [{ sku: "A", venues: ["ebay", "craigslist"] }],
+        "merged, in the app's order; nothing else kept"
+    );
+    assert.deepEqual(unsyncedWith([], "A", "ebay", true), [{ sku: "A", venues: ["ebay"] }]);
+    const both = unsyncedWith([{ sku: "A", venues: ["ebay"] }], "A", "craigslist", true);
+    assert.deepEqual(both, [{ sku: "A", venues: ["ebay", "craigslist"] }]);
+    assert.deepEqual(unsyncedWith(both, "A", "ebay", false), [{ sku: "A", venues: ["craigslist"] }]);
+    assert.deepEqual(unsyncedWith([{ sku: "A", venues: ["ebay"] }, "B"], "A", "ebay", false), [{ sku: "B", venues: ["ebay"] }]);
+    assert.deepEqual(unsyncedWith("junk", "A", "ebay", false), []);
+    assert.equal(isUnsynced(both, "A", "craigslist"), true);
+    assert.equal(isUnsynced(both, "B", "craigslist"), false);
+    // the sync bar's Sync to eBay lets every eBay mark go, and only those
+    assert.deepEqual(unsyncedWithout([...both, { sku: "B", venues: ["ebay"] }], "ebay"), [{ sku: "A", venues: ["craigslist"] }]);
 
     // a price move on a listing up on eBay leaves it behind; a draft, or no move, does not
-    assert.equal(leftUnsynced(ROW, { ...ROW, price: "25.00" }), true);
-    assert.equal(leftUnsynced(ROW, { ...ROW, price: "24" }), false, "the same price, written otherwise");
+    assert.deepEqual(leftUnsynced(ROW, { ...ROW, price: "25.00" }), ["ebay"]);
+    assert.deepEqual(leftUnsynced(ROW, { ...ROW, price: "24" }), [], "the same price, written otherwise");
     const draft = { ...ROW, statuses: { ...ROW.statuses, ebay: { status: "draft" } } };
-    assert.equal(leftUnsynced(draft, { ...draft, price: "25.00" }), false);
+    assert.deepEqual(leftUnsynced(draft, { ...draft, price: "25.00" }), []);
+    // up on craigslist: a change to one of its four fields, typed or derived from eBay's
+    const both2 = {
+        ...ROW,
+        statuses: { ...ROW.statuses, craigslist: { status: "listed", url: "https://chicago.craigslist.org/1.html" } },
+    };
+    assert.deepEqual(leftUnsynced(both2, { ...both2, price: "25.00" }), ["ebay"], "its own price typed: eBay's moving is not its");
+    const derived = { ...both2, craigslist: { ...both2.craigslist, price: null } };
+    assert.deepEqual(leftUnsynced(derived, { ...derived, price: "25.00" }), ["ebay", "craigslist"], "a derived price moves with eBay's");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, craigslist: { ...both2.craigslist, category: "household" } }), ["craigslist"]);
+    assert.deepEqual(leftUnsynced(both2, { ...both2, title: "Brass desk lamp" }), ["craigslist"], "its title derives from eBay's");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, condition_note: "worn" }), [], "not one of its fields");
+    // a list row carries no description or overrides: what it lacks is taken as unchanged
+    const listRow = { sku: ROW.sku, title: ROW.title, price: "24.00", venues: both2.venues, statuses: both2.statuses };
+    assert.deepEqual(leftUnsynced(listRow, { ...derived, price: "25.00" }), ["ebay", "craigslist"]);
+    assert.deepEqual(leftUnsynced(listRow, both2), [], "nothing it knows moved");
 
-    // the eBay badge of an unsynced listed row: no link, sync; the rest as ever
-    assert.deepEqual(rowBadges(ROW, ["R5GM4XZN"]), [
-        { text: "ebay listed", kind: "posted", link: "", sync: true },
-        { text: "craigslist draft", kind: "draft", link: "" },
+    // a listed badge of an unsynced venue: no link, sync; the rest as ever
+    const behind = (venues) => [{ sku: "R5GM4XZN", venues }];
+    assert.deepEqual(rowBadges(ROW, behind(["ebay"])), [
+        { venue: "ebay", text: "ebay", said: "ebay listed", kind: "posted", tick: true, link: "", sync: true },
+        { venue: "craigslist", text: "craigslist draft", said: "craigslist draft", kind: "draft", tick: false, link: "" },
     ]);
-    assert.deepEqual(rowBadges(ROW, ["OTHER"]), rowBadges(ROW));
-    assert.deepEqual(rowBadges(draft, ["R5GM4XZN"])[0], { text: "ebay draft", kind: "draft", link: "" }, "not listed: nothing to sync");
+    assert.deepEqual(rowBadges(ROW, [{ sku: "OTHER", venues: ["ebay"] }]), rowBadges(ROW));
+    assert.equal(rowBadges(both2, behind(["craigslist"]))[1].sync, true, "craigslist's badge syncs too");
+    assert.equal(rowBadges(both2, behind(["craigslist"]))[0].sync, undefined);
+    assert.equal(rowBadges(draft, behind(["ebay"]))[0].sync, undefined, "not listed: nothing to sync");
 
     // the list's row takes the PC's answer, but keeps its count of photos
     const summary = { sku: "R5GM4XZN", price: "24.00", photos: 2, pricing: 2 };

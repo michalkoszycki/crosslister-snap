@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.8.0";
+import { noteDirty, unsent } from "./queue.js?v=2.9.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.8.0";
+} from "./book.js?v=2.9.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -117,16 +117,16 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost"]);
 export function checkSettings(pcRaw, keyRaw) {
     const pcText = typeof pcRaw === "string" ? pcRaw.trim() : "";
     const key = typeof keyRaw === "string" ? keyRaw.trim() : "";
-    if (!pcText) return { ok: false, error: "Enter the PC address." };
+    if (!pcText) return { ok: false, error: "Enter the server address." };
     let url;
     try {
         url = new URL(pcText);
     } catch {
-        return { ok: false, error: "The PC address is not a web address (https://...)." };
+        return { ok: false, error: "The server address is not a web address (https://...)." };
     }
     const loopback = LOOPBACK.has(url.hostname);
     if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
-        return { ok: false, error: "The PC address must start with https://" };
+        return { ok: false, error: "The server address must start with https://" };
     }
     if (!loopback && !url.hostname.endsWith(".ts.net")) {
         return {
@@ -281,7 +281,7 @@ export const RESET = "reset";
 export const PAUSED = "paused";
 
 /** ... and under one whose job is the PC's: the page stops watching it, the PC does not stop. */
-export const PAUSED_ON_PC = "paused: the PC may still be working on it";
+export const PAUSED_ON_PC = "paused: the server may still be working on it";
 
 /** The line under a job button whose press was reset, or dropped by the PC before it ran. */
 export const CANCELLED = "cancelled";
@@ -653,11 +653,11 @@ function withCustomize(state, fn) {
  * @returns {string}
  */
 export function errorText(status, detail) {
-    if (status === 0) return "cannot reach the PC";
+    if (status === 0) return "cannot reach the server";
     if (status === 401) return "wrong key - check Settings";
     if (typeof detail === "string" && detail) return detail;
-    if (status === 404) return "the PC does not know this item or job";
-    return `the PC answered ${status}`;
+    if (status === 404) return "the server does not know this item or job";
+    return `the server answered ${status}`;
 }
 
 /** How often the page asks the PC whether it is there, while the page is on screen. */
@@ -1118,7 +1118,7 @@ export function reduce(state, action) {
         case "pollTrouble":
             return withJob(state, action.venue, (job) => ({
                 ...job,
-                trouble: action.error || "cannot reach the PC",
+                trouble: action.error || "cannot reach the server",
             }));
         case "setQuantity": {
             const quantity = typeof action.text === "string" ? action.text : String(action.text ?? "");
@@ -1430,7 +1430,7 @@ function adoptItem(state, answer) {
             ...state,
             stalled: true,
             failures: state.failures + 1,
-            problem: "the PC gave no item",
+            problem: "the server gave no item",
         };
     }
     const existing = numbers(answer.photos);
@@ -1719,7 +1719,7 @@ export function titleLine(state) {
 export const HISTORY_LIMIT = 10;
 
 /** Said by back beyond the oldest item kept, instead of leaving the page. */
-export const HISTORY_END = "End of the item history: see the inventory list on the PC.";
+export const HISTORY_END = "End of the item history: see the inventory list on the server.";
 
 /**
  * The items NEXT left, oldest first, as stored: only what is a saved item,
@@ -1823,7 +1823,7 @@ export function venueLabel(job, venue) {
 }
 
 /** Settings live inside Admin since 2.1.0 (Michal, 2026-10-06: "Admin which would replace Settings"). */
-export const SETTINGS_HINT = "Set the PC address and key in Admin";
+export const SETTINGS_HINT = "Set the server address and key in Admin";
 
 /** How long after the last keystroke the item name is checked against the PC. */
 export const NAME_CHECK_MS = 500;
@@ -1853,7 +1853,7 @@ export function nameTakenHint(state) {
     if (!state.nameTaken) return "";
     const { photos } = state.nameTaken;
     const held = photos > 0 ? ` with ${photos} photo${photos === 1 ? "" : "s"}` : "";
-    return `"${state.itemName}" is already an item on the PC today${held}. Use a different name.`;
+    return `"${state.itemName}" is already an item on the server today${held}. Use a different name.`;
 }
 
 /**
@@ -1886,11 +1886,11 @@ export function venueButton(state, venue, settingsOk) {
         return { enabled: false, hint: "Mark at least one photo AI (bottom right of the photo)" };
     }
     if (state.photos.some((p) => p.status === "failed")) {
-        return { enabled: false, hint: "A photo did not reach the PC - tap its 'failed' to try again" };
+        return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
-        return { enabled: false, hint: `Waiting for the photos to reach the PC (${sent} of ${n} sent)` };
+        return { enabled: false, hint: `Waiting for the photos to reach the server (${sent} of ${n} sent)` };
     }
     return { enabled: true, hint: "" };
 }
@@ -1911,9 +1911,9 @@ export function waitsForIsbn(state) {
 export const NO_BOOK_HINT = "Scan the ISBN, or tap No ISBN and type the title";
 
 export const ISBN_WAIT_HINT =
-    "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the PC; or remove them with their x";
+    "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the server; or remove them with their x";
 
-export const TITLE_WAIT_HINT = "Type the title so the photos can go to the PC, or remove them with their x";
+export const TITLE_WAIT_HINT = "Type the title so the photos can go to the server, or remove them with their x";
 
 /** The line under ebay and DONE while the photos wait for a name. */
 function waitHint(state) {
@@ -1972,11 +1972,11 @@ function bookVenueButton(state, venue, settingsOk) {
     if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
     if (!bookPriceValue(book.price)) return { enabled: false, hint: "Set a price (whole dollars are fine)" };
     if (state.photos.some((p) => p.status === "failed")) {
-        return { enabled: false, hint: "A photo did not reach the PC - tap its 'failed' to try again" };
+        return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
-        return { enabled: false, hint: `Waiting for the photos to reach the PC (${sent} of ${n} sent)` };
+        return { enabled: false, hint: `Waiting for the photos to reach the server (${sent} of ${n} sent)` };
     }
     return { enabled: true, hint: "" };
 }
@@ -2004,12 +2004,12 @@ export function doneButton(state) {
         return { enabled: false, hint: NEXT_PAUSED };
     }
     if (anySending(state)) {
-        return { enabled: false, hint: "NEXT waits until the listing has reached the PC" };
+        return { enabled: false, hint: "NEXT waits until the listing has reached the server" };
     }
     // a book's photos waiting for its ISBN or title are not waiting for the PC
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     if (unsent(state)) {
-        return { enabled: false, hint: "NEXT waits until the photos are on the PC" };
+        return { enabled: false, hint: "NEXT waits until the photos are on the server" };
     }
     const something = state.photos.length > 0 || (state.mode === "book" && bookNamed(state.book));
     return { enabled: something, hint: "" };
@@ -2019,7 +2019,7 @@ export function doneButton(state) {
 export const NEXT_PAUSED = "NEXT waits: continue or reset the paused press";
 
 /** The quiet line under NEXT while a listing is posting on the PC. */
-export const NEXT_NOTE = "A listing is still posting on the PC; NEXT starts the next item without waiting for its link";
+export const NEXT_NOTE = "A listing is still posting on the server; NEXT starts the next item without waiting for its link";
 
 /**
  * The line under NEXT: said once a job is on the PC and not finished, since
@@ -2063,7 +2063,7 @@ export function progressLine(state) {
     if (waitsForIsbn(state)) {
         return `${photos}, waiting for ${state.book.manual ? "the title" : "the ISBN or the title"}`;
     }
-    const where = `${sent === total ? "all" : sent} on the PC`;
+    const where = `${sent === total ? "all" : sent} on the server`;
     if (state.mode === "book") return `${photos}, ${where}`;
     return `${photos}, ${ai} for the AI, ${where}`;
 }
@@ -2088,11 +2088,11 @@ export function leaveWarning(state) {
  */
 export function bannerText(state) {
     if (!state.online) {
-        return "You are offline. Photos wait on this page and go to the PC when you are back.";
+        return "You are offline. Photos wait on this page and go to the server when you are back.";
     }
     if (state.stalled) {
-        const why = state.problem || "cannot reach the PC";
-        return `${why[0].toUpperCase()}${why.slice(1)}. Photos wait on this page and go to the PC as soon as it answers.`;
+        const why = state.problem || "cannot reach the server";
+        return `${why[0].toUpperCase()}${why.slice(1)}. Photos wait on this page and go to the server as soon as it answers.`;
     }
     return "";
 }
@@ -2233,37 +2233,52 @@ export function venueStatus(row, venue) {
 }
 
 /**
+ * A venue's name in a sentence: "eBay", "craigslist" (the badges and buttons say "ebay",
+ * as the venue buttons do).
+ * @param {string} venue
+ * @returns {string}
+ */
+export function venueName(venue) {
+    return venue === "ebay" ? "eBay" : venue;
+}
+
+/**
  * The small badge a list row wears per venue: the venue and its status word.
  * Listed is the posted green, sold and ended are muted, a draft (or a word the
- * page does not know) is outlined.
+ * page does not know) is outlined. A listed one reads the venue and a tick
+ * (Michal, 2026-10-08: "Instead of 'ebay listed' and an arrow, write 'ebay' and
+ * follow that with a checkmark symbol"): `tick`, drawn by app.js, and `said`, what a
+ * screen reader hears, still "ebay listed".
  * @param {string} venue
  * @param {string} status
- * @returns {{text:string, kind:"posted"|"muted"|"draft"}}
+ * @returns {{text:string, said:string, kind:"posted"|"muted"|"draft", tick:boolean}}
  */
 export function statusBadge(venue, status) {
     const word = plain(status);
     const kind = word === "listed" ? "posted" : word === "sold" || word === "ended" ? "muted" : "draft";
-    return { text: word ? `${venue} ${word}` : venue, kind };
+    const said = word ? `${venue} ${word}` : venue;
+    return { text: word === "listed" ? venue : said, said, kind, tick: word === "listed" };
 }
 
 /**
  * One badge per venue the row names in `venues`, in that order. A listed one
  * with a link carries it: the badge opens the listing (Michal, 2026-10-06: "When
  * an item is listed probably clicking the venue button from the inventory should
- * open the listing"); "" leaves the badge a plain word. A row listed on eBay whose
- * price the phone changed since the listing was last synced (its sku in `unsynced`)
- * has an eBay badge that syncs instead (`sync`, no link): a tap pushes the row's price
- * onto the listing, and it is the plain listed badge again once that is done.
+ * open the listing"); "" leaves the badge a plain word. A venue the row is listed on
+ * whose listing the phone left behind (unsyncedList: a price moved for eBay, a
+ * craigslist field for craigslist) has a badge that syncs instead (`sync`, no link): a
+ * tap pushes the row onto that listing, and it is the plain listed badge again once
+ * that is done.
  * @param {Record<string, any>} row
- * @param {string[]} [unsynced] unsyncedList's skus
- * @returns {{text:string, kind:"posted"|"muted"|"draft", link:string, sync?:true}[]}
+ * @param {Unsynced[]} [unsynced] unsyncedList's
+ * @returns {{venue:string, text:string, said:string, kind:"posted"|"muted"|"draft", tick:boolean, link:string, sync?:true}[]}
  */
 export function rowBadges(row, unsynced = []) {
     const venues = Array.isArray(row.venues) ? row.venues.map(plain).filter(Boolean) : [];
     return venues.map((v) => {
         const s = venueStatus(row, v);
-        const badge = { ...statusBadge(v, s.status), link: s.status === "listed" ? s.url : "" };
-        if (v === "ebay" && s.status === "listed" && unsynced.includes(row.sku)) return { ...badge, link: "", sync: true };
+        const badge = { venue: v, ...statusBadge(v, s.status), link: s.status === "listed" ? s.url : "" };
+        if (s.status === "listed" && isUnsynced(unsynced, row.sku, v)) return { ...badge, link: "", sync: true };
         return badge;
     });
 }
@@ -2276,10 +2291,13 @@ export function rowBadges(row, unsynced = []) {
  * listing's link is in the card's actions.
  * @param {Record<string, any>} row
  * @param {string} venue
- * @returns {{text:string, kind:"posted"|"muted"|"draft"|"absent"}}
+ * @returns {{text:string, said:string, kind:"posted"|"muted"|"draft"|"absent", tick:boolean}}
  */
 export function venueBadge(row, venue) {
-    if (!rowVenues(row).includes(venue)) return { text: `${venue} not added`, kind: "absent" };
+    if (!rowVenues(row).includes(venue)) {
+        const text = `${venue} not added`;
+        return { text, said: text, kind: "absent", tick: false };
+    }
     return statusBadge(venue, venueStatus(row, venue).status);
 }
 
@@ -2466,18 +2484,24 @@ export function venueFacts(row, venue) {
  *   "add"     the row is not on this venue: its empty card puts it there
  *   "post"    on the venue and not listed (a draft; an ended or sold row goes up again)
  *   "open"    listed, with a link: the listing in a new tab
+ *   "sync"    listed on craigslist, its craigslist fields changed since the last sync
+ *             (unsyncedList): the push job puts the row on the listing (Michal,
+ *             2026-10-08: craigslist price and edits from the card)
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
+ * eBay's sync stays customize's Sync to eBay.
  * @param {Record<string, any>} row
  * @param {string} venue
+ * @param {Unsynced[]} [unsynced] unsyncedList's
  * @returns {string[]}
  */
-export function venueActions(row, venue) {
+export function venueActions(row, venue, unsynced = []) {
     if (!rowVenues(row).includes(venue)) return ["add"];
     const s = venueStatus(row, venue);
     if (s.status !== "listed") return ["post", "edit"];
-    return [...(s.url ? ["open"] : []), "refresh", "end", "edit"];
+    const behind = venue === "craigslist" && isUnsynced(unsynced, row.sku, venue);
+    return [...(s.url ? ["open"] : []), ...(behind ? ["sync"] : []), "refresh", "end", "edit"];
 }
 
 /**
@@ -2494,6 +2518,8 @@ export function actionWord(action, venue) {
             return `Post on ${venue}`;
         case "open":
             return "Open listing";
+        case "sync":
+            return `Sync to ${venueName(venue)}`;
         case "refresh":
             return "Refresh status";
         case "end":
@@ -2516,8 +2542,11 @@ export function endQuestion(venue) {
  * The body of POST /jobs for an action job (the PC's contract, 2026-10-06):
  *   {"action": "end" | "refresh", "sku", "venue"}  a card's End listing / Refresh status
  *   {"action": "sync", "direction": "from" | "to"}  the sync bar's two buttons
- *   {"action": "push", "sku", "venue": "ebay"}       a listing's customize, Sync to eBay
- *                                                    (the contract of 2026-10-07: eBay only)
+ *   {"action": "push", "sku", "venue"}               a listing's customize, Sync to eBay, a
+ *                                                    sync badge, the craigslist card's Sync
+ *                                                    to craigslist (eBay only until the
+ *                                                    contract of 2026-10-08; a PC that still
+ *                                                    refuses craigslist answers 400)
  * A card's Post stays jobRequest's {"sku", "venue"}.
  * @param {"end"|"refresh"|"sync"|"push"} action
  * @param {{sku?:string, venue?:string, direction?:string}} what
@@ -2530,7 +2559,6 @@ export function actionJob(action, { sku = "", venue = "", direction = "" } = {})
     }
     if (action !== "end" && action !== "refresh" && action !== "push") throw new RangeError(`unknown action ${action}`);
     if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
-    if (action === "push" && venue !== "ebay") throw new RangeError(`push goes to ebay, not ${venue}`);
     return { action, sku, venue };
 }
 
@@ -2864,86 +2892,153 @@ export function customizeSaved(row) {
     return { text: canPush(row) ? "saved; Sync to eBay puts it on the listing" : "saved", kind: "ok" };
 }
 
-// --- Admin: a list row's price, stepped on its tile ------------------------------------
+// --- Admin: a list row's price, dialled on its tile -------------------------------------
 //
 // Michal, 2026-10-07 ("one of the highest priority items"): "On the inventory card on the
-// right there should be a round + and a round − button. Pressing them increments through
-// the price. Plus button in top right, minus button in bottom right of the little tile that
-// represents an inventory item. When the price changes there should be our sync-to logo
-// appearing on the ebay green button below. Pressing it would sync, and the button would
-// revert to the 'ebay listed' or whatever it says now." So a tap is one PATCH, at once, and
-// which listings eBay has not caught up with is kept on the phone (rowBadges' `sync`).
+// right there should be a round + and a round − button ... When the price changes there
+// should be our sync-to logo appearing on the ebay green button below. Pressing it would
+// sync, and the button would revert to the 'ebay listed' or whatever it says now." And
+// 2026-10-08: "This adjustment itself should be by 1 dollar. However we need to sense long
+// press and speed up, for larger priced items, like dials on my oven for time setting." So
+// a tap is exactly one dollar (the grade is the customize slider's), a press held past
+// DIAL_DELAY_MS repeats every DIAL_REPEAT_MS in steps that grow the longer it is held
+// (dialStep), the tile shows the price as it moves, and one PATCH goes on release. Which
+// listings a change left behind is kept on the phone (rowBadges' `sync`).
 
-/** The grades a row has a cached price for, in grade order: the ones a tile steps through. */
-function cachedGrades(row) {
-    return cachedPrices(row)
-        .map((price, i) => (price ? i + 1 : 0))
-        .filter(Boolean);
-}
+/** How long + or − is held before it starts repeating. */
+export const DIAL_DELAY_MS = 400;
+
+/** How often a held + or − steps once it repeats. */
+export const DIAL_REPEAT_MS = 120;
 
 /**
- * The PATCH /inventory/<sku> body one tap of a tile's + (`step` 1) or − (-1) sends; null
- * when the tap does nothing. A row with cached prices steps through them, quick → fair →
- * high and back, from the grade its price follows (a row following none, from its price),
- * passing over a grade with none cached and stopping at either end: {"pricing": n}, and
- * the PC sets the price. A row with none moves by a whole dollar (from $24.50, up to $25,
- * down to $24), never below $1: {"price": "25.00"}.
- * @param {Record<string, any>} row
- * @param {1|-1} step
- * @returns {{pricing:number} | {price:string} | null}
+ * The step of a held + or −, by how long it has been held: 1 dollar for the first 1.5 s,
+ * then 2, then 5 from 3 s, then 10 from 5 s, so $250 down to $150 is about five seconds.
+ * @param {number} heldMs
+ * @returns {1|2|5|10}
  */
-export function priceStep(row, step) {
-    const now = Number(priceText(row.price)) || 0;
-    const grades = cachedGrades(row);
-    if (grades.length) {
-        const prices = cachedPrices(row);
-        const at = pricingGrade(row.pricing);
-        // from the grade it follows; a row following none, from where its price stands
-        const beyond = (g) => {
-            const [mine, theirs] = at ? [at, g] : [now, Number(prices[g - 1])];
-            return step > 0 ? theirs > mine : theirs < mine;
-        };
-        const ahead = grades.filter(beyond);
-        if (!ahead.length) return null;
-        return { pricing: step > 0 ? ahead[0] : ahead[ahead.length - 1] };
-    }
-    const next = step > 0 ? Math.floor(now) + 1 : Math.ceil(now) - 1;
-    return next >= 1 ? { price: `${next}.00` } : null;
+export function dialStep(heldMs) {
+    if (heldMs < 1500) return 1;
+    if (heldMs < 3000) return 2;
+    if (heldMs < 5000) return 5;
+    return 10;
 }
 
 /**
- * The skus whose price the phone changed since their eBay listing was last synced, as
- * snap.inventory.unsynced keeps them: strings, each once; anything else is dropped.
+ * The price after one step of + (`direction` 1) or − (-1), in whole dollars: from $24.50
+ * up to $25 and down to $24 by a step of 1, never below $1 (a row with no price goes up
+ * to $1 and has nothing below it).
+ * @param {unknown} price the row's "24.50", or a number the dial is at
+ * @param {1|-1} direction
+ * @param {number} step dialStep's
+ * @returns {number}
+ */
+export function dialPrice(price, direction, step) {
+    const now = Number(priceText(price)) || 0;
+    return Math.max(1, direction > 0 ? Math.floor(now) + step : Math.ceil(now) - step);
+}
+
+/**
+ * The one PATCH /inventory/<sku> body a dial sends on release: {"price": "150.00"}.
+ * @param {number} dollars dialPrice's
+ * @returns {{price:string}}
+ */
+export function dialBody(dollars) {
+    return { price: `${dollars}.00` };
+}
+
+/**
+ * A listing the phone changed since its venue last had it, as snap.inventory.unsynced keeps
+ * it: the sku and the venues behind, in the app's order.
+ * @typedef {{sku:string, venues:string[]}} Unsynced
+ */
+
+/**
+ * snap.inventory.unsynced as stored: each sku once, its venues the app knows; anything
+ * else is dropped. A bare sku (how 2.8.0 kept them, eBay the only venue then) is eBay's.
  * @param {unknown} raw
- * @returns {string[]}
+ * @returns {Unsynced[]}
  */
 export function unsyncedList(raw) {
-    const list = Array.isArray(raw) ? raw.filter((s) => typeof s === "string" && s !== "") : [];
-    return [...new Set(list)];
+    /** @type {Map<string, Set<string>>} */
+    const behind = new Map();
+    for (const entry of Array.isArray(raw) ? raw : []) {
+        const e = typeof entry === "string" ? { sku: entry, venues: ["ebay"] } : entry;
+        if (!e || typeof e !== "object" || typeof e.sku !== "string" || !e.sku || !Array.isArray(e.venues)) continue;
+        const venues = behind.get(e.sku) || new Set();
+        for (const v of e.venues) venues.add(v);
+        behind.set(e.sku, venues);
+    }
+    return [...behind]
+        .map(([sku, venues]) => ({ sku, venues: VENUES.filter((v) => venues.has(v)) }))
+        .filter((e) => e.venues.length);
 }
 
 /**
- * The list with `sku` marked (`on`) or let go: a tile's price changed, or its push done.
- * @param {unknown} list
+ * `venue` of `sku` is behind on this phone's list.
+ * @param {Unsynced[]} list unsyncedList's
  * @param {string} sku
- * @param {boolean} on
- * @returns {string[]}
- */
-export function unsyncedWith(list, sku, on) {
-    const rest = unsyncedList(list).filter((s) => s !== sku);
-    return on ? [...rest, sku] : rest;
-}
-
-/**
- * A change the PC answered (a tile's tap, customize's Save, the eBay card's Edit) left the
- * row's eBay listing behind: the price moved, and the row is listed on eBay.
- * @param {Record<string, any>} before
- * @param {Record<string, any>} after the row the PC answered
+ * @param {string} venue
  * @returns {boolean}
  */
-export function leftUnsynced(before, after) {
-    return Number(priceText(before.price)) !== Number(priceText(after.price)) && canPush(after);
+export function isUnsynced(list, sku, venue) {
+    return list.some((e) => e.sku === sku && e.venues.includes(venue));
 }
+
+/**
+ * The list with `venue` of `sku` marked behind (`on`), or let go once a push of it is done.
+ * @param {unknown} list
+ * @param {string} sku
+ * @param {string} venue
+ * @param {boolean} on
+ * @returns {Unsynced[]}
+ */
+export function unsyncedWith(list, sku, venue, on) {
+    const all = unsyncedList(list);
+    const mine = all.find((e) => e.sku === sku);
+    const venues = new Set(mine ? mine.venues : []);
+    if (on) venues.add(venue);
+    else venues.delete(venue);
+    const rest = all.filter((e) => e.sku !== sku);
+    const kept = VENUES.filter((v) => venues.has(v));
+    return kept.length ? [...rest, { sku, venues: kept }] : rest;
+}
+
+/**
+ * The list with every sku's `venue` let go: the sync bar's Sync to eBay put every row on
+ * its eBay listing.
+ * @param {unknown} list
+ * @param {string} venue
+ * @returns {Unsynced[]}
+ */
+export function unsyncedWithout(list, venue) {
+    return unsyncedList(list)
+        .map((e) => ({ sku: e.sku, venues: e.venues.filter((v) => v !== venue) }))
+        .filter((e) => e.venues.length);
+}
+
+/**
+ * The listings a change the PC answered (a tile's dial, customize's Save, a card's Edit) left
+ * behind, by venue: eBay when the price moved and the row is listed there; craigslist when
+ * the row is listed there and any of its four fields reads otherwise now (an override typed,
+ * or an eBay field it is derived from changed). `before` may be a list row, which carries no
+ * description or overrides: what it does not carry is taken as unchanged.
+ * @param {Record<string, any>} before
+ * @param {Record<string, any>} after the row the PC answered
+ * @returns {string[]}
+ */
+export function leftUnsynced(before, after) {
+    const venues = [];
+    if (Number(priceText(before.price)) !== Number(priceText(after.price)) && canPush(after)) venues.push("ebay");
+    const listed = rowVenues(after).includes("craigslist") && venueStatus(after, "craigslist").status === "listed";
+    const reads = (row) => {
+        const d = derivedFields(row, "craigslist");
+        return [d.title.value, Number(d.price.value) || 0, d.description.value, d.category.value].join("\n");
+    };
+    if (listed && reads({ ...after, ...before }) !== reads(after)) venues.push("craigslist");
+    return venues;
+}
+
 
 /**
  * A list row (a summary) with what the PC answered a PATCH with: every field but the

@@ -41,7 +41,7 @@ function drain(s) {
     return { s: state, tasks: sentTasks };
 }
 
-const OFFLINE = { status: 0, error: "cannot reach the PC" };
+const OFFLINE = { status: 0, error: "cannot reach the server" };
 
 test("nothing goes before the first photo; then the item, then the photos in order", () => {
     assert.equal(nextTask(initialState("Boots")), null);
@@ -94,7 +94,7 @@ test("the x on a photo still waiting sends nothing; on one sent or in flight, a 
     s = reduce(s, { type: "remove", id: "p2" }); // struck out while its PUT is on its way
     assert.deepEqual(s.deletes, [2]);
     s = reduce(s, { type: "taskDone", task: inFlight, answer: {} }); // the PUT lands anyway
-    assert.deepEqual(nextTask(s), { kind: "delete", n: 2 }, "and is taken back off the PC");
+    assert.deepEqual(nextTask(s), { kind: "delete", n: 2 }, "and is taken back off the server");
     const { tasks, s: end } = drain(s);
     assert.deepEqual(tasks.map((t) => [t.kind, t.n]), [
         ["delete", 2],
@@ -111,7 +111,7 @@ test("the PC not answering: the photo waits, the queue stalls, and the wait grow
     assert.equal(s.failures, 1);
     assert.equal(badgeText(s.photos[0]), "waiting", "not failed: it goes again by itself");
     assert.equal(nextTask(s), null, "nothing until the pause is over");
-    assert.equal(bannerText(s), "Cannot reach the PC. Photos wait on this page and go to the PC as soon as it answers.");
+    assert.equal(bannerText(s), "Cannot reach the server. Photos wait on this page and go to the server as soon as it answers.");
     s = reduce(s, { type: "resume" });
     r = step(s, OFFLINE);
     assert.equal(r.task.id, "p1", "the same photo, first in line");
@@ -160,7 +160,7 @@ test("a photo the PC refuses shows failed, and a tap sends it again", () => {
     // the x on a failed photo deletes it on the PC too: the PUT may have landed
     let t = step(reduce(s, { type: "add", id: "p3", name: "Boots-3.jpg", n: 3 }), {
         status: 500,
-        error: "the PC answered 500",
+        error: "the server answered 500",
     }).s;
     t = reduce(t, { type: "remove", id: "p3" });
     assert.deepEqual(nextTask(t), { kind: "delete", n: 3 });
@@ -170,7 +170,7 @@ test("a wrong key on the first request: the queue stalls and the banner says why
     const s = step(snapped(1), { status: 401, error: "wrong key - check Settings" }).s;
     assert.equal(s.itemId, "");
     assert.equal(s.stalled, true);
-    assert.equal(bannerText(s), "Wrong key - check Settings. Photos wait on this page and go to the PC as soon as it answers.");
+    assert.equal(bannerText(s), "Wrong key - check Settings. Photos wait on this page and go to the server as soon as it answers.");
     assert.equal(badgeText(s.photos[0]), "waiting");
 });
 
@@ -206,12 +206,12 @@ test("ebay and craigslist open when every photo is on the PC and one is marked A
     s = reduce(s, { type: "toggleAi", id: "p1" });
     assert.deepEqual(venueButton(s, "ebay", true), {
         enabled: false,
-        hint: "Waiting for the photos to reach the PC (0 of 2 sent)",
+        hint: "Waiting for the photos to reach the server (0 of 2 sent)",
     });
     s = step(step(s).s).s; // the item, photo 1
     assert.match(venueButton(s, "ebay", true).hint, /\(1 of 2 sent\)/);
-    s = step(s, { status: 500, error: "the PC answered 500" }).s;
-    assert.match(venueButton(s, "craigslist", true).hint, /did not reach the PC - tap/);
+    s = step(s, { status: 500, error: "the server answered 500" }).s;
+    assert.match(venueButton(s, "craigslist", true).hint, /did not reach the server - tap/);
     s = step(reduce(s, { type: "retry", id: "p2" })).s;
     assert.deepEqual(venueButton(s, "ebay", true), { enabled: true, hint: "" });
     assert.deepEqual(venueButton(s, "craigslist", true), { enabled: true, hint: "" });

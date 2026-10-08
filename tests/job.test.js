@@ -197,14 +197,14 @@ test("the contract constants: the key header and a 3 s poll", () => {
 // --- errors from the PC ------------------------------------------------------------
 
 test("errors read as one plain line", () => {
-    assert.equal(errorText(0), "cannot reach the PC");
+    assert.equal(errorText(0), "cannot reach the server");
     assert.equal(errorText(401, "a valid X-Crosslister-Key header is needed"), "wrong key - check Settings");
     assert.equal(errorText(400, "mark at least one photo for the AI"), "mark at least one photo for the AI");
     assert.equal(errorText(404, "no job abc"), "no job abc");
-    assert.equal(errorText(404), "the PC does not know this item or job");
+    assert.equal(errorText(404), "the server does not know this item or job");
     // FastAPI's own validation answer has a list, not a sentence
-    assert.equal(errorText(422, [{ msg: "field required" }]), "the PC answered 422");
-    assert.equal(errorText(502), "the PC answered 502");
+    assert.equal(errorText(422, [{ msg: "field required" }]), "the server answered 422");
+    assert.equal(errorText(502), "the server answered 502");
     const e = new PcError(401, "x");
     assert.equal(e.status, 401);
     assert.equal(e.message, "wrong key - check Settings");
@@ -336,16 +336,16 @@ test("a failed job shows the PC's words and the button comes back", () => {
 test("a POST that never reached the PC says so and re-enables the button", () => {
     let s = reduce(newItem(), { type: "jobSending", venue: "ebay", step: "sending" });
     s = reduce(s, { type: "jobRefused", venue: "ebay", error: errorText(0) });
-    assert.equal(venueLine(s.jobs.ebay).text, "cannot reach the PC");
+    assert.equal(venueLine(s.jobs.ebay).text, "cannot reach the server");
     assert.equal(venueButton(s, "ebay", true).enabled, true);
     assert.equal(s.photos.length, 1, "the photos stay on the page");
 });
 
 test("a status poll that fails keeps the job and says it is still trying", () => {
     let s = reduce(newItem(), { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
-    s = reduce(s, { type: "pollTrouble", venue: "ebay", error: "cannot reach the PC" });
+    s = reduce(s, { type: "pollTrouble", venue: "ebay", error: "cannot reach the server" });
     assert.equal(s.jobs.ebay.phase, "queued");
-    assert.equal(venueLine(s.jobs.ebay).text, "cannot reach the PC, still trying");
+    assert.equal(venueLine(s.jobs.ebay).text, "cannot reach the server, still trying");
     s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting" } });
     assert.equal(venueLine(s.jobs.ebay).text, "drafting");
 });

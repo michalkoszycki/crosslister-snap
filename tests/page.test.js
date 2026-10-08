@@ -191,8 +191,12 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "inventory",
         "inventory-browse",
         "inventory-search",
-        // the status line right under the search box: the count, or the PC's trouble
+        // the status line right under the search box: the count, or the server's trouble
         "inventory-status",
+        // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked
+        // away inside a foldout tab 'Options'": the chips and Show photos, the search left out
+        "options-toggle",
+        "options",
         "inventory-venue",
         "inventory-venue-all",
         "inventory-venue-ebay",
@@ -253,8 +257,11 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "admin-close",
     ]);
     assert.match(html, /id="inventory-search"[^>]*inputmode="search"/);
-    // Show photos: on by default, a pill row of its own after the sort chips
-    assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<ul id="inventory-list"/);
+    // Show photos: on by default, a pill row of its own after the sort chips, the last of Options
+    assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
+    // Options folded by default, in customize's pattern; the search small, out of it
+    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Options<\/button>\s*<div id="options" class="options" hidden>/);
+    assert.match(html, /<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
     assert.match(html, /<button type="button" id="inventory-back" class="link back-link">← Back to inventory</);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
@@ -286,6 +293,26 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
     // the full-size photo lies over everything, outside main
     const after = html.slice(html.indexOf("</main>"));
     assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
+});
+
+test("the app calls the PC the server: no visible PC on the page or in its words", () => {
+    // Michal, 2026-10-08: "Start referring to the PC as server, in the app."
+    const page = html.replace(/<!--[\s\S]*?-->/g, "");
+    const words = [...page.matchAll(/>([^<]+)</g)].map((m) => m[1]);
+    const attrs = [...page.matchAll(/\s(?:placeholder|aria-label|title)="([^"]*)"/g)].map((m) => m[1]);
+    assert.deepEqual([...words, ...attrs].filter((w) => /\bPC\b/.test(w)), []);
+    assert.match(html, /<span class="field-label">Server address<\/span>/);
+    assert.match(html, /placeholder="from CROSSLISTER_KEYS on the server"/);
+    // the strings the scripts show; their comments, ids and storage keys keep the PC
+    for (const file of ["app.js", "core.js", "book.js", "pc.js", "queue.js"]) {
+        const code = readFileSync(join(root, file), "utf8")
+            .split(/\r?\n/)
+            .filter((line) => !/^\s*(\*|\/\/|\/\*\*)/.test(line))
+            .join("\n");
+        const said = [...code.matchAll(/(["`])((?:(?!\1).)*)\1/g)].map((m) => m[2]).filter((s) => /\bPC\b/.test(s));
+        assert.deepEqual(said, [], file);
+    }
+    assert.match(html, /id="pc-address"/);
 });
 
 test("Appearance: three chips in Settings, Sync with device pressed until one is chosen", () => {
@@ -523,6 +550,11 @@ function installDom({ local = memoryStore(), fetchImpl, barcodes, nav = fakeHist
             return nodes.get(id) ?? null;
         },
         createElement: (tag) => fakeElement("", tag),
+        // the badges' tick is drawn as SVG
+        createElementNS: (ns, tag) => {
+            assert.equal(ns, "http://www.w3.org/2000/svg");
+            return fakeElement("", tag);
+        },
         addEventListener() {},
         visibilityState: "visible",
     };
@@ -598,7 +630,7 @@ test("app.js loads against the real index.html ids, with no settings yet", async
     }
     assert.equal(nodes.get("ebay-btn").disabled, true);
     assert.equal(nodes.get("craigslist-btn").disabled, true);
-    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Admin");
+    assert.equal(nodes.get("venue-hint").textContent, "Set the server address and key in Admin");
     assert.equal(nodes.get("next-item").disabled, true);
     assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("settings").hidden, true);
@@ -613,7 +645,7 @@ test("the page still works when the browser blocks storage outright", async () =
             throw new Error("SecurityError");
         },
     });
-    assert.equal(nodes.get("venue-hint").textContent, "Set the PC address and key in Admin");
+    assert.equal(nodes.get("venue-hint").textContent, "Set the server address and key in Admin");
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("settings").hidden, false);
     assert.equal(nodes.get("pc-address").value, "");
@@ -783,7 +815,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
     const pc = {
         items: new Map(Object.entries(items)),
         calls: [],
-        cancelled: new Set(), // jobs the cancel button told the PC about
+        cancelled: new Set(), // jobs the cancel button told the server about
         posted: [],
         checks: 0,
         down: false,
@@ -958,8 +990,8 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     const onPc = pc.items.get(item).photos;
     assert.equal(onPc.get(1), "jpeg 2000x1500", "shrunk to 2000 px on the long edge");
     assert.deepEqual(badges(nodes), ["sent", "sent", "sent"]);
-    assert.equal(nodes.get("progress").textContent, "3 photos, 0 for the AI, all on the PC");
-    assert.equal(nodes.get("item-name").readOnly, true, "the folder on the PC is named");
+    assert.equal(nodes.get("progress").textContent, "3 photos, 0 for the AI, all on the server");
+    assert.equal(nodes.get("item-name").readOnly, true, "the folder on the server is named");
     assert.equal(nodes.get("ebay-btn").disabled, true, "no AI mark yet");
     assert.match(nodes.get("venue-hint").textContent, /Mark at least one photo AI/);
     // kept for a reload
@@ -1017,7 +1049,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("next-note").hidden, false);
     assert.equal(
         nodes.get("next-note").textContent,
-        "A listing is still posting on the PC; NEXT starts the next item without waiting for its link"
+        "A listing is still posting on the server; NEXT starts the next item without waiting for its link"
     );
     assert.equal(nodes.get("snap-input").disabled, true, "posted photos are locked");
     assert.equal(card(nodes, 0).x, undefined, "no x on a posted photo");
@@ -1100,7 +1132,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
     assert.equal(nodes.get("craigslist-link").href, "https://sfbay.craigslist.org/x/1.html");
     assert.equal(nodes.get("note").value, "Size 10, scuffed toe");
-    assert.equal(nodes.get("strip").children.length, 2, "the photos, fetched back from the PC");
+    assert.equal(nodes.get("strip").children.length, 2, "the photos, fetched back from the server");
     assert.equal(card(nodes, 0).img.src, "blob:stub");
     assert.equal(card(nodes, 1).img.src, "blob:stub");
     assert.equal(card(nodes, 0).remote, undefined);
@@ -1118,7 +1150,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("item-name").value, "Boots");
     nav.back();
     await settle();
-    assert.equal(nodes.get("message").textContent, "End of the item history: see the inventory list on the PC.");
+    assert.equal(nodes.get("message").textContent, "End of the item history: see the inventory list on the server.");
     assert.equal(nodes.get("item-name").value, "Boots", "nothing changed");
     assert.equal(nav.left, 0, "back never leaves the page");
 });
@@ -1242,7 +1274,7 @@ test("NEXT waits for photos still going to the PC, whatever a job is doing", asy
     snap(nodes, 1);
     await settle();
     assert.equal(nodes.get("next-item").disabled, true);
-    assert.equal(nodes.get("done-hint").textContent, "NEXT waits until the photos are on the PC");
+    assert.equal(nodes.get("done-hint").textContent, "NEXT waits until the photos are on the server");
     nodes.get("next-item").fire("click");
     await settle();
     assert.equal(nodes.get("strip").children.length, 1, "the unsent photo is still here");
@@ -1260,10 +1292,10 @@ test("offline: photos wait on the page, then go by themselves once the PC answer
     assert.deepEqual(pc.calls, ["POST /items"]);
     assert.deepEqual(badges(nodes), ["waiting", "waiting"]);
     assert.equal(nodes.get("offline").hidden, false);
-    assert.match(nodes.get("offline").textContent, /^Cannot reach the PC\. Photos wait on this page/);
+    assert.match(nodes.get("offline").textContent, /^Cannot reach the server\. Photos wait on this page/);
     card(nodes, 0).ai.fire("click");
     assert.equal(nodes.get("ebay-btn").disabled, true);
-    assert.equal(nodes.get("venue-hint").textContent, "Waiting for the photos to reach the PC (0 of 2 sent)");
+    assert.equal(nodes.get("venue-hint").textContent, "Waiting for the photos to reach the server (0 of 2 sent)");
     assert.equal(nodes.get("next-item").disabled, true);
 
     // it tries again after 1 s, then 3 s: still nothing
@@ -1432,18 +1464,15 @@ function wholeRow(sku, over = {}) {
 /**
  * What is wrong with an action job's POST /jobs body as the PC reads it, or ""
  * (the contract of 2026-10-06): {"action": "end" | "refresh", "sku", "venue"} or
- * {"action": "sync", "direction": "from" | "to"}; and since 2026-10-07 {"action":
- * "push", "sku", "venue": "ebay"}; nothing else.
+ * {"action": "sync", "direction": "from" | "to"}; since 2026-10-07 {"action": "push",
+ * "sku", "venue": "ebay"}, and since 2026-10-08 craigslist's too; nothing else.
  */
 function actionContract(body) {
     const keys = Object.keys(body).sort().join(",");
     if (body.action === "sync") {
         return keys === "action,direction" && ["from", "to"].includes(body.direction) ? "" : `sync with ${keys}`;
     }
-    if (body.action === "push") {
-        return keys === "action,sku,venue" && body.sku && body.venue === "ebay" ? "" : `push with ${keys}`;
-    }
-    if (["end", "refresh"].includes(body.action)) {
+    if (["end", "refresh", "push"].includes(body.action)) {
         const ok = keys === "action,sku,venue" && body.sku && ["ebay", "craigslist"].includes(body.venue);
         return ok ? "" : `${body.action} with ${keys}`;
     }
@@ -1482,10 +1511,10 @@ function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
             const broken = actionContract(body);
             if (broken) return json({ detail: `contract: ${broken}` }, 422);
             if (pc.refuse[body.action]) return json({ detail: pc.refuse[body.action] }, 400);
-            // a push needs a listing on eBay to update, as the PC does
-            const listing = wholes[body.sku] && wholes[body.sku].statuses.ebay;
+            // a push needs a listing on that venue to update, as the PC does
+            const listing = wholes[body.sku] && wholes[body.sku].statuses[body.venue];
             if (body.action === "push" && (!listing || listing.status !== "listed")) {
-                return json({ detail: `${body.sku} is not listed on eBay` }, 400);
+                return json({ detail: `${body.sku} is not listed on ${body.venue === "ebay" ? "eBay" : body.venue}` }, 400);
             }
             made += 1;
             return json({ job: `a${made}`, state: "queued", ahead: 0 });
@@ -1631,7 +1660,7 @@ test("Admin opens on Settings while they are missing; Settings work inside it as
     nodes.get("inventory-toggle").fire("click");
     await settle();
     assert.equal(nodes.get("inventory").hidden, false);
-    assert.equal(nodes.get("inventory-status").textContent, "Set the PC address and key under Settings first.");
+    assert.equal(nodes.get("inventory-status").textContent, "Set the server address and key under Settings first.");
 });
 
 test("Admin opens on the inventory once Settings are right: the PC's rows, one button each", async (t) => {
@@ -1653,7 +1682,7 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     assert.equal(nodes.get("settings").hidden, true, "settings are right: folded");
     assert.equal(nodes.get("inventory").hidden, false);
     assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory");
-    assert.equal(nodes.get("inventory-status").textContent, "Asking the PC...");
+    assert.equal(nodes.get("inventory-status").textContent, "Asking the server...");
     await settle();
     assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
     assert.equal(nodes.get("inventory-status").textContent, "3 listings");
@@ -1707,6 +1736,39 @@ test("Admin hides the goods | book switch while it is open", async (t) => {
     nodes.get("admin-toggle").fire("click");
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("modes").hidden, false, "the header link closes it the same way");
+});
+
+test("Admin hides the posting screens too, the list's and a listing's; Close shows them as they carried on", async (t) => {
+    // Michal, 2026-10-08: "When I look at a card the posting screen is below. That should not be there."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")], { A1: wholeRow("A1") });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    await typeName(nodes, "Boots");
+    snap(nodes, 2);
+    // Admin opened while the photos are still on their way
+    nodes.get("admin-toggle").fire("click");
+    assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, true]);
+    await settle();
+    // underneath, the uploads carried on: nothing was reset
+    assert.deepEqual(
+        pc.calls.filter((c) => c.startsWith("PUT")),
+        [`PUT /items/Boots ${TODAY}/photos/1`, `PUT /items/Boots ${TODAY}/photos/2`]
+    );
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    assert.equal(nodes.get("work").hidden, true, "under a listing too");
+    // the header's Admin link closes it: the goods screen as it now is
+    nodes.get("admin-toggle").fire("click");
+    assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [false, true]);
+    assert.equal(nodes.get("strip").children.length, 2);
+    assert.equal(nodes.get("progress").textContent, "2 photos, 0 for the AI, all on the server");
+    assert.equal(nodes.get("item-name").value, "Boots");
+    // in book mode Close brings the book screen back, not the goods one
+    nodes.get("mode-book").fire("click");
+    nodes.get("admin-toggle").fire("click");
+    assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, true]);
+    nodes.get("admin-close").fire("click");
+    assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, false]);
 });
 
 test("the sort chips: Newest first, and each chip asks again with its sort and order", async (t) => {
@@ -1868,14 +1930,14 @@ test("the sync bar's pressed button, tapped: paused at once; continue carries on
     // the PC's: paused, the polls stop; continue asks at once
     nodes.get("sync-from").fire("click");
     await settle();
-    assert.equal(nodes.get("sync-status").textContent, "paused: the PC may still be working on it");
+    assert.equal(nodes.get("sync-status").textContent, "paused: the server may still be working on it");
     assert.equal(buttonSays(nodes.get("sync-from")), "continue");
     assert.equal(nodes.get("sync-reset").hidden, false);
     const asked = pc.calls.length;
     t.mock.timers.tick(3000 * 3);
     await settle();
     assert.equal(pc.calls.length, asked, "not asked about while paused");
-    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the PC is not told");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the server is not told");
     nodes.get("sync-from").fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/a1");
@@ -1906,12 +1968,15 @@ test("the sync bar's pressed button, tapped: paused at once; continue carries on
     assert.equal(pc.calls.filter((c) => c.startsWith("DELETE")).length, 1);
 });
 
-// --- a list row's price on its tile (Michal, 2026-10-07) --------------------------------
+// --- a list row's price on its tile (Michal, 2026-10-07, 2026-10-08) ----------------------
 // "On the inventory card on the right there should be a round + and a round − button.
 // Pressing them increments through the price. Plus button in top right, minus button in
 // bottom right of the little tile that represents an inventory item. When the price changes
 // there should be our sync-to logo appearing on the ebay green button below. Pressing it
 // would sync, and the button would revert to the 'ebay listed' or whatever it says now."
+// Then: "Add thin white outline around the + − price buttons. This adjustment itself should
+// be by 1 dollar. However we need to sense long press and speed up, for larger priced
+// items, like dials on my oven for time setting."
 
 /** A list row's + and − (the round two on its right, + on top), by the row's place in the list. */
 function stepsOf(nodes, i) {
@@ -1925,7 +1990,13 @@ function ebayBadge(nodes, i) {
     return listed(nodes)[i].links[0];
 }
 
-test("a row's + and −: through the cached grades, or a dollar at a time; each tap one PATCH, the price from the PC", async (t) => {
+/** A press on a tile's + or −, as a finger makes it: the pointer down, later up. */
+function press(btn) {
+    btn.fire("pointerdown", { pointerId: 1 });
+    return () => btn.fire("pointerup", { pointerId: 1 });
+}
+
+test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, the price from the server", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const draft = { status: "draft", id: "", url: "", listed_at: null };
     const none = { pricing: null, prices: { quick: null, market: null, high: null } };
@@ -1945,82 +2016,166 @@ test("a row's + and −: through the cached grades, or a dollar at a time; each 
     assert.deepEqual([g1.up.disabled, g1.down.disabled], [false, false]);
     assert.equal(listed(nodes)[0].line, "$24 G1");
 
-    // G1 follows the fair price: + is the high one, sent at once as its grade
-    g1.up.fire("click");
+    // G1 follows the fair price, and still + is a dollar: the grades are customize's slider's
+    const lift = press(g1.up);
+    assert.equal(listed(nodes)[0].line, "$25 G1", "the dollar at once, on the tile");
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), [], "nothing sent while the finger is down");
+    lift();
     assert.deepEqual([g1.up.disabled, g1.down.disabled], [true, true], "shut while the PATCH is on its way");
     await settle();
     assert.deepEqual(pc.calls.slice(before), ["PATCH /inventory/G1"]);
-    assert.deepEqual(pc.patches, [{ pricing: 3 }]);
-    assert.equal(listed(nodes)[0].line, "$31.50 G1", "the PC's price on the tile");
+    assert.deepEqual(pc.patches, [{ price: "25.00" }]);
+    assert.equal(listed(nodes)[0].line, "$25 G1", "the server's price on the tile");
     g1 = stepsOf(nodes, 0);
-    assert.deepEqual([g1.up.disabled, g1.down.disabled], [true, false], "the top: + rests");
-    g1.up.fire("click");
+    assert.deepEqual([g1.up.disabled, g1.down.disabled], [false, false]);
+    // the click a browser fires after the press is the press's own: nothing more
+    g1.up.fire("click", { detail: 1 });
     await settle();
-    assert.equal(pc.patches.length, 1, "nothing above the higher end");
+    assert.equal(pc.patches.length, 1);
 
     // the price moved on a listing up on eBay: its badge carries the sync-to icon, a button
-    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]');
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"G1","venues":["ebay"]}]');
     const badge = ebayBadge(nodes, 0);
     assert.equal(badge.tag, "button");
     assert.equal(badge.className, "vbadge posted vsync", "the same green bubble");
-    assert.equal(badge.children[0].cloneOf, nodes.get("sync-to-icon"), "the sync bar's to-eBay icon");
+    assert.equal(badge.children[0].cloneOf, nodes.get("sync-to-icon"), "the sync bar's to-eBay icon, where the tick was");
     assert.equal(badge.children[0].id, "", "a copy, without the bar's id");
-    assert.equal(wordOf(badge), "ebay listed");
+    assert.equal(wordOf(badge), "ebay");
+    assert.ok(!badge.children.some((c) => c.tag === "svg"), "no tick while it is behind");
     assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay");
     // its reset beside it, hidden until a tap pauses it; the other badges as ever
     assert.deepEqual(listed(nodes)[0].badges, [
-        "ebay listed (vbadge posted vsync)",
+        "ebay (vbadge posted vsync)",
         "reset (reset-call)",
         "craigslist draft (vbadge draft)",
     ]);
     assert.equal(listed(nodes)[0].links[1].hidden, true);
 
-    // − twice: fair, then quick, and − rests at the bottom
+    // − from the keyboard (a click of its own, no press): a dollar down, sent at once
     stepsOf(nodes, 0).down.fire("click");
     await settle();
-    stepsOf(nodes, 0).down.fire("click");
-    await settle();
-    assert.deepEqual(pc.patches.slice(1), [{ pricing: 2 }, { pricing: 1 }]);
-    assert.equal(listed(nodes)[0].line, "$18 G1");
-    assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, true]);
+    assert.deepEqual(pc.patches.at(-1), { price: "24.00" });
+    assert.equal(listed(nodes)[0].line, "$24 G1");
 
-    // D1 has no cached prices: a whole dollar each way, never below $1; a draft, so no sync
-    stepsOf(nodes, 1).up.fire("click");
-    await settle();
-    assert.deepEqual(pc.patches.at(-1), { price: "2.00" });
-    assert.equal(listed(nodes)[1].line, "$2 D1");
-    stepsOf(nodes, 1).down.fire("click");
+    // D1: from $1.50 down to $1, where − rests; a draft, so nothing falls behind
+    press(stepsOf(nodes, 1).down)();
     await settle();
     assert.deepEqual(pc.patches.at(-1), { price: "1.00" });
     assert.equal(listed(nodes)[1].line, "$1 D1");
     assert.equal(stepsOf(nodes, 1).down.disabled, true, "never below $1");
-    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]', "a draft has no listing to fall behind");
-
-    // a change the PC refuses: its words on the inventory's line, the price as it was
-    pc.refusePatch = "price: the PC is busy";
-    stepsOf(nodes, 1).up.fire("click");
+    press(stepsOf(nodes, 1).up)();
     await settle();
-    assert.equal(nodes.get("inventory-status").textContent, "D1: price: the PC is busy");
-    assert.equal(listed(nodes)[1].line, "$1 D1");
+    assert.deepEqual(pc.patches.at(-1), { price: "2.00" });
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"G1","venues":["ebay"]}]', "a draft has no listing to fall behind");
+
+    // a change the server refuses: its words on the inventory's line, the price as it was
+    pc.refusePatch = "price: the server is busy";
+    const refused = press(stepsOf(nodes, 1).up);
+    assert.equal(listed(nodes)[1].line, "$3 D1");
+    refused();
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "D1: price: the server is busy");
+    assert.equal(listed(nodes)[1].line, "$2 D1");
     assert.equal(stepsOf(nodes, 1).up.disabled, false);
     pc.refusePatch = "";
 
     // the listing opened shows the price the tiles left it at, read afresh
     listed(nodes)[0].open.fire("click");
     await settle();
-    assert.equal(nodes.get("detail-heading").textContent, "Item G1 · $18");
+    assert.equal(nodes.get("detail-heading").textContent, "Item G1 · $24");
     // and the list, back again, still knows it
     nodes.get("inventory-back").fire("click");
     await settle();
-    assert.equal(listed(nodes)[0].line, "$18 G1");
+    assert.equal(listed(nodes)[0].line, "$24 G1");
     assert.equal(ebayBadge(nodes, 0).tag, "button", "still behind eBay");
+});
+
+test("a held + or − is an oven's dial: it repeats and speeds up, the tile live, one PATCH on release", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const draft = { status: "draft", id: "", url: "", listed_at: null };
+    const h1 = { price: "250.00", statuses: { ebay: draft, craigslist: draft } };
+    const pc = inventoryPc([summary("H1", h1)], { H1: wholeRow("H1", h1) });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    const price = () => listed(nodes)[0].line.split(" ")[0];
+
+    // held: a dollar at once, then after 400 ms a dollar every 120 ms, the tile showing each
+    const { up, down } = stepsOf(nodes, 0);
+    const lift = press(up);
+    assert.equal(price(), "$251");
+    t.mock.timers.tick(399);
+    assert.equal(price(), "$251", "not before 400 ms");
+    t.mock.timers.tick(1);
+    assert.equal(price(), "$252");
+    t.mock.timers.tick(120);
+    assert.equal(price(), "$253");
+    await settle();
+    assert.deepEqual(pc.patches, [], "nothing sent while held");
+    assert.equal(up.disabled, false, "never shut under the finger");
+    lift();
+    await settle();
+    assert.deepEqual(pc.patches, [{ price: "253.00" }], "one PATCH, the price it stopped at");
+    t.mock.timers.tick(2000);
+    await settle();
+    assert.equal(price(), "$253", "the dial stopped with the finger");
+    assert.equal(pc.patches.length, 1);
+
+    // − held: 1 a step for 1.5 s, then 2, then 5 from 3 s; $253 to $150 in about five seconds
+    down.fire("pointerdown", { pointerId: 2 });
+    t.mock.timers.tick(400);
+    let held = 400;
+    while (Number(price().slice(1)) > 150 && held < 8000) {
+        t.mock.timers.tick(120);
+        held += 120;
+    }
+    assert.ok(held > 4000 && held < 5500, `$253 to $150 took ${held} ms`);
+    // the finger slides off the button: the dial stops there, as lifting it would
+    down.fire("pointerleave", { pointerId: 2 });
+    down.fire("pointerup", { pointerId: 2 });
+    await settle();
+    assert.equal(pc.patches.length, 2, "one PATCH for the whole hold");
+    assert.deepEqual(pc.patches[1], { price: `${price().slice(1)}.00` });
+
+    // a touch: its long-press menu and selection held off; the pointer events that come with
+    // it find the dial already turning, and the touch's end is the one release
+    let prevented = 0;
+    const touch = { preventDefault: () => (prevented += 1) };
+    up.fire("touchstart", touch);
+    up.fire("pointerdown", { pointerId: 3 });
+    assert.equal(prevented, 1);
+    const at = Number(price().slice(1));
+    up.fire("touchend", touch);
+    up.fire("pointerup", { pointerId: 3 });
+    await settle();
+    assert.equal(pc.patches.length, 3);
+    assert.deepEqual(pc.patches[2], { price: `${at}.00` }, "one dollar for the one touch");
+    const menu = { preventDefault: () => (prevented += 1) };
+    up.fire("contextmenu", menu);
+    assert.equal(prevented, 2, "no context menu on the buttons");
+
+    // a finger lifted off the page altogether ends a dial too
+    up.fire("pointerdown", { pointerId: 4 });
+    globalThis.window.fire("pointerup", { pointerId: 4 });
+    await settle();
+    assert.equal(pc.patches.length, 4);
+
+    // the outline and the press, in styles.css: a thin white ring (dark in the dark), no menu,
+    // no selection, no scroll from under the finger
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    const step = /\.inv-step \{([^}]*)\}/.exec(css)[1];
+    assert.match(step, /border: 1\.5px solid var\(--field\);/);
+    for (const rule of ["user-select: none;", "-webkit-user-select: none;", "-webkit-touch-callout: none;", "touch-action: none;"]) {
+        assert.ok(step.includes(rule), rule);
+    }
 });
 
 test("a row's sync badge: pushes the row to its eBay listing as a job button; done, the plain listed badge again", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     let pushing = { action: "push", state: "running", step: "revising the eBay listing" };
     const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => pushing, a2: () => pushing } });
-    // the price changed on this phone before: the badge offers the sync from the start
+    // the price changed on this phone before (as 2.8.0 kept it, a bare sku): the badge offers the sync from the start
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '["G1"]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
@@ -2031,7 +2186,7 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     ebayBadge(nodes, 0).fire("click");
     let badge = ebayBadge(nodes, 0);
     assert.equal(badge.classList.contains("busy"), true);
-    assert.equal(buttonSays(badge), "ebay listed / tap again to cancel");
+    assert.equal(buttonSays(badge), "ebay / tap again to cancel");
     assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay, tap again to cancel");
     assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [true, true], "no price change while it runs");
     await settle();
@@ -2042,7 +2197,7 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/a1");
-    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed / tap again to cancel");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay / tap again to cancel");
     assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [true, true]);
 
     // a tap pauses it as any job button: continue, and the reset beside it; continue asks at once
@@ -2052,7 +2207,7 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     let reset = listed(nodes)[0].links[1];
     assert.equal(buttonSays(badge), "continue");
     assert.equal(badge.classList.contains("busy"), false);
-    assert.equal(badge.attrs["aria-label"], "ebay listed, paused, continue");
+    assert.equal(badge.attrs["aria-label"], "ebay, paused, continue");
     assert.deepEqual([reset.textContent, reset.className, reset.hidden], ["reset", "reset-call", false]);
     const asked = pc.calls.length;
     t.mock.timers.tick(3000 * 2);
@@ -2061,10 +2216,10 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     ebayBadge(nodes, 0).fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/a1");
-    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed / tap again to cancel");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay / tap again to cancel");
     assert.equal(listed(nodes)[0].links[1].hidden, true, "reset only while paused");
 
-    // paused, then reset: the PC is told, the badge is the sync badge again at once, still behind
+    // paused, then reset: the server is told, the badge is the sync badge again at once, still behind
     ebayBadge(nodes, 0).fire("click");
     await settle();
     listed(nodes)[0].links[1].fire("click");
@@ -2072,15 +2227,15 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     assert.equal(pc.calls.at(-1), "DELETE /jobs/a1");
     badge = ebayBadge(nodes, 0);
     assert.equal(badge.tag, "button");
-    assert.equal(buttonSays(badge), "ebay listed");
+    assert.equal(buttonSays(badge), "ebay");
     assert.equal(badge.classList.contains("busy"), false);
     assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, false]);
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("inventory-status").textContent, "G1: cancelled from the phone");
-    assert.equal(local.getItem("snap.inventory.unsynced"), '["G1"]');
+    assert.deepEqual(JSON.parse(local.getItem("snap.inventory.unsynced") || '["G1"]'), ["G1"], "untouched: still behind");
 
-    // pressed again and let run: done, the plain listed badge, a link again
+    // pressed again and let run: done, the plain listed badge, a link again, its tick back
     ebayBadge(nodes, 0).fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
@@ -2092,28 +2247,63 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     badge = ebayBadge(nodes, 0);
     assert.equal(badge.tag, "a");
     assert.equal(badge.href, "https://www.ebay.com/itm/257780366045");
-    assert.equal(listed(nodes)[0].badges[0], "ebay listed (vbadge posted)");
+    assert.equal(badge.children[1].tag, "svg");
     assert.equal(nodes.get("inventory-status").textContent, "G1: updated");
     assert.equal(local.getItem("snap.inventory.unsynced"), "[]");
     assert.deepEqual([stepsOf(nodes, 0).up.disabled, stepsOf(nodes, 0).down.disabled], [false, false]);
 
-    // a push the PC refuses says why, and the badge stays the sync one
-    local.setItem("snap.inventory.unsynced", '["G1"]');
+    // a push the server refuses says why, and the badge stays the sync one
     pc.refuse.push = "eBay is not connected: run crosslister ebay-login";
-    stepsOf(nodes, 0).up.fire("click");
+    press(stepsOf(nodes, 0).up)();
     await settle();
     ebayBadge(nodes, 0).fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.equal(nodes.get("inventory-status").textContent, "G1: eBay is not connected: run crosslister ebay-login");
-    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay listed");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay");
 });
 
-test("the sync bar's Sync to eBay, done, leaves no listing behind its row", async (t) => {
+test("a row's craigslist badge syncs too, once a change left its listing behind; done, only its mark goes", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let pushing = { action: "push", state: "running", step: "revising the craigslist post" };
+    const up = { status: "listed", id: "7781", url: "https://chicago.craigslist.org/hsh/d/7781.html", listed_at: null };
+    // the craigslist price derived from eBay's: a dollar on the tile moves both
+    const c1 = { statuses: { ...summary("C1").statuses, craigslist: up } };
+    const whole = wholeRow("C1", { ...c1, craigslist: { title: "", price: null, description: "", category: "" } });
+    const pc = inventoryPc([summary("C1", c1)], { C1: whole }, { jobs: { a1: () => pushing } });
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.deepEqual(listed(nodes)[0].badges, ["ebay listed (vbadge posted)", "craigslist listed (vbadge posted)"]);
+    press(stepsOf(nodes, 0).up)();
+    await settle();
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"C1","venues":["ebay","craigslist"]}]');
+    // the eBay sync badge and its reset, then craigslist's
+    const cl = () => listed(nodes)[0].links[2];
+    assert.equal(cl().tag, "button");
+    assert.equal(cl().attrs["aria-label"], "craigslist listed, sync to craigslist");
+    cl().fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "push", sku: "C1", venue: "craigslist" }]);
+    assert.equal(buttonSays(cl()), "craigslist / tap again to cancel");
+    assert.equal(buttonSays(ebayBadge(nodes, 0)), "ebay", "the eBay one waits, not pressed");
+    assert.equal(ebayBadge(nodes, 0).disabled, true, "one job per row");
+    pushing = { action: "push", state: "done", summary: "updated" };
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "C1: updated");
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"C1","venues":["ebay"]}]', "eBay's still behind");
+    assert.equal(cl().tag, "a");
+    assert.equal(ebayBadge(nodes, 0).tag, "button");
+});
+
+test("the sync bar's Sync to eBay, done, leaves no eBay listing behind its row", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     let syncing = { action: "sync", direction: "to", state: "running", step: "writing to eBay" };
     const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => syncing } });
-    const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '["G1"]' });
+    const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"G1","venues":["ebay"]},{"sku":"K9","venues":["ebay","craigslist"]}]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
     await settle();
@@ -2124,7 +2314,7 @@ test("the sync bar's Sync to eBay, done, leaves no listing behind its row", asyn
     syncing = { ...syncing, state: "done", summary: "1 listing updated, 0 unchanged, 0 failed" };
     t.mock.timers.tick(3000);
     await settle();
-    assert.equal(local.getItem("snap.inventory.unsynced"), null);
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"K9","venues":["craigslist"]}]', "craigslist's marks stay");
     assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`, "the list asked again");
     assert.equal(ebayBadge(nodes, 0).tag, "a", "the plain listed badge, a link");
 });
@@ -2166,6 +2356,45 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     nodes.get("inventory-photos").fire("change");
     await settle();
     assert.deepEqual(pc.calls.slice(before), [`GET /inventory?q=blue%20lamp&${ALL}`]);
+});
+
+test("the inventory's Options: folded at first, the search out of it; open or folded is remembered on this phone", async (t) => {
+    // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked away
+    // inside a foldout tab 'Options'."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-search").hidden, false);
+    assert.equal(nodes.get("options").hidden, true);
+    assert.equal(nodes.get("options-toggle").textContent, "▸ Options");
+    assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "false");
+    nodes.get("options-toggle").fire("click");
+    assert.equal(nodes.get("options").hidden, false);
+    assert.equal(nodes.get("options-toggle").textContent, "▾ Options");
+    assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "true");
+    assert.equal(local.map.get("snap.inventory.options"), "open");
+    // the chips inside ask as ever
+    nodes.get("inventory-state-listed").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=listed&limit=200&sort=age&order=desc");
+    // a reload keeps it open; folded again, it stays folded
+    const again = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(again.nodes.get("options").hidden, false);
+    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Options");
+    again.nodes.get("options-toggle").fire("click");
+    assert.equal(again.nodes.get("options").hidden, true);
+    assert.equal(local.map.get("snap.inventory.options"), "closed");
+    const third = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(third.nodes.get("options").hidden, true);
+
+    // all small: 13 px chips 36 px tall, the search 36 px tall (its words 16 px, or a phone zooms in)
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.options \.chips \.chip \{ min-height: 36px; padding: 4px 2px; font-size: 13px; \}/);
+    assert.match(css, /\.options \.pickup \{ min-height: 36px;[^}]*font-size: 13px; \}/);
+    assert.match(css, /input\[type="text"\]\.small-input \{ min-height: 36px;[^}]*font-size: 16px;/);
 });
 
 test("Show photos, on by default, puts photo 1 of each row on its left, fetched one at a time", async (t) => {
@@ -2214,7 +2443,7 @@ test("a PC that cannot be reached is said under the search box; the list stays",
     pc.down = true;
     nodes.get("inventory-state-listed").fire("click");
     await settle();
-    assert.equal(nodes.get("inventory-status").textContent, "Could not read the inventory: cannot reach the PC.");
+    assert.equal(nodes.get("inventory-status").textContent, "Could not read the inventory: cannot reach the server.");
     assert.equal(listed(nodes).length, 1, "nothing else changes");
     assert.equal(nodes.get("server").textContent, "server off");
 });
@@ -2265,7 +2494,7 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
     assert.equal(nodes.get("inventory-browse").hidden, true);
     assert.equal(nodes.get("inventory-detail").hidden, false);
     assert.equal(nodes.get("detail-heading").textContent, "Item R5GM4XZN · $24");
-    assert.equal(nodes.get("detail-status").textContent, "Reading R5GM4XZN from the PC...");
+    assert.equal(nodes.get("detail-status").textContent, "Reading R5GM4XZN from the server...");
     await settle();
     assert.deepEqual(pc.calls.slice(1), [
         "GET /inventory/R5GM4XZN",
@@ -2284,6 +2513,16 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
         ["ebay", "craigslist"].map((v) => foldOf(nodes, v)),
         ["ebay listed (vbadge posted span) ▸", "craigslist draft (vbadge draft span) ▸"]
     );
+    // listed: the venue, then the tick; "listed" for a screen reader only (Michal, 2026-10-08:
+    // "write 'ebay' and follow that with a checkmark symbol")
+    const [word, tick, hidden] = toggles[0].children[0].children;
+    assert.equal(word, "ebay");
+    assert.deepEqual([tick.tag, tick.attrs["aria-hidden"], tick.attrs.stroke, tick.attrs.width], ["svg", "true", "currentColor", "12"]);
+    assert.deepEqual([hidden.className, hidden.textContent], ["sr-only", " listed"]);
+    assert.deepEqual(toggles[1].children[0].children, ["craigslist draft"], "a draft: its word, no tick");
+    // the posting screens stay out of sight under a listing as under the list (Michal,
+    // 2026-10-08: "When I look at a card the posting screen is below. That should not be there")
+    assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden, nodes.get("modes").hidden], [true, true, true]);
     assert.deepEqual(toggles.map((n) => n.attrs["aria-expanded"]), ["false", "false"]);
     assert.equal(nodes.get("detail-ebay").hidden, true);
     assert.equal(nodes.get("detail-craigslist").hidden, true);
@@ -2330,6 +2569,11 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
         "Category: from the eBay category (derived from eBay)",
     ]);
     assert.deepEqual(craigslist.actions, ["Post on craigslist", "Edit"]);
+    // Post is the posting screen's venue button, across the card (Michal, 2026-10-08: "Make the
+    // same style button as when we post to venues originally"); the rest small pills
+    assert.equal(craigslist.button("Post on craigslist").className, "big venue-btn");
+    assert.equal(craigslist.button("Edit").className, "pill");
+    assert.ok(ebay.button("Refresh status").className === "pill");
     toggles[1].fire("click");
     assert.equal(nodes.get("detail-craigslist").hidden, true);
     assert.equal(foldOf(nodes, "craigslist"), "craigslist draft (vbadge draft span) ▸");
@@ -2396,7 +2640,7 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     assert.equal(nodes.get("sync-bar").hidden, true);
     assert.equal(nodes.get("admin-close").hidden, true);
     assert.equal(nodes.get("detail-heading").textContent, "R5");
-    assert.equal(nodes.get("detail-status").textContent, "Reading R5 from the PC...");
+    assert.equal(nodes.get("detail-status").textContent, "Reading R5 from the server...");
     assert.equal(foldOf(nodes, "ebay"), "hidden");
     assert.equal(nodes.get("detail-customize-toggle").hidden, true);
     await settle();
@@ -2457,7 +2701,7 @@ test("a listing Admin reopens that the PC no longer has is let go; the list says
     again.nodes.get("admin-toggle").fire("click");
     await settle();
     assert.equal(again.nodes.get("inventory-detail").hidden, false);
-    assert.equal(again.nodes.get("detail-status").textContent, "Could not read A1: cannot reach the PC.");
+    assert.equal(again.nodes.get("detail-status").textContent, "Could not read A1: cannot reach the server.");
     assert.equal(down.map.get("snap.admin.card"), "A1");
 });
 
@@ -2632,6 +2876,12 @@ test("Post, Refresh and End: each sends its job, its step in the card's line, th
     assert.equal(cardOf(nodes, "craigslist").line, "sending");
     const pressedPost = ["Post on craigslist / tap again to cancel (busy)", "Edit (off)"];
     assert.deepEqual(cardOf(nodes, "craigslist").actions, pressedPost);
+    // pressed, still the big venue button, its reset right after it (under it, styles.css)
+    const box = nodes.get("detail-craigslist").children.find((c) => c.className === "venue-actions");
+    assert.deepEqual(box.children.slice(0, 2).map((b) => b.className), ["big venue-btn", "reset-call"]);
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.venue-actions \.venue-btn \{ flex-basis: 100%; \}/);
+    assert.match(css, /\.venue-actions \.venue-btn \+ \.reset-call \{ flex-basis: 100%;/);
     await settle();
     assert.deepEqual(pc.posted, [], "nothing has left the phone yet");
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -2754,6 +3004,95 @@ test("an End the PC refuses says why, and its button goes", async (t) => {
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 });
 
+test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist pushes it; End as eBay's", async (t) => {
+    // Michal, 2026-10-08: craigslist price and edits from the card; the server side is built
+    // alongside, and one that still refuses a craigslist push answers 400
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let pushing = { action: "push", state: "running", step: "revising the craigslist post" };
+    let ending = { action: "end", state: "running", step: "deleting the craigslist post" };
+    const whole = wholeRow("R5", {
+        statuses: {
+            ...summary("R5").statuses,
+            craigslist: { status: "listed", id: "1", url: "https://sfbay.craigslist.org/1.html", listed_at: null },
+        },
+    });
+    const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => pushing, a2: () => ending } });
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    const listedActions = ["Open listing (link)", "Refresh status", "End listing", "Edit"];
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, listedActions, "caught up: no sync");
+
+    // its price typed on the card: saved to the row, and the listing is behind it
+    cardOf(nodes, "craigslist").button("Edit").fire("click");
+    typeField(cardOf(nodes, "craigslist").input("Price, dollars"), "30");
+    cardOf(nodes, "craigslist").button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches, [{ craigslist: { price: "30" } }]);
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["craigslist"]}]');
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, [
+        "Open listing (link)",
+        "Sync to craigslist",
+        "Refresh status",
+        "End listing",
+        "Edit",
+    ]);
+    assert.equal(cardOf(nodes, "craigslist").button("Sync to craigslist").className, "pill");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, listedActions, "eBay's price did not move");
+
+    // a server that still refuses a craigslist push: its words, the sync still offered
+    pc.refuse.push = "push goes to ebay only";
+    cardOf(nodes, "craigslist").button("Sync to craigslist").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "craigslist" }]);
+    assert.equal(cardOf(nodes, "craigslist").line, "push goes to ebay only");
+    assert.equal(cardOf(nodes, "craigslist").kind, "venue-status bad");
+    assert.ok(cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
+    delete pc.refuse.push;
+
+    // a job button as any: its ring and "tap again to cancel", after the second the push
+    cardOf(nodes, "craigslist").button("Sync to craigslist").fire("click");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, [
+        "Open listing (link)",
+        "Sync to craigslist / tap again to cancel (busy)",
+        "Refresh status (off)",
+        "End listing (off)",
+        "Edit (off)",
+    ]);
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "craigslist" });
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "revising the craigslist post");
+    pushing = { ...pushing, state: "done", summary: "updated" };
+    const before = pc.calls.length;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", "GET /inventory/R5"], "done: the row read again");
+    assert.equal(cardOf(nodes, "craigslist").line, "updated");
+    assert.equal(local.getItem("snap.inventory.unsynced"), "[]");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, listedActions);
+
+    // End listing on craigslist: two taps, then {"action": "end", "sku", "venue": "craigslist"}
+    cardOf(nodes, "craigslist").button("End listing").fire("click");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["End this listing on craigslist? (ask)", "Yes, end it", "Keep it"]);
+    cardOf(nodes, "craigslist").button("Yes, end it").fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "end", sku: "R5", venue: "craigslist" });
+    ending = { ...ending, state: "done", summary: "craigslist: ended" };
+    whole.statuses = { ...whole.statuses, craigslist: { ...whole.statuses.craigslist, status: "ended" } };
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(cardOf(nodes, "craigslist").line, "craigslist: ended");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist", "Edit"]);
+});
+
 test("a listing's job buttons tapped: paused at once, continue or reset beside; too late once publishing", async (t) => {
     // Michal, 2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
     // button should change to 'continue' ... Use these guidelines for all cancel things."
@@ -2796,7 +3135,7 @@ test("a listing's job buttons tapped: paused at once, continue or reset beside; 
     assert.deepEqual(pc.posted, [{ action: "refresh", sku: "R5", venue: "ebay" }]);
     cardOf(nodes, "ebay").button("Refresh status").fire("click");
     await settle();
-    assert.equal(cardOf(nodes, "ebay").line, "paused: the PC may still be working on it");
+    assert.equal(cardOf(nodes, "ebay").line, "paused: the server may still be working on it");
     assert.deepEqual(cardOf(nodes, "ebay").actions, [
         "Open listing (link)",
         "continue",
@@ -2842,7 +3181,7 @@ test("a listing's job buttons tapped: paused at once, continue or reset beside; 
     nodes.get("detail-customize-sync").fire("click");
     await settle();
     assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "continue"]);
-    assert.equal(customizeOf(nodes).line, "paused: the PC may still be working on it");
+    assert.equal(customizeOf(nodes).line, "paused: the server may still be working on it");
     assert.equal(nodes.get("detail-customize-reset").hidden, false);
     nodes.get("detail-customize-reset").fire("click");
     await settle();
@@ -2853,7 +3192,7 @@ test("a listing's job buttons tapped: paused at once, continue or reset beside; 
     const dropped = pc.calls.length;
     t.mock.timers.tick(3000);
     await settle();
-    assert.equal(pc.calls.length, dropped, "no more polls for a job the PC dropped");
+    assert.equal(pc.calls.length, dropped, "no more polls for a job the server dropped");
 
     // Post, once the PC publishes it: a tap is too late, said for a moment; nothing else changes
     cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
@@ -2870,7 +3209,7 @@ test("a listing's job buttons tapped: paused at once, continue or reset beside; 
     t.mock.timers.tick(TOO_LATE_MS);
     await settle();
     assert.equal(cardOf(nodes, "craigslist").line, "publishing on craigslist for R5");
-    assert.ok(!pc.calls.includes("DELETE /jobs/j2"), "the PC is not told");
+    assert.ok(!pc.calls.includes("DELETE /jobs/j2"), "the server is not told");
 });
 
 /**
@@ -3134,9 +3473,9 @@ test("Sync to eBay: the slider moved and pickup only ticked, saved in one PATCH,
     assert.deepEqual(pc.calls.slice(from), ["PATCH /inventory/R5", "POST /jobs"], "saved, then pushed");
     assert.deepEqual(pc.patches, [{ pickup_only: true, pricing: 1 }]);
     assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "ebay" }]);
-    assert.equal(whole.price, "18.00", "the PC set the cached quick price before the push");
+    assert.equal(whole.price, "18.00", "the server set the cached quick price before the push");
     // the listing is behind its row until the push is done: its list badge would offer the sync
-    assert.equal(local.getItem("snap.inventory.unsynced"), '["R5"]');
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
     let custom = customizeOf(nodes);
     assert.equal(custom.line, "queued");
     assert.equal(custom.locked, true);
@@ -3281,7 +3620,7 @@ test("a photo the PC refuses shows failed; a tap sends it again", async (t) => {
     assert.match(retry.attrs["aria-label"], /not a JPEG/);
     assert.match(nodes.get("venue-hint").textContent, /Mark at least one photo AI/);
     card(nodes, 0).ai.fire("click");
-    assert.match(nodes.get("venue-hint").textContent, /did not reach the PC - tap/);
+    assert.match(nodes.get("venue-hint").textContent, /did not reach the server - tap/);
     refuse = false;
     retry.fire("click");
     await settle();
@@ -3357,7 +3696,7 @@ test("a reload whose item is gone from the PC starts fresh", async (t) => {
     const { nodes } = await loadPage({ local, fetchImpl: fakePc().fetch });
     assert.equal(nodes.get("item-name").value, "");
     assert.equal(nodes.get("item-name").readOnly, false);
-    assert.match(nodes.get("message").textContent, /no longer on the PC/);
+    assert.match(nodes.get("message").textContent, /no longer on the server/);
     assert.equal(local.getItem("snap.item"), null);
 });
 
@@ -3602,10 +3941,10 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-card-title").textContent, "The Art of Computer Programming");
     assert.equal(nodes.get("book-authors").textContent, "Donald E. Knuth");
     assert.equal(nodes.get("book-details").textContent, "Addison-Wesley · 1998 · Paperback · 320 pages");
-    assert.equal(nodes.get("book-price").value, "11", "the PC's suggestion");
+    assert.equal(nodes.get("book-price").value, "11", "the server's suggestion");
     assert.equal(nodes.get("book-price-note").textContent, "eBay: 12 listings, $6–$24 · suggested $11");
     assert.equal(nodes.get("book-price-note").hidden, false);
-    assert.equal(local.getItem("snap.book"), null, "nothing on the PC yet, nothing to read back");
+    assert.equal(local.getItem("snap.book"), null, "nothing on the server yet, nothing to read back");
 
     // the front cover is the first photo, and it makes the book's folder
     fire(nodes, "book-snap-input");
@@ -3622,7 +3961,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(bookShot(nodes, 0).ai, undefined, "no model call for a book");
     assert.deepEqual(mains(nodes), [true], "in its place, main: the first photo leads");
     assert.equal(bookShot(nodes, 0).label.textContent, `Book ${ISBN}-1.jpg`);
-    assert.equal(nodes.get("book-progress").textContent, "1 photo, all on the PC");
+    assert.equal(nodes.get("book-progress").textContent, "1 photo, all on the server");
     assert.equal(nodes.get("strip").children.length, 0, "the goods strip is not touched");
     const saved = JSON.parse(local.getItem("snap.book"));
     assert.equal(saved.isbn, ISBN);
@@ -3633,7 +3972,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     fire(nodes, "book-snap-input");
     await settle();
     assert.equal(pc.calls.at(-1), `PUT /items/${item}/photos/2`);
-    assert.equal(nodes.get("book-progress").textContent, "2 photos, all on the PC");
+    assert.equal(nodes.get("book-progress").textContent, "2 photos, all on the server");
 
     // the condition
     nodes.get("book-condition-very_good").fire("click");
@@ -3661,7 +4000,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     assert.equal(nodes.get("book-ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel");
     // ... while the press is on its way NEXT waits for it: clearing now would lose it
     assert.equal(nodes.get("book-next-item").disabled, true);
-    assert.equal(nodes.get("book-done-hint").textContent, "NEXT waits until the listing has reached the PC");
+    assert.equal(nodes.get("book-done-hint").textContent, "NEXT waits until the listing has reached the server");
     await settle();
     assert.equal(buttonSays(nodes.get("book-ebay-btn")), "ebay / tap again to cancel", "for the second and after");
     assert.equal(nodes.get("book-ebay-btn").disabled, false, "it takes the tap that pauses it");
@@ -3684,7 +4023,7 @@ test("book mode end to end: scan, the book and its price, a cover, condition, fl
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("book-ebay-status").textContent, "listing the book");
-    assert.equal(nodes.get("book-price-line").textContent, "$11", "the PC said no price yet: the box's");
+    assert.equal(nodes.get("book-price-line").textContent, "$11", "the server said no price yet: the box's");
     ebayState = "done";
     t.mock.timers.tick(3000);
     await settle();
@@ -3816,7 +4155,7 @@ test("a book not in the catalogues points at No ISBN; a PC that could not look s
         nodes.get("book-lookup").textContent,
         "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."
     );
-    assert.equal(nodes.get("book-match").textContent, "9780804429573 is not in the catalogues", "the PC's words");
+    assert.equal(nodes.get("book-match").textContent, "9780804429573 is not in the catalogues", "the server's words");
     assert.equal(nodes.get("book-card-title").hidden, true);
     assert.equal(nodes.get("book-venue-hint").textContent, "Tap No ISBN and type the title");
     assert.equal(nodes.get("book-no-isbn").classList.contains("next"), true, "the next step, lit up");
@@ -3871,7 +4210,7 @@ test("a cover snapped before the ISBN waits on the page for it, and says so", as
     assert.deepEqual(pc.calls, [], "no ISBN, no folder yet");
     // what blocks it is the ISBN, not the PC, and every line says so
     const blocked =
-        "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the PC; or remove them with their x";
+        "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the server; or remove them with their x";
     assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN or the title");
     assert.equal(nodes.get("book-done-hint").textContent, blocked);
     assert.equal(nodes.get("book-done-hint").hidden, false);
@@ -3985,7 +4324,7 @@ test("the mode is remembered per phone, and a reload reads the book back", async
     assert.equal(nodes.get("book-price").value, "9", "his price, not the suggestion");
     assert.equal(nodes.get("book-condition-acceptable").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("book-flaws").value, "Spine creased");
-    assert.equal(bookShot(nodes, 0).li.children[0].src, "blob:stub", "the cover, fetched back from the PC");
+    assert.equal(bookShot(nodes, 0).li.children[0].src, "blob:stub", "the cover, fetched back from the server");
     assert.deepEqual(mains(nodes), [false, true], "his main photo, read back");
     assert.equal(nodes.get("book-ebay-btn").disabled, false);
 
@@ -4048,7 +4387,7 @@ test("no ISBN end to end: No ISBN, the title typed, the book and its price found
     assert.equal(nodes.get("book-no-isbn").attrs["aria-expanded"], "true");
     assert.equal(
         nodes.get("book-hint").textContent,
-        "No ISBN: type the title as the cover has it. The PC finds the book and a price."
+        "No ISBN: type the title as the cover has it. The server finds the book and a price."
     );
     assert.equal(nodes.get("book-format-paperback").attrs["aria-pressed"], "true", "paperback by default");
     assert.equal(nodes.get("book-format-hardcover").attrs["aria-pressed"], "false");
@@ -4075,7 +4414,7 @@ test("no ISBN end to end: No ISBN, the title typed, the book and its price found
     assert.equal(nodes.get("book-details").textContent, "Chilton Books · 1965 · Hardcover · 412 pages");
     assert.equal(nodes.get("book-match").textContent, "matched in the catalogues");
     assert.equal(nodes.get("book-match").hidden, false);
-    assert.equal(nodes.get("book-price").value, "40", "the PC's suggestion");
+    assert.equal(nodes.get("book-price").value, "40", "the server's suggestion");
     assert.equal(nodes.get("book-price-note").textContent, "eBay: 7 listings, $25–$90 · suggested $40");
     assert.equal(nodes.get("book-format-hardcover").attrs["aria-pressed"], "true", "the catalogue says hardcover");
     assert.equal(nodes.get("book-format-paperback").attrs["aria-pressed"], "false");
@@ -4209,7 +4548,7 @@ test("no ISBN: a cover snapped first waits for the title; a PC that could not lo
     assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the ISBN or the title");
     nodes.get("book-no-isbn").fire("click");
     assert.equal(nodes.get("book-progress").textContent, "1 photo, waiting for the title");
-    const waiting = "Type the title so the photos can go to the PC, or remove them with their x";
+    const waiting = "Type the title so the photos can go to the server, or remove them with their x";
     assert.equal(nodes.get("book-done-hint").textContent, waiting);
     assert.equal(nodes.get("book-venue-hint").textContent, waiting);
     assert.deepEqual(pc.calls, []);
@@ -4306,7 +4645,7 @@ test("an ISBN no catalogue knows: No ISBN keeps it, the title is searched, the j
         nodes.get("book-lookup").textContent,
         "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing."
     );
-    assert.equal(nodes.get("book-match").textContent, detail, "the PC's reason, in the small line");
+    assert.equal(nodes.get("book-match").textContent, detail, "the server's reason, in the small line");
     assert.equal(nodes.get("book-venue-hint").textContent, "Tap No ISBN and type the title");
     assert.equal(nodes.get("book-no-isbn").classList.contains("next"), true);
 
@@ -4435,7 +4774,7 @@ test("customize sits right above the venue buttons in both modes, folded", () =>
         assert.match(
             html,
             new RegExp(
-                `<input id="${prefix}auto-post" type="checkbox" checked>\\s*<span>Post without asking<small>unticked: the PC saves the draft and the button posts it on the next press</small></span>`
+                `<input id="${prefix}auto-post" type="checkbox" checked>\\s*<span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>`
             )
         );
         assert.ok(html.indexOf(`id="${prefix}pickup-only"`) < html.indexOf(`id="${prefix}pricing"`));
@@ -4988,7 +5327,7 @@ test("a name the PC already has today is flagged after a pause and Snap waits fo
     assert.deepEqual(pc.calls, [`GET /items/${taken}`]);
     assert.equal(
         nodes.get("hint").textContent,
-        '"Lamp" is already an item on the PC today with 3 photos. Use a different name.'
+        '"Lamp" is already an item on the server today with 3 photos. Use a different name.'
     );
     assert.equal(nodes.get("hint").hidden, false);
     assert.equal(nodes.get("item-name").classList.contains("taken"), true);
@@ -4997,8 +5336,8 @@ test("a name the PC already has today is flagged after a pause and Snap waits fo
     snap(nodes, 1);
     await settle();
     assert.equal(nodes.get("strip").children.length, 0, "no photo under a refused name");
-    assert.match(nodes.get("message").textContent, /already an item on the PC today/);
-    assert.deepEqual(pc.calls, [`GET /items/${taken}`], "nothing went to the PC");
+    assert.match(nodes.get("message").textContent, /already an item on the server today/);
+    assert.deepEqual(pc.calls, [`GET /items/${taken}`], "nothing went to the server");
 
     // another name: free, and the strip opens
     await typeName(nodes, "Lamp brass");
@@ -5079,7 +5418,7 @@ test("NEXT keeps an item nothing was posted from, and back brings it up with its
     assert.equal(pc.items.has(item), true);
     nodes.get("next-item").fire("click");
     await settle();
-    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE /items/")), "nothing is deleted on the PC");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE /items/")), "nothing is deleted on the server");
     assert.equal(pc.items.has(item), true);
     assert.equal(nodes.get("message").textContent, "");
     assert.equal(nodes.get("strip").children.length, 0);
@@ -5139,7 +5478,7 @@ function postedJob(name, i) {
     return { job: `j-${name}`, venue: "ebay", state: "done", sku: `B-${i}`, price: `${10 + i}.00`, title: `${name} listing`, links: { ebay: `https://www.ebay.com/itm/${i}` } };
 }
 
-const END = "End of the item history: see the inventory list on the PC.";
+const END = "End of the item history: see the inventory list on the server.";
 
 test("back and forward walk the items NEXT left, both ways, and never leave the page", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -5217,7 +5556,7 @@ test("a reload on an earlier item comes back on it, and the walk goes on from th
     const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
     await leaveItem(nodes, "Lamp");
     await leaveItem(nodes, "Vase");
-    await typeName(nodes, "Boots"); // in hand, one photo on the PC
+    await typeName(nodes, "Boots"); // in hand, one photo on the server
     snap(nodes, 1);
     await settle();
     nav.back();
@@ -5351,10 +5690,10 @@ test("a picture the PC cannot give stays on the PC; a PC that does not answer st
     };
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(nodes.get("strip").children.length, 3);
-    assert.equal(card(nodes, 0).remote.textContent, "on the PC");
+    assert.equal(card(nodes, 0).remote.textContent, "on the server");
     assert.equal(card(nodes, 1).img.src, "blob:stub");
-    assert.equal(card(nodes, 2).remote.textContent, "on the PC");
-    assert.equal(nodes.get("message").hidden, true, "nothing to say: the photos are safe on the PC");
+    assert.equal(card(nodes, 2).remote.textContent, "on the server");
+    assert.equal(nodes.get("message").hidden, true, "nothing to say: the photos are safe on the server");
 });
 
 test("photos are shrunk one after another as they come; only the shrunk JPEG is kept and shown", async (t) => {
@@ -5519,7 +5858,7 @@ test("after the second a tap pauses the PC's job: continue asks again; reset tel
     // paused: the PC is not told, only no longer asked
     nodes.get("ebay-btn").fire("click");
     await settle();
-    assert.equal(nodes.get("ebay-status").textContent, "paused: the PC may still be working on it");
+    assert.equal(nodes.get("ebay-status").textContent, "paused: the server may still be working on it");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "continue");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), false);
     assert.equal(nodes.get("ebay-reset").hidden, false);
@@ -5595,7 +5934,7 @@ test("too late: from the publishing step on a tap says so for a moment, and the 
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true, "still busy");
     assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay");
     assert.equal(nodes.get("ebay-reset").hidden, true, "nothing paused");
-    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the PC is not told");
+    assert.ok(!pc.calls.some((c) => c.startsWith("DELETE")), "the server is not told");
     t.mock.timers.tick(TOO_LATE_MS);
     await settle();
     assert.equal(nodes.get("ebay-status").textContent, "publishing B-1 on ebay", "the step's own words again");
