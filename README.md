@@ -1,4 +1,8 @@
-# crosslister $nap
+# Snap
+
+Snap, a crosslisting app (crosslister-snap on GitHub). Michal, 2026-10-08: "The name
+of the app should be Snap, a crosslisting app. Snap is simple." The header writes it
+**$nap** (the S a dollar sign); "crosslister" is in no name or title the phone shows.
 
 Open the phone, tap the icon, type the item name, tap **Snap**, take the
 photos. Each photo goes to the home PC the moment it is taken, into the item's
@@ -23,7 +27,8 @@ The work happens on the home PC, in `crosslister serve` (the
 [crosslister](../crosslister) repo, `docs/USAGE.md`, "The phone app"). This
 page is a thin client: it takes the photos, sends them one by one, and shows
 what the server says. Setup is [docs/SETUP.md](docs/SETUP.md): the server address and
-a key, once per phone.
+a key, once per phone, typed after **I have a key** on the landing (or, once the
+server's sign-in lane is there, **Sign in** with a link sent by email).
 
 In the app the home PC is **the server** (Michal, 2026-10-08: "Start referring to
 the PC as server, in the app."): every word on the screen says so (**Server
@@ -50,7 +55,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
    item's id and the AI marks, and asks for the job's status every 3 s.
 4. The server is reached at its Tailscale Funnel address
    (`https://<pc>.<tailnet>.ts.net`) with a per-person key; both are typed into
-   **Settings** (under **Admin**) once and kept in the phone's `localStorage`.
+   **Settings** (under **Admin**) once and kept in the phone's `localStorage`. A
+   phone signed in by an emailed link calls the product's own server
+   (`DEFAULT_SERVER` in `core.js`) with its session instead of a key.
 5. `core.js` and `queue.js` hold every decision worth testing (settings, the
    shrink size, the queue, the requests, the job's state and the line under each
    button, when a button may be pressed); `tests/` proves it, including whole
@@ -61,9 +68,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory, a listing's customize, its cards and their actions, the sync bar), customize, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing, sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions too |
+| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats and the sign-in calls too |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -83,9 +90,12 @@ beside the live app; `main` stays the stable look. Only the look differs: the
 ids, the order on screen, the Content-Security-Policy (bar `font-src 'self'`)
 and every behaviour are the live app's.
 
-- **The name** is written **crosslister $nap**: the S of Snap is a dollar sign.
+- **The name** is **Snap**, written **$nap**: the S is a dollar sign (until
+  2.10.0 the wordmark was "crosslister $nap"; Michal, 2026-10-08: "The name of the
+  app should be Snap, a crosslisting app"). `<title>` and the manifest's `name` and
+  `short_name` say Snap, its `description` "a crosslisting app".
   The header is a yellow band with the mark (a camera whose lens holds the $)
-  and the wordmark, "crosslister" at weight 500 and "$nap" at 800. In the dark
+  and the wordmark, "$nap" at 800. In the dark
   the band is black with a 4 px yellow rule under it, "$nap" turns yellow and
   the mark turns to its dark variant (black camera, white outline). The mark is
   one inline SVG whose colours come from `styles.css`, so both variants are the
@@ -115,6 +125,57 @@ and every behaviour are the live app's.
   on, faint outlines when off.
 - **The icon** is the mark on a yellow rounded square
   (`node tools/make-icons.mjs` draws the PNGs, the $ as two arcs and a bar).
+
+## The way in: the landing, the home screen, sign-in
+
+- **The landing** (Michal, 2026-10-08: "Snap is simple. Note that for the first
+  landing page."): while the phone has no server address and key saved and no
+  session (`snap.session`), `#landing` is the whole screen under the header, in
+  place of the goods | book switch and both posting screens: the mark large, **Snap**,
+  "a crosslisting app", one line of what it does ("Photograph it, and it is listed
+  on eBay and Craigslist with a price and a description."), **Install**, then the
+  two ways in side by side, **I have a key** (Admin, which opens on Settings with
+  the address and key fields as ever) and **Sign in**. Once settings are saved or a
+  session exists the landing is gone and the goods screen shows as before. Admin
+  closed without saving brings the landing back.
+- **The home screen** (Michal, 2026-10-08: "I don't have the app on the home screen.
+  If it is not on the home screen it should direct towards that install. Can that be
+  done even though I have already used it? Would the website know?"). It does:
+  `matchMedia("(display-mode: standalone)")`, or an iPhone's `navigator.standalone`,
+  says the page runs from the home screen, and then there is no nudge at all.
+  Otherwise the landing's **Install** is the first step, and over the posting screens
+  sits a thin yellow-tint banner, "Add Snap to your home screen for the full-screen
+  app", with **Add** and an **x**. Where Chrome offered to install
+  (`beforeinstallprompt`, kept rather than shown as its own bar), Add (or Install)
+  asks with Chrome's own prompt, once; accepted, the nudges go. Elsewhere the
+  button unfolds the two taps: on an iPhone `Tap Share, then Add to Home Screen.`,
+  otherwise `Open the browser menu, then Add to Home screen (or Install app).` The x
+  puts the banner away for 7 days (`snap.install.dismissed`, the day as an ISO
+  date); the landing's Install step is never put away. `installState` in core.js
+  decides: `hidden`, `prompt` or `steps`.
+- **Sign in** (for a later server lane; until it ships the server answers 404): the
+  `#signin` screen, **← Back**, an **Email** box, **Keep me signed in** (ticked) and
+  **Send me a link**, which posts `POST /auth/link` to the product's own server,
+  `https://michal-pc.mulley-themis.ts.net` (`DEFAULT_SERVER`; the "I have a key"
+  path keeps the address typed). A 202 says `Check your email for the link; it works
+  on this phone.`; a 404 `Sign-in is not set up on this server yet. Ask the developer
+  for a key.` The emailed link opens the page as `#login=<token>`: the page takes the
+  token, clears the hash at once (`history.replaceState`), posts `POST
+  /auth/session`, and keeps the session it answers, in `localStorage` when he kept
+  Keep me signed in ticked, else in `sessionStorage` (this tab only); then the goods
+  screen, checked and asked about as on any load. A link that no longer works says
+  so on the landing. From then on every call carries `X-Crosslister-Session:
+  <token>` (a key, when one is saved, wins: `X-Crosslister-Key` as ever). A 401 on a
+  session lets it go and brings the landing back with `Your sign-in expired; send
+  yourself a new link`.
+- **The account** (`GET /me`, after the first good server check of each load, after
+  Save and check, after a sign-in; kept in memory only). When it says `"craigslist":
+  false` (Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write
+  'contact developer'"), the goods screen's **craigslist** button is grey, yet takes
+  the tap (`aria-disabled`, not disabled), and a tap sends nothing and says under it
+  `Craigslist is not available for your account. Contact the developer.`; a
+  listing's empty craigslist foldout says the same line in place of its Add. The
+  sync bar is unchanged. A 404 (an older server) is everything as before.
 
 ## The screen, top to bottom
 
@@ -215,7 +276,15 @@ and every behaviour are the live app's.
   plain it took. All five go with either button, the second one's too (the server
   updates the saved row first), and lock while a job is on its way. Folded
   again on every load and every **NEXT**; the values themselves are kept for a
-  reload and reset by NEXT.
+  reload and reset by NEXT. Last in the card (Michal, 2026-10-08: "The customize
+  section should have a 'Save as default' button at the end, in case someone wants
+  to change something permanently."), **Save as default**, a small pill: it keeps
+  the price grade, Post without asking, Compare with eBay listings and Pickup only
+  as they stand (never the quantity, nor the user note) in
+  `snap.customize.defaults`, `{"goods": {...}, "book": {...}}`, says `saved as your
+  defaults` beside it for 2.5 s, and every new item of that kind starts from them:
+  NEXT, a fresh load, an item reset. An item read back keeps its own customize. The
+  book's customize has its own Save as default and its own defaults.
 - **ebay | craigslist**, side by side, each with its status line and link:
   `sending`, `queued, 1 ahead`, the server's step (`drafting the listing`...), then
   the link (opens in a new tab), or the server's error in its own words. The pressed
@@ -484,8 +553,11 @@ the server cannot be reached:
 
 ## The service contract (as this page uses it)
 
-Every call carries the header `X-Crosslister-Key: <key>`. Errors are JSON
-`{"detail": "..."}`: 400 with a message, 401 for a wrong key, 404 for an
+Every call carries the header `X-Crosslister-Key: <key>`, or, on a phone signed in
+by a link with no key saved, `X-Crosslister-Session: <session>` in its place
+(`authHeaders` in core.js); the two sign-in calls carry neither. Errors are JSON
+`{"detail": "..."}`: 400 with a message, 401 for a wrong key (or a session the
+server no longer knows: the page lets it go and shows the landing), 404 for an
 unknown item or job, 409 while the same item is already being posted on that venue (the other venue queues behind it).
 
 | Call | Sent | Answer |
@@ -519,6 +591,11 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
 | `POST <pc>/jobs`, a listing's customize **Sync to eBay** (one row, as saved, onto its eBay listing), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` / `{"action": "push", "sku", "venue": "craigslist"}` (the craigslist push is the server's from 2026-10-08) | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to craigslist yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...]}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats; a key it does not say is as before (craigslist on, admin off); 404 (an older server): everything as before |
+| `POST <pc>/feedback`, Admin's Feedback **Send** | `{"text": "...", "screen": "goods" / "book" / "admin" / "card", "version": "2.10.0", "job": "<job id>"}`, `job` only when Include my last job is ticked and the page has one | 201 `{"id"}`; an error's `detail` under Send |
+| `GET <pc>/stats?since=7d` / `30d` / `all`, Admin's Stats, opened or a chip tapped | - | `{"since", "jobs": {"total", "done", "failed", "cancelled", "queued", "running"}, "posted": {"ebay": n, "craigslist": n}, "drafted", "ended", "pushed", "model_cost": "12.34", "per_user": [{"user", "jobs", "posted", "model_cost"}], "per_day": [{"date", "jobs", "posted"}], "first", "last"}`; 403 for anyone but an admin (and 404 from an older server): the foldout goes |
+| `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
+| `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -577,7 +654,10 @@ Empty. With capacity to generate that card from there."
 - **Settings** is the old Settings card (the address, the key, **Save and
   check**, the server word at its top), with the **Appearance** chips (Dark |
   Light | Sync with device, see [Settings](#settings)) above Save and check.
-  Saving while the inventory is open asks for the list again.
+  Saving while the inventory is open asks for the list again. Under the status
+  line, once there is something to forget, **Forget this server** (with a key) or
+  **Sign out** (signed in by a link): the address, the key and any session leave
+  the phone, Admin closes and the landing is back.
 - **Inventory**: a **Search** box, small (36 px tall; its words stay 16 px, the
   size under which a phone zooms in on a box), asked 0.4 s after the last
   keystroke, or at once on the keyboard's search key; the line under it
@@ -827,6 +907,22 @@ Empty. With capacity to generate that card from there."
     tap while the job's POST (or Sync's save) is on its way does nothing. Add,
     Save and a plain load (the list, a listing read again) have nothing to
     cancel: no ring, no second line.
+- **Feedback**, a foldout after the inventory (Michal, 2026-10-08): a box ("What
+  happened, or what you wish it did"), **Include my last job** (ticked) and
+  **Send**, which posts `POST /feedback` with the words, `screen` (where he came
+  from: `goods` or `book`, the posting screen Admin was opened from; `admin` when it
+  was opened from the landing; `card` once a listing was looked at in this visit to
+  Admin), the page's `version`, and, ticked, the last job id the page has (the last
+  `POST /jobs` it sent, else a job of an item in hand; none, no `job` key). 201:
+  `Thanks, sent.` and the box clears; an error says `Not sent: <the server's
+  words>.` and keeps the box.
+- **Stats**, after Feedback, for an admin only (`/me` says `"admin": true`; Michal's
+  wish, 2026-10-08): chips **7d** | **30d** (the default) | **all**, each asking
+  `GET /stats?since=...` afresh, drawn as a small table: jobs (done, failed,
+  cancelled), posted per venue, drafted, ended, pushed, the model cost, then one row
+  per user (name, jobs, posted, cost). Counts only, no listing's title anywhere. A
+  403 or 404 takes the foldout away. Feedback and Stats step aside on a listing's
+  own page, as Settings does.
 
 ## Settings
 
@@ -853,7 +949,10 @@ Empty. With capacity to generate that card from there."
 
 The address and key are stored in `localStorage` on the phone (`snap.pc`,
 `snap.key`), and so is the look (`snap.theme`: `dark`, `light` or `device`;
-none, or anything else, is `device`). Every storage read and write is wrapped,
+none, or anything else, is `device`). Also kept: a sign-in's session
+(`snap.session`, in `localStorage` with Keep me signed in, else `sessionStorage`),
+customize's defaults (`snap.customize.defaults`) and the day the home-screen
+banner was put away (`snap.install.dismissed`); `/me`'s answer is never stored. Every storage read and write is wrapped,
 so a private window or blocked site data only means Settings are not
 remembered.
 
@@ -892,7 +991,9 @@ publishes.**
 ## Security and privacy
 
 - No secrets in this repo. The key is typed into each phone and lives only in
-  that phone's `localStorage` and in the header of calls to the server.
+  that phone's `localStorage` and in the header of calls to the server; a sign-in's
+  session the same way (or in `sessionStorage`, for one tab), and the link's token
+  leaves the address bar the moment the page has read it.
 - The CSP lets the page talk to the server's Tailscale address (or loopback) and
   nothing else; no third-party script, font or analytics.
 - Shrinking re-encodes each photo, which also drops the camera's metadata (GPS

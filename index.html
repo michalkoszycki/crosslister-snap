@@ -10,7 +10,9 @@
                                            (https://<pc>.<tailnet>.ts.net)
                  http://127.0.0.1, http://localhost (any port)
                                         -> the service on the PC itself, for trying the page there
-  core.js checkSettings() accepts exactly these hosts; change both together.
+  core.js checkSettings() accepts exactly these hosts; change both together. The product's own
+  server, where Sign in asks for a link and a signed-in phone calls (DEFAULT_SERVER in core.js),
+  is one of these Tailscale addresses, so the policy needs nothing more for it.
     font-src     'self'                 -> Manrope, kept in fonts/ (never a font CDN)
 -->
 <meta http-equiv="Content-Security-Policy" content="
@@ -29,9 +31,10 @@
 <meta id="theme-color" name="theme-color" content="#FFFC00">
 <meta id="theme-color-dark" name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
-<title>crosslister $nap</title>
-<link rel="stylesheet" href="styles.css?v=2.9.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.9.0" as="font" type="font/woff2" crossorigin>
+<!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
+<title>Snap</title>
+<link rel="stylesheet" href="styles.css?v=2.10.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.10.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -39,9 +42,10 @@
 <body>
 <header>
   <!-- the mark: one camera with a $ for a lens, its colours set in styles.css so the
-       dark variant (black body, white ring) is the same drawing -->
+       dark variant (black body, white ring) is the same drawing; the wordmark is the app's
+       name, Snap, its S a dollar sign (Michal, 2026-10-08: "The name of the app should be Snap") -->
   <h1 class="brand">
-    <svg class="mark" viewBox="0 0 132 132" width="36" height="36" role="img" aria-label="crosslister $nap">
+    <svg class="mark" viewBox="0 0 132 132" width="36" height="36" role="img" aria-label="Snap">
       <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
       <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
       <circle class="mark-ring" cx="66" cy="76" r="32" fill="#0B0B0B"/>
@@ -50,7 +54,7 @@
             font-weight="800" font-size="34" fill="#0B0B0B">$</text>
       <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
     </svg>
-    <span class="wordmark" aria-hidden="true">crosslister <span class="wordmark-snap">$nap</span></span>
+    <span class="wordmark" aria-hidden="true"><span class="wordmark-snap">$nap</span></span>
   </h1>
   <div class="header-right">
     <span id="server" class="server" aria-live="polite"></span>
@@ -60,6 +64,65 @@
 </header>
 
 <main>
+  <!-- The landing (Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app.
+       Snap is simple. Note that for the first landing page."): the whole screen, in place of the
+       goods screen, while this phone has no server address and key and no session. Install
+       first, then the two ways in: a key (Admin's Settings, as ever) or a sign-in link by email. -->
+  <section id="landing" class="landing" hidden>
+    <svg class="mark landing-mark" viewBox="0 0 132 132" width="96" height="96" aria-hidden="true">
+      <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
+      <circle class="mark-ring" cx="66" cy="76" r="32" fill="#0B0B0B"/>
+      <circle class="mark-lens" cx="66" cy="76" r="23" fill="#FFFC00"/>
+      <text class="mark-glyph" x="66" y="88" text-anchor="middle" font-family="Manrope, system-ui, sans-serif"
+            font-weight="800" font-size="34" fill="#0B0B0B">$</text>
+      <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
+    </svg>
+    <h2 class="landing-name">Snap</h2>
+    <p class="landing-tagline">a crosslisting app</p>
+    <p class="landing-what">Photograph it, and it is listed on eBay and Craigslist with a price and a description.</p>
+    <!-- Michal, 2026-10-08: "If it is not on the home screen it should direct towards that
+         install": Chrome's own prompt where it offered one, else the two taps unfold here;
+         gone when the page runs from the home screen -->
+    <button type="button" id="landing-install" class="big landing-install" aria-expanded="false"
+            aria-controls="landing-install-steps">Install</button>
+    <p id="landing-install-steps" class="install-steps" hidden></p>
+    <div class="landing-ways">
+      <button type="button" id="landing-key" class="secondary">I have a key</button>
+      <button type="button" id="landing-signin" class="secondary">Sign in</button>
+    </div>
+    <p id="landing-status" class="landing-status" aria-live="polite"></p>
+  </section>
+
+  <!-- Sign in by a link sent by email, to the product's own server; Keep me signed in keeps
+       the session on this phone, unticked for this tab only -->
+  <section id="signin" class="landing" hidden>
+    <button type="button" id="signin-back" class="link back-link">← Back</button>
+    <h2 class="landing-name">Sign in</h2>
+    <p class="landing-what">We email you a link. Open it on this phone and you are in.</p>
+    <label class="field">
+      <span class="field-label">Email</span>
+      <input id="signin-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off"
+             spellcheck="false" placeholder="you@example.com">
+    </label>
+    <label class="pickup">
+      <input id="signin-remember" type="checkbox" checked>
+      <span>Keep me signed in</span>
+    </label>
+    <button type="button" id="signin-send" class="big">Send me a link</button>
+    <p id="signin-status" class="landing-status" aria-live="polite"></p>
+  </section>
+
+  <!-- the home screen, nudged: a thin banner over the posting screens while the page runs in
+       a browser tab; dismissed, it stays away a week (app.js, installState in core.js) -->
+  <div id="install-banner" class="install-banner" hidden>
+    <p class="install-words">Add Snap to your home screen for the full-screen app</p>
+    <button type="button" id="install-add" class="pill pill-ink pill-small" aria-expanded="false"
+            aria-controls="install-steps">Add</button>
+    <button type="button" id="install-dismiss" class="install-dismiss" aria-label="Not now">×</button>
+    <p id="install-steps" class="install-steps" hidden></p>
+  </div>
+
   <!-- goods | book: two kinds of item, each with its own screen below and its own
        item in progress; switching never loses either (app.js keeps one of each).
        Hidden while Admin is open (Michal, 2026-10-06: "when we do admin we probably do not
@@ -115,6 +178,9 @@
       </div>
       <button type="button" id="settings-save" class="secondary">Save and check</button>
       <p id="settings-status" class="small"></p>
+      <!-- the way back to the landing: the address, the key and a session forgotten on this
+           phone (app.js words it Sign out for a session, Forget this server for a key) -->
+      <button type="button" id="settings-signout" class="link sign-out" hidden>Forget this server</button>
     </div>
 
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
@@ -242,6 +308,37 @@
       </div>
     </div>
 
+    <!-- Feedback, after the inventory: what happened, sent to the server with the screen it was
+         written from, the page's version and, ticked, the last job the page has -->
+    <button type="button" id="feedback-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="feedback">▸ Feedback</button>
+    <div id="feedback" class="card" hidden>
+      <label class="field">
+        <span class="field-label">Feedback</span>
+        <textarea id="feedback-text" rows="4" autocomplete="off" autocapitalize="sentences"
+                  placeholder="What happened, or what you wish it did"></textarea>
+      </label>
+      <label class="pickup">
+        <input id="feedback-job" type="checkbox" checked>
+        <span>Include my last job</span>
+      </label>
+      <button type="button" id="feedback-send" class="secondary">Send</button>
+      <p id="feedback-status" class="small" aria-live="polite"></p>
+    </div>
+
+    <!-- Stats, an admin's only (GET /me says so): counts, never a listing's title -->
+    <button type="button" id="stats-toggle" class="link customize-toggle" aria-expanded="false"
+            aria-controls="stats" hidden>▸ Stats</button>
+    <div id="stats" class="card stats" hidden>
+      <div id="stats-since" class="chips chips-three" role="group" aria-label="Since">
+        <button type="button" id="stats-since-7d" class="chip" data-value="7d" aria-pressed="false">7d</button>
+        <button type="button" id="stats-since-30d" class="chip" data-value="30d" aria-pressed="true">30d</button>
+        <button type="button" id="stats-since-all" class="chip" data-value="all" aria-pressed="false">all</button>
+      </div>
+      <p id="stats-status" class="small" aria-live="polite"></p>
+      <div id="stats-table" class="stats-table"></div>
+    </div>
+
     <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
          They probably could be below the inventory list hovering fixed on the screen as I
          scroll down"): it sticks to the bottom of the screen while Admin is on it -->
@@ -340,6 +437,13 @@
         <input id="comps" type="checkbox">
         <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
+      <!-- Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
+           the end, in case someone wants to change something permanently." The grade and the
+           three ticks, kept on this phone; every new item starts from them -->
+      <div class="default-row">
+        <button type="button" id="customize-default" class="pill pill-small">Save as default</button>
+        <span id="customize-default-status" class="small" aria-live="polite"></span>
+      </div>
     </div>
 
     <!-- the row's price, once a press has one, above both buttons -->
@@ -505,6 +609,10 @@
         <input id="book-comps" type="checkbox">
         <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
+      <div class="default-row">
+        <button type="button" id="book-customize-default" class="pill pill-small">Save as default</button>
+        <span id="book-customize-default-status" class="small" aria-live="polite"></span>
+      </div>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
@@ -534,6 +642,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.9.0"></script>
+<script type="module" src="app.js?v=2.10.0"></script>
 </body>
 </html>

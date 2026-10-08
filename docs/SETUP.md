@@ -1,6 +1,6 @@
-# Setting up crosslister snap
+# Setting up Snap
 
-The page needs two things per phone: the **Server address** and a **key**. Both
+Snap, a crosslisting app. The page needs two things per phone: the **Server address** and a **key**. Both
 come from the home PC, which must be running `crosslister serve` with Tailscale
 Funnel on; the app, and this page, call it **the server**. The server side is set
 up once, in the crosslister repo:
@@ -47,17 +47,32 @@ Never put a key in this repo: it is public.
 
 ## 3. The first phone
 
-1. Open **Chrome** and go to `https://michalkoszycki.github.io/crosslister-snap/`
-2. Tap **Admin** (top right); **Settings** opens in it by itself. Type the server
-   address and the key, tap **Save and check**. It should say "Saved. The server
-   answers and knows this key."
-3. Tap Chrome's **three-dot menu** > **Add to Home screen** (or **Install
-   app**), then **Add**. The icon opens the page without the address bar.
+1. Open **Chrome** and go to `https://michalkoszycki.github.io/crosslister-snap/`.
+   A phone that has never been set up opens on the **landing**: Snap, "a
+   crosslisting app", **Install**, then **I have a key** and **Sign in**.
+2. Tap **Install**. Where Chrome offers it, its own install prompt comes up: tap
+   **Install**. Otherwise the page spells out the two taps (Chrome's **three-dot
+   menu** > **Add to Home screen** or **Install app**, then **Add**; on an iPhone,
+   **Share** > **Add to Home Screen**). The icon opens the page without the address
+   bar. A phone already in use that never did this sees a thin banner at the top,
+   "Add Snap to your home screen for the full-screen app", with the same **Add**;
+   its x puts it away for a week.
+3. Open Snap from the home-screen icon and tap **I have a key**: Admin opens on
+   **Settings**. Type the server address and the key, tap **Save and check**. It
+   should say "Saved. The server answers and knows this key." Tap **Close**: the
+   goods screen.
 4. The first time you tap **Snap**, Android asks to allow the camera. Allow it.
+
+**Sign in** (an email address, then a link that opens Snap signed in) is for the
+server's sign-in lane; until that is set up it says "Sign-in is not set up on this
+server yet. Ask the developer for a key." Use **I have a key**.
+
+To take a phone off the server: Admin > Settings > **Forget this server** (or
+**Sign out**). The landing comes back.
 
 ## 4. The second phone
 
-The same three steps, with the same address and the key for that person (or
+The same steps, with the same address and the key for that person (or
 the shared key). Settings live on each phone separately; nothing is copied
 between them.
 
@@ -75,7 +90,10 @@ between them.
 - More than one of it, or pickup only? Tap the small **▸ customize** right
   above the buttons: set the **Quantity**, tick **Pickup only** (no shipping
   on eBay; `pickup only` then shows under ebay). Left alone it is one,
-  shipped, as always, and the next item starts that way again.
+  shipped, as always, and the next item starts that way again. To make a choice
+  stick (the price grade, Post without asking, Compare with eBay listings, Pickup
+  only; never the quantity), tap **Save as default** at the end of customize:
+  every new item starts from it, on this phone.
 - Tap **ebay** or **craigslist** (they open once every photo says `sent`). The
   line under it goes `sending`, `queued`, then the server's steps, then the link.
   The button itself turns a ring and, once the server has saved the listing, shows
@@ -140,9 +158,16 @@ between them.
 
 ## 6. When something goes wrong
 
-**The buttons stay grey with "Set the server address and key in Admin"**
+**The landing comes up every time, or "Set the server address and key in Admin"**
 Settings are empty or were not saved. In a private (incognito) tab nothing is
 remembered; use a normal tab or the home-screen icon.
+
+**The craigslist button is grey and says "Craigslist is not available for your account. Contact the developer."**
+The server says this key's account has no Craigslist. Ask Michal.
+
+**Something odd happened**
+Admin > **Feedback**: write what happened and tap **Send**. It goes to the server
+with the screen you came from, the page's version and (ticked) the last job.
 
 **Settings says "The page may only call a Tailscale address"**
 The address must be the `https://....ts.net` one from step 1, with nothing

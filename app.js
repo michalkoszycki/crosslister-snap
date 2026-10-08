@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.9.0";
+import { VERSION } from "./version.js?v=2.10.0";
 import {
     anyActive,
     bannerText,
@@ -127,10 +127,36 @@ import {
     dialBody,
     dialPrice,
     dialStep,
-} from "./core.js?v=2.9.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.9.0";
+    DEFAULT_SERVER,
+    checkEmail,
+    loginToken,
+    sessionOf,
+    LINK_SENT,
+    SIGNIN_MISSING,
+    SIGNIN_EXPIRED,
+    signinError,
+    meOf,
+    CRAIGSLIST_OFF,
+    venueAllowed,
+    installState,
+    installSteps,
+    isIosDevice,
+    FEEDBACK_SENT,
+    feedbackBody,
+    feedbackScreen,
+    STATS_SINCE,
+    DEFAULT_STATS_SINCE,
+    statsTable,
+    DEFAULTS_SAVED,
+    DEFAULTS_SAVED_MS,
+    applyDefaults,
+    customizeDefaults,
+    defaultsOf,
+} from "./core.js?v=2.10.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.10.0";
 import {
     addVenue,
+    askLink,
     cancelJob,
     checkPc,
     createItem,
@@ -139,17 +165,21 @@ import {
     getInventory,
     getItem,
     getJob,
+    getMe,
     getPhoto,
     getRow,
     getRowPhoto,
+    getStats,
     patchRow,
     PcError,
+    postFeedback,
     postJob,
     putNote,
     putPhoto,
     searchBook,
-} from "./pc.js?v=2.9.0";
-import { shrinkPhoto } from "./shrink.js?v=2.9.0";
+    startSession,
+} from "./pc.js?v=2.10.0";
+import { shrinkPhoto } from "./shrink.js?v=2.10.0";
 import {
     bookCard,
     bookPriceValue,
@@ -162,8 +192,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.9.0";
-import { canScan, readIsbn } from "./scan.js?v=2.9.0";
+} from "./book.js?v=2.10.0";
+import { canScan, readIsbn } from "./scan.js?v=2.10.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -182,6 +212,15 @@ const CARD_KEY = "snap.admin.card";
  * (or, for eBay, the sync bar's Sync to eBay) is done.
  */
 const UNSYNCED_KEY = "snap.inventory.unsynced";
+/**
+ * The session a sign-in link made, in localStorage when he kept Keep me signed in ticked,
+ * else in sessionStorage (this tab only); used when there is no key.
+ */
+const SESSION_KEY = "snap.session";
+/** Save as default's choices, per kind ({"goods": {...}, "book": {...}}): every new item starts from them. */
+const DEFAULTS_KEY = "snap.customize.defaults";
+/** When the home-screen banner was put away (an ISO date): it stays away a week. */
+const INSTALL_KEY = "snap.install.dismissed";
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 /** What app.js draws its own icons in (a listed badge's tick). */
@@ -231,6 +270,38 @@ const customizeOpen = { goods: false, book: false };
 let serverStatus = null;
 let healthTimer = null;
 let checking = false;
+
+/**
+ * GET /me's answer (meOf), in memory only: asked once per load after the first good check,
+ * and again after Save and check or a sign-in; null until then and from an older server
+ * (a 404), which is everything as before. `meAsked`: asked already for these settings.
+ */
+let me = null;
+let meAsked = false;
+/** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
+const offTaps = new Set();
+
+/** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
+let entry = "";
+/** Chrome's install prompt, kept from beforeinstallprompt for our own button; good for one ask. */
+let installPrompt = null;
+/** Installed from this tab (the prompt accepted): the nudges go. */
+let installed = false;
+/** The two taps unfolded, under the landing's Install and under the banner's Add. */
+const stepsOpen = { landing: false, banner: false };
+
+/** Save as default's "saved as your defaults", per kind, until its moment is over. */
+const defaultTimers = { goods: null, book: null };
+
+/** The last job this page sent (any POST /jobs), for Feedback's Include my last job. */
+let lastJob = "";
+/**
+ * Where Feedback is written from: the posting screen Admin was opened from ("goods" or
+ * "book"; "admin" with neither behind it), and whether a listing was looked at since.
+ */
+const visit = { from: "goods", sawCard: false };
+/** Admin's Feedback and Stats foldouts, open or folded; the Stats chip; Stats asked, per ask. */
+const extras = { feedback: false, stats: false, since: DEFAULT_STATS_SINCE, asked: 0, refused: false };
 
 /**
  * The status bar's colours as index.html gives them, read before a chosen look first
@@ -413,10 +484,31 @@ function chosenTheme() {
     return themeOf(readText("localStorage", THEME_KEY));
 }
 
-/** The saved PC address and key, checked; null when either is missing or wrong. */
+/**
+ * Where calls go and who makes them: the saved PC address and key, checked; else, on a
+ * phone signed in by a link, the product's server and the session; null with neither
+ * (the landing is then the screen).
+ */
 function settings() {
     const s = checkSettings(readText("localStorage", PC_KEY), readText("localStorage", KEY_KEY));
-    return s.ok ? { pc: s.pc, key: s.key } : null;
+    if (s.ok) return { pc: s.pc, key: s.key };
+    const session = readSession();
+    return session ? { pc: DEFAULT_SERVER, session } : null;
+}
+
+/** The session a sign-in link made: kept on the phone, or for this tab only. */
+function readSession() {
+    return readText("localStorage", SESSION_KEY) || readText("sessionStorage", SESSION_KEY);
+}
+
+/** Save as default's choices on this phone, both kinds. */
+function readDefaults() {
+    return customizeDefaults(readJson("localStorage", DEFAULTS_KEY, null));
+}
+
+/** A kind's next item: a fresh screen, its customize from the defaults he saved. */
+function freshState(m) {
+    return applyDefaults(reduce(slots[m], { type: "reset" }), readDefaults());
 }
 
 // --- rendering -------------------------------------------------------------
@@ -438,8 +530,14 @@ function render() {
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
     // screen is below. That should not be there"); both items carry on out of sight
     const away = !el.admin.hidden;
-    el.work.hidden = away || mode !== "goods";
-    el.book.hidden = away || mode !== "book";
+    // no settings and no session: the landing (or sign-in) is the whole screen instead
+    const out = !settings();
+    el.landing.hidden = !out || away || entry === "signin";
+    el.signin.hidden = !out || away || entry !== "signin";
+    el.modes.hidden = out || away;
+    el.work.hidden = out || away || mode !== "goods";
+    el.book.hidden = out || away || mode !== "book";
+    renderInstall(out || away);
 
     renderGoods();
     renderBook();
@@ -621,6 +719,8 @@ function customizeNodes(m) {
               pricingNote: el.bookPricingNote,
               autoPost: el.bookAutoPost,
               comps: el.bookComps,
+              saveDefault: el.bookCustomizeDefault,
+              defaultStatus: el.bookCustomizeDefaultStatus,
           }
         : {
               toggle: el.customizeToggle,
@@ -632,7 +732,25 @@ function customizeNodes(m) {
               pricingNote: el.pricingNote,
               autoPost: el.autoPost,
               comps: el.comps,
+              saveDefault: el.customizeDefault,
+              defaultStatus: el.customizeDefaultStatus,
           };
+}
+
+/**
+ * Save as default (Michal, 2026-10-08: "in case someone wants to change something
+ * permanently"): this kind's price grade and its three ticks as they stand, kept on this
+ * phone for every new item of the kind (NEXT, a fresh load); never the quantity. Said
+ * beside it for a moment.
+ */
+function saveDefaults(m) {
+    writeJson("localStorage", DEFAULTS_KEY, { ...readDefaults(), [m]: defaultsOf(customizeOf(slots[m])) });
+    const node = customizeNodes(m).defaultStatus;
+    node.textContent = DEFAULTS_SAVED;
+    clearTimeout(defaultTimers[m]);
+    defaultTimers[m] = setTimeout(() => {
+        node.textContent = "";
+    }, DEFAULTS_SAVED_MS);
 }
 
 /**
@@ -683,6 +801,23 @@ function renderPriceLine(node, text) {
 function renderVenue(m, venue, ok, nodes) {
     const state = slots[m];
     const job = state.jobs[venue];
+    // a venue this account may not use (GET /me): grey, yet it takes the tap that says why
+    // (Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write 'contact
+    // developer'"); a job it already has is shown as ever
+    const off = !venueAllowed(me, venue) && job.phase === "idle";
+    nodes.btn.classList.toggle("venue-off", off);
+    if (off) {
+        nodes.btn.disabled = false;
+        nodes.btn.setAttribute("aria-disabled", "true");
+        paintJobButton(nodes.btn, venue, { busy: false, cancel: false, reset: nodes.reset });
+        const said = offTaps.has(`${m}:${venue}`) ? CRAIGSLIST_OFF : "";
+        nodes.status.textContent = said;
+        nodes.status.className = "venue-status";
+        nodes.status.hidden = !said;
+        nodes.link.hidden = true;
+        return "";
+    }
+    nodes.btn.removeAttribute("aria-disabled");
     const button = venueButton(state, venue, ok);
     // the ring in the button from the press until the link or the error, and "tap again
     // to cancel" under the word while a tap pauses it: pressed, it is never disabled, so
@@ -1374,7 +1509,7 @@ async function send(m, venue) {
         customize: { ...customizeOf(s), autoPost: !s.jobs[venue].held },
     });
     try {
-        const answer = await postJob(pc, body);
+        const answer = await sendJob(pc, body);
         if (presses.get(key) !== press) {
             // reset while the POST was on its way: the PC is told at once
             cancelJob(pc, answer.job).catch(() => {});
@@ -1396,6 +1531,12 @@ async function send(m, venue) {
  */
 function onVenueTap(m, venue) {
     const key = `${m}:${venue}`;
+    if (!venueAllowed(me, venue) && slots[m].jobs[venue].phase === "idle") {
+        // nothing is sent: the line under it says the account has no such venue
+        offTaps.add(key);
+        render();
+        return;
+    }
     const tap = venueTap(slots[m], venue);
     if (tap === "send") send(m, venue).catch(() => {});
     else if (tap === "pause") pausePress(m, venue);
@@ -1555,7 +1696,6 @@ function fold(toggle, word, open) {
 function adminShown(open) {
     el.admin.hidden = !open;
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
-    el.modes.hidden = open;
     render();
 }
 
@@ -1566,6 +1706,8 @@ function adminShown(open) {
  * was there all along"). Closed, it lets go of the photos it fetched.
  */
 function showAdmin(open) {
+    // Feedback says where he came from: the posting screen behind Admin, or none (the landing)
+    if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
         // a search still waiting or an answer still on its way is for a list no longer shown
@@ -1694,8 +1836,9 @@ async function loadInventory(lead = "") {
         if (mine !== admin.asked) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
         el.inventoryStatus.textContent = [lead, `Could not read the inventory: ${e.message}.`].filter(Boolean).join(" ");
-        // a key the PC does not know: Settings is where it is put right
-        if (e.status === 401) showSettings(true);
+        // a key the PC does not know: Settings is where it is put right (a session it no
+        // longer knows took the page back to the landing already: heard)
+        if (e.status === 401 && settings()) showSettings(true);
         return;
     }
     if (mine !== admin.asked) return; // a later search or filter has its own answer coming
@@ -2030,7 +2173,7 @@ async function pushTile(sku, venue) {
     }
     let answer;
     try {
-        answer = await postJob(pc, actionJob("push", { sku, venue }));
+        answer = await sendJob(pc, actionJob("push", { sku, venue }));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         task.action = "";
@@ -2445,7 +2588,7 @@ async function pushRow() {
     renderCards();
     let answer;
     try {
-        answer = await postJob(pc, actionJob("push", { sku: row.sku, venue: "ebay" }));
+        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue: "ebay" }));
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -2485,7 +2628,8 @@ function renderFolds() {
 /**
  * A venue's card: its status line and link, then the listing's fields (or Edit's
  * inputs), then its actions, and under Save what the PC refused. A venue the row
- * is not on has only the line and its Add.
+ * is not on has only the line and its Add; for an account without that venue (GET /me),
+ * the line why instead of Add.
  */
 function cardNodes(venue) {
     const row = admin.row;
@@ -2494,7 +2638,13 @@ function cardNodes(venue) {
     c.line = document.createElement("p");
     c.button = null;
     paintLine(venue);
-    if (!rowVenues(row).includes(venue)) return [c.line, actionsNode(venue, busy)];
+    if (!rowVenues(row).includes(venue)) {
+        if (venueAllowed(me, venue)) return [c.line, actionsNode(venue, busy)];
+        const off = document.createElement("p");
+        off.className = "venue-status venue-off-note";
+        off.textContent = CRAIGSLIST_OFF;
+        return [c.line, off];
+    }
     const nodes = [c.line];
     const url = venueStatus(row, venue).url;
     if (url) nodes.push(linkNode(url, "venue-link", url));
@@ -2804,7 +2954,7 @@ async function runAction(venue, action) {
             : actionJob(action === "sync" ? "push" : action, { sku: row.sku, venue });
     let answer;
     try {
-        answer = await postJob(pc, body);
+        answer = await sendJob(pc, body);
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -3088,9 +3238,133 @@ function showList() {
  */
 function showCard(on) {
     if (on) showSettings(false);
+    if (on) visit.sawCard = true;
     for (const node of [el.adminTitle, el.settingsToggle, el.inventoryToggle, el.syncBar, el.adminClose]) node.hidden = on;
     el.inventoryBrowse.hidden = on;
     el.inventoryDetail.hidden = !on;
+    renderExtras();
+}
+
+// --- Admin's Feedback and Stats ---------------------------------------------------------
+
+/**
+ * Feedback and Stats, after the inventory: each a foldout as Settings is, both stepping
+ * aside on a listing's own page. Stats is an admin's only (GET /me says so) and goes for
+ * good once the server refuses it (403, or a 404 from an older server).
+ */
+function renderExtras() {
+    const card = !el.inventoryDetail.hidden;
+    el.feedbackToggle.hidden = card;
+    el.feedback.hidden = card || !extras.feedback;
+    fold(el.feedbackToggle, "Feedback", extras.feedback);
+    const stats = !card && !!me && me.admin && !extras.refused;
+    el.statsToggle.hidden = !stats;
+    el.stats.hidden = !stats || !extras.stats;
+    fold(el.statsToggle, "Stats", extras.stats);
+    for (const { value, node } of el.statsChips) node.setAttribute("aria-pressed", value === extras.since ? "true" : "false");
+}
+
+/** The last job id the page has: the one it last sent, else one of the items in hand's. */
+function lastJobId() {
+    if (lastJob) return lastJob;
+    for (const m of [mode, other(mode)]) {
+        for (const venue of VENUES) if (slots[m].jobs[venue].jobId) return slots[m].jobs[venue].jobId;
+    }
+    return "";
+}
+
+/** POST /jobs, its job id remembered for Feedback's Include my last job. */
+async function sendJob(pc, body) {
+    const answer = await postJob(pc, body);
+    if (answer && typeof answer.job === "string") lastJob = answer.job;
+    return answer;
+}
+
+/**
+ * Feedback's Send: the words, where he came from (feedbackScreen), the page's version and,
+ * ticked, the last job. Sent, the box clears and says thanks; a refusal is the server's words.
+ */
+async function sendFeedback() {
+    const pc = settings();
+    if (!pc) {
+        el.feedbackStatus.textContent = "Set the server address and key under Settings first.";
+        return;
+    }
+    const body = feedbackBody({
+        text: el.feedbackText.value,
+        screen: feedbackScreen(visit.from, visit.sawCard),
+        version: VERSION,
+        job: el.feedbackJob.checked ? lastJobId() : "",
+    });
+    if (!body) {
+        el.feedbackStatus.textContent = "Write what happened first.";
+        return;
+    }
+    el.feedbackSend.disabled = true;
+    el.feedbackStatus.textContent = "Sending...";
+    try {
+        await postFeedback(pc, body);
+        heard(200);
+        el.feedbackText.value = "";
+        el.feedbackStatus.textContent = FEEDBACK_SENT;
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.feedbackStatus.textContent = `Not sent: ${e.message}.`;
+    } finally {
+        el.feedbackSend.disabled = false;
+    }
+}
+
+/**
+ * Stats, asked afresh each time the foldout opens or a chip is tapped: the small table
+ * (statsTable), counts only. A 403 or 404 takes the foldout away.
+ */
+async function loadStats() {
+    const pc = settings();
+    if (!pc) return;
+    extras.asked += 1;
+    const mine = extras.asked;
+    el.statsStatus.textContent = "Asking the server...";
+    let answer;
+    try {
+        answer = await getStats(pc, extras.since);
+    } catch (e) {
+        if (mine !== extras.asked) return;
+        if (e.status === 403 || e.status === 404) {
+            extras.refused = true;
+            renderExtras();
+            return;
+        }
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.statsStatus.textContent = `Could not read the stats: ${e.message}.`;
+        return;
+    }
+    if (mine !== extras.asked) return;
+    heard(200);
+    el.statsStatus.textContent = "";
+    const { rows, users } = statsTable(answer);
+    const figures = document.createElement("table");
+    for (const [label, value] of rows) figures.append(tableRow("th", [label], value));
+    const people = document.createElement("table");
+    people.append(tableRow("th", ["user", "jobs", "posted", "cost"]));
+    for (const [name, ...rest] of users) people.append(tableRow("td", [name, ...rest]));
+    el.statsTable.replaceChildren(figures, ...(users.length ? [people] : []));
+}
+
+/** One table row: cells of `kind` for `cells`, and, given, a last plain cell. */
+function tableRow(kind, cells, last) {
+    const tr = document.createElement("tr");
+    for (const text of cells) {
+        const cell = document.createElement(kind);
+        cell.textContent = text;
+        tr.append(cell);
+    }
+    if (last !== undefined) {
+        const cell = document.createElement("td");
+        cell.textContent = last;
+        tr.append(cell);
+    }
+    return tr;
 }
 
 /**
@@ -3157,7 +3431,7 @@ async function startSync(direction) {
     if (!(await waited)) return;
     let answer;
     try {
-        answer = await postJob(pc, actionJob("sync", { direction }));
+        answer = await sendJob(pc, actionJob("sync", { direction }));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         sync.action = "";
@@ -3224,12 +3498,210 @@ function renderServer() {
         node.classList.toggle("ok", line.kind === "ok");
         node.classList.toggle("bad", line.kind === "bad");
     }
+    renderSignOut();
 }
 
-/** What the PC last said: 200, or the PcError status (0 = no answer). */
+/**
+ * What the PC last said: 200, or the PcError status (0 = no answer). A 401 on a phone
+ * signed in by a link (no key) is a session the server no longer knows: it is let go and
+ * the landing says so.
+ */
 function heard(status) {
     serverStatus = status;
+    const s = settings();
+    if (status === 401 && s && s.session) {
+        for (const store of ["localStorage", "sessionStorage"]) removeText(store, SESSION_KEY);
+        toLanding(SIGNIN_EXPIRED);
+        return;
+    }
     renderServer();
+}
+
+/**
+ * GET /me, kept in memory (Michal, 2026-10-08: "Keep the Craigslist button gray and when
+ * tapped write 'contact developer'"): what the account may do. A 404 (an older server),
+ * or no answer, leaves everything as before.
+ */
+async function loadMe() {
+    const pc = settings();
+    if (!pc) return;
+    meAsked = true;
+    extras.refused = false; // another account may be allowed Stats
+    try {
+        me = meOf(await getMe(pc));
+    } catch (e) {
+        me = null;
+        if (e.status === 401) heard(401);
+    }
+    renderMe();
+}
+
+/** What /me changes on screen: the craigslist button, an empty craigslist card, Stats. */
+function renderMe() {
+    render();
+    renderExtras();
+    if (admin.row) renderCards();
+}
+
+/**
+ * The landing again, with `message` on it: Admin closed, the server word and /me let go.
+ * The items in hand stay saved for when he is back in.
+ */
+function toLanding(message) {
+    me = null;
+    meAsked = false;
+    serverStatus = null;
+    clearTimeout(healthTimer);
+    healthTimer = null;
+    entry = "";
+    el.landingStatus.textContent = message;
+    if (!el.admin.hidden) showAdmin(false);
+    render();
+    renderServer();
+    renderExtras();
+}
+
+/**
+ * Settings' Sign out / Forget this server: the address, the key and any session gone from
+ * this phone, and the landing back (Michal, 2026-10-08).
+ */
+function forgetServer() {
+    for (const key of [PC_KEY, KEY_KEY, SESSION_KEY]) removeText("localStorage", key);
+    removeText("sessionStorage", SESSION_KEY);
+    toLanding("");
+}
+
+/** Settings' last button: Sign out on a phone signed in by a link, Forget this server with a key. */
+function renderSignOut() {
+    const s = settings();
+    el.settingsSignout.hidden = !s;
+    el.settingsSignout.textContent = s && s.session ? "Sign out" : "Forget this server";
+}
+
+// --- the way in: the landing, sign-in, the home screen ------------------------------
+
+/** The landing's Sign in, or the sign-in screen's Back. */
+function showSignin(open) {
+    entry = open ? "signin" : "";
+    el.signinStatus.textContent = "";
+    render();
+    if (open) el.signinEmail.focus();
+}
+
+/**
+ * Send me a link: POST /auth/link on the product's server, the email and Keep me signed
+ * in. The link it emails opens this page signed in (signIn).
+ */
+async function sendLink() {
+    const checked = checkEmail(el.signinEmail.value);
+    if (!checked.ok) {
+        el.signinStatus.textContent = checked.error;
+        return;
+    }
+    el.signinSend.disabled = true;
+    el.signinStatus.textContent = "Sending...";
+    try {
+        await askLink(DEFAULT_SERVER, { email: checked.email, remember: el.signinRemember.checked });
+        el.signinStatus.textContent = LINK_SENT;
+    } catch (e) {
+        el.signinStatus.textContent = e.status === 404 ? SIGNIN_MISSING : `Could not send the link: ${e.message}.`;
+    } finally {
+        el.signinSend.disabled = false;
+    }
+}
+
+/**
+ * The page opened from a sign-in link (`#login=<token>`): the token for a session (POST
+ * /auth/session), kept on the phone when he ticked Keep me signed in, else for this tab;
+ * then the goods screen, checked and asked about as on any load.
+ */
+async function signIn(token) {
+    el.landingStatus.textContent = "Signing you in...";
+    render();
+    let made = null;
+    try {
+        made = sessionOf(await startSession(DEFAULT_SERVER, token));
+    } catch (e) {
+        el.landingStatus.textContent = signinError(e.status, e.message);
+        return;
+    }
+    if (!made) {
+        el.landingStatus.textContent = signinError(400, "");
+        return;
+    }
+    for (const store of ["localStorage", "sessionStorage"]) removeText(store, SESSION_KEY);
+    writeText(made.remember ? "localStorage" : "sessionStorage", SESSION_KEY, made.session);
+    el.landingStatus.textContent = "";
+    entry = "";
+    me = null;
+    meAsked = false;
+    render();
+    checkServer().catch(() => {});
+    for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
+    pump();
+    retryLookup();
+}
+
+/** Running from the home screen: the display mode an installed web app gets, or an iPhone's own flag. */
+function standalone() {
+    const view = globalThis.window;
+    const query = view && typeof view.matchMedia === "function" ? view.matchMedia("(display-mode: standalone)") : null;
+    return installed || !!(query && query.matches) || globalThis.navigator.standalone === true;
+}
+
+/** An iPhone or iPad, told the Share taps (it never offers a prompt). */
+function onIos() {
+    const nav = globalThis.navigator;
+    return isIosDevice({ userAgent: nav.userAgent, platform: nav.platform, maxTouchPoints: nav.maxTouchPoints });
+}
+
+/**
+ * The two install nudges (Michal, 2026-10-08: "If it is not on the home screen it should
+ * direct towards that install"): the landing's Install step (never put away), and the
+ * banner over the posting screens (`away` while they are not on screen; put away for a week).
+ */
+function renderInstall(away) {
+    const ios = onIos();
+    const base = { standalone: standalone(), hasPrompt: !!installPrompt, isIos: ios, now: Date.now() };
+    const steps = installSteps(ios);
+    const onLanding = installState({ ...base, dismissedAt: "" });
+    el.landingInstall.hidden = onLanding === "hidden";
+    el.landingInstall.setAttribute("aria-expanded", stepsOpen.landing ? "true" : "false");
+    el.landingInstallSteps.textContent = steps;
+    el.landingInstallSteps.hidden = onLanding !== "steps" || !stepsOpen.landing;
+    const banner = installState({ ...base, dismissedAt: readText("localStorage", INSTALL_KEY) });
+    el.installBanner.hidden = away || banner === "hidden";
+    el.installAdd.setAttribute("aria-expanded", stepsOpen.banner ? "true" : "false");
+    el.installSteps.textContent = steps;
+    el.installSteps.hidden = banner !== "steps" || !stepsOpen.banner;
+}
+
+/**
+ * Install (the landing's) or Add (the banner's): Chrome's own prompt where it offered one
+ * (an ask it allows once), else the two taps unfold under the button, or fold again.
+ */
+async function onInstall(where) {
+    const ask = installPrompt;
+    if (!ask) {
+        stepsOpen[where] = !stepsOpen[where];
+        render();
+        return;
+    }
+    installPrompt = null;
+    try {
+        await ask.prompt();
+        const choice = await ask.userChoice;
+        if (choice && choice.outcome === "accepted") installed = true;
+    } catch {
+        /* the browser would not ask: the taps are spelled out instead from now on */
+    }
+    render();
+}
+
+/** The banner's x: away for a week (INSTALL_SNOOZE_MS), counted from now. */
+function dismissInstall() {
+    writeText("localStorage", INSTALL_KEY, new Date().toISOString());
+    render();
 }
 
 function scheduleHealth() {
@@ -3253,6 +3725,8 @@ async function checkServer() {
     try {
         await checkPc(pc);
         heard(200);
+        // who this is, once per load (and per new settings): craigslist and Stats follow it
+        if (!meAsked) loadMe().catch(() => {});
         // the PC is back: waiting photos go now, not after the retry pause
         let stalled = false;
         for (const m of MODES) {
@@ -3286,10 +3760,14 @@ async function saveSettings() {
         return;
     }
     el.settingsStatus.textContent = "Saved. Checking the server...";
+    // new settings, maybe another account: /me is asked afresh
+    me = null;
+    meAsked = false;
     try {
         await checkPc(s);
         heard(200);
         el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
+        loadMe().catch(() => {});
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
@@ -3354,12 +3832,12 @@ async function restore(m, saved) {
         if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
             say(`${itemName} is no longer on the server.`, "warn");
-            setState(m, reduce(slots[m], { type: "reset" }));
+            setState(m, freshState(m));
         } else {
             // leave the saved item alone: a reload once the PC answers brings it back
             keepSaved[m] = true;
             say(`Could not read ${itemName} back from the server (${e.message}). Its photos are safe there; reload when the server answers.`, "warn");
-            setState(m, reduce(slots[m], { type: "reset" }));
+            setState(m, freshState(m));
         }
     }
 }
@@ -3420,8 +3898,8 @@ async function nextItem(m) {
     clearItem(m);
     say("");
     keepSaved[m] = false;
-    customizeOpen[m] = false; // the next item starts folded, at one, shipped, a quick sale, posted, no comparisons
-    setState(m, reduce(slots[m], { type: "reset" }));
+    customizeOpen[m] = false; // the next item starts folded, at one, from his defaults (Save as default)
+    setState(m, freshState(m));
     fillCustomize(m);
     // the walk is at the items in hand again, one place further when the list grew;
     // the other kind's screen leaves an earlier item it was showing
@@ -3437,6 +3915,7 @@ function clearItem(m) {
     for (const venue of VENUES) {
         clearTimeout(polls.get(`${m}:${venue}`));
         polls.delete(`${m}:${venue}`);
+        offTaps.delete(`${m}:${venue}`);
     }
     clearTimeout(resumeTimers[m]);
     resumeTimers[m] = null;
@@ -3558,7 +4037,7 @@ async function bringUp(m, record) {
     viewing[m] = record ? record.itemId : "";
     restoring[m] = false; // a read back still on its way is dropped (the generation moved on)
     keepSaved[m] = true; // the screen clears without dropping the item in hand from storage
-    setState(m, reduce(slots[m], { type: "reset" }));
+    setState(m, freshState(m));
     keepSaved[m] = false;
     lastSaved[m] = null;
     await restore(m, saved);
@@ -3584,6 +4063,34 @@ function main() {
         settingsSave: $("settings-save"),
         settingsStatus: $("settings-status"),
         settingsServer: $("settings-server"),
+        settingsSignout: $("settings-signout"),
+        landing: $("landing"),
+        landingInstall: $("landing-install"),
+        landingInstallSteps: $("landing-install-steps"),
+        landingKey: $("landing-key"),
+        landingSignin: $("landing-signin"),
+        landingStatus: $("landing-status"),
+        signin: $("signin"),
+        signinBack: $("signin-back"),
+        signinEmail: $("signin-email"),
+        signinRemember: $("signin-remember"),
+        signinSend: $("signin-send"),
+        signinStatus: $("signin-status"),
+        installBanner: $("install-banner"),
+        installAdd: $("install-add"),
+        installDismiss: $("install-dismiss"),
+        installSteps: $("install-steps"),
+        feedbackToggle: $("feedback-toggle"),
+        feedback: $("feedback"),
+        feedbackText: $("feedback-text"),
+        feedbackJob: $("feedback-job"),
+        feedbackSend: $("feedback-send"),
+        feedbackStatus: $("feedback-status"),
+        statsToggle: $("stats-toggle"),
+        stats: $("stats"),
+        statsChips: STATS_SINCE.map((value) => ({ value, node: $(`stats-since-${value}`) })),
+        statsStatus: $("stats-status"),
+        statsTable: $("stats-table"),
         themeChips: THEMES.map(({ value }) => ({ value, node: $(`theme-${value}`) })),
         themeColor: $("theme-color"),
         themeColorDark: $("theme-color-dark"),
@@ -3665,6 +4172,8 @@ function main() {
         pricingNote: $("pricing-note"),
         autoPost: $("auto-post"),
         comps: $("comps"),
+        customizeDefault: $("customize-default"),
+        customizeDefaultStatus: $("customize-default-status"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -3707,6 +4216,8 @@ function main() {
         bookPricingNote: $("book-pricing-note"),
         bookAutoPost: $("book-auto-post"),
         bookComps: $("book-comps"),
+        bookCustomizeDefault: $("book-customize-default"),
+        bookCustomizeDefaultStatus: $("book-customize-default-status"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
         bookEbayBtn: $("book-ebay-btn"),
@@ -3726,13 +4237,70 @@ function main() {
     grounds = { light: el.themeColor.content, dark: el.themeColorDark.content };
     applyTheme(chosenTheme());
     el.version.textContent = VERSION;
+    // opened from a sign-in link: its token is taken and the hash cleared before the walk
+    // mirrors this entry, so a reload or back never signs in with it again
+    const place = globalThis.location;
+    const token = loginToken(place ? place.hash : "");
+    if (token) globalThis.history.replaceState(globalThis.history.state, "", `${place.pathname}${place.search}`);
     // goods unless this phone was last used for books; a reload on an item back brought up shows its kind
     const walked = startWalk();
     mode = walked ? recordKind(walked) : chosenMode();
-    for (const m of MODES) slots[m] = reduce(slots[m], { type: "online", online: navigator.onLine });
+    // a fresh screen starts from his defaults; an item read back keeps its own customize
+    for (const m of MODES) slots[m] = applyDefaults(reduce(slots[m], { type: "online", online: navigator.onLine }), readDefaults());
     render();
 
     renderServer();
+    renderExtras();
+
+    // the way in: the landing's two ways and Install, the sign-in screen, the banner's Add and x
+    // I have a key: Admin, which opens on Settings while none are saved
+    el.landingKey.addEventListener("click", () => showAdmin(true));
+    el.landingSignin.addEventListener("click", () => showSignin(true));
+    el.signinBack.addEventListener("click", () => showSignin(false));
+    el.signinSend.addEventListener("click", () => {
+        sendLink().catch(() => {});
+    });
+    el.signinEmail.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sendLink().catch(() => {});
+    });
+    el.landingInstall.addEventListener("click", () => {
+        onInstall("landing").catch(() => {});
+    });
+    el.installAdd.addEventListener("click", () => {
+        onInstall("banner").catch(() => {});
+    });
+    el.installDismiss.addEventListener("click", dismissInstall);
+    // Chrome offers to install: kept for our own button instead of its mini-infobar
+    window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        installPrompt = e;
+        render();
+    });
+    window.addEventListener("appinstalled", () => {
+        installed = true;
+        installPrompt = null;
+        render();
+    });
+    el.settingsSignout.addEventListener("click", forgetServer);
+    el.feedbackToggle.addEventListener("click", () => {
+        extras.feedback = !extras.feedback;
+        renderExtras();
+    });
+    el.feedbackSend.addEventListener("click", () => {
+        sendFeedback().catch(() => {});
+    });
+    el.statsToggle.addEventListener("click", () => {
+        extras.stats = !extras.stats;
+        renderExtras();
+        if (extras.stats) loadStats().catch(() => {});
+    });
+    for (const { value, node } of el.statsChips) {
+        node.addEventListener("click", () => {
+            extras.since = value;
+            renderExtras();
+            loadStats().catch(() => {});
+        });
+    }
 
     el.adminToggle.addEventListener("click", toggleAdmin);
     el.adminClose.addEventListener("click", () => showAdmin(false));
@@ -3895,6 +4463,7 @@ function main() {
         nodes.comps.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setComps", on: nodes.comps.checked }))
         );
+        nodes.saveDefault.addEventListener("click", () => saveDefaults(m));
     }
 
     window.addEventListener("online", () => {
@@ -3930,7 +4499,8 @@ function main() {
         viewing[m] = record ? record.itemId : "";
         restore(m, record || inHand(m)).catch(() => {});
     }
-    checkServer().catch(() => {});
+    if (token) signIn(token).catch(() => {});
+    else checkServer().catch(() => {});
 }
 
 main();

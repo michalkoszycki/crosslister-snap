@@ -1,7 +1,7 @@
 {
-  "name": "crosslister $nap",
-  "short_name": "$nap",
-  "description": "Snap item photos and list them on eBay and Craigslist through the home server.",
+  "name": "Snap",
+  "short_name": "Snap",
+  "description": "a crosslisting app",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

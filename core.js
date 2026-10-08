@@ -1,9 +1,9 @@
-// core.js -- pure logic for crosslister snap.
+// core.js -- pure logic for Snap.
 // No DOM, no network, no browser globals. Everything here is unit tested
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.9.0";
+import { noteDirty, unsent } from "./queue.js?v=2.10.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.9.0";
+} from "./book.js?v=2.10.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -143,6 +143,258 @@ export function checkSettings(pcRaw, keyRaw) {
         return { ok: false, error: "The key has a space or an unusual character in it." };
     }
     return { ok: true, pc: url.origin, key };
+}
+
+// --- the way in: the landing, sign-in, the home screen, the account ---------------
+// Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app. Snap is
+// simple. Note that for the first landing page." A phone with no server address and key
+// and no session opens on the landing instead of the goods screen: Install, then two ways
+// in, a key (Settings, as ever) or a sign-in link sent by email.
+
+/**
+ * The product's own server: where a sign-in link is asked for and a signed-in phone's
+ * calls go. A person with a key types his own address instead (Settings).
+ */
+export const DEFAULT_SERVER = "https://michal-pc.mulley-themis.ts.net";
+
+/** The header a signed-in phone's session travels in, where a key would. */
+export const SESSION_HEADER = "X-Crosslister-Session";
+
+/**
+ * The header a call carries: the key when this phone has one, else the session it signed
+ * in with; nothing for the sign-in calls themselves.
+ * @param {{key?:string, session?:string}} [auth]
+ * @returns {Record<string, string>}
+ */
+export function authHeaders({ key = "", session = "" } = {}) {
+    if (key) return { [KEY_HEADER]: key };
+    if (session) return { [SESSION_HEADER]: session };
+    return {};
+}
+
+/**
+ * The address a sign-in link is sent to, as typed: one @, something either side, a dot
+ * in the domain. The server is the judge of the rest.
+ * @param {unknown} raw
+ * @returns {{ok:true, email:string} | {ok:false, error:string}}
+ */
+export function checkEmail(raw) {
+    const email = typeof raw === "string" ? raw.trim() : "";
+    if (!email) return { ok: false, error: "Enter your email address." };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "That is not an email address." };
+    return { ok: true, email };
+}
+
+/**
+ * The token a sign-in link brings, from the page's hash (`#login=<token>`); "" for any
+ * other hash.
+ * @param {unknown} hash
+ * @returns {string}
+ */
+export function loginToken(hash) {
+    const m = typeof hash === "string" ? /^#login=([^&]+)$/.exec(hash) : null;
+    if (!m) return "";
+    try {
+        return decodeURIComponent(m[1]).trim();
+    } catch {
+        return "";
+    }
+}
+
+/**
+ * POST /auth/session's answer: the session to keep, whose it is, and whether he ticked
+ * Keep me signed in (kept on the phone) or not (kept for this tab only). Null when it
+ * carries no session.
+ * @param {unknown} answer
+ * @returns {{session:string, user:string, remember:boolean} | null}
+ */
+export function sessionOf(answer) {
+    const a = answer && typeof answer === "object" ? /** @type {Record<string, unknown>} */ (answer) : {};
+    const session = typeof a.session === "string" ? a.session.trim() : "";
+    if (!session || !/^[\x21-\x7e]+$/.test(session)) return null;
+    return { session, user: typeof a.user === "string" ? a.user : "", remember: a.remember !== false };
+}
+
+/** Said on the sign-in screen once the server has sent the link. */
+export const LINK_SENT = "Check your email for the link; it works on this phone.";
+
+/** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
+export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
+
+/** Said on the landing when the server no longer knows this phone's session (a 401). */
+export const SIGNIN_EXPIRED = "Your sign-in expired; send yourself a new link";
+
+/**
+ * The landing's line when a sign-in link did not sign him in.
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function signinError(status, message) {
+    if (status === 404) return SIGNIN_MISSING;
+    if ([400, 401, 403, 410].includes(status)) return "That sign-in link has expired or was used already. Send yourself a new link.";
+    return `Could not sign in: ${message}.`;
+}
+
+/**
+ * GET /me: who this key or session is and what the account may do. Leniently read: a
+ * craigslist or admin the server does not say is as today (craigslist on, admin off).
+ * @param {unknown} answer
+ * @returns {{user:string, admin:boolean, craigslist:boolean, venues:string[]} | null}
+ */
+export function meOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    return {
+        user: typeof a.user === "string" ? a.user : "",
+        admin: a.admin === true,
+        craigslist: a.craigslist !== false,
+        venues: Array.isArray(a.venues) ? a.venues.filter((v) => typeof v === "string") : [],
+    };
+}
+
+/** Under the craigslist button, and in an empty craigslist card, for an account without it. */
+export const CRAIGSLIST_OFF = "Craigslist is not available for your account. Contact the developer.";
+
+/**
+ * Whether this account may use a venue (Michal, 2026-10-08: "Keep the Craigslist button
+ * gray and when tapped write 'contact developer'"): only craigslist can be off, and only
+ * when /me says so; no answer (an older server's 404) is everything as today.
+ * @param {{craigslist:boolean} | null} me
+ * @param {string} venue
+ * @returns {boolean}
+ */
+export function venueAllowed(me, venue) {
+    return venue !== "craigslist" || !me || me.craigslist !== false;
+}
+
+/** A dismissed home-screen banner stays away this long. */
+export const INSTALL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The banner's words on the goods screen. */
+export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen app";
+
+/**
+ * The install nudge (Michal, 2026-10-08: "If it is not on the home screen it should
+ * direct towards that install. Can that be done even though I have already used it?
+ * Would the website know?"): nothing from the home screen (display-mode standalone, or
+ * an iPhone's navigator.standalone), nothing for a week after a dismissal, the browser's
+ * own install prompt where Chrome offered one (kept from beforeinstallprompt), and the
+ * two taps spelled out everywhere else.
+ * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, dismissedAt?:unknown, now:number}} o
+ * @returns {"hidden"|"prompt"|"steps"}
+ */
+export function installState({ standalone, hasPrompt, isIos, dismissedAt = "", now }) {
+    if (standalone) return "hidden";
+    const at = typeof dismissedAt === "string" && dismissedAt ? Date.parse(dismissedAt) : NaN;
+    if (Number.isFinite(at) && now - at < INSTALL_SNOOZE_MS) return "hidden";
+    // Safari never offers the prompt: an iPhone is always told the two taps
+    return hasPrompt && !isIos ? "prompt" : "steps";
+}
+
+/**
+ * The two taps that put the page on the home screen, where the browser offers no prompt.
+ * @param {boolean} isIos
+ * @returns {string}
+ */
+export function installSteps(isIos) {
+    return isIos
+        ? "Tap Share, then Add to Home Screen."
+        : "Open the browser menu, then Add to Home screen (or Install app).";
+}
+
+/**
+ * An iPhone or iPad, whose Safari has Share > Add to Home Screen and no install prompt
+ * (an iPad asks for the desktop site, so it says Mac with a touch screen).
+ * @param {{userAgent?:unknown, platform?:unknown, maxTouchPoints?:unknown}} nav
+ * @returns {boolean}
+ */
+export function isIosDevice({ userAgent = "", platform = "", maxTouchPoints = 0 } = {}) {
+    if (typeof userAgent === "string" && /iPhone|iPad|iPod/.test(userAgent)) return true;
+    return platform === "MacIntel" && typeof maxTouchPoints === "number" && maxTouchPoints > 1;
+}
+
+// --- feedback and the stats (Admin) -----------------------------------------------
+
+/** Said once POST /feedback answered 201; the box clears. */
+export const FEEDBACK_SENT = "Thanks, sent.";
+
+/**
+ * Where the feedback was written from: the posting screen Admin was opened from ("goods",
+ * "book"), "admin" when Admin was opened with neither behind it, and "card" once a
+ * listing was looked at in this visit to Admin.
+ * @param {string} from
+ * @param {boolean} sawCard
+ * @returns {"goods"|"book"|"admin"|"card"}
+ */
+export function feedbackScreen(from, sawCard) {
+    if (sawCard) return "card";
+    return from === "goods" || from === "book" ? from : "admin";
+}
+
+/**
+ * POST /feedback's body: the words trimmed, the screen, the page's version and, when he
+ * left Include my last job ticked and the page has one, that job's id. Null for a blank box.
+ * @param {{text:unknown, screen:string, version:string, job?:string}} o
+ * @returns {{text:string, screen:string, version:string, job?:string} | null}
+ */
+export function feedbackBody({ text, screen, version, job = "" }) {
+    const words = typeof text === "string" ? text.trim() : "";
+    if (!words) return null;
+    return { text: words, screen, version, ...(job ? { job } : {}) };
+}
+
+/** The Stats chips, in their order on screen; 30 days unless another is tapped. */
+export const STATS_SINCE = ["7d", "30d", "all"];
+export const DEFAULT_STATS_SINCE = "30d";
+
+/**
+ * GET /stats's query for a chip; the default for one the page does not know.
+ * @param {unknown} since
+ * @returns {string}
+ */
+export function statsQuery(since) {
+    return `since=${STATS_SINCE.includes(/** @type {string} */ (since)) ? since : DEFAULT_STATS_SINCE}`;
+}
+
+/** A count as the server gives it; 0 for anything that is not one. */
+function countOf(x) {
+    const n = typeof x === "string" && x.trim() !== "" ? Number(x) : x;
+    return typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** A model cost ("12.34") in dollars; NO_PRICE when the server has none. */
+function costWord(x) {
+    const s = plain(x);
+    return s ? `$${s}` : NO_PRICE;
+}
+
+/**
+ * GET /stats drawn as Admin's small table: one line per figure, then one row per user
+ * (name, jobs, posted, model cost). Counts only: no listing's title ever reaches it.
+ * @param {unknown} answer
+ * @returns {{rows:[string, string][], users:[string, string, string, string][]}}
+ */
+export function statsTable(answer) {
+    const a = answer && typeof answer === "object" ? /** @type {Record<string, any>} */ (answer) : {};
+    const jobs = a.jobs && typeof a.jobs === "object" ? a.jobs : {};
+    const posted = a.posted && typeof a.posted === "object" ? a.posted : {};
+    /** @type {[string, string][]} */
+    const rows = [
+        [
+            "jobs",
+            `${countOf(jobs.total)}: ${countOf(jobs.done)} done, ${countOf(jobs.failed)} failed, ${countOf(jobs.cancelled)} cancelled`,
+        ],
+        ...Object.keys(posted).map((venue) => /** @type {[string, string]} */ ([`posted on ${venueName(venue)}`, String(countOf(posted[venue]))])),
+        ["drafted", String(countOf(a.drafted))],
+        ["ended", String(countOf(a.ended))],
+        ["pushed", String(countOf(a.pushed))],
+        ["model cost", costWord(a.model_cost)],
+    ];
+    const users = (Array.isArray(a.per_user) ? a.per_user : [])
+        .filter((u) => u && typeof u === "object")
+        .map((u) => /** @type {[string, string, string, string]} */ ([plain(u.user), String(countOf(u.jobs)), String(countOf(u.posted)), costWord(u.model_cost)]));
+    return { rows, users };
 }
 
 // --- the look: dark, light or the device's ---------------------------------
@@ -632,6 +884,55 @@ function savedCustomize(c) {
             ...(c.comps === true ? { comps: true } : {}),
         },
     };
+}
+
+// Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
+// the end, in case someone wants to change something permanently." Kept per kind on this
+// phone: the price grade and the three ticks, never the quantity (nor the user note, which
+// is not customize's); every new item starts from them.
+
+/**
+ * What Save as default keeps of a customize, and what a new item starts from.
+ * @typedef {{pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean}} CustomizeDefaults
+ */
+
+/** Said beside Save as default for a moment. */
+export const DEFAULTS_SAVED = "saved as your defaults";
+
+/** How long DEFAULTS_SAVED stays. */
+export const DEFAULTS_SAVED_MS = 2500;
+
+/**
+ * One kind's defaults from a customize (or from storage, leniently: anything odd is the
+ * plain default).
+ * @param {unknown} c
+ * @returns {CustomizeDefaults}
+ */
+export function defaultsOf(c) {
+    const r = recoveredCustomize(c);
+    return { pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly };
+}
+
+/**
+ * The defaults saved on this phone, both kinds, as `snap.customize.defaults` holds them
+ * ({"goods": {...}, "book": {...}}); nothing saved, or anything unreadable, is the plain default.
+ * @param {unknown} raw
+ * @returns {{goods:CustomizeDefaults, book:CustomizeDefaults}}
+ */
+export function customizeDefaults(raw) {
+    const all = raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : {};
+    return { goods: defaultsOf(all.goods), book: defaultsOf(all.book) };
+}
+
+/**
+ * A new item's customize from the defaults of its kind; the quantity stays as it is.
+ * @param {SnapState} state
+ * @param {{goods:CustomizeDefaults, book:CustomizeDefaults}} defaults
+ * @returns {SnapState}
+ */
+export function applyDefaults(state, defaults) {
+    const d = (defaults || customizeDefaults(null))[state.mode === "book" ? "book" : "goods"];
+    return withCustomize(state, (c) => ({ ...c, ...d }));
 }
 
 /** Customize changed, in the right place for the item's kind; fixed while a job is on its way. */
