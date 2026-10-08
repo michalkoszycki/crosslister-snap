@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.10.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.11.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1016,6 +1016,21 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 
 /* Sign out / Forget this server, under Save and check: quiet, it is rarely wanted */
 .link.sign-out { display: block; min-height: 44px; padding: 10px 0; color: var(--bad); }
+
+/* The Account block, first in Settings: whose it is, the postings left and Buy postings,
+   the eBay it posts to and Connect eBay; under a thin line from the address and key */
+.account { margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.account-user { margin: 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+.account-line { margin: 6px 0 0; overflow-wrap: anywhere; }
+.account .pill { margin-top: 8px; }
+.account-packs { display: flex; flex-wrap: wrap; gap: 6px; }
+.account-status { margin: 8px 0 0; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.account-status:empty { display: none; }
+/* the postings line under the landing's one-liner: small, a fact, not a pitch */
+.landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
+/* under a venue button refused for want of postings: to Settings' Account block */
+.link.buy-link { display: block; min-height: 40px; padding: 8px 2px 0; font-size: 14px; text-decoration: underline; }
+.link.buy-link[hidden] { display: none; }
 
 /* Admin's Stats: a small table of counts, the users under it */
 .stats-table table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 14px; }

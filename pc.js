@@ -92,12 +92,25 @@
 //                                      opens this page as #login=<token>
 //   POST   <pc>/auth/session          {"token"} -> {"session", "user", "remember"}
 //   (a server without the sign-in lane answers both with a 404)
+//   DELETE <pc>/auth/session          Sign out, with the session header -> 204: the server forgets it
+// The Account block in Settings (Michal, 2026-10-08: three free postings per person, then
+// prepaid postings bought through Stripe; Connect eBay from the phone for another seller):
+//   GET /me adds "credits": {"unlimited": true} | {"free_left", "bought_left"}, "packs":
+//                                      [{"id", "postings", "price"}] and "ebay": {"connected",
+//                                      "user", "policies": "ready"|"pending"|"failed: <why>"}
+//   POST   <pc>/jobs                  a posting with no postings left -> 402 {"detail"}
+//   POST   <pc>/pay/checkout          {"pack": "<id>"} -> {"url": Stripe's checkout page}; 503 while
+//                                      payments are not set up. Stripe sends the browser back to
+//                                      this page as #paid=<postings> or #paid=cancelled
+//   GET    <pc>/ebay/connect          -> {"url": eBay's consent page}; eBay sends the browser to the
+//                                      server, which sends it here as #ebay=connected or #ebay=failed
+//   (a server without them answers a 404: not available yet)
 //
 // Every call carries the key in the X-Crosslister-Key header, or, on a phone signed in
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.10.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.11.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -387,4 +400,33 @@ export function askLink(pc, body) {
  */
 export function startSession(pc, token) {
     return call(`${pc}/auth/session`, {}, { method: "POST", json: { token } });
+}
+
+/**
+ * Sign out: the server forgets the session (204, no body).
+ * @param {Settings} settings the session's
+ * @returns {Promise<void>}
+ */
+export async function endSession({ pc, ...auth }) {
+    const res = await request(`${pc}/auth/session`, auth, { method: "DELETE" });
+    if (!res.ok) throw await refused(res);
+}
+
+/**
+ * Buy postings: Stripe's checkout page for a pack, where the page sends the browser.
+ * @param {Settings} settings
+ * @param {string} pack the pack's id, as /me's "packs" give it
+ * @returns {Promise<{url:string}>}
+ */
+export function checkout({ pc, ...auth }, pack) {
+    return call(`${pc}/pay/checkout`, auth, { method: "POST", json: { pack } });
+}
+
+/**
+ * Connect eBay: eBay's consent page for this account, where the page sends the browser.
+ * @param {Settings} settings
+ * @returns {Promise<{url:string}>}
+ */
+export function ebayConnect({ pc, ...auth }) {
+    return call(`${pc}/ebay/connect`, auth);
 }
