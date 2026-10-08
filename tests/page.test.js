@@ -7332,7 +7332,10 @@ test("about.html: what Snap is, privacy and terms, the version; no script, the a
     assert.match(page, /<a class="link back-link" href="\.\/">← Back to Snap<\/a>/);
     for (const id of ["what", "privacy", "terms"]) assert.match(page, new RegExp(`<h2 id="${id}">`));
     assert.match(page, /Snap is run by its developer; contact: the Feedback box in Admin, or the email below\./);
-    assert.match(page, /<a id="support" href="mailto:support@example\.com">support@example\.com<\/a>/);
+    assert.match(
+        page,
+        /<a id="support" href="mailto:crosslistersnap@gmail\.com">crosslistersnap@gmail\.com<\/a>/,
+    );
     const words = page.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     for (const said of [
         "Your photos",
