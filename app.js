@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.16.0";
+import { VERSION } from "./version.js?v=2.16.1";
 import {
     anyActive,
     bannerText,
@@ -170,6 +170,7 @@ import {
     installSteps,
     isDesktopBrowser,
     isIosDevice,
+    landingHelp,
     FEEDBACK_SENT,
     feedbackBody,
     feedbackScreen,
@@ -194,8 +195,8 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.16.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.16.0";
+} from "./core.js?v=2.16.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.16.1";
 import {
     addVenue,
     archiveRow,
@@ -231,8 +232,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.16.0";
-import { shrinkPhoto } from "./shrink.js?v=2.16.0";
+} from "./pc.js?v=2.16.1";
+import { shrinkPhoto } from "./shrink.js?v=2.16.1";
 import {
     bookCard,
     bookPriceValue,
@@ -245,8 +246,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.16.0";
-import { canScan, readIsbn } from "./scan.js?v=2.16.0";
+} from "./book.js?v=2.16.1";
+import { canScan, readIsbn } from "./scan.js?v=2.16.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5070,6 +5071,7 @@ function main() {
         landingInstallSteps: $("landing-install-steps"),
         landingKey: $("landing-key"),
         landingSignin: $("landing-signin"),
+        landingHelp: $("landing-help"),
         landingStatus: $("landing-status"),
         signin: $("signin"),
         signinBack: $("signin-back"),
@@ -5306,6 +5308,24 @@ function main() {
     // I have a key: Admin, which opens on Settings while none are saved
     el.landingKey.addEventListener("click", () => showAdmin(true));
     el.landingSignin.addEventListener("click", () => showSignin(true));
+    // the help line under the buttons: what the one under the pointer, the focus or a held
+    // finger does (Michal, 2026-10-08); gone when it leaves
+    for (const [which, button] of [
+        ["signin", el.landingSignin],
+        ["key", el.landingKey],
+        ["install", el.landingInstall],
+    ]) {
+        for (const type of ["mouseenter", "focus", "touchstart"]) {
+            button.addEventListener(type, () => {
+                el.landingHelp.textContent = landingHelp(which);
+            });
+        }
+        for (const type of ["mouseleave", "blur", "touchend", "touchcancel"]) {
+            button.addEventListener(type, () => {
+                el.landingHelp.textContent = "";
+            });
+        }
+    }
     el.signinBack.addEventListener("click", () => showSignin(false));
     el.signinSend.addEventListener("click", () => {
         sendLink().catch(() => {});

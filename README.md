@@ -140,7 +140,10 @@ and every behaviour are the live app's.
   yellow pill), then, small and side by side under it, **I have a key** (Admin, which
   opens on Settings with the address and key fields as ever) and **Install** with its
   one line of taps (Michal, 2026-10-08: Install below sign-in, smaller; 2.16.0; before,
-  Install was the big first step). Once settings are saved or a
+  Install was the big first step). Under the buttons, a help line (`landing-help`,
+  `core.landingHelp`) says what the hovered, focused or held button does (Michal,
+  2026-10-08: "key allows you to join a family account; in a similar way explain
+  install"; 2.16.1). Once settings are saved or a
   session exists the landing is gone and the goods screen shows as before. Admin
   closed without saving brings the landing back.
 - **The home screen** (Michal, 2026-10-08: "I don't have the app on the home screen.
