@@ -171,6 +171,11 @@ import {
     sellerError,
     sellerLine,
     sellerOf,
+    SHIP_FROM,
+    addressState,
+    ADDRESS_PREFILLED,
+    CONFIRM_SHIP_FROM,
+    POLICY_LINES,
     signinWords,
     signupOf,
     applyDefaults,
@@ -183,7 +188,14 @@ import {
     packLabel,
     returnHash,
     returnLine,
+    EBAY_TAKEN,
     userLine,
+    cleanCode,
+    CODE_NEEDED,
+    codeError,
+    isDesktopBrowser,
+    LINK_SENT,
+    signinNote,
     customizeDefaults,
     DEFAULT_SERVER,
     DEFAULT_STATS_SINCE,
@@ -3177,6 +3189,37 @@ test("sign-in: the email, the link's token, the session it buys, and what a fail
     assert.equal(SIGNIN_MISSING, "Sign-in is not set up on this server yet. Ask the developer for a key.");
     for (const status of [400, 401, 403, 410]) assert.match(signinError(status, "x"), /expired or was used already/);
     assert.equal(signinError(0, "cannot reach the server"), "Could not sign in: cannot reach the server.");
+    // Michal, 2026-10-08, reading it on a PC: the link opens where it is opened, and there is a code too
+    assert.equal(LINK_SENT, "Check your email. Open the link on this device, or enter the code from the mail below.");
+});
+
+test("sign-in by the mail's code: six digits, spaces allowed; what a refusal says; the iPhone's note", () => {
+    assert.equal(cleanCode("482913"), "482913");
+    assert.equal(cleanCode(" 482 913 "), "482913", "grouped as a mail may group it");
+    assert.equal(cleanCode("4 8 2 9 1 3"), "482913");
+    for (const bad of ["", "48291", "4829130", "48291a", "482-913", "４８２９１３", null, 482913, undefined]) {
+        assert.equal(cleanCode(bad), "", String(bad));
+    }
+    assert.equal(CODE_NEEDED, "Enter the six digits from the mail.");
+    // a wrong code: the server's words, as a sentence; five tries are the server's to count
+    assert.equal(codeError(401, "that code is not right"), "That code is not right.");
+    assert.equal(codeError(401, "Too many tries!"), "Too many tries!");
+    assert.equal(codeError(401, ""), "That code is not right.");
+    assert.equal(codeError(410, "gone"), "That code was used or has expired; send yourself a new link.");
+    // an older server takes only a link's token: the code's body is malformed to it
+    for (const status of [400, 422]) {
+        assert.equal(codeError(status, "x"), "Codes are not available on this server yet; use the link in the mail.");
+    }
+    assert.equal(codeError(404, ""), SIGNIN_MISSING);
+    assert.equal(codeError(0, ""), "Could not sign in: cannot reach the server.");
+    assert.equal(codeError(429, "slow down"), "Could not sign in: slow down.");
+    assert.equal(codeError(500, ""), "Could not sign in: the server answered 500.");
+
+    const note = "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail.";
+    assert.equal(signinNote({ isIos: true, standalone: false }), note, "Safari on an iPhone");
+    assert.equal(signinNote({ isIos: true, standalone: true }), "", "the installed app itself");
+    assert.equal(signinNote({ isIos: false, standalone: false }), "");
+    assert.equal(signinNote({ isIos: false, standalone: true }), "");
 });
 
 test("GET /me read leniently; craigslist off only when it says so", () => {
@@ -3268,7 +3311,10 @@ test("the way back from Stripe or eBay, by the hash; a sign-in link's is not one
     assert.deepEqual(returnHash("#paid=cancelled"), { kind: "paid", value: "cancelled" });
     assert.deepEqual(returnHash("#ebay=connected"), { kind: "ebay", value: "connected" });
     assert.deepEqual(returnHash("#ebay=failed"), { kind: "ebay", value: "failed" });
-    for (const none of ["", "#", "#login=tok-123", "#login=paid", "#paid=", "#paid=0", "#paid=ten", "#paid=10&x=1", "#ebay=maybe", "paid=10", undefined, 10]) {
+    // Michal, 2026-10-08: the server says why, after a colon; taken is another Snap account's eBay
+    assert.deepEqual(returnHash("#ebay=failed:taken"), { kind: "ebay", value: "failed:taken" });
+    assert.deepEqual(returnHash("#ebay=failed:declined"), { kind: "ebay", value: "failed:declined" });
+    for (const none of ["", "#", "#login=tok-123", "#login=paid", "#paid=", "#paid=0", "#paid=ten", "#paid=10&x=1", "#ebay=maybe", "#ebay=failed:", "#ebay=failed:a b", "#ebay=connected:taken", "paid=10", undefined, 10]) {
         assert.equal(returnHash(none), null, String(none));
     }
     assert.equal(loginToken("#paid=10"), "", "and the sign-in never takes these");
@@ -3277,6 +3323,12 @@ test("the way back from Stripe or eBay, by the hash; a sign-in link's is not one
     assert.equal(returnLine({ kind: "paid", value: "cancelled" }), "Payment cancelled");
     assert.equal(returnLine({ kind: "ebay", value: "connected" }), "eBay connected");
     assert.equal(returnLine({ kind: "ebay", value: "failed" }), "eBay did not connect; try again or contact the developer");
+    assert.equal(
+        returnLine({ kind: "ebay", value: "failed:taken" }),
+        "That eBay account is already connected to another Snap account. Sign in to that one, or use a different eBay account."
+    );
+    assert.equal(EBAY_TAKEN, returnLine({ kind: "ebay", value: "failed:taken" }));
+    assert.equal(returnLine({ kind: "ebay", value: "failed:declined" }), "eBay did not connect; try again or contact the developer", "any other reason: as ever");
 });
 
 test("Buy postings and Connect eBay refused: not there yet, not set up, or what went wrong", () => {
@@ -3335,9 +3387,32 @@ test("GET /me/seller read leniently; the line when the address is needed", () =>
     });
     for (const none of [null, undefined, "x", 3, {}, { jobs: [] }]) assert.equal(sellerOf(none), null, JSON.stringify(none));
 
-    const needed = sellerOf({ ...answer, complete: false, ebay: { connected: true, user: "anna_sells", policies: "none" } });
+    const connected = { connected: true, user: "anna_sells", policies: "none" };
+    const needed = sellerOf({ complete: false, ebay: connected });
     assert.equal(sellerLine(needed), ADDRESS_NEEDED);
-    assert.equal(ADDRESS_NEEDED, "Your address is needed for shipping and pickup. Fill it in once.");
+    assert.equal(addressState(needed), "empty");
+    // Michal, 2026-10-08: "then your address. what address?"
+    assert.equal(
+        ADDRESS_NEEDED,
+        "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state."
+    );
+    assert.equal(SHIP_FROM, "Address where you ship from");
+    // prefilled from her eBay account on connect, to be confirmed (Michal, 2026-10-08)
+    const prefilled = sellerOf({ ...answer, complete: false, ebay: connected });
+    assert.equal(addressState(prefilled), "prefilled");
+    assert.equal(sellerLine(prefilled), "Prefilled from your eBay account; change it if you ship from elsewhere.");
+    assert.equal(sellerLine(prefilled), ADDRESS_PREFILLED);
+    assert.equal(addressState(sellerOf({ address: { city: "Chicago" }, complete: false })), "prefilled", "a part of it is prefilled too");
+    assert.equal(CONFIRM_SHIP_FROM, "Confirm the address where you ship from");
+    assert.equal(addressState(sellerOf(answer)), "complete");
+    assert.equal(addressState(null), "empty");
+    // what Snap sets up on her eBay, the server's defaults
+    assert.deepEqual(POLICY_LINES, [
+        "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
+        "Returns: 30 days, buyer pays return shipping",
+        "Local pickup only, for items you mark pickup only",
+        "Your ship-from location: the address above",
+    ]);
     assert.equal(sellerLine(sellerOf(answer)), "", "the address all there");
     assert.equal(sellerLine(sellerOf({ complete: false, ebay: { connected: false } })), "", "no eBay yet: not the moment");
     assert.equal(sellerLine(sellerOf({ complete: false })), "");
@@ -3400,6 +3475,16 @@ test("the install nudge: none from the home screen, a week's rest when dismissed
     assert.equal(installState({ ...base, dismissedAt: daysAgo(6.9) }), "hidden");
     assert.equal(installState({ ...base, dismissedAt: daysAgo(7) }), "steps", "a week on, back");
     assert.equal(installState({ ...base, dismissedAt: "not a date" }), "steps");
+    // Michal, 2026-10-08: no install nudge at all on a desktop browser
+    assert.equal(installState({ ...base, desktop: true }), "hidden");
+    assert.equal(installState({ ...base, desktop: true, hasPrompt: true }), "hidden", "not even Chrome's own prompt");
+    assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", platform: "Win32", maxTouchPoints: 0 }), true);
+    assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)", maxTouchPoints: 5 }), false, "a phone");
+    assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", maxTouchPoints: 0 }), false, "an iPhone");
+    assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 0 }), true, "a Mac");
+    assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 }), false, "an iPad");
+    assert.equal(isDesktopBrowser({}), false, "a browser that does not say");
+    assert.equal(isDesktopBrowser(), false);
     assert.equal(INSTALL_SNOOZE_MS, 7 * 24 * 60 * 60 * 1000);
     assert.equal(installSteps(true), "Tap Share, then Add to Home Screen.");
     assert.equal(installSteps(false), "Open the browser menu, then Add to Home screen (or Install app).");

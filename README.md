@@ -136,17 +136,21 @@ and every behaviour are the live app's.
   place of the goods | book switch and both posting screens: the mark large, **Snap**,
   "a crosslisting app", one line of what it does ("Photograph it, and it is listed
   on eBay and Craigslist with a price and a description."), under it, small and muted,
-  "Three postings free, then prepaid." (since 2.11.0), **Install**, then the
-  two ways in side by side, **I have a key** (Admin, which opens on Settings with
-  the address and key fields as ever) and **Sign in**. Once settings are saved or a
+  "Three postings free, then prepaid." (since 2.11.0), then **Sign in** (the big
+  yellow pill), then, small and side by side under it, **I have a key** (Admin, which
+  opens on Settings with the address and key fields as ever) and **Install** with its
+  one line of taps (Michal, 2026-10-08: Install below sign-in, smaller; 2.16.0; before,
+  Install was the big first step). Once settings are saved or a
   session exists the landing is gone and the goods screen shows as before. Admin
   closed without saving brings the landing back.
 - **The home screen** (Michal, 2026-10-08: "I don't have the app on the home screen.
   If it is not on the home screen it should direct towards that install. Can that be
   done even though I have already used it? Would the website know?"). It does:
   `matchMedia("(display-mode: standalone)")`, or an iPhone's `navigator.standalone`,
-  says the page runs from the home screen, and then there is no nudge at all.
-  Otherwise the landing's **Install** is the first step, and over the posting screens
+  says the page runs from the home screen, and then there is no nudge at all; nor on a
+  desktop browser (`navigator.maxTouchPoints === 0` and not an iPhone or iPad:
+  `isDesktopBrowser`; a browser that does not say counts as a phone), since 2.16.0.
+  Otherwise the landing has its small **Install**, and over the posting screens
   sits a thin yellow-tint banner, "Add Snap to your home screen for the full-screen
   app", with **Add** and an **x**. Where Chrome offered to install
   (`beforeinstallprompt`, kept rather than shown as its own bar), Add (or Install)
@@ -160,8 +164,10 @@ and every behaviour are the live app's.
   `#signin` screen, **← Back**, an **Email** box, **Keep me signed in** (ticked) and
   **Send me a link**, which posts `POST /auth/link` to the product's own server,
   `https://michal-pc.mulley-themis.ts.net` (`DEFAULT_SERVER`; the "I have a key"
-  path keeps the address typed). A 202 says `Check your email for the link; it works
-  on this phone.`; a 404 `Sign-in is not set up on this server yet. Ask the developer
+  path keeps the address typed). A 202 says `Check your email. Open the link on this
+  device, or enter the code from the mail below.` (`LINK_SENT`; 2.16.0, Michal,
+  2026-10-08: the old `it works on this phone` confused him on a PC) and shows the code
+  box (below); a 404 `Sign-in is not set up on this server yet. Ask the developer
   for a key.` The emailed link opens the page as `#login=<token>`: the page takes the
   token, clears the hash at once (`history.replaceState`), posts `POST
   /auth/session`, and keeps the session it answers, in `localStorage` when he kept
@@ -171,6 +177,31 @@ and every behaviour are the live app's.
   <token>` (a key, when one is saved, wins: `X-Crosslister-Key` as ever). A 401 on a
   session lets it go and brings the landing back with `Your sign-in expired; send
   yourself a new link`.
+- **The code** (2.16.0; Michal, 2026-10-08: an iPhone's home-screen app keeps its own
+  storage and a mailed link always opens in Safari, so whoever installed Snap was signed
+  in in Safari and signed out in the app). The mail carries a six-digit code beside the
+  link. Once **Send me a link** is accepted, the sign-in screen shows under its line
+  `Got the mail? Enter the six-digit code from it` with a box (`#signin-code`,
+  `inputmode="numeric"`, `autocomplete="one-time-code"`, so the phone offers the code
+  from the mail) and **Sign in with the code** (`#signin-code-send`; Enter in the box
+  does the same). A small **I already have a code** (`#signin-have-code`) opens the same
+  box without a new link (asked for in Safari, entered in the app); **← Back** folds it.
+  The box takes six digits, spaces allowed (`cleanCode`; anything else says `Enter the
+  six digits from the mail.` and sends nothing), and the address from the Email box
+  (`checkEmail`, as for the link). It posts `POST /auth/session {"email", "code"}`, no
+  key, no session; the 200 is taken exactly as a link's (`sessionOf`, kept by its
+  `remember`, the landing and sign-in gone, the goods screen checked). A refusal says
+  (`codeError`) on the screen's line, the box kept: a 401 the server's words as a
+  sentence (`That code is not right.`; the server counts five tries), a 410 `That code
+  was used or has expired; send yourself a new link.`, a 422 or 400 (a server from
+  before codes, which takes only a token) `Codes are not available on this server yet;
+  use the link in the mail.`, a 404 as for the link, anything else `Could not sign in:
+  <why>.`
+- **The iPhone note** (2.16.0). In Safari on an iPhone or iPad (`isIosDevice`, not
+  standalone) the sign-in screen ends with `On iPhone, sign in inside the installed
+  Snap: open it from the home screen, ask for the link there, and enter the code from
+  the mail.` (`#signin-note`, `signinNote`); in the installed app, and anywhere else,
+  nothing: there the code box comes after sending, as everywhere.
 - **The account** (`GET /me`, after the first good server check of each load, after
   Save and check, after a sign-in; kept in memory only). When it says `"craigslist":
   false` (Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write
@@ -215,11 +246,15 @@ nothing of them (and answers the new routes with a 404, taken as "not available"
   Closing Admin folds the packs and clears the line.
 - **The way back.** Stripe sends the browser back to this page as `#paid=<postings>` or
   `#paid=cancelled`; eBay sends it to the server, which sends it here as
-  `#ebay=connected` or `#ebay=failed` (`returnHash`, which never takes a `#login=`). The
+  `#ebay=connected`, `#ebay=failed` or `#ebay=failed:<reason>` (since 2.16.0;
+  `returnHash`, which never takes a `#login=`). The
   page clears the hash at once (as it does a sign-in link's), opens Admin on Settings at
   the Account block, says `10 postings added`, `Payment cancelled`, `eBay connected` or
   `eBay did not connect; try again or contact the developer`, and asks `/me` again (once:
-  it is the load's own ask).
+  it is the load's own ask). `#ebay=failed:taken` (Michal, 2026-10-08: the eBay account
+  is already another Snap account's) says `That eBay account is already connected to
+  another Snap account. Sign in to that one, or use a different eBay account.`
+  (`EBAY_TAKEN`); any other reason, the generic line.
 - **No postings left.** A posting's `POST /jobs` answered 402 shows the server's words
   under the venue button (`You have used your 3 free postings. Buy postings in
   Settings.`), and under them a small **Buy postings** (`#ebay-buy`, `#craigslist-buy`,
@@ -242,15 +277,32 @@ older server looks exactly as it did.
   link creates your account; your first three postings are free.` (`signinWords`, written into
   `#landing-signin` and `#signin-what`). `false`, a 404 or no answer: the words as they were.
   The link is asked for exactly as before; the server makes the account on the first link.
-- **Seller address**, in the Account block under the eBay line (`#seller-toggle`, `#seller`):
+- **Address where you ship from** (`SHIP_FROM`; called Seller address before 2.16.0: Michal,
+  2026-10-08, "then your address. what address?"), in the Account block under the eBay line
+  (`#seller-toggle`, `#seller`):
   a foldout in customize's pattern with four small boxes, **Street address**, **City**,
   **State**, **ZIP** (`#seller-line1`, `#seller-city`, `#seller-state`, `#seller-zip`, each with
   its `autocomplete` so the phone can fill them), **Save address** (`#seller-save`) and its
   line (`#seller-status`). `GET /me/seller` is asked each time Settings opens (and after Save
   and check); the boxes take the address it gives. An older server's 404: no foldout. It opens
-  by itself, saying `Your address is needed for shipping and pickup. Fill it in once.`
-  (`#seller-note`, `sellerLine`), when `complete` is false and eBay is connected: that is the
-  moment the address is needed. Otherwise it waits folded.
+  by itself, saying `eBay puts it on every listing as the item's location and uses it for
+  shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and
+  state.` (`#seller-note`, `sellerLine`, `ADDRESS_NEEDED`), when `complete` is false and eBay
+  is connected: that is the moment the address is needed. Otherwise it waits folded.
+  - **Prefilled from eBay** (2.16.0, Michal, 2026-10-08): the server fills the address from
+    her eBay account on connect. An answer with some of it and `complete` false
+    (`addressState` `prefilled`) opens the foldout with the boxes filled, the note `Prefilled
+    from your eBay account; change it if you ship from elsewhere.` (`ADDRESS_PREFILLED`), and
+    `#seller-save` reading **Looks right**: it saves the boxes as shown, checked as Save
+    address's are.
+  - **What Snap sets up** (2.16.0; Michal, 2026-10-08: "the address can pop up and be
+    confirmed when reviewing the policies, after connecting eBay"): while the note shows
+    (prefilled or empty), under the boxes and above the button, `Snap will set up on your eBay
+    account:` and four lines (`#seller-policies`, `#seller-policy-list`, from `POLICY_LINES`
+    in core.js, the server's `crosslister setup --all` defaults): `Shipping: USPS Ground
+    Advantage, buyer pays, 1 business day handling`, `Returns: 30 days, buyer pays return
+    shipping`, `Local pickup only, for items you mark pickup only`, `Your ship-from location:
+    the address above`.
   - **Save address** checks the boxes first (`addressBody`): each trimmed, inner spaces one,
     the state two letters upper-cased (`il` is `IL`), the ZIP five digits or ZIP+4
     (`606011234` is `60601-1234`); a box not right is named (`Enter the street address.`,
@@ -300,16 +352,21 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
   (`#signup-steps`, the landing's look, left aligned as sign-in is): step 1, **Connect eBay, where
   your listings go** with its own **Connect eBay** (the Account block's, repeated: `GET
   /ebay/connect` and the browser to eBay; a 503, the server not able to connect eBay yet, says its
-  words in the screen's line, `#signup-status`), step 2, **then your address** with **Your
-  address**, greyed and shut until step 1 is done. Admin opens on Settings (the inventory would be
+  words in the screen's line, `#signup-status`), step 2, **Address where you ship from**
+  (`#signup-address-word`; `then your address` before 2.16.0) with what it is for under it (the
+  foldout's line, `ADDRESS_NEEDED`) and **Your address**, greyed and shut until step 1 is done.
+  Admin opens on Settings (the inventory would be
   refused); the Account block's first line says `Signed in as anna@example.com, not registered yet`.
   The refusal, wherever a refusal is said, is the server's sentence alone (`refusalLine`): Feedback's
   `Not sent: ...` becomes `Connect eBay to finish signing up.`
 - **Back from eBay** (`#ebay=connected`): `/me` is asked again, as ever, and now names a user with
-  `"registered": false`; Settings is open at the Account block, and its **Seller address** unfolds
-  with its note (`Your address is needed for shipping and pickup. Fill it in once.`). Closed, the
-  sign-up screen has step 1 ticked (its button gone) and step 2 open: **Your address** opens the same
-  foldout.
+  `"registered": false`; Settings is open at the Account block, and its **Address where you ship
+  from** unfolds with its note (`ADDRESS_NEEDED`, or, prefilled from eBay, `ADDRESS_PREFILLED` with
+  **Looks right**). Closed, the sign-up screen has step 1 ticked (its button gone) and step 2 open:
+  **Your address** opens the same foldout. Prefilled, step 2 reads **Confirm the address where you
+  ship from** (`CONFIRM_SHIP_FROM`). Already `complete` after connect, step 2 is ticked too (its
+  button stays, for a correction); opening the foldout then asks `/me` again, and the goods screen
+  comes as soon as it says `"registered": true`.
 - **Registered**: Save address answered, `/me` is asked once more; with `"registered": true` the goods
   screen is the screen, as for every account.
 
@@ -326,6 +383,24 @@ the photos (non-AI)? Some of mine are quite dark."
 - **Fix dark photos**, a tick in customize, on by default: a dark photo is brightened on the phone
   before it goes, and its **lit** chip shows it as taken and back (see **lit** and **customize**
   below).
+
+## Signing in by code, and the address where you ship from (2.16.0)
+
+Michal, 2026-10-08: an iPhone's home-screen app keeps its own storage and a mailed link always
+opens in Safari, so whoever installed Snap was signed in in Safari and signed out in the app; and
+"then your address. what address?"
+
+- **The code**: the sign-in mail carries six digits beside the link, and the sign-in screen takes
+  them (see **The code** and **The iPhone note** under "The way in" above).
+- **The landing**: **Sign in** first and big, **I have a key** and **Install** small under it;
+  no install nudge on a desktop browser. The line after Send me a link no longer says the link
+  works "on this phone".
+- **The address where you ship from**: so called on Finish signing up and in Settings, with what
+  it is for; prefilled from eBay on connect and confirmed with **Looks right**, what Snap sets up
+  on her eBay listed above the button (see the address under "Many sellers" and "Finishing
+  sign-up" above).
+- **An eBay account already another Snap account's** comes back as `#ebay=failed:taken` and is
+  said so (see "The way back" above).
 
 ## The screen, top to bottom
 
@@ -798,17 +873,18 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | any keyed call of a sign-up waiting for eBay (`"pending": true`), but `/me`, `GET /ebay/connect` and `DELETE /auth/session` | as ever | 403 `{"detail": "Connect eBay to finish signing up."}`: the page's check asks `/me`, the header says server ok, and the words are said as they are wherever a refusal shows |
 | `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
 | `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
-| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected` or `#ebay=failed`; 503 while the server cannot connect eBay yet: its words in the Account block (and on Finish signing up); 404 (an older server): `Connecting eBay is not available yet.` |
+| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected`, `#ebay=failed` or `#ebay=failed:<reason>` (`taken`: that eBay account is another Snap account's, said so; any other reason, the generic line); 503 while the server cannot connect eBay yet: its words in the Account block (and on Finish signing up); 404 (an older server): `Connecting eBay is not available yet.` |
 | `POST <pc>/feedback`, Admin's Feedback **Send** | `{"text": "...", "screen": "goods" / "book" / "admin" / "card", "version": "2.10.0", "job": "<job id>"}`, `job` only when Include my last job is ticked and the page has one | 201 `{"id"}`; an error's `detail` under Send |
 | `GET <pc>/feedback?new=1`, an admin's Admin opened (and once /me says admin while it is), Feedback opened | - | `{"entries": [{"id", "user", "created", "text", "screen", "version", "user_agent", "job": {"id", "action", "venue", "state", "step", "error", "summary"} or null, "reviewed"}...]}`, newest first: the inbox above Feedback's box; 403 (anyone but an admin) or 404 (an older server): no inbox |
 | `PATCH <pc>/feedback/<id>`, an inbox entry's **Reviewed** | `{"reviewed": true}` | 2xx, any body or none: the entry leaves the inbox; a refusal's words under Send (`Not marked reviewed: <detail>.`) |
 | `GET <pc>/stats?since=7d` / `30d` / `all`, Admin's Stats, opened or a chip tapped | - | `{"since", "jobs": {"total", "done", "failed", "cancelled", "queued", "running"}, "posted": {"ebay": n, "craigslist": n}, "drafted", "ended", "pushed", "model_cost": "12.34", "per_user": [{"user", "jobs", "posted", "model_cost"}], "per_day": [{"date", "jobs", "posted"}], "first", "last"}`; 403 for anyone but an admin (and 404 from an older server): the foldout goes |
 | `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
+| `POST <server>/auth/session`, the sign-in screen's **Sign in with the code** (2.16.0), to `DEFAULT_SERVER`, no key, no session | `{"email": "anna@example.com", "code": "482913"}` (the Email box as `checkEmail` takes it, the code's six digits with any spaces dropped) | 200 as for a token: the session kept by `remember`, the landing gone; 401 `{"detail": "that code is not right"}` (five tries): its words, the box kept; 410: `That code was used or has expired; send yourself a new link.`; 422 or 400 (a server from before codes): `Codes are not available on this server yet; use the link in the mail.`; 404: as for the link |
 | `DELETE <server>/auth/session`, Settings' Sign out, with `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
-| `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes, the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Seller address foldout |
-| `PATCH <pc>/me/seller`, **Save address** | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits or `60601-1234`); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
+| `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
+| `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits or `60601-1234`); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the

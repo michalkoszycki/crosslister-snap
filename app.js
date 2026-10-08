@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.15.0";
+import { VERSION } from "./version.js?v=2.16.0";
 import {
     anyActive,
     bannerText,
@@ -141,6 +141,10 @@ import {
     signinError,
     signinWords,
     signupOf,
+    CODE_NEEDED,
+    cleanCode,
+    codeError,
+    signinNote,
     meOf,
     CRAIGSLIST_OFF,
     venueAllowed,
@@ -158,8 +162,13 @@ import {
     sellerError,
     sellerLine,
     sellerOf,
+    SHIP_FROM,
+    CONFIRM_SHIP_FROM,
+    POLICY_LINES,
+    addressState,
     installState,
     installSteps,
+    isDesktopBrowser,
     isIosDevice,
     FEEDBACK_SENT,
     feedbackBody,
@@ -185,8 +194,8 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.15.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.15.0";
+} from "./core.js?v=2.16.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.16.0";
 import {
     addVenue,
     archiveRow,
@@ -194,6 +203,7 @@ import {
     cancelJob,
     checkout,
     checkPc,
+    codeSession,
     createItem,
     deletePhoto,
     ebayConnect,
@@ -221,8 +231,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.15.0";
-import { shrinkPhoto } from "./shrink.js?v=2.15.0";
+} from "./pc.js?v=2.16.0";
+import { shrinkPhoto } from "./shrink.js?v=2.16.0";
 import {
     bookCard,
     bookPriceValue,
@@ -235,8 +245,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.15.0";
-import { canScan, readIsbn } from "./scan.js?v=2.15.0";
+} from "./book.js?v=2.16.0";
+import { canScan, readIsbn } from "./scan.js?v=2.16.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -351,6 +361,11 @@ const seller = { info: null, open: false, busy: false, status: "", ready: false,
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
+/**
+ * The mail's code box on the sign-in screen (Michal, 2026-10-08): shown once a link is sent,
+ * or by I already have a code; folded again by Back.
+ */
+let codeOpen = false;
 /**
  * GET /auth/signup's word on the landing (Michal, 2026-10-08: "What else do we need for the
  * multi tenant? Let's continue."): anyone with an email may make an account; asked once, and
@@ -629,6 +644,11 @@ function render() {
     const words = signinWords(signup.open);
     el.landingSignin.textContent = words.button;
     el.signinWhat.textContent = words.what;
+    el.signinCodeForm.hidden = !codeOpen;
+    el.signinHaveCode.hidden = codeOpen;
+    const note = signinNote({ isIos: onIos(), standalone: standalone() });
+    el.signinNote.textContent = note;
+    el.signinNote.hidden = !note;
     // a sign-up not finished (GET /me): its two steps in place of the posting screens
     const signing = !out && !!signupStep(me);
     el.signupSteps.hidden = !signing || away;
@@ -4118,8 +4138,9 @@ function renderMe() {
 /**
  * Finish signing up (Michal, 2026-10-08), while /me says the sign-up is not done: step 1,
  * Connect eBay, until eBay made the account a real one (then ticked, its button gone); step
- * 2, the address, greyed until then. Its line is the Account block's (Connect eBay's way out
- * and what went wrong, a 503's words among them).
+ * 2, the address where you ship from, greyed until then (asked to be confirmed when eBay
+ * prefilled it, ticked when it is all there). Its line is the Account block's (Connect eBay's
+ * way out and what went wrong, a 503's words among them).
  */
 function renderSignup() {
     const step = settings() ? signupStep(me) : "";
@@ -4128,6 +4149,11 @@ function renderSignup() {
     el.signupConnect.hidden = connected;
     el.signupConnect.disabled = account.busy;
     el.signupStepAddress.classList.toggle("off", !connected);
+    // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
+    // there (ticked; Settings' foldout still takes a correction while /me catches up)
+    const address = connected ? addressState(seller.info) : "empty";
+    el.signupAddressWord.textContent = address === "prefilled" ? CONFIRM_SHIP_FROM : SHIP_FROM;
+    el.signupStepAddress.classList.toggle("done", address === "complete");
     el.signupAddress.disabled = !connected;
     el.signupStatus.textContent = step ? account.status : "";
 }
@@ -4195,15 +4221,22 @@ function renderAccount() {
 // seller's listings ship from, and are picked up at, her own address: the server keeps it
 // (GET/PATCH /me/seller) and sets up her eBay business policies from it.
 
-/** The Seller address foldout: shown once the server gave an answer, open or folded, its line and its Save. */
+/**
+ * The Address where you ship from foldout: shown once the server gave an answer, open or
+ * folded, its line and its Save. While the address is still to be given after eBay connected, what Snap sets
+ * up on her eBay is listed above Save; prefilled from eBay, Save is Looks right (Michal,
+ * 2026-10-08), sending the boxes as they are.
+ */
 function renderSeller() {
     const info = seller.info;
     el.sellerToggle.hidden = !info;
-    fold(el.sellerToggle, "Seller address", seller.open);
+    fold(el.sellerToggle, SHIP_FROM, seller.open);
     el.seller.hidden = !info || !seller.open;
     const note = sellerLine(info);
     el.sellerNote.textContent = note;
     el.sellerNote.hidden = !note;
+    el.sellerPolicies.hidden = !note;
+    el.sellerSave.textContent = addressState(info) === "prefilled" ? "Looks right" : "Save address";
     el.sellerSave.disabled = seller.busy;
     el.sellerStatus.textContent = seller.status;
 }
@@ -4224,8 +4257,9 @@ function quietSeller() {
 }
 
 /**
- * GET /me/seller, as Settings opens: the boxes filled, and the foldout open by itself, saying
- * why, when eBay is connected and the address is missing. An older server's 404: no foldout.
+ * GET /me/seller, as Settings opens: the boxes filled (prefilled from eBay, maybe), and the
+ * foldout open by itself, saying why, when eBay is connected and the address is not all
+ * there. An older server's 404: no foldout.
  */
 async function loadSeller() {
     const pc = settings();
@@ -4240,6 +4274,8 @@ async function loadSeller() {
             fillSeller(info);
             if (sellerLine(info)) seller.open = true;
             if (info.ebay && info.ebay.policies === "pending") pollSeller(true);
+            // a sign-up whose address came all there from eBay: /me again, for the goods screen
+            if (info.complete && signupStep(me) === "address") loadMe().catch(() => {});
         }
     } catch (e) {
         if (mine !== seller.asked) return;
@@ -4472,9 +4508,17 @@ async function askSignup() {
 /** The landing's Sign in, or the sign-in screen's Back. */
 function showSignin(open) {
     entry = open ? "signin" : "";
+    codeOpen = false;
     el.signinStatus.textContent = "";
     render();
     if (open) el.signinEmail.focus();
+}
+
+/** I already have a code: the code box, without a new link (asked for in Safari, say). */
+function openCode() {
+    codeOpen = true;
+    render();
+    el.signinCode.focus();
 }
 
 /**
@@ -4492,6 +4536,8 @@ async function sendLink() {
     try {
         await askLink(DEFAULT_SERVER, { email: checked.email, remember: el.signinRemember.checked });
         el.signinStatus.textContent = LINK_SENT;
+        codeOpen = true;
+        render();
     } catch (e) {
         el.signinStatus.textContent = e.status === 404 ? SIGNIN_MISSING : `Could not send the link: ${e.message}.`;
     } finally {
@@ -4501,8 +4547,7 @@ async function sendLink() {
 
 /**
  * The page opened from a sign-in link (`#login=<token>`): the token for a session (POST
- * /auth/session), kept on the phone when he ticked Keep me signed in, else for this tab;
- * then the goods screen, checked and asked about as on any load.
+ * /auth/session), kept as keepSession keeps it.
  */
 async function signIn(token) {
     el.landingStatus.textContent = "Signing you in...";
@@ -4518,10 +4563,54 @@ async function signIn(token) {
         el.landingStatus.textContent = signinError(400, "");
         return;
     }
+    keepSession(made);
+}
+
+/**
+ * Sign in with the code: the mail's six digits and the address in the box for a session
+ * (POST /auth/session, as a link's token is); a wrong code keeps the box for another try.
+ */
+async function sendCode() {
+    const checked = checkEmail(el.signinEmail.value);
+    if (!checked.ok) {
+        el.signinStatus.textContent = checked.error;
+        return;
+    }
+    const code = cleanCode(el.signinCode.value);
+    if (!code) {
+        el.signinStatus.textContent = CODE_NEEDED;
+        return;
+    }
+    el.signinCodeSend.disabled = true;
+    el.signinStatus.textContent = "Signing you in...";
+    let made = null;
+    try {
+        made = sessionOf(await codeSession(DEFAULT_SERVER, { email: checked.email, code }));
+    } catch (e) {
+        el.signinStatus.textContent = codeError(e.status, e.detail);
+        return;
+    } finally {
+        el.signinCodeSend.disabled = false;
+    }
+    if (!made) {
+        el.signinStatus.textContent = codeError(200, "the server gave no session");
+        return;
+    }
+    el.signinStatus.textContent = "";
+    el.signinCode.value = "";
+    keepSession(made);
+}
+
+/**
+ * A session made (by a link or a code): kept on the phone when he ticked Keep me signed in,
+ * else for this tab; then the goods screen, checked and asked about as on any load.
+ */
+function keepSession(made) {
     for (const store of ["localStorage", "sessionStorage"]) removeText(store, SESSION_KEY);
     writeText(made.remember ? "localStorage" : "sessionStorage", SESSION_KEY, made.session);
     el.landingStatus.textContent = "";
     entry = "";
+    codeOpen = false;
     me = null;
     meAsked = false;
     render();
@@ -4538,20 +4627,26 @@ function standalone() {
     return installed || !!(query && query.matches) || globalThis.navigator.standalone === true;
 }
 
+/** What navigator says of the device: its userAgent, platform and touch points. */
+function device() {
+    const nav = globalThis.navigator;
+    return { userAgent: nav.userAgent, platform: nav.platform, maxTouchPoints: nav.maxTouchPoints };
+}
+
 /** An iPhone or iPad, told the Share taps (it never offers a prompt). */
 function onIos() {
-    const nav = globalThis.navigator;
-    return isIosDevice({ userAgent: nav.userAgent, platform: nav.platform, maxTouchPoints: nav.maxTouchPoints });
+    return isIosDevice(device());
 }
 
 /**
  * The two install nudges (Michal, 2026-10-08: "If it is not on the home screen it should
  * direct towards that install"): the landing's Install step (never put away), and the
  * banner over the posting screens (`away` while they are not on screen; put away for a week).
+ * Neither on a desktop browser (Michal, 2026-10-08).
  */
 function renderInstall(away) {
     const ios = onIos();
-    const base = { standalone: standalone(), hasPrompt: !!installPrompt, isIos: ios, now: Date.now() };
+    const base = { standalone: standalone(), hasPrompt: !!installPrompt, isIos: ios, desktop: isDesktopBrowser(device()), now: Date.now() };
     const steps = installSteps(ios);
     const onLanding = installState({ ...base, dismissedAt: "" });
     el.landingInstall.hidden = onLanding === "hidden";
@@ -4983,11 +5078,17 @@ function main() {
         signinSend: $("signin-send"),
         signinStatus: $("signin-status"),
         signinWhat: $("signin-what"),
+        signinHaveCode: $("signin-have-code"),
+        signinCodeForm: $("signin-code-form"),
+        signinCode: $("signin-code"),
+        signinCodeSend: $("signin-code-send"),
+        signinNote: $("signin-note"),
         signupSteps: $("signup-steps"),
         signupStepEbay: $("signup-step-ebay"),
         signupConnect: $("signup-connect"),
         signupStepAddress: $("signup-step-address"),
         signupAddress: $("signup-address"),
+        signupAddressWord: $("signup-address-word"),
         signupStatus: $("signup-status"),
         sellerToggle: $("seller-toggle"),
         seller: $("seller"),
@@ -4996,6 +5097,8 @@ function main() {
         sellerCity: $("seller-city"),
         sellerState: $("seller-state"),
         sellerZip: $("seller-zip"),
+        sellerPolicies: $("seller-policies"),
+        sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),
         sellerStatus: $("seller-status"),
         aboutLink: $("about-link"),
@@ -5190,8 +5293,16 @@ function main() {
     renderServer();
     renderExtras();
     renderAccount();
+    // what Snap sets up on her eBay, listed under the address boxes: fixed, so written once
+    el.sellerPolicyList.replaceChildren(
+        ...POLICY_LINES.map((line) => {
+            const li = document.createElement("li");
+            li.textContent = line;
+            return li;
+        })
+    );
 
-    // the way in: the landing's two ways and Install, the sign-in screen, the banner's Add and x
+    // the way in: the landing's Sign in, key and Install, the sign-in screen, the banner's Add and x
     // I have a key: Admin, which opens on Settings while none are saved
     el.landingKey.addEventListener("click", () => showAdmin(true));
     el.landingSignin.addEventListener("click", () => showSignin(true));
@@ -5201,6 +5312,14 @@ function main() {
     });
     el.signinEmail.addEventListener("keydown", (e) => {
         if (e.key === "Enter") sendLink().catch(() => {});
+    });
+    // the mail's code: I already have a code opens its box; Sign in with the code, or Enter
+    el.signinHaveCode.addEventListener("click", openCode);
+    el.signinCodeSend.addEventListener("click", () => {
+        sendCode().catch(() => {});
+    });
+    el.signinCode.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sendCode().catch(() => {});
     });
     el.landingInstall.addEventListener("click", () => {
         onInstall("landing").catch(() => {});

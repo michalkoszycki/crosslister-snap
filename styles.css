@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.15.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.16.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1060,20 +1060,25 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 }
 
 /* The landing (Michal, 2026-10-08: "Snap is simple. Note that for the first landing page"):
-   the mark large, the name in the wordmark's weight, one line of what it does, Install the
-   chosen-thing pill, then the two ways in side by side. The sign-in screen wears the same. */
+   the mark large, the name in the wordmark's weight, one line of what it does, Sign in the
+   chosen-thing pill, then I have a key and Install small under it (Michal, 2026-10-08:
+   Install below sign-in, smaller). The sign-in screen wears the same. */
 .landing { padding: 18px 0 8px; text-align: center; }
 .landing-mark { display: block; width: 96px; height: 96px; margin: 8px auto 6px; }
 .landing-name { font-size: 44px; line-height: 1.05; letter-spacing: -0.03em; margin: 6px 0 2px; }
 .landing-tagline { margin: 0; font-size: 18px; font-weight: 700; color: var(--muted); }
 .landing-what { margin: 14px auto 0; max-width: 30em; font-size: 16px; }
-.landing-ways { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-.landing-ways .secondary { margin-top: 0; }
+.secondary.landing-small { display: inline-flex; width: auto; min-width: 11em; min-height: 44px; margin: 10px 4px 0; font-size: 15px; }
 .landing-status { margin: 14px 2px 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
 .landing-status:empty { display: none; }
 #signin { text-align: left; }
 #signin .landing-name { font-size: 32px; }
 #signin .landing-what { margin-left: 0; }
+/* the mail's code: a quiet link to it, then its box, the digits spaced wide */
+.link.have-code { display: block; min-height: 44px; padding: 10px 0; font-size: 15px; text-decoration: underline; }
+.code-form .field { margin-top: 10px; }
+#signin-code { letter-spacing: 0.2em; font-variant-numeric: tabular-nums; }
+.signin-note { margin: 16px 0 0; font-size: 14px; color: var(--muted); }
 /* the two taps, unfolded under Install or the banner's Add */
 .install-steps { margin: 10px 2px 0; font-size: 15px; font-weight: 700; }
 /* the banner: a thin yellow-tint strip over the posting screens, its Add the ink pill and a
@@ -1103,6 +1108,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step { margin: 0 0 16px; font-size: 16px; font-weight: 800; }
 .signup-step::marker { font-weight: 800; }
 .signup-word { display: block; margin-bottom: 8px; }
+/* what step 2's address is for (Michal, 2026-10-08: "then your address. what address?") */
+.signup-line { display: block; margin: -4px 0 8px; font-size: 14px; font-weight: 500; color: var(--muted); }
 .signup-step.done .signup-word::after { content: " ✓"; color: var(--ok); }
 .signup-step.done { color: var(--muted); }
 .signup-step.off { opacity: 0.45; }
@@ -1131,6 +1138,11 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .link.seller-toggle { margin-top: 6px; }
 .seller-note { margin: 2px 0 0; font-weight: 700; color: var(--ink); }
 .seller-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+/* what Snap sets up on her eBay, under the boxes while the address is being given: small, a list of facts */
+.seller-policies { margin: 12px 0 2px; font-size: 13px; }
+.seller-policies[hidden] { display: none; }
+.seller-policies-head { margin: 0 0 4px; font-weight: 800; }
+.seller-policy-list { margin: 0; padding-left: 1.2em; color: var(--muted); line-height: 1.45; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
 .landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */

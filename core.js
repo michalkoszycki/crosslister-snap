@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.15.0";
+import { noteDirty, unsent } from "./queue.js?v=2.16.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.15.0";
+} from "./book.js?v=2.16.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -226,8 +226,11 @@ export function sessionOf(answer) {
     return { session, user: typeof a.user === "string" ? a.user : "", remember: a.remember !== false };
 }
 
-/** Said on the sign-in screen once the server has sent the link. */
-export const LINK_SENT = "Check your email for the link; it works on this phone.";
+/**
+ * Said on the sign-in screen once the server has sent the link (Michal, 2026-10-08, reading
+ * it on a PC: "it works on this phone" confused him there; the mail carries a code too).
+ */
+export const LINK_SENT = "Check your email. Open the link on this device, or enter the code from the mail below.";
 
 /** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
 export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
@@ -271,6 +274,52 @@ export function signinError(status, message) {
     if (status === 404) return SIGNIN_MISSING;
     if ([400, 401, 403, 410].includes(status)) return "That sign-in link has expired or was used already. Send yourself a new link.";
     return `Could not sign in: ${message}.`;
+}
+
+/**
+ * The six-digit code the sign-in mail carries beside its link (Michal, 2026-10-08: an
+ * iPhone's home-screen app keeps its own storage and a mailed link always opens in Safari,
+ * so the installed Snap signs in by the code). Spaces allowed, as a mail may group it;
+ * "" for anything that is not six digits.
+ * @param {unknown} raw
+ * @returns {string}
+ */
+export function cleanCode(raw) {
+    const code = typeof raw === "string" ? raw.replace(/\s+/g, "") : "";
+    return /^\d{6}$/.test(code) ? code : "";
+}
+
+/** Said when the code box holds no six digits; nothing is sent. */
+export const CODE_NEEDED = "Enter the six digits from the mail.";
+
+/**
+ * The sign-in screen's line when the code did not sign him in: a wrong code is the server's
+ * own words (it allows five tries), a spent one asks for a new link, and an older server, which
+ * takes only a link's token, refuses the code's body as malformed (422, or 400).
+ * @param {number} status the PcError's (0: no answer)
+ * @param {unknown} detail the server's detail, as it said it ("" when it said none)
+ * @returns {string}
+ */
+export function codeError(status, detail) {
+    const said = typeof detail === "string" ? detail.trim() : "";
+    if (status === 401) return said ? `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}` : "That code is not right.";
+    if (status === 410) return "That code was used or has expired; send yourself a new link.";
+    if (status === 400 || status === 422) return "Codes are not available on this server yet; use the link in the mail.";
+    if (status === 404) return SIGNIN_MISSING;
+    return `Could not sign in: ${errorText(status, said)}.`;
+}
+
+/**
+ * The sign-in screen's last line (Michal, 2026-10-08): in Safari on an iPhone, a sign-in
+ * stays in Safari, never in the installed Snap, so he is told to ask from the app; nothing
+ * anywhere else, the app itself included.
+ * @param {{isIos:boolean, standalone:boolean}} where
+ * @returns {string}
+ */
+export function signinNote({ isIos, standalone }) {
+    return isIos && !standalone
+        ? "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail."
+        : "";
 }
 
 /**
@@ -476,8 +525,34 @@ export const SELLER_POLL_MS = 10000;
 /** ... and how many times at most: three minutes of asking. */
 export const SELLER_POLL_MAX = 18;
 
-/** The foldout's line when it opens by itself: eBay is connected and the address is missing. */
-export const ADDRESS_NEEDED = "Your address is needed for shipping and pickup. Fill it in once.";
+/** The foldout's heading, and Finish signing up's step 2 (Michal, 2026-10-08: "then your address. what address?"). */
+export const SHIP_FROM = "Address where you ship from";
+
+/** Step 2 while the server's address came prefilled from her eBay account and is not confirmed yet. */
+export const CONFIRM_SHIP_FROM = "Confirm the address where you ship from";
+
+/** The foldout's line over an address prefilled from eBay (Michal, 2026-10-08). */
+export const ADDRESS_PREFILLED = "Prefilled from your eBay account; change it if you ship from elsewhere.";
+
+/**
+ * What Snap sets up on her eBay once the address is in, listed under the boxes while it is
+ * being given (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
+ * policies, after connecting eBay"). The server's defaults, as `crosslister setup --all`
+ * creates them: change them here and there together.
+ */
+export const POLICY_LINES = [
+    "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
+    "Returns: 30 days, buyer pays return shipping",
+    "Local pickup only, for items you mark pickup only",
+    "Your ship-from location: the address above",
+];
+
+/**
+ * The foldout's line when it opens by itself (eBay is connected and the address is missing),
+ * said under step 2 of Finish signing up too: what the address is for, and who sees what.
+ */
+export const ADDRESS_NEEDED =
+    "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.";
 
 /**
  * The seller's address as the server keeps it, whether it is all there, and her eBay.
@@ -504,13 +579,28 @@ export function sellerOf(answer) {
 }
 
 /**
+ * Where the seller's address stands: "complete" (all there), "prefilled" (the server filled
+ * some of it from her eBay account on connect, to be confirmed: Michal, 2026-10-08), or
+ * "empty" (none of it, or no answer).
+ * @param {Seller|null} seller
+ * @returns {"empty"|"prefilled"|"complete"}
+ */
+export function addressState(seller) {
+    if (!seller) return "empty";
+    if (seller.complete) return "complete";
+    return Object.values(seller.address).some((v) => v !== "") ? "prefilled" : "empty";
+}
+
+/**
  * The foldout's own line: why it opens by itself when Settings does (eBay connected, the
- * address not all there: that is the moment it is needed); "" otherwise, and it stays folded.
+ * address not all there: that is the moment it is needed), or where a prefilled one came
+ * from; "" otherwise, and it stays folded.
  * @param {Seller|null} seller
  * @returns {string}
  */
 export function sellerLine(seller) {
-    return seller && !seller.complete && seller.ebay && seller.ebay.connected ? ADDRESS_NEEDED : "";
+    if (!seller || seller.complete || !seller.ebay || !seller.ebay.connected) return "";
+    return addressState(seller) === "prefilled" ? ADDRESS_PREFILLED : ADDRESS_NEEDED;
 }
 
 /**
@@ -550,8 +640,9 @@ export function sellerError(status, message) {
 
 /**
  * Where the page came back from, by its hash: Stripe's checkout (`#paid=<postings>` or
- * `#paid=cancelled`) or eBay's consent through the server (`#ebay=connected` or
- * `#ebay=failed`). Null for any other hash, a sign-in link's `#login=` included.
+ * `#paid=cancelled`) or eBay's consent through the server (`#ebay=connected`, or
+ * `#ebay=failed` and `#ebay=failed:<reason>`, the value kept whole). Null for any other hash,
+ * a sign-in link's `#login=` included.
  * @param {unknown} hash
  * @returns {{kind:"paid"|"ebay", value:string} | null}
  */
@@ -560,19 +651,24 @@ export function returnHash(hash) {
     if (!m) return null;
     const value = m[2];
     if (m[1] === "paid" && (value === "cancelled" || /^[1-9]\d*$/.test(value))) return { kind: "paid", value };
-    if (m[1] === "ebay" && (value === "connected" || value === "failed")) return { kind: "ebay", value };
+    if (m[1] === "ebay" && (value === "connected" || /^failed(:[\w-]+)?$/.test(value))) return { kind: "ebay", value };
     return null;
 }
 
+/** eBay's consent came back for an eBay account another Snap account already has (`#ebay=failed:taken`). */
+export const EBAY_TAKEN = "That eBay account is already connected to another Snap account. Sign in to that one, or use a different eBay account.";
+
 /**
  * What the Account block says on the way back (returnHash): "10 postings added",
- * "Payment cancelled", "eBay connected", or that eBay did not connect.
+ * "Payment cancelled", "eBay connected", or that eBay did not connect: an eBay account
+ * already another Snap account's said so (Michal, 2026-10-08), any other reason generically.
  * @param {{kind:"paid"|"ebay", value:string}} back
  * @returns {string}
  */
 export function returnLine(back) {
     if (back.kind === "ebay") {
-        return back.value === "connected" ? "eBay connected" : "eBay did not connect; try again or contact the developer";
+        if (back.value === "connected") return "eBay connected";
+        return back.value === "failed:taken" ? EBAY_TAKEN : "eBay did not connect; try again or contact the developer";
     }
     return back.value === "cancelled" ? "Payment cancelled" : `${postingsWord(Number(back.value))} added`;
 }
@@ -619,12 +715,13 @@ export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen 
  * Would the website know?"): nothing from the home screen (display-mode standalone, or
  * an iPhone's navigator.standalone), nothing for a week after a dismissal, the browser's
  * own install prompt where Chrome offered one (kept from beforeinstallprompt), and the
- * two taps spelled out everywhere else.
- * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, dismissedAt?:unknown, now:number}} o
+ * two taps spelled out everywhere else. A desktop browser is not nudged at all (Michal,
+ * 2026-10-08: Install below sign-in, smaller, and gone on a desktop).
+ * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, desktop?:boolean, dismissedAt?:unknown, now:number}} o
  * @returns {"hidden"|"prompt"|"steps"}
  */
-export function installState({ standalone, hasPrompt, isIos, dismissedAt = "", now }) {
-    if (standalone) return "hidden";
+export function installState({ standalone, hasPrompt, isIos, desktop = false, dismissedAt = "", now }) {
+    if (standalone || desktop) return "hidden";
     const at = typeof dismissedAt === "string" && dismissedAt ? Date.parse(dismissedAt) : NaN;
     if (Number.isFinite(at) && now - at < INSTALL_SNOOZE_MS) return "hidden";
     // Safari never offers the prompt: an iPhone is always told the two taps
@@ -651,6 +748,16 @@ export function installSteps(isIos) {
 export function isIosDevice({ userAgent = "", platform = "", maxTouchPoints = 0 } = {}) {
     if (typeof userAgent === "string" && /iPhone|iPad|iPod/.test(userAgent)) return true;
     return platform === "MacIntel" && typeof maxTouchPoints === "number" && maxTouchPoints > 1;
+}
+
+/**
+ * A desktop browser: no touch at all, and not an iPhone or iPad. A browser that does not say
+ * how many touch points it has is not counted as one.
+ * @param {{userAgent?:unknown, platform?:unknown, maxTouchPoints?:unknown}} nav
+ * @returns {boolean}
+ */
+export function isDesktopBrowser(nav = {}) {
+    return nav.maxTouchPoints === 0 && !isIosDevice(nav);
 }
 
 // --- feedback and the stats (Admin) -----------------------------------------------
