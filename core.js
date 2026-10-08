@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.11.0";
+import { noteDirty, unsent } from "./queue.js?v=2.12.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.11.0";
+} from "./book.js?v=2.12.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2881,10 +2881,172 @@ export function venueStatusLine(row, venue, offsetMinutes) {
     return s.status === "listed" ? `listed since ${when}` : `${s.status} · listed ${when}`;
 }
 
+// --- Admin: a listing's condition ---------------------------------------------------
+//
+// Michal, 2026-10-08: "When editing a listing in the inventory card, there should be an
+// option to change the condition there." (A cooler had gone up "for parts" and was put
+// right from the terminal.) So the eBay card says the condition in words, its Edit offers
+// the conditions eBay allows the row's category as chips (GET /inventory/<sku>/conditions),
+// and a changed one leaves both listings behind.
+
 /**
- * The craigslist card's four fields: each its override, or, left blank, what the
- * PC derives it from (the eBay title, price and description; a category it picks
- * from the eBay one), with `derived` set so the card says so. {} for any other venue.
+ * eBay's conditions (its ConditionEnum) in words, best first, as the server's labels say
+ * the ones it names. The chips' whole list when the server cannot say which the row's
+ * category allows (an older server's 404, eBay not read).
+ */
+export const CONDITION_LABELS = {
+    NEW: "New",
+    NEW_OTHER: "New (open box)",
+    NEW_WITH_DEFECTS: "New with defects",
+    CERTIFIED_REFURBISHED: "Certified refurbished",
+    EXCELLENT_REFURBISHED: "Refurbished, excellent",
+    VERY_GOOD_REFURBISHED: "Refurbished, very good",
+    GOOD_REFURBISHED: "Refurbished, good",
+    SELLER_REFURBISHED: "Seller refurbished",
+    LIKE_NEW: "Like new",
+    PRE_OWNED_EXCELLENT: "Pre-owned, excellent",
+    USED_EXCELLENT: "Used, excellent",
+    PRE_OWNED_FAIR: "Pre-owned, fair",
+    USED_VERY_GOOD: "Used, very good",
+    USED_GOOD: "Used, good",
+    USED_ACCEPTABLE: "Used, acceptable",
+    FOR_PARTS_OR_NOT_WORKING: "For parts or not working",
+};
+
+/** The friendly spellings a row's condition may carry from a CSV, as the server's map_condition reads them. */
+const CONDITION_ALIASES = {
+    new: "NEW",
+    "brand new": "NEW",
+    "new with tags": "NEW",
+    nwt: "NEW",
+    "new in box": "NEW",
+    nib: "NEW",
+    sealed: "NEW",
+    "new other": "NEW_OTHER",
+    "new without tags": "NEW_OTHER",
+    nwot: "NEW_OTHER",
+    "open box": "NEW_OTHER",
+    "new with defects": "NEW_WITH_DEFECTS",
+    "like new": "LIKE_NEW",
+    mint: "LIKE_NEW",
+    excellent: "USED_EXCELLENT",
+    "used excellent": "USED_EXCELLENT",
+    "very good": "USED_VERY_GOOD",
+    "used very good": "USED_VERY_GOOD",
+    good: "USED_GOOD",
+    used: "USED_GOOD",
+    "used good": "USED_GOOD",
+    "pre owned": "USED_GOOD",
+    acceptable: "USED_ACCEPTABLE",
+    fair: "USED_ACCEPTABLE",
+    "used acceptable": "USED_ACCEPTABLE",
+    "for parts": "FOR_PARTS_OR_NOT_WORKING",
+    parts: "FOR_PARTS_OR_NOT_WORKING",
+    "not working": "FOR_PARTS_OR_NOT_WORKING",
+    broken: "FOR_PARTS_OR_NOT_WORKING",
+    refurbished: "SELLER_REFURBISHED",
+    "seller refurbished": "SELLER_REFURBISHED",
+    "certified refurbished": "CERTIFIED_REFURBISHED",
+};
+
+/**
+ * The row's condition as eBay's enum: the enum itself, or a friendly spelling ("Used",
+ * "open box"); "" for anything else. The server's map_condition, mirrored.
+ * @param {unknown} condition
+ * @returns {string}
+ */
+export function conditionEnum(condition) {
+    const key = plain(condition).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key) return "";
+    const value = CONDITION_ALIASES[key] || key.toUpperCase().replace(/ /g, "_");
+    return Object.hasOwn(CONDITION_LABELS, value) ? value : "";
+}
+
+/**
+ * A condition in words for the eBay card: its label, or as the row has it when it is no enum.
+ * @param {unknown} condition
+ * @returns {string}
+ */
+export function conditionLabel(condition) {
+    const value = plain(condition);
+    return Object.hasOwn(CONDITION_LABELS, value) ? CONDITION_LABELS[value] : value;
+}
+
+/** eBay's condition -> Craigslist's six words; a refurbished grade lands where its wear puts it. */
+const CRAIGSLIST_CONDITIONS = {
+    NEW: "new",
+    NEW_OTHER: "new",
+    NEW_WITH_DEFECTS: "new",
+    CERTIFIED_REFURBISHED: "like new",
+    EXCELLENT_REFURBISHED: "like new",
+    LIKE_NEW: "like new",
+    PRE_OWNED_EXCELLENT: "excellent",
+    USED_EXCELLENT: "excellent",
+    VERY_GOOD_REFURBISHED: "excellent",
+    USED_VERY_GOOD: "excellent",
+    GOOD_REFURBISHED: "good",
+    SELLER_REFURBISHED: "good",
+    USED_GOOD: "good",
+    PRE_OWNED_FAIR: "fair",
+    USED_ACCEPTABLE: "fair",
+    FOR_PARTS_OR_NOT_WORKING: "salvage",
+};
+
+/**
+ * The posting's Condition on Craigslist, from the row's eBay one: the server's
+ * craigslist_condition, mirrored ("" when there is none to map; the posting goes without).
+ * @param {unknown} condition
+ * @returns {string}
+ */
+export function craigslistCondition(condition) {
+    return CRAIGSLIST_CONDITIONS[conditionEnum(condition)] || "";
+}
+
+/** Under the chips when the server could not read eBay's list for the row's category. */
+export const CONDITIONS_UNREAD = "eBay's list for this category could not be read: showing all";
+
+/**
+ * Edit's Condition chips from GET /inventory/<sku>/conditions: the conditions eBay allows
+ * the row's category, in the server's order, each in the server's words (else
+ * CONDITION_LABELS', else as it came), and the one the row has. Until it answers, or when
+ * it cannot say (null: an older server's 404), every one of CONDITION_LABELS; an answer
+ * with none allowed (eBay not read; a failed call is passed as {allowed: [], error}) says
+ * so under them, with its why.
+ * @param {{current?:unknown, allowed?:unknown, labels?:unknown, error?:unknown} | null} answer
+ * @returns {{current:string, chips:{value:string, label:string}[], note:string}}
+ */
+export function conditionChoices(answer) {
+    const a = answer && typeof answer === "object" ? answer : {};
+    const named = a.labels && typeof a.labels === "object" ? a.labels : {};
+    const allowed = (Array.isArray(a.allowed) ? a.allowed : []).map(plain).filter(Boolean);
+    const label = (value) => plain(named[value]) || CONDITION_LABELS[value] || value;
+    const current = plain(a.current);
+    if (allowed.length) return { current, chips: allowed.map((value) => ({ value, label: label(value) })), note: "" };
+    const chips = Object.keys(CONDITION_LABELS).map((value) => ({ value, label: label(value) }));
+    if (!answer) return { current, chips, note: "" };
+    const why = plain(a.error);
+    return { current, chips, note: why ? `${CONDITIONS_UNREAD} (${why})` : CONDITIONS_UNREAD };
+}
+
+/**
+ * A Save the server refused because of the condition: the PATCH carried one and the
+ * refusal (a 400 naming it, or an older server's 422 or 400 for a field it does not
+ * know) is about it, or nothing else was sent. Its words go under the chips, not under Save.
+ * @param {Record<string, any>} body the PATCH sent
+ * @param {{status?:number, message?:string}} error the PcError
+ * @returns {boolean}
+ */
+export function conditionRefused(body, error) {
+    if (!("condition" in body) || (error.status !== 400 && error.status !== 422)) return false;
+    return Object.keys(body).length === 1 || /\bcondition\b/i.test(plain(error.message));
+}
+
+/**
+ * The craigslist card's fields: each of its four its override, or, left blank, what
+ * the PC derives it from (the eBay title, price and description; a category it picks
+ * from the eBay one), with `derived` set so the card says so; and the condition,
+ * always the eBay one in Craigslist's words (craigslistCondition), no override. {} for
+ * any other venue.
  * @param {Record<string, any>} row
  * @param {string} venue
  * @returns {Record<string, {value:string, derived:boolean}>}
@@ -2898,14 +3060,16 @@ export function derivedFields(row, venue) {
         price: pair(priceText(own.price), priceText(row.price)),
         description: pair(plain(own.description), plain(row.description)),
         category: pair(plain(own.category), CATEGORY_FROM_EBAY),
+        condition: { value: craigslistCondition(row.condition), derived: true },
     };
 }
 
 /**
  * A venue's card: the listing as that venue has it. eBay: the title, price,
- * condition, category path, quantity and pickup only always; the description,
+ * condition (in words), category path, quantity and pickup only always; the description,
  * note, condition note, aspects, condition details, package, ISBN and model cost
- * when the row has them. Craigslist: its four fields (derivedFields), always.
+ * when the row has them. Craigslist: its four fields (derivedFields), always, and
+ * the condition when the eBay one has a Craigslist word.
  * The status and the link are the card's status line, above these.
  * @param {Record<string, any>} row
  * @param {string} venue
@@ -2919,6 +3083,7 @@ export function venueFacts(row, venue) {
             { label: "Price", value: priceWord(d.price.value), derived: d.price.derived },
             { label: "Description", value: d.description.value, pre: true, derived: d.description.derived },
             { label: "Category", value: d.category.value, derived: d.category.derived },
+            ...(d.condition.value ? [{ label: "Condition", value: d.condition.value, derived: true }] : []),
         ];
     }
     if (venue !== "ebay") return [];
@@ -2928,7 +3093,7 @@ export function venueFacts(row, venue) {
     const facts = [
         { label: "Title", value: plain(row.title) },
         { label: "Price", value: priceWord(row.price) },
-        { label: "Condition", value: plain(row.condition) },
+        { label: "Condition", value: conditionLabel(row.condition) },
         { label: "Category", value: plain(row.category_path) || plain(row.category) },
         { label: "Quantity", value: quantity },
         { label: "Pickup only", value: row.pickup_only === true ? "yes, no shipping on eBay" : "no" },
@@ -3095,11 +3260,13 @@ export function cardLine(row, venue, card, offsetMinutes) {
  * A card's fields as Edit turns them into inputs, in their order on the card:
  * eBay's go top-level in the PATCH, craigslist's four overrides inside its
  * "craigslist" (where "" clears one). kind: "line" an input, "price" an input
- * for dollars, "text" a textarea. The quantity and pickup only are not here: the
+ * for dollars, "text" a textarea, "choice" a row of chips, one pressed (the
+ * condition: conditionChoices). The quantity and pickup only are not here: the
  * listing's customize owns them (Michal, 2026-10-07), so one place edits them.
  */
 export const EDIT_FIELDS = {
     ebay: [
+        { key: "condition", label: "Condition", kind: "choice" },
         { key: "title", label: "Title", kind: "line" },
         { key: "price", label: "Price, dollars", kind: "price" },
         { key: "description", label: "Description", kind: "text" },
@@ -3115,9 +3282,9 @@ export const EDIT_FIELDS = {
 };
 
 /**
- * What Edit's inputs start from: eBay's fields as the row has them, or
- * craigslist's overrides ("" for one left blank; its placeholder shows what it
- * is derived from).
+ * What Edit's inputs start from: eBay's fields as the row has them (the condition
+ * as eBay's enum, the chip pressed; "" when it is none), or craigslist's overrides
+ * ("" for one left blank; its placeholder shows what it is derived from).
  * @param {Record<string, any>} row
  * @param {string} venue
  * @returns {Record<string, string>}
@@ -3133,6 +3300,7 @@ export function editValues(row, venue) {
         };
     }
     return {
+        condition: conditionEnum(row.condition),
         title: plain(row.title),
         price: priceText(row.price),
         description: plain(row.description),
@@ -3486,21 +3654,26 @@ export function unsyncedWithout(list, venue) {
 
 /**
  * The listings a change the PC answered (a tile's dial, customize's Save, a card's Edit) left
- * behind, by venue: eBay when the price moved and the row is listed there; craigslist when
- * the row is listed there and any of its four fields reads otherwise now (an override typed,
- * or an eBay field it is derived from changed). `before` may be a list row, which carries no
- * description or overrides: what it does not carry is taken as unchanged.
+ * behind, by venue: eBay when the price or the condition moved and the row is listed there;
+ * craigslist when the row is listed there and any of its fields reads otherwise now (an
+ * override typed, or an eBay field it is derived from changed, the condition among them).
+ * `before` may be a list row, which carries no description or overrides: what it does not
+ * carry is taken as unchanged.
  * @param {Record<string, any>} before
  * @param {Record<string, any>} after the row the PC answered
  * @returns {string[]}
  */
 export function leftUnsynced(before, after) {
     const venues = [];
-    if (Number(priceText(before.price)) !== Number(priceText(after.price)) && canPush(after)) venues.push("ebay");
+    const priced = Number(priceText(before.price)) !== Number(priceText(after.price));
+    const grade = (row) => conditionEnum(row.condition) || plain(row.condition);
+    const graded = "condition" in before && grade(before) !== grade(after);
+    if ((priced || graded) && canPush(after)) venues.push("ebay");
     const listed = rowVenues(after).includes("craigslist") && venueStatus(after, "craigslist").status === "listed";
     const reads = (row) => {
         const d = derivedFields(row, "craigslist");
-        return [d.title.value, Number(d.price.value) || 0, d.description.value, d.category.value].join("\n");
+        const price = Number(d.price.value) || 0;
+        return [d.title.value, price, d.description.value, d.category.value, d.condition.value].join("\n");
     };
     if (listed && reads({ ...after, ...before }) !== reads(after)) venues.push("craigslist");
     return venues;

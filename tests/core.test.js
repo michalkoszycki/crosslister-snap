@@ -153,6 +153,13 @@ import {
     unsyncedWithout,
     venueName,
     USER_NOTE,
+    CONDITION_LABELS,
+    CONDITIONS_UNREAD,
+    conditionChoices,
+    conditionEnum,
+    conditionLabel,
+    conditionRefused,
+    craigslistCondition,
 } from "../core.js";
 import {
     accountError,
@@ -2528,12 +2535,14 @@ test("a row's title, heading, badges, venues and photos", () => {
 test("craigslist's four fields: the override, or what it is derived from on eBay", () => {
     assert.equal(DERIVED, "derived from eBay");
     assert.equal(CATEGORY_FROM_EBAY, "from the eBay category");
-    // ROW: no title override, a price and a description typed, the category blank
+    // ROW: no title override, a price and a description typed, the category blank; its
+    // condition ("Used", USED_GOOD) is always eBay's, in Craigslist's words
     assert.deepEqual(derivedFields(ROW, "craigslist"), {
         title: { value: "Brass lamp", derived: true },
         price: { value: "30.00", derived: false },
         description: { value: "Brass lamp, pickup in town", derived: false },
         category: { value: "from the eBay category", derived: true },
+        condition: { value: "good", derived: true },
     });
     const typed = { ...ROW, craigslist: { title: " Lamp ", price: "0", description: "  ", category: "household" } };
     assert.deepEqual(derivedFields(typed, "craigslist"), {
@@ -2541,12 +2550,14 @@ test("craigslist's four fields: the override, or what it is derived from on eBay
         price: { value: "24.00", derived: true },
         description: { value: "Brass.\nWorks.", derived: true },
         category: { value: "household", derived: false },
+        condition: { value: "good", derived: true },
     });
     assert.deepEqual(derivedFields({ sku: "X" }, "craigslist"), {
         title: { value: "", derived: true },
         price: { value: "", derived: true },
         description: { value: "", derived: true },
         category: { value: CATEGORY_FROM_EBAY, derived: true },
+        condition: { value: "", derived: true },
     });
     assert.deepEqual(derivedFields(ROW, "ebay"), {});
 });
@@ -2607,7 +2618,9 @@ test("the craigslist card: its four fields, each the override or the eBay value 
         { label: "Price", value: "$30", derived: false },
         { label: "Description", value: "Brass lamp, pickup in town", pre: true, derived: false },
         { label: "Category", value: "from the eBay category", derived: true },
+        { label: "Condition", value: "good", derived: true },
     ]);
+    // no condition Craigslist has a word for: the posting goes without, the card says none
     const bare = venueFacts({ sku: "X", title: "Vase", price: "12.50", venues: ["craigslist"] }, "craigslist");
     assert.deepEqual(bare.map((f) => `${f.label}: ${f.value}${f.derived ? " (derived)" : ""}`), [
         "Title: Vase (derived)",
@@ -2615,6 +2628,110 @@ test("the craigslist card: its four fields, each the override or the eBay value 
         "Description:  (derived)",
         "Category: from the eBay category (derived)",
     ]);
+});
+
+test("a listing's condition: eBay's enum in words, and in Craigslist's", () => {
+    // Michal, 2026-10-08: "When editing a listing in the inventory card, there should be an
+    // option to change the condition there."
+    assert.equal(conditionLabel("NEW_OTHER"), "New (open box)");
+    assert.equal(conditionLabel(" FOR_PARTS_OR_NOT_WORKING "), "For parts or not working");
+    assert.equal(conditionLabel("Used"), "Used", "no enum: as the row has it");
+    assert.equal(conditionLabel(null), "");
+    assert.equal(conditionLabel("toString"), "toString", "nothing inherited is a label");
+    const ebay = (condition) => venueFacts({ ...ROW, condition }, "ebay").find((f) => f.label === "Condition");
+    assert.deepEqual(ebay("NEW_OTHER"), { label: "Condition", value: "New (open box)" });
+    assert.deepEqual(ebay("MINTY"), { label: "Condition", value: "MINTY" });
+    assert.equal(ebay(""), undefined, "none: no line");
+    // every enum the server knows (its CONDITION_IDS), best first
+    assert.deepEqual(Object.keys(CONDITION_LABELS), [
+        "NEW",
+        "NEW_OTHER",
+        "NEW_WITH_DEFECTS",
+        "CERTIFIED_REFURBISHED",
+        "EXCELLENT_REFURBISHED",
+        "VERY_GOOD_REFURBISHED",
+        "GOOD_REFURBISHED",
+        "SELLER_REFURBISHED",
+        "LIKE_NEW",
+        "PRE_OWNED_EXCELLENT",
+        "USED_EXCELLENT",
+        "PRE_OWNED_FAIR",
+        "USED_VERY_GOOD",
+        "USED_GOOD",
+        "USED_ACCEPTABLE",
+        "FOR_PARTS_OR_NOT_WORKING",
+    ]);
+    // the enum, or a CSV's friendly spelling, as the server's map_condition reads it
+    assert.equal(conditionEnum("USED_GOOD"), "USED_GOOD");
+    assert.equal(conditionEnum("used good"), "USED_GOOD");
+    assert.equal(conditionEnum("Used"), "USED_GOOD");
+    assert.equal(conditionEnum("Open box"), "NEW_OTHER");
+    assert.equal(conditionEnum("for-parts"), "FOR_PARTS_OR_NOT_WORKING");
+    assert.equal(conditionEnum("mildly haunted"), "");
+    assert.equal(conditionEnum(""), "");
+    // the server's craigslist_condition, mirrored
+    const words = {
+        NEW: "new",
+        NEW_OTHER: "new",
+        NEW_WITH_DEFECTS: "new",
+        CERTIFIED_REFURBISHED: "like new",
+        EXCELLENT_REFURBISHED: "like new",
+        LIKE_NEW: "like new",
+        PRE_OWNED_EXCELLENT: "excellent",
+        USED_EXCELLENT: "excellent",
+        VERY_GOOD_REFURBISHED: "excellent",
+        USED_VERY_GOOD: "excellent",
+        GOOD_REFURBISHED: "good",
+        SELLER_REFURBISHED: "good",
+        USED_GOOD: "good",
+        PRE_OWNED_FAIR: "fair",
+        USED_ACCEPTABLE: "fair",
+        FOR_PARTS_OR_NOT_WORKING: "salvage",
+    };
+    for (const [condition, word] of Object.entries(words)) assert.equal(craigslistCondition(condition), word, condition);
+    assert.equal(craigslistCondition("new with tags"), "new", "the friendly spellings too");
+    assert.equal(craigslistCondition(""), "");
+    assert.equal(craigslistCondition("mildly haunted"), "");
+});
+
+test("Edit's Condition chips: what eBay allows the category, else every condition", () => {
+    const all = Object.entries(CONDITION_LABELS).map(([value, label]) => ({ value, label }));
+    // until the server answers, and from an older server (404): every one, nothing said
+    assert.deepEqual(conditionChoices(null), { current: "", chips: all, note: "" });
+    // the server's list, in its order and its words (else the page's, else as it came)
+    const answer = {
+        current: "NEW_OTHER",
+        allowed: ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING", "ODD"],
+        labels: { NEW: "Brand new", NEW_OTHER: "New (open box)" },
+    };
+    assert.deepEqual(conditionChoices(answer), {
+        current: "NEW_OTHER",
+        chips: [
+            { value: "NEW", label: "Brand new" },
+            { value: "NEW_OTHER", label: "New (open box)" },
+            { value: "USED_EXCELLENT", label: "Used, excellent" },
+            { value: "FOR_PARTS_OR_NOT_WORKING", label: "For parts or not working" },
+            { value: "ODD", label: "ODD" },
+        ],
+        note: "",
+    });
+    // none allowed: every one, and why under them
+    assert.equal(CONDITIONS_UNREAD, "eBay's list for this category could not be read: showing all");
+    assert.deepEqual(conditionChoices({ current: "USED_GOOD", allowed: [], error: "eBay is down" }), {
+        current: "USED_GOOD",
+        chips: all,
+        note: `${CONDITIONS_UNREAD} (eBay is down)`,
+    });
+    assert.equal(conditionChoices({ allowed: [] }).note, CONDITIONS_UNREAD);
+    // a refusal of the condition goes under the chips; of anything else, under Save
+    const bad = (status, message) => ({ status, message });
+    assert.equal(conditionRefused({ condition: "MINT" }, bad(400, "condition: use one of NEW, USED_GOOD")), true);
+    assert.equal(conditionRefused({ condition: "NEW" }, bad(422, "the server answered 422")), true, "an older server");
+    assert.equal(conditionRefused({ condition: "NEW", title: "" }, bad(400, "title: blank")), false);
+    assert.equal(conditionRefused({ condition: "NEW", title: "x" }, bad(400, "condition NEW not allowed")), true);
+    assert.equal(conditionRefused({ condition: "NEW", condition_note: "x" }, bad(400, "condition_note: too long")), false);
+    assert.equal(conditionRefused({ title: "" }, bad(400, "condition: blank")), false, "no condition sent");
+    assert.equal(conditionRefused({ condition: "NEW" }, bad(0, "cannot reach the server")), false);
 });
 
 test("a card's status line: the status word and when it went up", () => {
@@ -2734,13 +2851,23 @@ test("a card's status line: sending, its job, a refusal, else the venue's status
 
 test("Edit: the inputs start from the row; Save sends only what changed", () => {
     // the quantity and pickup only are customize's now (Michal, 2026-10-07): one place edits them
-    assert.deepEqual(EDIT_FIELDS.ebay.map((f) => f.key), ["title", "price", "description", "note", "condition_note"]);
+    // the condition first, as chips (Michal, 2026-10-08)
+    assert.deepEqual(EDIT_FIELDS.ebay.map((f) => f.key), ["condition", "title", "price", "description", "note", "condition_note"]);
+    assert.equal(EDIT_FIELDS.ebay[0].kind, "choice");
     // the key stays the PC's "note"; the screen says what Michal calls it
     assert.equal(USER_NOTE, "User note");
-    assert.deepEqual(EDIT_FIELDS.ebay.map((f) => f.label), ["Title", "Price, dollars", "Description", "User note", "Condition note"]);
+    assert.deepEqual(EDIT_FIELDS.ebay.map((f) => f.label), [
+        "Condition",
+        "Title",
+        "Price, dollars",
+        "Description",
+        "User note",
+        "Condition note",
+    ]);
     assert.deepEqual(EDIT_FIELDS.craigslist.map((f) => f.key), ["title", "price", "description", "category"]);
     const ebay = editValues(ROW, "ebay");
     assert.deepEqual(ebay, {
+        condition: "USED_GOOD",
         title: "Brass lamp",
         price: "24.00",
         description: "Brass.\nWorks.",
@@ -2759,6 +2886,9 @@ test("Edit: the inputs start from the row; Save sends only what changed", () => 
 
     assert.equal(patchBody("ebay", ebay, { ...ebay }), null, "nothing changed: nothing sent");
     assert.deepEqual(patchBody("ebay", ebay, { ...ebay, price: "26.50" }), { price: "26.50" });
+    // the condition only when another chip was pressed
+    assert.deepEqual(patchBody("ebay", ebay, { ...ebay, condition: "USED_EXCELLENT" }), { condition: "USED_EXCELLENT" });
+    assert.equal(editValues({ ...ROW, condition: "mildly haunted" }, "ebay").condition, "", "no enum: no chip pressed");
     // craigslist's go inside "craigslist"; "" clears an override
     assert.deepEqual(patchBody("craigslist", craigslist, { ...craigslist, price: "", category: "household" }), {
         craigslist: { price: "", category: "household" },
@@ -2947,6 +3077,15 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(leftUnsynced(both2, { ...both2, craigslist: { ...both2.craigslist, category: "household" } }), ["craigslist"]);
     assert.deepEqual(leftUnsynced(both2, { ...both2, title: "Brass desk lamp" }), ["craigslist"], "its title derives from eBay's");
     assert.deepEqual(leftUnsynced(both2, { ...both2, condition_note: "worn" }), [], "not one of its fields");
+    // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
+    // craigslist's when its word for it moved
+    const parts = { ...both2, condition: "FOR_PARTS_OR_NOT_WORKING" };
+    assert.deepEqual(leftUnsynced(parts, { ...parts, condition: "USED_GOOD" }), ["ebay", "craigslist"]);
+    assert.deepEqual(leftUnsynced({ ...both2, condition: "USED_EXCELLENT" }, { ...both2, condition: "USED_VERY_GOOD" }), [
+        "ebay",
+    ], "both excellent on craigslist");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, condition: "USED_GOOD" }), [], "Used is USED_GOOD: no change");
+    assert.deepEqual(leftUnsynced({ ...draft, condition: "NEW" }, { ...draft, condition: "USED_GOOD" }), [], "drafts");
     // a list row carries no description or overrides: what it lacks is taken as unchanged
     const listRow = { sku: ROW.sku, title: ROW.title, price: "24.00", venues: both2.venues, statuses: both2.statuses };
     assert.deepEqual(leftUnsynced(listRow, { ...derived, price: "25.00" }), ["ebay", "craigslist"]);
