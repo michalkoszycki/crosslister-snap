@@ -12,7 +12,9 @@
                                         -> the service on the PC itself, for trying the page there
   core.js checkSettings() accepts exactly these hosts; change both together. The product's own
   server, where Sign in asks for a link and a signed-in phone calls (DEFAULT_SERVER in core.js),
-  is one of these Tailscale addresses, so the policy needs nothing more for it.
+  is one of these Tailscale addresses, so the policy needs nothing more for it. Buy postings and
+  Connect eBay send the browser itself to Stripe's or eBay's page (location.assign): a navigation,
+  which connect-src does not govern, and no navigate-to is set, so nothing more is needed there.
     font-src     'self'                 -> Manrope, kept in fonts/ (never a font CDN)
 -->
 <meta http-equiv="Content-Security-Policy" content="
@@ -33,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.10.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.10.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.11.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.11.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -81,6 +83,7 @@
     <h2 class="landing-name">Snap</h2>
     <p class="landing-tagline">a crosslisting app</p>
     <p class="landing-what">Photograph it, and it is listed on eBay and Craigslist with a price and a description.</p>
+    <p class="landing-price">Three postings free, then prepaid.</p>
     <!-- Michal, 2026-10-08: "If it is not on the home screen it should direct towards that
          install": Chrome's own prompt where it offered one, else the two taps unfold here;
          gone when the page runs from the home screen -->
@@ -152,6 +155,20 @@
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="settings">▸ Settings</button>
     <div id="settings" class="card" hidden>
+      <!-- the account, from GET /me (Michal, 2026-10-08: three free postings per person, then
+           prepaid; Connect eBay from the phone for another seller): whose it is, the postings
+           left and Buy postings, the eBay it posts to and Connect eBay. Each part shows only
+           when the server gives it; an older server, no block at all (app.js) -->
+      <div id="account" class="account" hidden>
+        <p id="account-user" class="account-user"></p>
+        <p id="account-credits" class="small account-line"></p>
+        <button type="button" id="account-buy" class="pill pill-small" aria-expanded="false"
+                aria-controls="account-packs">Buy postings</button>
+        <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
+        <p id="account-ebay" class="small account-line"></p>
+        <button type="button" id="account-connect" class="pill pill-small">Connect eBay</button>
+        <p id="account-status" class="small account-status" aria-live="polite"></p>
+      </div>
       <p id="settings-server" class="server server-line"></p>
       <label class="field">
         <span class="field-label">Server address</span>
@@ -458,12 +475,15 @@
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
         <button type="button" id="ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
         <p id="ebay-status" class="venue-status" aria-live="polite"></p>
+        <!-- under a press refused for want of postings (a 402): Settings' Account block -->
+        <button type="button" id="ebay-buy" class="link buy-link" hidden>Buy postings</button>
         <a id="ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <div class="venue">
         <button type="button" id="craigslist-btn" class="big venue-btn">craigslist</button>
         <button type="button" id="craigslist-reset" class="reset-call" aria-label="reset craigslist" hidden>reset</button>
         <p id="craigslist-status" class="venue-status" aria-live="polite"></p>
+        <button type="button" id="craigslist-buy" class="link buy-link" hidden>Buy postings</button>
         <a id="craigslist-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
     </div>
@@ -621,6 +641,7 @@
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
       <button type="button" id="book-ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
       <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
+      <button type="button" id="book-ebay-buy" class="link buy-link" hidden>Buy postings</button>
       <a id="book-ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
     </div>
     <p id="book-venue-hint" class="small hint-line"></p>
@@ -642,6 +663,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.10.0"></script>
+<script type="module" src="app.js?v=2.11.0"></script>
 </body>
 </html>

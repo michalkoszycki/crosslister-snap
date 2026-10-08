@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.10.0";
+import { VERSION } from "./version.js?v=2.11.0";
 import {
     anyActive,
     bannerText,
@@ -138,6 +138,14 @@ import {
     meOf,
     CRAIGSLIST_OFF,
     venueAllowed,
+    accountError,
+    creditsLine,
+    ebayLine,
+    packLabel,
+    returnHash,
+    returnLine,
+    safeLink,
+    userLine,
     installState,
     installSteps,
     isIosDevice,
@@ -152,15 +160,18 @@ import {
     applyDefaults,
     customizeDefaults,
     defaultsOf,
-} from "./core.js?v=2.10.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.10.0";
+} from "./core.js?v=2.11.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.11.0";
 import {
     addVenue,
     askLink,
     cancelJob,
+    checkout,
     checkPc,
     createItem,
     deletePhoto,
+    ebayConnect,
+    endSession,
     getBook,
     getInventory,
     getItem,
@@ -178,8 +189,8 @@ import {
     putPhoto,
     searchBook,
     startSession,
-} from "./pc.js?v=2.10.0";
-import { shrinkPhoto } from "./shrink.js?v=2.10.0";
+} from "./pc.js?v=2.11.0";
+import { shrinkPhoto } from "./shrink.js?v=2.11.0";
 import {
     bookCard,
     bookPriceValue,
@@ -192,8 +203,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.10.0";
-import { canScan, readIsbn } from "./scan.js?v=2.10.0";
+} from "./book.js?v=2.11.0";
+import { canScan, readIsbn } from "./scan.js?v=2.11.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -280,6 +291,12 @@ let me = null;
 let meAsked = false;
 /** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
 const offTaps = new Set();
+/**
+ * Settings' Account block, as the screen has it: Buy postings' packs unfolded, a checkout or
+ * Connect eBay on its way (`busy`), and its line (`status`: the way back from Stripe or eBay,
+ * or what went wrong).
+ */
+const account = { packs: false, busy: false, status: "" };
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -587,6 +604,7 @@ function renderGoods() {
             btn: el[`${venue}Btn`],
             reset: el[`${venue}Reset`],
             status: el[`${venue}Status`],
+            buy: el[`${venue}Buy`],
             link: el[`${venue}Link`],
         });
         hint ||= said;
@@ -694,6 +712,7 @@ function renderBook() {
         btn: el.bookEbayBtn,
         reset: el.bookEbayReset,
         status: el.bookEbayStatus,
+        buy: el.bookEbayBuy,
         link: el.bookEbayLink,
     });
     el.bookVenueHint.textContent = venueHint;
@@ -814,6 +833,7 @@ function renderVenue(m, venue, ok, nodes) {
         nodes.status.textContent = said;
         nodes.status.className = "venue-status";
         nodes.status.hidden = !said;
+        nodes.buy.hidden = true;
         nodes.link.hidden = true;
         return "";
     }
@@ -842,6 +862,8 @@ function renderVenue(m, venue, ok, nodes) {
     nodes.status.textContent = line.text;
     nodes.status.className = `venue-status ${line.kind}`;
     nodes.status.hidden = !line.text;
+    // no postings left (a 402): the server's words, and under them the way to buy more
+    nodes.buy.hidden = !(job.phase === "failed" && job.credit);
     nodes.link.hidden = !line.link;
     nodes.link.textContent = line.link;
     if (line.link) nodes.link.href = line.link;
@@ -1521,7 +1543,10 @@ async function send(m, venue) {
         if (!slots[m].jobs[venue].paused) schedulePoll(m, venue, mine);
     } catch (e) {
         if (taken()) return;
-        setState(m, reduce(slots[m], { type: "jobRefused", venue, error: e.message }));
+        // 402: no postings left; the line offers Buy postings, and the credits line catches up
+        const credit = e.status === 402;
+        setState(m, reduce(slots[m], { type: "jobRefused", venue, error: e.message, credit }));
+        if (credit) loadMe().catch(() => {});
     }
 }
 
@@ -1668,6 +1693,8 @@ async function poll(m, venue, mine) {
     }
     const job = slots[m].jobs[venue];
     if (isActive(job) || job.stopping) schedulePoll(m, venue, mine);
+    // the job ended: the postings it used show in the credits line
+    else loadMe().catch(() => {});
 }
 
 // --- Admin: Settings, the inventory and the sync bar --------------------------------
@@ -1710,6 +1737,9 @@ function showAdmin(open) {
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
+        // the Account block starts folded and quiet on the next visit
+        Object.assign(account, { packs: false, status: "" });
+        renderAccount();
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
         searchTimer = null;
@@ -3119,6 +3149,8 @@ async function askTask(task, paint) {
     }
     task.action = "";
     task.stopping = false;
+    // the job ended (a card's post uses a posting): the credits line follows
+    loadMe().catch(() => {});
     return true;
 }
 
@@ -3519,8 +3551,9 @@ function heard(status) {
 
 /**
  * GET /me, kept in memory (Michal, 2026-10-08: "Keep the Craigslist button gray and when
- * tapped write 'contact developer'"): what the account may do. A 404 (an older server),
- * or no answer, leaves everything as before.
+ * tapped write 'contact developer'"): what the account may do. A 404 (an older server)
+ * leaves everything as before; no answer keeps what the last one said (nothing, on a load).
+ * Asked again after every job ends, so the credits line keeps up with the postings used.
  */
 async function loadMe() {
     const pc = settings();
@@ -3530,17 +3563,135 @@ async function loadMe() {
     try {
         me = meOf(await getMe(pc));
     } catch (e) {
-        me = null;
+        if (e.status !== 0) me = null;
         if (e.status === 401) heard(401);
     }
     renderMe();
 }
 
-/** What /me changes on screen: the craigslist button, an empty craigslist card, Stats. */
+/** What /me changes on screen: the craigslist button, an empty craigslist card, Stats, the Account block. */
 function renderMe() {
     render();
     renderExtras();
+    renderAccount();
     if (admin.row) renderCards();
+}
+
+// --- Settings' Account block: postings, Buy postings, Connect eBay --------------------------
+// Michal, 2026-10-08: three free postings per person, then prepaid postings bought through
+// Stripe; and Connect eBay from the phone, for another seller's own eBay. The page only sends
+// the browser to Stripe's or eBay's page; each sends it back here with a hash (cameBack).
+
+/**
+ * The Account block from /me: each part only when the server gives it, and no block at all
+ * from an older server (no /me), unless its line has something to say.
+ */
+function renderAccount() {
+    const s = settings();
+    const credits = me ? me.credits : null;
+    const packs = me ? me.packs : [];
+    // an unlimited key has nothing to buy
+    const canBuy = packs.length > 0 && !(credits && credits.unlimited);
+    const user = me ? userLine(me.user, !!(s && s.session)) : "";
+    const left = creditsLine(credits);
+    const ebay = me ? ebayLine(me.ebay) : "";
+    el.account.hidden = !me && !account.status;
+    el.accountUser.textContent = user;
+    el.accountUser.hidden = !user;
+    el.accountCredits.textContent = left;
+    el.accountCredits.hidden = !left;
+    el.accountBuy.hidden = !canBuy;
+    el.accountBuy.disabled = account.busy;
+    el.accountBuy.setAttribute("aria-expanded", canBuy && account.packs ? "true" : "false");
+    el.accountPacks.hidden = !canBuy || !account.packs;
+    el.accountPacks.replaceChildren(
+        ...packs.map((pack) => {
+            const pill = document.createElement("button");
+            pill.type = "button";
+            pill.className = "pill pill-ink pill-small";
+            pill.textContent = packLabel(pack);
+            pill.disabled = account.busy;
+            pill.addEventListener("click", () => {
+                buyPack(pack).catch(() => {});
+            });
+            return pill;
+        })
+    );
+    el.accountEbay.textContent = ebay;
+    el.accountEbay.hidden = !ebay;
+    el.accountConnect.hidden = !me || !me.ebay || me.ebay.connected;
+    el.accountConnect.disabled = account.busy;
+    el.accountStatus.textContent = account.status;
+}
+
+/**
+ * Admin open on Settings, at the Account block: where a venue button's Buy postings leads
+ * (`packs`: its pack choice unfolded), and the way back from Stripe or eBay.
+ * @param {boolean} packs
+ */
+function openAccount(packs) {
+    if (el.admin.hidden) {
+        Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
+        adminShown(true);
+    }
+    showSettings(true);
+    account.packs = packs;
+    renderAccount();
+    if (typeof el.account.scrollIntoView === "function") el.account.scrollIntoView({ block: "start" });
+}
+
+/**
+ * A pack's pill: POST /pay/checkout, and the browser to Stripe's page. Payments not set up
+ * (503) says the server's words.
+ */
+async function buyPack(pack) {
+    const pc = settings();
+    if (!pc || account.busy) return;
+    await leaveFor("pay", "Opening the payment page...", () => checkout(pc, pack.id));
+}
+
+/** Connect eBay: GET /ebay/connect, and the browser to eBay's consent page. */
+async function connectEbay() {
+    const pc = settings();
+    if (!pc || account.busy) return;
+    await leaveFor("connect", "Opening eBay...", () => ebayConnect(pc));
+}
+
+/**
+ * Ask the server for the page to send the browser to (`ask`), and go there; the way back
+ * is a hash (cameBack). Said on the Account block's line meanwhile, and on a refusal.
+ * @param {"pay"|"connect"} what
+ * @param {string} meanwhile
+ * @param {() => Promise<{url?:unknown}>} ask
+ */
+async function leaveFor(what, meanwhile, ask) {
+    account.busy = true;
+    account.status = meanwhile;
+    renderAccount();
+    try {
+        const answer = await ask();
+        const url = safeLink(answer.url);
+        if (!url) throw new PcError(200, "the server gave no address");
+        globalThis.location.assign(url);
+    } catch (e) {
+        account.status = accountError(what, e.status, e.message);
+        // a session the server forgot: the landing, and the line goes with Admin
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    } finally {
+        account.busy = false;
+        renderAccount();
+    }
+}
+
+/**
+ * Back from Stripe (`#paid=`) or eBay (`#ebay=`): Admin on Settings, the line says how it
+ * went, and /me is asked again for the postings or the eBay now there.
+ * @param {{kind:"paid"|"ebay", value:string}} back
+ */
+function cameBack(back) {
+    account.status = returnLine(back);
+    openAccount(false);
+    loadMe().catch(() => {});
 }
 
 /**
@@ -3559,13 +3710,18 @@ function toLanding(message) {
     render();
     renderServer();
     renderExtras();
+    renderAccount();
 }
 
 /**
  * Settings' Sign out / Forget this server: the address, the key and any session gone from
- * this phone, and the landing back (Michal, 2026-10-08).
+ * this phone, and the landing back (Michal, 2026-10-08). Sign out first tells the server
+ * to forget the session (DELETE /auth/session); its answer is not waited for, and a
+ * refusal or no answer changes nothing: the phone forgets the session either way.
  */
 function forgetServer() {
+    const s = settings();
+    if (s && s.session) endSession(s).catch(() => {});
     for (const key of [PC_KEY, KEY_KEY, SESSION_KEY]) removeText("localStorage", key);
     removeText("sessionStorage", SESSION_KEY);
     toLanding("");
@@ -4064,6 +4220,14 @@ function main() {
         settingsStatus: $("settings-status"),
         settingsServer: $("settings-server"),
         settingsSignout: $("settings-signout"),
+        account: $("account"),
+        accountUser: $("account-user"),
+        accountCredits: $("account-credits"),
+        accountBuy: $("account-buy"),
+        accountPacks: $("account-packs"),
+        accountEbay: $("account-ebay"),
+        accountConnect: $("account-connect"),
+        accountStatus: $("account-status"),
         landing: $("landing"),
         landingInstall: $("landing-install"),
         landingInstallSteps: $("landing-install-steps"),
@@ -4158,10 +4322,12 @@ function main() {
         ebayBtn: $("ebay-btn"),
         ebayReset: $("ebay-reset"),
         ebayStatus: $("ebay-status"),
+        ebayBuy: $("ebay-buy"),
         ebayLink: $("ebay-link"),
         craigslistBtn: $("craigslist-btn"),
         craigslistReset: $("craigslist-reset"),
         craigslistStatus: $("craigslist-status"),
+        craigslistBuy: $("craigslist-buy"),
         craigslistLink: $("craigslist-link"),
         customizeToggle: $("customize-toggle"),
         customize: $("customize"),
@@ -4223,6 +4389,7 @@ function main() {
         bookEbayBtn: $("book-ebay-btn"),
         bookEbayReset: $("book-ebay-reset"),
         bookEbayStatus: $("book-ebay-status"),
+        bookEbayBuy: $("book-ebay-buy"),
         bookEbayLink: $("book-ebay-link"),
         bookVenueHint: $("book-venue-hint"),
         bookDoneHint: $("book-done-hint"),
@@ -4241,7 +4408,10 @@ function main() {
     // mirrors this entry, so a reload or back never signs in with it again
     const place = globalThis.location;
     const token = loginToken(place ? place.hash : "");
-    if (token) globalThis.history.replaceState(globalThis.history.state, "", `${place.pathname}${place.search}`);
+    // back from Stripe's checkout or eBay's consent (#paid=, #ebay=): the hash cleared the same
+    // way, so a reload never says it again
+    const back = returnHash(place ? place.hash : "");
+    if (token || back) globalThis.history.replaceState(globalThis.history.state, "", `${place.pathname}${place.search}`);
     // goods unless this phone was last used for books; a reload on an item back brought up shows its kind
     const walked = startWalk();
     mode = walked ? recordKind(walked) : chosenMode();
@@ -4251,6 +4421,7 @@ function main() {
 
     renderServer();
     renderExtras();
+    renderAccount();
 
     // the way in: the landing's two ways and Install, the sign-in screen, the banner's Add and x
     // I have a key: Admin, which opens on Settings while none are saved
@@ -4282,6 +4453,16 @@ function main() {
         render();
     });
     el.settingsSignout.addEventListener("click", forgetServer);
+    // the Account block: Buy postings unfolds the packs (each pill a checkout), Connect eBay
+    el.accountBuy.addEventListener("click", () => {
+        account.packs = !account.packs;
+        renderAccount();
+    });
+    el.accountConnect.addEventListener("click", () => {
+        connectEbay().catch(() => {});
+    });
+    // a venue button refused for want of postings: its Buy postings opens the Account block
+    for (const node of [el.ebayBuy, el.craigslistBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
     el.feedbackToggle.addEventListener("click", () => {
         extras.feedback = !extras.feedback;
         renderExtras();
@@ -4499,6 +4680,7 @@ function main() {
         viewing[m] = record ? record.itemId : "";
         restore(m, record || inHand(m)).catch(() => {});
     }
+    if (back) cameBack(back);
     if (token) signIn(token).catch(() => {});
     else checkServer().catch(() => {});
 }

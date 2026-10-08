@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.10.0";
+import { noteDirty, unsent } from "./queue.js?v=2.11.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.10.0";
+} from "./book.js?v=2.11.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -237,10 +237,29 @@ export function signinError(status, message) {
 }
 
 /**
+ * The postings this account has left: unlimited (a key the server does not count), or so
+ * many free and so many bought. Null when the server does not say.
+ * @typedef {{unlimited:true} | {unlimited:false, free:number, bought:number}} Credits
+ */
+
+/**
+ * A pack of postings Settings offers to buy: its id for POST /pay/checkout, how many
+ * postings, and the price as the server writes it ("$5.00").
+ * @typedef {{id:string, postings:number, price:string}} Pack
+ */
+
+/**
+ * The account's eBay, connected from the phone (another seller's own): whose it is, and
+ * whether the server has set up its business policies ("ready", "pending" or "failed: <why>").
+ * @typedef {{connected:boolean, user:string, policies:string}} Ebay
+ */
+
+/**
  * GET /me: who this key or session is and what the account may do. Leniently read: a
- * craigslist or admin the server does not say is as today (craigslist on, admin off).
+ * craigslist or admin the server does not say is as today (craigslist on, admin off); no
+ * credits, packs or eBay from an older server is no Account block to speak of.
  * @param {unknown} answer
- * @returns {{user:string, admin:boolean, craigslist:boolean, venues:string[]} | null}
+ * @returns {{user:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
@@ -250,7 +269,149 @@ export function meOf(answer) {
         admin: a.admin === true,
         craigslist: a.craigslist !== false,
         venues: Array.isArray(a.venues) ? a.venues.filter((v) => typeof v === "string") : [],
+        credits: creditsOf(a.credits),
+        packs: (Array.isArray(a.packs) ? a.packs : []).map(packOf).filter((p) => p !== null),
+        ebay: ebayOf(a.ebay),
     };
+}
+
+/** A whole count the server gives, or null for anything that is not one. */
+function wholeOf(x) {
+    return typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null;
+}
+
+/** /me's "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}; null otherwise. */
+function creditsOf(x) {
+    if (!x || typeof x !== "object") return null;
+    const c = /** @type {Record<string, unknown>} */ (x);
+    if (c.unlimited === true) return { unlimited: true };
+    const free = wholeOf(c.free_left);
+    const bought = wholeOf(c.bought_left);
+    if (free === null && bought === null) return null;
+    return { unlimited: false, free: free || 0, bought: bought || 0 };
+}
+
+/** One of /me's "packs"; null for one with no id or no count of postings. */
+function packOf(x) {
+    if (!x || typeof x !== "object") return null;
+    const p = /** @type {Record<string, unknown>} */ (x);
+    const id = plain(p.id);
+    const postings = wholeOf(p.postings);
+    if (!id || !postings) return null;
+    return { id, postings, price: plain(p.price) };
+}
+
+/** /me's "ebay"; null when the server does not say (an older server). */
+function ebayOf(x) {
+    if (!x || typeof x !== "object") return null;
+    const e = /** @type {Record<string, unknown>} */ (x);
+    return { connected: e.connected === true, user: plain(e.user), policies: plain(e.policies) };
+}
+
+/**
+ * The Account block's first line: whose this phone is ("Signed in as anna" for a sign-in's
+ * session, "Key: michal" for a key); "" when /me names nobody.
+ * @param {string} user
+ * @param {boolean} bySession
+ * @returns {string}
+ */
+export function userLine(user, bySession) {
+    if (!user) return "";
+    return bySession ? `Signed in as ${user}` : `Key: ${user}`;
+}
+
+/** "1 posting", "3 postings". */
+function postingsWord(n) {
+    return `${n} ${n === 1 ? "posting" : "postings"}`;
+}
+
+/**
+ * The credits line (Michal, 2026-10-08: three free postings per person, then prepaid
+ * credits): "3 free postings left", "12 postings left", "2 free + 10 bought postings
+ * left", "No postings left"; "" for an unlimited key or a server that does not count.
+ * @param {Credits|null} credits
+ * @returns {string}
+ */
+export function creditsLine(credits) {
+    if (!credits || credits.unlimited) return "";
+    const { free, bought } = credits;
+    if (free && bought) return `${free} free + ${bought} bought postings left`;
+    if (free) return `${free} free ${free === 1 ? "posting" : "postings"} left`;
+    if (bought) return `${postingsWord(bought)} left`;
+    return "No postings left";
+}
+
+/**
+ * A pack's pill under Buy postings: "10 postings, $5.00" (the count alone without a price).
+ * @param {Pack} pack
+ * @returns {string}
+ */
+export function packLabel(pack) {
+    const count = postingsWord(pack.postings);
+    return pack.price ? `${count}, ${pack.price}` : count;
+}
+
+/**
+ * The account's eBay line: "eBay: connected as anna", with the business policies' state
+ * while they are not ready ("setting up your policies...", "policies failed: <why>;
+ * contact the developer"), or "eBay: not connected"; "" when the server does not say.
+ * @param {Ebay|null} ebay
+ * @returns {string}
+ */
+export function ebayLine(ebay) {
+    if (!ebay) return "";
+    if (!ebay.connected) return "eBay: not connected";
+    const who = ebay.user ? `eBay: connected as ${ebay.user}` : "eBay: connected";
+    if (ebay.policies === "pending") return `${who}; setting up your policies...`;
+    if (/^failed\b/.test(ebay.policies)) {
+        const why = ebay.policies.replace(/^failed:?/, "").trim();
+        return `${who}; policies failed${why ? `: ${why}` : ""}; contact the developer`;
+    }
+    return who;
+}
+
+/**
+ * Where the page came back from, by its hash: Stripe's checkout (`#paid=<postings>` or
+ * `#paid=cancelled`) or eBay's consent through the server (`#ebay=connected` or
+ * `#ebay=failed`). Null for any other hash, a sign-in link's `#login=` included.
+ * @param {unknown} hash
+ * @returns {{kind:"paid"|"ebay", value:string} | null}
+ */
+export function returnHash(hash) {
+    const m = typeof hash === "string" ? /^#(paid|ebay)=([^&]+)$/.exec(hash) : null;
+    if (!m) return null;
+    const value = m[2];
+    if (m[1] === "paid" && (value === "cancelled" || /^[1-9]\d*$/.test(value))) return { kind: "paid", value };
+    if (m[1] === "ebay" && (value === "connected" || value === "failed")) return { kind: "ebay", value };
+    return null;
+}
+
+/**
+ * What the Account block says on the way back (returnHash): "10 postings added",
+ * "Payment cancelled", "eBay connected", or that eBay did not connect.
+ * @param {{kind:"paid"|"ebay", value:string}} back
+ * @returns {string}
+ */
+export function returnLine(back) {
+    if (back.kind === "ebay") {
+        return back.value === "connected" ? "eBay connected" : "eBay did not connect; try again or contact the developer";
+    }
+    return back.value === "cancelled" ? "Payment cancelled" : `${postingsWord(Number(back.value))} added`;
+}
+
+/**
+ * The Account block's line when Buy postings (`pay`) or Connect eBay (`connect`) could not
+ * go: a server without the route (404) has it not available yet; payments not set up (503)
+ * is the server's own words; anything else says what went wrong.
+ * @param {"pay"|"connect"} what
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function accountError(what, status, message) {
+    if (status === 404) return what === "pay" ? "Buying postings is not available yet." : "Connecting eBay is not available yet.";
+    if (status === 503) return message;
+    return what === "pay" ? `Could not open the payment page: ${message}.` : `Could not open eBay: ${message}.`;
 }
 
 /** Under the craigslist button, and in an empty craigslist card, for an account without it. */
@@ -1028,6 +1189,8 @@ export function safeLink(url) {
  *                             the PC has is no longer asked about, until continue or reset
  * @property {boolean} stopping reset after the PC had it: the press reads cancelled, and the
  *                             job (by jobId) is asked about until the PC says it stopped
+ * @property {boolean} credit  refused for want of postings (POST /jobs answered 402): the
+ *                             line under the button offers Buy postings
  */
 
 /**
@@ -1153,6 +1316,7 @@ export function idleJob() {
         held: false,
         paused: false,
         stopping: false,
+        credit: false,
     };
 }
 
@@ -1222,7 +1386,8 @@ export function photosLocked(state) {
  *   {type:"recovered", itemName, itemId, ai, answer}  a reload, read back from GET /items/<id>
  *   {type:"jobSending", venue, step}
  *   {type:"jobAccepted", venue, job, ahead}
- *   {type:"jobRefused", venue, error}     the POST did not become a job
+ *   {type:"jobRefused", venue, error, credit}  the POST did not become a job (credit: a 402,
+ *                                         no postings left)
  *   {type:"jobPaused", venue}             the busy button tapped (while cancelButton says so)
  *   {type:"jobResumed", venue}            continue
  *   {type:"jobCancelled", venue, stopping}  reset (stopping: the PC was told and is to be heard
@@ -1371,6 +1536,7 @@ export function reduce(state, action) {
                 ...idleJob(),
                 phase: "failed",
                 error: action.error || "not sent",
+                credit: action.credit === true,
             }));
         case "jobPaused":
             return cancelButton(state, action.venue)

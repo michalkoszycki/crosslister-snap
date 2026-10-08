@@ -68,9 +68,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: the landing, sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing, sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings and its Account block, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats and the sign-in calls too |
+| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -133,7 +133,8 @@ and every behaviour are the live app's.
   session (`snap.session`), `#landing` is the whole screen under the header, in
   place of the goods | book switch and both posting screens: the mark large, **Snap**,
   "a crosslisting app", one line of what it does ("Photograph it, and it is listed
-  on eBay and Craigslist with a price and a description."), **Install**, then the
+  on eBay and Craigslist with a price and a description."), under it, small and muted,
+  "Three postings free, then prepaid." (since 2.11.0), **Install**, then the
   two ways in side by side, **I have a key** (Admin, which opens on Settings with
   the address and key fields as ever) and **Sign in**. Once settings are saved or a
   session exists the landing is gone and the goods screen shows as before. Admin
@@ -175,7 +176,56 @@ and every behaviour are the live app's.
   the tap (`aria-disabled`, not disabled), and a tap sends nothing and says under it
   `Craigslist is not available for your account. Contact the developer.`; a
   listing's empty craigslist foldout says the same line in place of its Add. The
-  sync bar is unchanged. A 404 (an older server) is everything as before.
+  sync bar is unchanged. A 404 (an older server) is everything as before. `/me` is
+  asked again after every job ends (a venue button's, a card's, the sync bar's) and
+  after a refusal for want of postings, so the credits line keeps up; an answer that
+  does not come keeps what the last one said.
+- **Sign out** (Settings' last button on a phone signed in by a link) first sends
+  `DELETE /auth/session` with the session, so the server forgets it too, and clears the
+  phone at once without waiting for the answer: a refusal or no answer changes nothing,
+  the session is gone from the phone either way. **Forget this server** (a key) tells the
+  server nothing.
+
+## The account: postings and eBay (2.11.0)
+
+Michal, 2026-10-08: three free postings per person, then prepaid postings bought through
+Stripe; and **Connect eBay** from the phone, so another seller posts to her own eBay. The
+server says what the account has in `GET /me`; a server without these parts says
+nothing of them (and answers the new routes with a 404, taken as "not available").
+
+- **The Account block**, first in Settings (`#account`), drawn from `/me`, each part only
+  when the server gives it, and no block at all from a server with no `/me`:
+  - whose it is: `Signed in as anna` (a sign-in's session) or `Key: michal` (a key);
+  - the credits line (`creditsLine`): `3 free postings left`, `12 postings left`,
+    `2 free + 10 bought postings left`, `No postings left`; nothing for an unlimited key;
+  - **Buy postings**, when `/me` lists packs (none: payments are not set up) and the key
+    is not unlimited: it unfolds one pill per pack, `10 postings, $5.00` (`packLabel`).
+    A pill posts `POST /pay/checkout {"pack": "10"}` and sends the browser to the Stripe
+    page it answers (`location.assign`, an `http(s)` address only, as `safeLink` allows). A 503 shows the server's
+    words (`Payments are not set up yet; contact the developer.`), a 404 `Buying postings
+    is not available yet.`;
+  - the eBay line (`ebayLine`): `eBay: connected as anna_sells`, with the business
+    policies while they are not ready (`; setting up your policies...`, or `; policies
+    failed: <why>; contact the developer`), or `eBay: not connected` with **Connect
+    eBay**, which asks `GET /ebay/connect` and sends the browser to eBay's consent page;
+    a 404 says `Connecting eBay is not available yet.`;
+  - its own line (`#account-status`): what is on its way, what went wrong, the way back.
+  Closing Admin folds the packs and clears the line.
+- **The way back.** Stripe sends the browser back to this page as `#paid=<postings>` or
+  `#paid=cancelled`; eBay sends it to the server, which sends it here as
+  `#ebay=connected` or `#ebay=failed` (`returnHash`, which never takes a `#login=`). The
+  page clears the hash at once (as it does a sign-in link's), opens Admin on Settings at
+  the Account block, says `10 postings added`, `Payment cancelled`, `eBay connected` or
+  `eBay did not connect; try again or contact the developer`, and asks `/me` again (once:
+  it is the load's own ask).
+- **No postings left.** A posting's `POST /jobs` answered 402 shows the server's words
+  under the venue button (`You have used your 3 free postings. Buy postings in
+  Settings.`), and under them a small **Buy postings** (`#ebay-buy`, `#craigslist-buy`,
+  `#book-ebay-buy`) that opens Admin on Settings at the Account block, its packs
+  unfolded. The next press of the button takes the link away. A card's post refused the
+  same way says the server's words on the card's line.
+- **The CSP** is unchanged: the page only navigates to Stripe and eBay, which
+  `connect-src` does not govern, and it sets no `navigate-to`.
 
 ## The screen, top to bottom
 
@@ -557,8 +607,9 @@ Every call carries the header `X-Crosslister-Key: <key>`, or, on a phone signed 
 by a link with no key saved, `X-Crosslister-Session: <session>` in its place
 (`authHeaders` in core.js); the two sign-in calls carry neither. Errors are JSON
 `{"detail": "..."}`: 400 with a message, 401 for a wrong key (or a session the
-server no longer knows: the page lets it go and shows the landing), 404 for an
-unknown item or job, 409 while the same item is already being posted on that venue (the other venue queues behind it).
+server no longer knows: the page lets it go and shows the landing), 402 for a posting
+with no postings left, 404 for an unknown item or job (or a route an older server does
+not have), 409 while the same item is already being posted on that venue (the other venue queues behind it).
 
 | Call | Sent | Answer |
 | --- | --- | --- |
@@ -591,11 +642,15 @@ unknown item or job, 409 while the same item is already being posted on that ven
 | `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
 | `POST <pc>/jobs`, a listing's customize **Sync to eBay** (one row, as saved, onto its eBay listing), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` / `{"action": "push", "sku", "venue": "craigslist"}` (the craigslist push is the server's from 2026-10-08) | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to craigslist yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
-| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...]}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats; a key it does not say is as before (craigslist on, admin off); 404 (an older server): everything as before |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats, the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block |
+| `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
+| `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
+| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected` or `#ebay=failed`; 404 (an older server): `Connecting eBay is not available yet.` |
 | `POST <pc>/feedback`, Admin's Feedback **Send** | `{"text": "...", "screen": "goods" / "book" / "admin" / "card", "version": "2.10.0", "job": "<job id>"}`, `job` only when Include my last job is ticked and the page has one | 201 `{"id"}`; an error's `detail` under Send |
 | `GET <pc>/stats?since=7d` / `30d` / `all`, Admin's Stats, opened or a chip tapped | - | `{"since", "jobs": {"total", "done", "failed", "cancelled", "queued", "running"}, "posted": {"ebay": n, "craigslist": n}, "drafted", "ended", "pushed", "model_cost": "12.34", "per_user": [{"user", "jobs", "posted", "model_cost"}], "per_day": [{"date", "jobs", "posted"}], "first", "last"}`; 403 for anyone but an admin (and 404 from an older server): the foldout goes |
 | `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
+| `DELETE <server>/auth/session`, Settings' Sign out, with `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -926,6 +981,9 @@ Empty. With capacity to generate that card from there."
 
 ## Settings
 
+- **The Account block** comes first, when the server's `/me` gives it: whose this phone
+  is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
+  (see "The account: postings and eBay" above).
 - **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
   `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
   `http://127.0.0.1` and `http://localhost` for trying the page on the server
@@ -995,7 +1053,10 @@ publishes.**
   session the same way (or in `sessionStorage`, for one tab), and the link's token
   leaves the address bar the moment the page has read it.
 - The CSP lets the page talk to the server's Tailscale address (or loopback) and
-  nothing else; no third-party script, font or analytics.
+  nothing else; no third-party script, font or analytics. Buy postings and Connect eBay
+  never call Stripe or eBay from the page: the server answers with their page's address
+  and the browser goes there whole, card numbers and eBay passwords typed only on
+  Stripe's and eBay's own pages.
 - Shrinking re-encodes each photo, which also drops the camera's metadata (GPS
   included) before anything leaves the phone.
 - A link from the server is only made tappable if it is an `http(s)` address, and

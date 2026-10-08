@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { itemIdFor, NAME_CHECK_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
+import { itemIdFor, NAME_CHECK_MS, POLL_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -140,10 +140,14 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "ebay-btn",
         "ebay-reset",
         "ebay-status",
+        // Michal, 2026-10-08: three free postings, then prepaid; a press refused for want of
+        // postings (402) says the server's words, and under them Buy postings
+        "ebay-buy",
         "ebay-link",
         "craigslist-btn",
         "craigslist-reset",
         "craigslist-status",
+        "craigslist-buy",
         "craigslist-link",
         "venue-hint",
         "done-hint",
@@ -181,6 +185,17 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "admin-title",
         "settings-toggle",
         "settings",
+        // first in Settings, the account (Michal, 2026-10-08: three free postings per person,
+        // then prepaid; Connect eBay from the phone): whose it is, the postings left, Buy
+        // postings and its packs, the eBay line and Connect eBay, then its own line
+        "account",
+        "account-user",
+        "account-credits",
+        "account-buy",
+        "account-packs",
+        "account-ebay",
+        "account-connect",
+        "account-status",
         "settings-server",
         "pc-address",
         "pc-key",
@@ -606,7 +621,16 @@ function installDom({
     const win = fakeElement("window");
     win.matchMedia = (query) => ({ matches: query === `(display-mode: ${display})` });
     globalThis.window = win;
-    const place = { hash, pathname: "/crosslister-snap/", search: "" };
+    // assign: the page sending the browser elsewhere (Stripe's checkout, eBay's consent), kept in `assigned`
+    const place = {
+        hash,
+        pathname: "/crosslister-snap/",
+        search: "",
+        assigned: [],
+        assign(url) {
+            place.assigned.push(url);
+        },
+    };
     Object.defineProperty(globalThis, "location", { value: place, configurable: true, writable: true });
     // the hash goes as a browser clears it: by replaceState with a URL that has none
     const replace = nav.replaceState;
@@ -676,6 +700,9 @@ async function settle() {
 }
 
 const GOOD = { "snap.pc": "http://127.0.0.1:8765", "snap.key": "test-key-0123456789" };
+/** Where POST /pay/checkout and GET /ebay/connect send the browser, in the fake server. */
+const STRIPE = "https://checkout.stripe.com/c/pay/cs_test_a1";
+const EBAY_CONSENT = "https://auth.ebay.com/oauth2/authorize?client_id=snap&state=s1";
 
 test("app.js loads against the real index.html ids, with no settings yet", async () => {
     const { nodes, asked } = await loadPage();
@@ -871,6 +898,10 @@ function jobContract(body) {
  * with the headers it came with; POST /feedback keeps each body in `pc.feedback`
  * (`pc.refuseFeedback` answers a 400 with those words); GET /stats answers `stats`
  * (a number: that status). Every call's auth headers are in `pc.auth`.
+ * The Account block's: `pc.broke` (the server's words) answers a posting's POST /jobs with a
+ * 402, no postings left; POST /pay/checkout keeps each body and auth in `pc.checkouts` and
+ * answers `pc.pay` (a number: that status, 503 with the server's words); GET /ebay/connect
+ * keeps each auth in `pc.connects` and answers `pc.connect` (a number: that status).
  */
 function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {}, me = null, stats = null } = {}) {
     const pc = {
@@ -886,6 +917,11 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         refuseFeedback: "",
         auth: [],
         down: false,
+        broke: "",
+        checkouts: [],
+        pay: { url: STRIPE },
+        connects: [],
+        connect: { url: EBAY_CONSENT },
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
@@ -911,6 +947,20 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         if (parts[0] === "stats") {
             if (pc.stats === null) return json({ detail: "Not Found" }, 404);
             return typeof pc.stats === "number" ? json({ detail: "admins only" }, pc.stats) : json(pc.stats);
+        }
+        if (parts[0] === "pay" && parts[1] === "checkout" && method === "POST") {
+            pc.checkouts.push({ body, auth: pc.auth.at(-1), type: headers["Content-Type"] });
+            if (pc.pay === 503) return json({ detail: "Payments are not set up yet; contact the developer." }, 503);
+            return typeof pc.pay === "number" ? json({ detail: "Not Found" }, pc.pay) : json(pc.pay);
+        }
+        if (parts[0] === "ebay" && parts[1] === "connect" && method === "GET") {
+            pc.connects.push(pc.auth.at(-1));
+            return typeof pc.connect === "number" ? json({ detail: "Not Found" }, pc.connect) : json(pc.connect);
+        }
+        // no postings left: a posting is refused (an action job, sync or end, is not a posting)
+        if (parts[0] === "jobs" && method === "POST" && pc.broke && !body.action) {
+            pc.posted.push(body);
+            return json({ detail: pc.broke }, 402);
         }
         if (parts[0] === "items" && method === "POST") {
             const item = `${body.name} ${TODAY}`;
@@ -3916,6 +3966,8 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-ebay-btn",
         "book-ebay-reset",
         "book-ebay-status",
+        // under the line when the server refused for want of postings (a 402)
+        "book-ebay-buy",
         "book-ebay-link",
         "book-venue-hint",
         "book-done-hint",
@@ -6052,18 +6104,25 @@ const SERVER = "https://michal-pc.mulley-themis.ts.net";
  * fakePc with the sign-in lane on the product's server: POST /auth/link answers `link` (202,
  * or a status), each body and its auth in `pc.links`; POST /auth/session answers `made` (or
  * a status), each body in `pc.sessions`. A session in `pc.revoked` is a 401, as the server
- * answers one it no longer knows. `pc.origins` is every call's origin.
+ * answers one it no longer knows. `pc.origins` is every call's origin. DELETE /auth/session
+ * (Sign out) keeps each call's auth in `pc.signouts` and answers 204, or `pc.signout` (a status;
+ * 0: the server cannot be reached).
  */
 function signinPc({ link = 202, made = { session: "sess-1", user: "wife", remember: true }, ...rest } = {}) {
     const pc = fakePc(rest);
     const base = pc.fetch;
-    Object.assign(pc, { link, made, links: [], sessions: [], origins: [], revoked: new Set() });
+    Object.assign(pc, { link, made, links: [], sessions: [], origins: [], revoked: new Set(), signouts: [], signout: 204 });
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
         const u = new URL(url);
         pc.origins.push(u.origin);
         const headers = init.headers || {};
         const auth = headers["X-Crosslister-Key"] || headers["X-Crosslister-Session"] || "none";
+        if (u.pathname === "/auth/session" && init.method === "DELETE") {
+            pc.signouts.push({ auth, key: headers["X-Crosslister-Key"], body: init.body });
+            if (pc.signout === 0) throw new TypeError("Failed to fetch");
+            return pc.signout === 204 ? new Response(null, { status: 204 }) : json({ detail: "no such session" }, pc.signout);
+        }
         if (u.pathname === "/auth/link") {
             assert.equal(init.method, "POST");
             pc.links.push({ body: JSON.parse(init.body), auth });
@@ -6111,6 +6170,9 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         landing,
         /<h2 class="landing-name">Snap<\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">Photograph it, and it is listed on eBay and Craigslist with a price and a description\.<\/p>/
     );
+    // Michal, 2026-10-08: three free postings per person, then prepaid; said small under the one-liner
+    assert.match(landing, /<p class="landing-what">[^<]*<\/p>\s*<p class="landing-price">Three postings free, then prepaid\.<\/p>/);
+    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.landing-price \{[^}]*font-size: 13px;[^}]*color: var\(--muted\);/);
     assert.match(landing, /id="landing-install"[^>]*>Install</);
     assert.match(landing, /id="landing-key"[^>]*>I have a key</);
     assert.match(landing, /id="landing-signin"[^>]*>Sign in</);
@@ -6304,6 +6366,9 @@ test("the link opens the page signed in: the session kept, the hash gone, every 
     again.nodes.get("settings-toggle").fire("click");
     assert.equal(again.nodes.get("settings-signout").textContent, "Sign out");
     again.nodes.get("settings-signout").fire("click");
+    // the server told first, with the session, and not waited for: the phone forgets it at once
+    assert.deepEqual(pc.signouts, [{ auth: "sess-1", key: undefined, body: undefined }]);
+    assert.equal(pc.origins.at(-1), SERVER);
     assert.equal(local.getItem("snap.session"), null);
     assert.equal(again.nodes.get("landing").hidden, false);
 });
@@ -6587,4 +6652,327 @@ test("Stats: an admin's only; 30d first, a chip asks again, a small table of cou
     await settle();
     assert.equal(other.nodes.get("stats-toggle").hidden, true);
     assert.ok(!wife.calls.some((c) => c.startsWith("GET /stats")));
+});
+
+// --- the Account block (Michal, 2026-10-08: three free postings per person, then prepaid
+// postings bought through Stripe; Connect eBay from the phone for another seller) ---------------
+
+/** GET /me with the account's parts: postings left, two packs, an eBay not connected yet. */
+const ACCOUNT_ME = {
+    user: "michal",
+    admin: false,
+    craigslist: true,
+    venues: ["ebay", "craigslist"],
+    credits: { free_left: 2, bought_left: 10 },
+    packs: [
+        { id: "10", postings: 10, price: "$5.00" },
+        { id: "25", postings: 25, price: "$10.00" },
+    ],
+    ebay: { connected: false, user: "", policies: "" },
+};
+
+/** The Account block as the screen shows it: each line's words (null: hidden), each button shown or not. */
+function accountOf(nodes) {
+    const said = (id) => (nodes.get(id).hidden ? null : nodes.get(id).textContent);
+    const packs = nodes.get("account-packs");
+    return {
+        shown: !nodes.get("account").hidden,
+        user: said("account-user"),
+        credits: said("account-credits"),
+        buy: !nodes.get("account-buy").hidden,
+        packs: packs.hidden ? null : packs.children.map((p) => p.textContent),
+        ebay: said("account-ebay"),
+        connect: !nodes.get("account-connect").hidden,
+        status: nodes.get("account-status").textContent,
+    };
+}
+
+/** Admin, then Settings unfolded: where the Account block is. */
+async function openSettings(nodes) {
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    nodes.get("settings-toggle").fire("click");
+}
+
+test("the Account block is first in Settings, hidden until /me gives it; Buy postings under a refused press; nothing new for the CSP", () => {
+    const settingsCard = /<div id="settings" class="card" hidden>([\s\S]*?)<p id="settings-server"/.exec(html)[1];
+    assert.match(settingsCard, /^\s*(<!--[\s\S]*?-->\s*)?<div id="account" class="account" hidden>/);
+    assert.match(settingsCard, /id="account-buy"[^>]*aria-controls="account-packs">Buy postings</);
+    assert.match(settingsCard, /<div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden><\/div>/);
+    assert.match(settingsCard, /id="account-connect"[^>]*>Connect eBay</);
+    assert.match(settingsCard, /<p id="account-status"[^>]*aria-live="polite"><\/p>/);
+    for (const id of ["ebay-buy", "craigslist-buy", "book-ebay-buy"]) {
+        assert.match(html, new RegExp(`<button type="button" id="${id}" class="link buy-link" hidden>Buy postings</button>`));
+    }
+    // the page only sends the browser to Stripe and eBay: connect-src is as it was, no navigate-to
+    const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
+    assert.ok(!/stripe|ebay\.com/i.test(csp), "no new address to call");
+    assert.ok(!csp.includes("navigate-to"), "nothing stops location.assign");
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.link\.buy-link\[hidden\] \{ display: none; \}/, "outside Admin, hidden needs saying");
+});
+
+test("the Account block: whose it is, the postings left, Buy postings' packs to Stripe, Connect eBay to eBay", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    assert.deepEqual(accountOf(nodes), {
+        shown: true,
+        user: "Key: michal",
+        credits: "2 free + 10 bought postings left",
+        buy: true,
+        packs: null,
+        ebay: "eBay: not connected",
+        connect: true,
+        status: "",
+    });
+    assert.equal(nodes.get("account-buy").attrs["aria-expanded"], "false");
+
+    // Buy postings unfolds one pill per pack; a pill is a checkout, and the browser goes to Stripe
+    nodes.get("account-buy").fire("click");
+    assert.equal(nodes.get("account-buy").attrs["aria-expanded"], "true");
+    assert.deepEqual(accountOf(nodes).packs, ["10 postings, $5.00", "25 postings, $10.00"]);
+    nodes.get("account-packs").children[0].fire("click");
+    assert.equal(accountOf(nodes).status, "Opening the payment page...");
+    assert.equal(nodes.get("account-packs").children[1].disabled, true, "one checkout at a time");
+    await settle();
+    assert.deepEqual(pc.checkouts, [{ body: { pack: "10" }, auth: "key test-key-0123456789", type: "application/json" }]);
+    assert.ok(pc.calls.includes("POST /pay/checkout"));
+    assert.deepEqual(globalThis.location.assigned, [STRIPE]);
+
+    // payments not set up: the server's words, and the browser stays
+    pc.pay = 503;
+    nodes.get("account-packs").children[1].fire("click");
+    await settle();
+    assert.deepEqual(pc.checkouts[1].body, { pack: "25" });
+    assert.equal(accountOf(nodes).status, "Payments are not set up yet; contact the developer.");
+    assert.equal(nodes.get("account-packs").children[1].disabled, false);
+    // a server without the route yet; an address that is not a web page
+    pc.pay = 404;
+    nodes.get("account-packs").children[0].fire("click");
+    await settle();
+    assert.equal(accountOf(nodes).status, "Buying postings is not available yet.");
+    pc.pay = { url: "javascript:void(0)" };
+    nodes.get("account-packs").children[0].fire("click");
+    await settle();
+    assert.equal(accountOf(nodes).status, "Could not open the payment page: the server gave no address.");
+    assert.deepEqual(globalThis.location.assigned, [STRIPE], "only ever a web page");
+
+    // Connect eBay: eBay's consent page, asked with the key
+    nodes.get("account-connect").fire("click");
+    assert.equal(accountOf(nodes).status, "Opening eBay...");
+    await settle();
+    assert.deepEqual(pc.connects, ["key test-key-0123456789"]);
+    assert.ok(pc.calls.includes("GET /ebay/connect"));
+    assert.deepEqual(globalThis.location.assigned, [STRIPE, EBAY_CONSENT]);
+    pc.connect = 404;
+    nodes.get("account-connect").fire("click");
+    await settle();
+    assert.equal(accountOf(nodes).status, "Connecting eBay is not available yet.");
+
+    // Admin closed and opened again: folded and quiet
+    nodes.get("admin-close").fire("click");
+    await openSettings(nodes);
+    assert.equal(accountOf(nodes).packs, null);
+    assert.equal(accountOf(nodes).status, "");
+});
+
+test("the Account block shows what the server gives: unlimited, no packs, eBay connected or setting up; an older server, no block", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const open = async (me) => {
+        const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me }).fetch });
+        await openSettings(nodes);
+        return accountOf(nodes);
+    };
+    // an unlimited key: no count and nothing to buy; its eBay connected and ready
+    assert.deepEqual(await open({ ...ACCOUNT_ME, credits: { unlimited: true }, ebay: { connected: true, user: "michal_sells", policies: "ready" } }), {
+        shown: true,
+        user: "Key: michal",
+        credits: null,
+        buy: false,
+        packs: null,
+        ebay: "eBay: connected as michal_sells",
+        connect: false,
+        status: "",
+    });
+    // payments not set up (no packs): the count, no Buy; the policies still being set up
+    const setting = await open({ ...ACCOUNT_ME, packs: [], ebay: { connected: true, user: "anna_sells", policies: "pending" } });
+    assert.equal(setting.credits, "2 free + 10 bought postings left");
+    assert.equal(setting.buy, false);
+    assert.equal(setting.ebay, "eBay: connected as anna_sells; setting up your policies...");
+    const failed = await open({ ...ACCOUNT_ME, credits: { free_left: 3, bought_left: 0 }, ebay: { connected: true, user: "anna_sells", policies: "failed: no payment policy" } });
+    assert.equal(failed.credits, "3 free postings left");
+    assert.equal(failed.ebay, "eBay: connected as anna_sells; policies failed: no payment policy; contact the developer");
+    // a /me from before the account: the name alone
+    assert.deepEqual(await open({ user: "michal", admin: false, craigslist: true, venues: ["ebay"] }), {
+        shown: true,
+        user: "Key: michal",
+        credits: null,
+        buy: false,
+        packs: null,
+        ebay: null,
+        connect: false,
+        status: "",
+    });
+    // no /me at all (a 404): no block
+    assert.equal((await open(null)).shown, false);
+});
+
+test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account block, the line says how it went, /me asked again", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const bought = { ...ACCOUNT_ME, credits: { free_left: 0, bought_left: 10 } };
+    const back = async (hash, me = bought) => {
+        const pc = fakePc({ me });
+        const dom = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch, hash });
+        return { pc, ...dom };
+    };
+    const paid = await back("#paid=10");
+    assert.equal(globalThis.location.hash, "", "a reload never says it again");
+    assert.deepEqual(paid.nav.entries.map((e) => e.state), [{ snap: 0 }, { snap: 1 }], "the walk on the cleared address, as on any load");
+    assert.deepEqual(["admin", "settings", "work", "modes"].map((id) => paid.nodes.get(id).hidden), [false, false, true, true]);
+    assert.equal(paid.pc.mes, 1, "asked once, for the postings now there");
+    assert.equal(paid.pc.auth.filter((a) => a !== "key test-key-0123456789").length, 0);
+    assert.deepEqual(accountOf(paid.nodes), {
+        shown: true,
+        user: "Key: michal",
+        credits: "10 postings left",
+        buy: true,
+        packs: null,
+        ebay: "eBay: not connected",
+        connect: true,
+        status: "10 postings added",
+    });
+    assert.equal((await back("#paid=cancelled")).nodes.get("account-status").textContent, "Payment cancelled");
+    assert.equal((await back("#ebay=connected")).nodes.get("account-status").textContent, "eBay connected");
+    const failed = await back("#ebay=failed");
+    assert.equal(failed.nodes.get("account-status").textContent, "eBay did not connect; try again or contact the developer");
+    // Close: the goods screen, and the line said once
+    failed.nodes.get("admin-close").fire("click");
+    assert.equal(failed.nodes.get("work").hidden, false);
+    await openSettings(failed.nodes);
+    assert.equal(accountOf(failed.nodes).status, "");
+
+    // a hash that is not one of these: the page opens as ever, the hash left alone
+    const odd = await back("#paid=lots");
+    assert.equal(odd.nodes.get("admin").hidden, true);
+    assert.equal(globalThis.location.hash, "#paid=lots");
+    // an older server (no /me): the line alone
+    const old = await back("#paid=10", null);
+    assert.deepEqual(accountOf(old.nodes), {
+        shown: true,
+        user: null,
+        credits: null,
+        buy: false,
+        packs: null,
+        ebay: null,
+        connect: false,
+        status: "10 postings added",
+    });
+});
+
+test("no postings left (402): the server's words under the button and Buy postings under them, to the Account block; /me again when a job ends", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const detail = "You have used your 3 free postings. Buy postings in Settings.";
+    const pc = fakePc({
+        me: { ...ACCOUNT_ME, credits: { free_left: 0, bought_left: 0 } },
+        jobs: { j1: () => ({ state: "done", step: "", sku: "S1", links: { ebay: "https://www.ebay.com/itm/1" } }) },
+    });
+    pc.broke = detail;
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    assert.equal(pc.mes, 1);
+    assert.equal(nodes.get("ebay-buy").hidden, true);
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ item: `Lamp ${TODAY}`, venue: "ebay", ai: [1] }]);
+    assert.equal(nodes.get("ebay-status").textContent, detail);
+    assert.equal(nodes.get("ebay-status").className, "venue-status bad");
+    assert.equal(nodes.get("ebay-buy").hidden, false);
+    assert.equal(nodes.get("craigslist-buy").hidden, true);
+    assert.equal(nodes.get("ebay-btn").disabled, false, "pressed again once bought");
+    assert.equal(pc.mes, 2, "the credits line catches up");
+
+    // Buy postings: Admin on Settings, the packs unfolded
+    nodes.get("ebay-buy").fire("click");
+    assert.deepEqual(["admin", "settings", "work"].map((id) => nodes.get(id).hidden), [false, false, true]);
+    assert.deepEqual(accountOf(nodes), {
+        shown: true,
+        user: "Key: michal",
+        credits: "No postings left",
+        buy: true,
+        packs: ["10 postings, $5.00", "25 postings, $10.00"],
+        ebay: "eBay: not connected",
+        connect: true,
+        status: "",
+    });
+
+    // postings bought: the press goes; its job done, /me is asked again and the line follows
+    pc.broke = "";
+    nodes.get("admin-close").fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-buy").hidden, true, "a new press: gone");
+    pc.me = { ...ACCOUNT_ME, credits: { free_left: 0, bought_left: 9 } };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-link").hidden, false);
+    assert.equal(pc.mes, 3);
+    await openSettings(nodes);
+    assert.equal(accountOf(nodes).credits, "9 postings left");
+});
+
+test("a book refused for want of postings says so the same way", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(ACCOUNT_ME), books: { [ISBN]: BOOK } });
+    pc.broke = "You have used your 3 free postings. Buy postings in Settings.";
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch, barcodes: [ISBN] });
+    nodes.get("mode-book").fire("click");
+    fire(nodes, "book-scan-input");
+    await settle();
+    fire(nodes, "book-snap-input");
+    await settle();
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(pc.posted.length, 1);
+    assert.equal(nodes.get("book-ebay-status").textContent, pc.broke);
+    assert.equal(nodes.get("book-ebay-buy").hidden, false);
+    nodes.get("book-ebay-buy").fire("click");
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.deepEqual(accountOf(nodes).packs, ["10 postings, $5.00", "25 postings, $10.00"]);
+});
+
+test("Sign out tells the server first; refused or not reached, the phone forgets the session all the same", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    for (const answer of [204, 404, 0]) {
+        const pc = signinPc({ me: { user: "wife", admin: false, craigslist: true, venues: ["ebay"] } });
+        pc.signout = answer;
+        const local = memoryStore();
+        const { nodes } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#login=tok-1" });
+        await openSettings(nodes);
+        assert.equal(accountOf(nodes).user, "Signed in as wife");
+        nodes.get("settings-signout").fire("click");
+        await settle();
+        assert.deepEqual(pc.signouts, [{ auth: "sess-1", key: undefined, body: undefined }], `answered ${answer}`);
+        assert.equal(local.getItem("snap.session"), null);
+        assert.equal(nodes.get("landing").hidden, false);
+        assert.equal(nodes.get("account").hidden, true, "the account goes with it");
+        assert.equal(nodes.get("landing-status").textContent, "", "nothing to say about it");
+    }
+    // a key's Forget this server tells the server nothing
+    const keyed = signinPc();
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: keyed.fetch });
+    await openSettings(nodes);
+    nodes.get("settings-signout").fire("click");
+    await settle();
+    assert.deepEqual(keyed.signouts, []);
 });

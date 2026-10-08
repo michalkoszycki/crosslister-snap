@@ -155,10 +155,18 @@ import {
     USER_NOTE,
 } from "../core.js";
 import {
+    accountError,
     applyDefaults,
     authHeaders,
     checkEmail,
     CRAIGSLIST_OFF,
+    creditsLine,
+    ebayLine,
+    errorText,
+    packLabel,
+    returnHash,
+    returnLine,
+    userLine,
     customizeDefaults,
     DEFAULT_SERVER,
     DEFAULT_STATS_SINCE,
@@ -2999,14 +3007,117 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         admin: true,
         craigslist: false,
         venues: ["ebay"],
+        credits: null,
+        packs: [],
+        ebay: null,
     });
-    assert.deepEqual(meOf({ jobs: [] }), { user: "", admin: false, craigslist: true, venues: [] }, "silent: as today");
+    assert.deepEqual(
+        meOf({ jobs: [] }),
+        { user: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null },
+        "silent: as today"
+    );
     assert.equal(meOf(null), null);
     assert.equal(venueAllowed(null, "craigslist"), true, "an older server's 404: as today");
     assert.equal(venueAllowed(meOf({ craigslist: true }), "craigslist"), true);
     assert.equal(venueAllowed(meOf({ craigslist: false }), "craigslist"), false);
     assert.equal(venueAllowed(meOf({ craigslist: false }), "ebay"), true, "only craigslist can be off");
     assert.equal(CRAIGSLIST_OFF, "Craigslist is not available for your account. Contact the developer.");
+});
+
+// --- the Account block (Michal, 2026-10-08: three free postings per person, then prepaid) -------
+
+test("GET /me's credits, packs and eBay, read leniently", () => {
+    const me = meOf({
+        user: "anna",
+        credits: { free_left: 2, bought_left: 10 },
+        packs: [{ id: "10", postings: 10, price: "$5.00" }, { id: "", postings: 5 }, { id: "50", postings: 0 }, "junk", { id: 25, postings: 25, price: " $10.00 " }],
+        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+    });
+    assert.deepEqual(me.credits, { unlimited: false, free: 2, bought: 10 });
+    assert.deepEqual(me.packs, [
+        { id: "10", postings: 10, price: "$5.00" },
+        { id: "25", postings: 25, price: "$10.00" },
+    ]);
+    assert.deepEqual(me.ebay, { connected: true, user: "anna_sells", policies: "pending" });
+    assert.deepEqual(meOf({ credits: { unlimited: true } }).credits, { unlimited: true });
+    assert.deepEqual(meOf({ credits: { free_left: 3 } }).credits, { unlimited: false, free: 3, bought: 0 });
+    for (const odd of [null, "3", {}, { free_left: -1 }, { free_left: 1.5, bought_left: "2" }]) {
+        assert.equal(meOf({ credits: odd }).credits, null, JSON.stringify(odd));
+    }
+    assert.deepEqual(meOf({ ebay: {} }).ebay, { connected: false, user: "", policies: "" });
+    assert.equal(meOf({ ebay: "yes" }).ebay, null);
+    assert.deepEqual(meOf({ packs: "10" }).packs, []);
+});
+
+test("the Account block's lines: whose it is, the postings left, a pack, the eBay", () => {
+    assert.equal(userLine("anna", true), "Signed in as anna");
+    assert.equal(userLine("michal", false), "Key: michal");
+    assert.equal(userLine("", true), "");
+
+    const left = (free, bought) => creditsLine({ unlimited: false, free, bought });
+    assert.equal(left(3, 0), "3 free postings left");
+    assert.equal(left(1, 0), "1 free posting left");
+    assert.equal(left(0, 12), "12 postings left");
+    assert.equal(left(0, 1), "1 posting left");
+    assert.equal(left(2, 10), "2 free + 10 bought postings left");
+    assert.equal(left(0, 0), "No postings left");
+    assert.equal(creditsLine({ unlimited: true }), "", "an unlimited key: nothing to count");
+    assert.equal(creditsLine(null), "", "an older server: nothing");
+
+    assert.equal(packLabel({ id: "10", postings: 10, price: "$5.00" }), "10 postings, $5.00");
+    assert.equal(packLabel({ id: "1", postings: 1, price: "$0.60" }), "1 posting, $0.60");
+    assert.equal(packLabel({ id: "10", postings: 10, price: "" }), "10 postings");
+
+    const ebay = (over) => ebayLine({ connected: true, user: "anna_sells", policies: "ready", ...over });
+    assert.equal(ebay({}), "eBay: connected as anna_sells");
+    assert.equal(ebay({ policies: "" }), "eBay: connected as anna_sells", "a server that does not say: ready");
+    assert.equal(ebay({ user: "" }), "eBay: connected");
+    assert.equal(ebay({ policies: "pending" }), "eBay: connected as anna_sells; setting up your policies...");
+    assert.equal(
+        ebay({ policies: "failed: no return policy allowed" }),
+        "eBay: connected as anna_sells; policies failed: no return policy allowed; contact the developer"
+    );
+    assert.equal(ebay({ policies: "failed" }), "eBay: connected as anna_sells; policies failed; contact the developer");
+    assert.equal(ebayLine({ connected: false, user: "", policies: "" }), "eBay: not connected");
+    assert.equal(ebayLine(null), "", "an older server: no eBay line");
+});
+
+test("the way back from Stripe or eBay, by the hash; a sign-in link's is not one", () => {
+    assert.deepEqual(returnHash("#paid=10"), { kind: "paid", value: "10" });
+    assert.deepEqual(returnHash("#paid=cancelled"), { kind: "paid", value: "cancelled" });
+    assert.deepEqual(returnHash("#ebay=connected"), { kind: "ebay", value: "connected" });
+    assert.deepEqual(returnHash("#ebay=failed"), { kind: "ebay", value: "failed" });
+    for (const none of ["", "#", "#login=tok-123", "#login=paid", "#paid=", "#paid=0", "#paid=ten", "#paid=10&x=1", "#ebay=maybe", "paid=10", undefined, 10]) {
+        assert.equal(returnHash(none), null, String(none));
+    }
+    assert.equal(loginToken("#paid=10"), "", "and the sign-in never takes these");
+    assert.equal(returnLine({ kind: "paid", value: "10" }), "10 postings added");
+    assert.equal(returnLine({ kind: "paid", value: "1" }), "1 posting added");
+    assert.equal(returnLine({ kind: "paid", value: "cancelled" }), "Payment cancelled");
+    assert.equal(returnLine({ kind: "ebay", value: "connected" }), "eBay connected");
+    assert.equal(returnLine({ kind: "ebay", value: "failed" }), "eBay did not connect; try again or contact the developer");
+});
+
+test("Buy postings and Connect eBay refused: not there yet, not set up, or what went wrong", () => {
+    assert.equal(accountError("pay", 404, "x"), "Buying postings is not available yet.");
+    assert.equal(accountError("connect", 404, "x"), "Connecting eBay is not available yet.");
+    const unset = "Payments are not set up yet; contact the developer.";
+    assert.equal(accountError("pay", 503, unset), unset, "the server's own words");
+    assert.equal(accountError("pay", 0, "cannot reach the server"), "Could not open the payment page: cannot reach the server.");
+    assert.equal(accountError("connect", 500, "the server answered 500"), "Could not open eBay: the server answered 500.");
+});
+
+test("a press refused for want of postings (402) is marked so; any other refusal and a new press are not", () => {
+    const detail = "You have used your 3 free postings. Buy postings in Settings.";
+    const refused = reduce(initialState("Lamp"), { type: "jobRefused", venue: "ebay", error: detail, credit: true });
+    assert.equal(refused.jobs.ebay.phase, "failed");
+    assert.equal(refused.jobs.ebay.credit, true);
+    assert.equal(venueLine(refused.jobs.ebay).text, detail, "the server's words under the button");
+    assert.equal(refused.jobs.craigslist.credit, false);
+    const other = reduce(initialState("Lamp"), { type: "jobRefused", venue: "ebay", error: "no" });
+    assert.equal(other.jobs.ebay.credit, false);
+    assert.equal(reduce(refused, { type: "jobSending", venue: "ebay" }).jobs.ebay.credit, false, "pressed again: gone");
+    assert.equal(errorText(402, detail), detail);
 });
 
 test("the install nudge: none from the home screen, a week's rest when dismissed, the prompt or the two taps", () => {
