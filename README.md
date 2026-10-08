@@ -633,7 +633,8 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
-| `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save) |
+| `GET <pc>/inventory/<sku>/conditions`, the eBay card's **Edit** (Michal, 2026-10-08) | - | `{"current": "NEW_OTHER", "allowed": ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING"], "labels": {enum: words}, "error": "<why, only when allowed is empty>"}`; `allowed` is what eBay allows the row's category, the chips in that order and in `labels`' words. `allowed` empty: every condition the page knows (`CONDITION_LABELS`), `eBay's list for this category could not be read: showing all (<error>)` under them; an older server's 404: every condition, nothing said |
+| `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"condition"` (eBay's enum, only when another chip was pressed), `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}`, `{"condition": "USED_EXCELLENT"}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save; one about the condition, which names the accepted enums, under the chips, as is an older server's 422 or 400 for a `condition` it does not take) |
 | `PATCH <pc>/inventory/<sku>`, a list row's **+** or **−**, one per press (a tap, or a press held: sent once the finger lifts or leaves the button) | `{"price": "150.00"}`, the whole dollars the dial stopped at, never below `"1.00"`; never a grade (`pricing` is customize's slider's); a dial back where it started sends nothing | the same; 400 `{"detail"}` on the inventory's line as `<sku>: <detail>`, the price as it was |
 | `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The server sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
@@ -772,10 +773,11 @@ Empty. With capacity to generate that card from there."
   new price in its heading.
 - **The sync badge.** A listing this phone changed since its venue last had it
   is kept in `snap.inventory.unsynced` as `[{"sku", "venues"}]` (a bare sku, as
-  2.8.0 kept them, is eBay's): eBay when the price moved on a row listed there
-  (a + or −, customize's Save, an Edit of the price), craigslist when one of the
-  craigslist card's four fields reads otherwise now on a row listed there (its
-  Edit, or an eBay field it is derived from: a + or − moves a derived price).
+  2.8.0 kept them, is eBay's): eBay when the price or the condition moved on a
+  row listed there (a + or −, customize's Save, an Edit of the price or the
+  condition), craigslist when one of the craigslist card's fields reads otherwise
+  now on a row listed there (its Edit, or an eBay field it is derived from: a + or
+  − moves a derived price, a new condition its Craigslist word).
   That venue's badge is then the same green bubble with the sync bar's to-eBay
   icon where the tick was, then the venue, a button, not a link (`ebay listed,
   sync to eBay` to a screen reader). A tap is a job button's: the ring in the
@@ -894,7 +896,9 @@ Empty. With capacity to generate that card from there."
   - Each card starts with its **status line**, the venue's status and when it
     went up (`listed since 2026-10-03 16:21`, the phone's own time; `draft`;
     `not posted yet`), or a job's line while one runs, and the link under it.
-  - **ebay**: the listing as eBay has it: title, price, condition, category
+  - **ebay**: the listing as eBay has it: title, price, the condition in words
+    (`Condition: New (open box)`, `CONDITION_LABELS`; one that is no eBay enum
+    as the row has it), category
     path, quantity, pickup only, the description as written (line breaks
     kept), the User note, the condition note, the aspects and condition details as
     `name: values` lines, the package (`40 oz, 18 x 12 x 12 in`), the ISBN
@@ -902,7 +906,10 @@ Empty. With capacity to generate that card from there."
   - **craigslist**: title, price, description and category, each the
     craigslist override when one was typed, or else the value it is derived
     from (the eBay title, price and description; the category `from the eBay
-    category`) with `derived from eBay` under it, muted.
+    category`) with `derived from eBay` under it, muted; then the posting's
+    condition, always eBay's in Craigslist's words (`craigslistCondition`, the
+    server's `craigslist_condition`: `new`, `like new`, `excellent`, `good`,
+    `fair`, `salvage` for eBay's for parts), derived, when it has one.
   - A venue the listing is not on is an **empty foldout**, folded, its badge
     saying `craigslist not added`, holding one button, **Add craigslist to
     this item**: the server puts the listing on it, and the card fills with its
@@ -932,13 +939,27 @@ Empty. With capacity to generate that card from there."
     "craigslist"}`, a job button as Refresh is; done, the mark is let go and the
     listing read again. A server that does not push to craigslist yet answers
     400, and the card's line says its words. eBay's is customize's Sync to eBay.
-  - **Edit** turns the card's fields into the page's own inputs (eBay: title,
-    price, description, User note, condition note, the quantity and pickup only
-    being customize's; craigslist: its four overrides, each blank one showing
-    what it derives as its placeholder, each with a **clear** that empties the
-    override); **Save** sends one PATCH with only the fields changed (nothing
-    changed sends nothing), **Cancel** puts the card back. A field the server
-    refuses is named under Save, the inputs kept as typed.
+  - **Edit** turns the card's fields into the page's own inputs (eBay: the
+    condition, title, price, description, User note, condition note, the
+    quantity and pickup only being customize's; craigslist: its four overrides,
+    each blank one showing what it derives as its placeholder, each with a
+    **clear** that empties the override); **Save** sends one PATCH with only the
+    fields changed (nothing changed sends nothing), **Cancel** puts the card
+    back. A field the server refuses is named under Save, the inputs kept as
+    typed.
+  - eBay's **Condition** (Michal, 2026-10-08: "When editing a listing in the
+    inventory card, there should be an option to change the condition there."; a
+    cooler had gone up "for parts") is the first field: a row of small chips, the
+    inventory Options' kind, two to a row, the row's condition pressed. Edit asks
+    `GET /inventory/<sku>/conditions` and the chips become what eBay allows the
+    row's category, in the server's words; until it answers, and when it cannot
+    say (an older server's 404, or eBay's list not read: then
+    `eBay's list for this category could not be read: showing all` and the why
+    under them), every condition the page knows. A chip pressed is drawn in
+    place, so what is typed below stays; Save sends `"condition"` only when
+    another chip is pressed, and a refusal of it is said under the chips. A
+    changed condition leaves the eBay listing behind (customize's Sync to eBay,
+    the sync badge) and the craigslist one when its word for it moved.
   - While something of the listing's is on its way or a job of its is still
     running, every action button but Open listing waits and the fields stay
     read-only: one job per listing at a time.

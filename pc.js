@@ -58,7 +58,15 @@
 //                                         "high"}, the first model call's three, cached; nulls)
 //   GET    <pc>/inventory/<sku>/photos/<n>
 //                                      -> the image itself (jpeg, png or webp); 404 when missing
-//   PATCH  <pc>/inventory/<sku>       a card's Save: only the fields changed, any of "title",
+//   GET    <pc>/inventory/<sku>/conditions
+//                                      the eBay card's Edit (Michal, 2026-10-08) -> {"current",
+//                                         "allowed": [enum...] (what eBay allows the row's
+//                                         category), "labels": {enum: words}, "error" (why, only
+//                                         when allowed is empty)}; an older server's 404: the
+//                                         chips offer every condition the page knows
+//   PATCH  <pc>/inventory/<sku>       a card's Save: only the fields changed, any of "condition"
+//                                      (eBay's enum; 400 names the accepted ones, an older server
+//                                      refuses the field), "title",
 //                                      "price" ("24.50"), "description", "note",
 //                                      "condition_note", "craigslist": {"title", "price",
 //                                      "description", "category"} ("" clears an override);
@@ -110,7 +118,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.11.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.12.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -315,6 +323,17 @@ function rowUrl(pc, sku) {
  */
 export function getRow({ pc, ...auth }, sku) {
     return call(rowUrl(pc, sku), auth);
+}
+
+/**
+ * The conditions eBay allows the row's category, for the eBay card's Edit (conditionChoices
+ * in core.js). 404 from a server that cannot say.
+ * @param {Settings} settings
+ * @param {string} sku
+ * @returns {Promise<{current?:string, allowed?:string[], labels?:Record<string, string>, error?:string}>}
+ */
+export function getConditions({ pc, ...auth }, sku) {
+    return call(`${rowUrl(pc, sku)}/conditions`, auth);
 }
 
 /**

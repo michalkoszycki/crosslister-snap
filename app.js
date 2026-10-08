@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.11.0";
+import { VERSION } from "./version.js?v=2.12.0";
 import {
     anyActive,
     bannerText,
@@ -160,8 +160,10 @@ import {
     applyDefaults,
     customizeDefaults,
     defaultsOf,
-} from "./core.js?v=2.11.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.11.0";
+    conditionChoices,
+    conditionRefused,
+} from "./core.js?v=2.12.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.12.0";
 import {
     addVenue,
     askLink,
@@ -173,6 +175,7 @@ import {
     ebayConnect,
     endSession,
     getBook,
+    getConditions,
     getInventory,
     getItem,
     getJob,
@@ -189,8 +192,8 @@ import {
     putPhoto,
     searchBook,
     startSession,
-} from "./pc.js?v=2.11.0";
-import { shrinkPhoto } from "./shrink.js?v=2.11.0";
+} from "./pc.js?v=2.12.0";
+import { shrinkPhoto } from "./shrink.js?v=2.12.0";
 import {
     bookCard,
     bookPriceValue,
@@ -203,8 +206,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.11.0";
-import { canScan, readIsbn } from "./scan.js?v=2.11.0";
+} from "./book.js?v=2.12.0";
+import { canScan, readIsbn } from "./scan.js?v=2.12.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2821,9 +2824,11 @@ function onAction(venue, action) {
         addTo(venue).catch(() => {});
     } else if (action === "edit") {
         const before = editValues(admin.row, venue);
-        c.edit = { before, values: { ...before }, error: "" };
+        // choices: the Condition chips (eBay's), every condition until the server says which
+        c.edit = { before, values: { ...before }, error: "", choices: conditionChoices(null), choiceError: "" };
         c.note = null;
         renderCards();
+        if (venue === "ebay") readConditions(c.edit).catch(() => {});
     } else if (action === "end") {
         c.confirm = true;
         renderCards();
@@ -2835,14 +2840,102 @@ function onAction(venue, action) {
 /**
  * Edit's inputs, the page's own inputs, each starting from the row (editValues);
  * a craigslist field left blank shows what it is derived from as its placeholder
- * and has a clear that empties its override. Locked while the row is busy.
+ * and has a clear that empties its override; eBay's Condition is a row of chips.
+ * Locked while the row is busy.
  */
 function editNode(venue, busy) {
     const form = document.createElement("div");
     form.className = "edit-form";
     const from = venue === "craigslist" ? derivedFields({ ...admin.row, craigslist: {} }, venue) : {};
-    for (const f of EDIT_FIELDS[venue]) form.append(fieldNode(venue, f, from[f.key], busy));
+    for (const f of EDIT_FIELDS[venue]) {
+        form.append(f.kind === "choice" ? choiceNode(venue, f) : fieldNode(venue, f, from[f.key], busy));
+    }
     return form;
+}
+
+/**
+ * The eBay card's Edit asks which conditions eBay allows the row's category (Michal,
+ * 2026-10-08: "there should be an option to change the condition there"). Until the
+ * server answers, and when it cannot say (an older server's 404; a call that failed,
+ * said under the chips), the chips offer every condition the page knows. The chip
+ * pressed follows the server's `current` unless he has pressed one already.
+ */
+async function readConditions(edit) {
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc) return;
+    let answer;
+    try {
+        answer = await getConditions(pc, row.sku);
+        heard(200);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        answer = e.status === 404 ? null : { allowed: [], error: e.message };
+    }
+    if (admin.cards.ebay.edit !== edit) return;
+    edit.choices = conditionChoices(answer);
+    const { current } = edit.choices;
+    if (current && edit.values.condition === edit.before.condition) {
+        edit.before.condition = current;
+        edit.values.condition = current;
+    }
+    paintChoices("ebay");
+}
+
+/**
+ * Edit's Condition: its label, then the chips (paintChoices). Painted in place, so the
+ * server's late answer or a tap on a chip leaves what is typed below as it is.
+ */
+function choiceNode(venue, f) {
+    const field = document.createElement("div");
+    field.className = "field";
+    const head = document.createElement("div");
+    head.className = "field-head";
+    const label = document.createElement("span");
+    label.className = "field-label";
+    label.textContent = f.label;
+    head.append(label);
+    const box = document.createElement("div");
+    box.className = "chips chips-conditions";
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", f.label);
+    admin.cards[venue].edit.choiceField = { field, head, box, key: f.key };
+    paintChoices(venue);
+    return field;
+}
+
+/**
+ * The Condition chips, one per choice in its words, the one chosen pressed (the
+ * inventory Options' small chips); under them why every condition is offered, and the
+ * server's refusal of the one sent. Locked while the row is busy.
+ */
+function paintChoices(venue) {
+    const edit = admin.cards[venue].edit;
+    if (!edit || !edit.choiceField) return;
+    const { field, head, box, key } = edit.choiceField;
+    const locked = rowBusy();
+    box.replaceChildren(
+        ...edit.choices.chips.map(({ value, label }) => {
+            const chip = actionButton(label, "chip", locked, () => {
+                edit.values[key] = value;
+                paintChoices(venue);
+            });
+            chip.setAttribute("aria-pressed", edit.values[key] === value ? "true" : "false");
+            return chip;
+        })
+    );
+    const lines = [];
+    for (const [text, className] of [
+        [edit.choices.note, "choice-note"],
+        [edit.choiceError, "edit-error"],
+    ]) {
+        if (!text) continue;
+        const line = document.createElement("p");
+        line.className = className;
+        line.textContent = text;
+        lines.push(line);
+    }
+    field.replaceChildren(head, box, ...lines);
 }
 
 function fieldNode(venue, f, from, locked) {
@@ -2884,9 +2977,10 @@ function fieldNode(venue, f, from, locked) {
 }
 
 /**
- * A card's Save: one PATCH with only the fields changed (patchBody); nothing
- * changed sends nothing. The row the PC answers is shown; a refusal is said under
- * Save and the inputs stay as typed.
+ * A card's Save: one PATCH with only the fields changed (patchBody; the condition
+ * only when another chip was pressed); nothing changed sends nothing. The row the PC
+ * answers is shown; a refusal is said under Save (one of the condition under its chips)
+ * and the inputs stay as typed.
  */
 async function saveEdit(venue) {
     const c = admin.cards[venue];
@@ -2902,6 +2996,7 @@ async function saveEdit(venue) {
     const mine = admin.shown;
     c.wait = "saving";
     c.edit.error = "";
+    c.edit.choiceError = "";
     renderCards();
     let whole;
     try {
@@ -2910,7 +3005,8 @@ async function saveEdit(venue) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
         c.wait = "";
-        c.edit.error = e.message;
+        if (conditionRefused(body, e)) c.edit.choiceError = e.message;
+        else c.edit.error = e.message;
         renderCards();
         return;
     }

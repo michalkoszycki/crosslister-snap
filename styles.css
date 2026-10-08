@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.11.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.12.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -905,6 +905,11 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .link.clear { min-height: 32px; padding: 0 0 6px 12px; font-size: 13px; color: var(--muted); }
 .edit-error { margin: 8px 2px 0; font-size: 14px; font-weight: 700; color: var(--bad); overflow-wrap: anywhere; }
+/* Edit's Condition (Michal, 2026-10-08): the inventory Options' small chips, two to a row so
+   "For parts or not working" fits at 360 px; why every condition is offered, muted, under them */
+.chips.chips-conditions { grid-template-columns: 1fr 1fr; gap: 4px; }
+.chips-conditions .chip { min-height: 36px; padding: 4px 6px; font-size: 13px; }
+.choice-note { margin: 4px 2px 0; font-size: 13px; color: var(--muted); }
 
 /* The sync bar (Michal, 2026-10-06: "below the inventory list hovering fixed on the screen
    as I scroll down"): a smoke sheet under a yellow rule, edge to edge, two outlined pills

@@ -1613,7 +1613,8 @@ function actionContract(body) {
 /**
  * The fake PC with Admin's routes: GET /inventory answers `rows` (the query is
  * in pc.calls), /inventory/<sku> the whole row, /inventory/<sku>/photos/<n> an
- * image for any photo the row names. PATCH /inventory/<sku> merges its body into
+ * image for any photo the row names, /inventory/<sku>/conditions `pc.conditions` (null, the
+ * default: a 404, as an older server). PATCH /inventory/<sku> merges its body into
  * the whole row, a "pricing" setting the price to that grade's cached one or
  * refused with a 400 when none is cached (each body in pc.patches; `pc.refusePatch`
  * answers a 400 with those words instead), POST /inventory/<sku>/venues/<venue> puts the row on that
@@ -1628,6 +1629,7 @@ function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
     pc.patches = [];
     pc.refusePatch = "";
     pc.refuse = {};
+    pc.conditions = null;
     let made = 0;
     pc.fetch = async (url, init = {}) => {
         const method = init.method || "GET";
@@ -1660,6 +1662,7 @@ function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
             if (!whole.photos.some((p) => p.n === Number(parts[3]))) return json({ detail: "no such photo" }, 404);
             return new Response(`jpeg ${parts[1]} ${parts[3]}`, { status: 200, headers: { "Content-Type": "image/jpeg" } });
         }
+        if (parts[2] === "conditions") return pc.conditions ? json(pc.conditions) : json({ detail: "Not Found" }, 404);
         if (method === "PATCH") {
             assert.equal(init.headers["Content-Type"], "application/json");
             pc.patches.push(body);
@@ -2699,6 +2702,7 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
         "Price: $24 (derived from eBay)",
         "Description: A brass lamp.\nWorks. (derived from eBay)",
         "Category: from the eBay category (derived from eBay)",
+        "Condition: good (derived from eBay)",
     ]);
     assert.deepEqual(craigslist.actions, ["Post on craigslist", "Edit"]);
     // Post is the posting screen's venue button, across the card (Michal, 2026-10-08: "Make the
@@ -2884,6 +2888,7 @@ test("a venue the row is not on: an empty foldout whose Add puts it there; a row
         "Price: $24 (derived from eBay)",
         "Description: A brass lamp.\nWorks. (derived from eBay)",
         "Category: from the eBay category (derived from eBay)",
+        "Condition: good (derived from eBay)",
     ]);
     assert.deepEqual(craigslist.actions, ["Post on craigslist", "Edit"]);
 
@@ -2919,7 +2924,7 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
     assert.equal(ebay.input("Condition note").value, "Light wear on the base");
     // the quantity and pickup only are customize's (Michal, 2026-10-07): facts here, not inputs;
     // the note is the User note, as everywhere ("'note' by itself confuses me")
-    assert.deepEqual(ebay.labels, ["Title", "Price, dollars", "Description", "User note", "Condition note"]);
+    assert.deepEqual(ebay.labels, ["Condition", "Title", "Price, dollars", "Description", "User note", "Condition note"]);
     typeField(ebay.input("Title"), "Brass desk lamp ");
     typeField(ebay.input("User note"), "from the attic");
     ebay.button("Save").fire("click");
@@ -2971,6 +2976,7 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
         "Price: $24 (derived from eBay)",
         "Description: A brass lamp.\nWorks. (derived from eBay)",
         "Category: household items",
+        "Condition: good (derived from eBay)",
     ]);
 
     // a field the PC refuses: its words under Save, the inputs as typed
@@ -2985,6 +2991,130 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
     assert.equal(craigslist.facts, null, "still editing");
     assert.equal(craigslist.input("Price, dollars").value, "cheap");
     assert.deepEqual(craigslist.actions, ["Save", "Cancel"]);
+});
+
+/**
+ * The eBay card's Edit's Condition: each chip's words ("*" pressed, "(off)" locked), and
+ * the lines under them with their class; `tap` presses one by its words.
+ */
+function conditionOf(nodes) {
+    const form = nodes.get("detail-ebay").children.find((c) => c.className === "edit-form");
+    const [head, box, ...lines] = form.children[0].children;
+    assert.equal(head.children[0].textContent, "Condition", "the first field");
+    assert.deepEqual([box.className, box.attrs.role, box.attrs["aria-label"]], ["chips chips-conditions", "group", "Condition"]);
+    return {
+        chips: box.children.map((b) => `${b.textContent}${b.attrs["aria-pressed"] === "true" ? " *" : ""}${b.disabled ? " (off)" : ""}`),
+        lines: lines.map((l) => `${l.textContent} (${l.className})`),
+        tap: (word) => box.children.find((b) => b.textContent === word).fire("click"),
+    };
+}
+
+test("Edit's Condition: chips of what eBay allows, the row's pressed; Save sends it only when changed", async (t) => {
+    // Michal, 2026-10-08: "When editing a listing in the inventory card, there should be an
+    // option to change the condition there." A cooler had gone up "for parts".
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const whole = wholeRow("R5", {
+        condition: "FOR_PARTS_OR_NOT_WORKING",
+        statuses: {
+            ...summary("R5").statuses,
+            craigslist: { status: "listed", id: "1", url: "https://sfbay.craigslist.org/1.html", listed_at: null },
+        },
+    });
+    const pc = inventoryPc([summary("R5")], { R5: whole });
+    pc.conditions = {
+        current: "FOR_PARTS_OR_NOT_WORKING",
+        allowed: ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING"],
+        labels: { NEW: "New", NEW_OTHER: "New (open box)", USED_EXCELLENT: "Used, excellent", FOR_PARTS_OR_NOT_WORKING: "For parts or not working" },
+    };
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+
+    // the cards say it in words: eBay's label, Craigslist's word
+    assert.equal(cardOf(nodes, "ebay").facts[2], "Condition: For parts or not working");
+    assert.equal(cardOf(nodes, "craigslist").facts.at(-1), "Condition: salvage (derived from eBay)");
+
+    // Edit: every condition at once, the row's pressed; then the server's list for its category
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    assert.equal(pc.calls.at(-1), "GET /inventory/R5/conditions");
+    let chips = conditionOf(nodes);
+    assert.equal(chips.chips.length, 16);
+    assert.deepEqual(chips.chips.filter((c) => c.endsWith("*")), ["For parts or not working *"]);
+    typeField(cardOf(nodes, "ebay").input("Title"), "Cooler, works");
+    await settle();
+    chips = conditionOf(nodes);
+    assert.deepEqual(chips.chips, ["New", "New (open box)", "Used, excellent", "For parts or not working *"]);
+    assert.deepEqual(chips.lines, []);
+    assert.equal(cardOf(nodes, "ebay").input("Title").value, "Cooler, works", "what was typed stays");
+
+    // the title alone changed: no condition in the body
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches, [{ title: "Cooler, works" }]);
+    assert.equal(local.getItem("snap.inventory.unsynced"), null, "neither listing behind a title");
+
+    // another chip pressed: the condition alone sent; both listings behind it
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    await settle();
+    conditionOf(nodes).tap("Used, excellent");
+    assert.deepEqual(conditionOf(nodes).chips, ["New", "New (open box)", "Used, excellent *", "For parts or not working"]);
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    assert.deepEqual(conditionOf(nodes).chips, [
+        "New (off)",
+        "New (open box) (off)",
+        "Used, excellent * (off)",
+        "For parts or not working (off)",
+    ], "locked while saving");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { condition: "USED_EXCELLENT" });
+    assert.equal(cardOf(nodes, "ebay").facts[2], "Condition: Used, excellent");
+    assert.equal(cardOf(nodes, "craigslist").facts.at(-1), "Condition: excellent (derived from eBay)");
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay","craigslist"]}]');
+    assert.ok(cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
+
+    // a condition the server refuses: its words under the chips, not under Save, still editing
+    pc.refusePatch = "condition: NEW is not allowed in this category; use one of NEW_OTHER, USED_EXCELLENT";
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    await settle();
+    conditionOf(nodes).tap("New");
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { condition: "NEW" });
+    chips = conditionOf(nodes);
+    assert.deepEqual(chips.lines, [`${pc.refusePatch} (edit-error)`]);
+    assert.equal(chips.chips[0], "New *", "as he left it");
+    assert.equal(cardOf(nodes, "ebay").refused, "");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Save", "Cancel"]);
+    cardOf(nodes, "ebay").button("Cancel").fire("click");
+    pc.refusePatch = "";
+
+    // the server could not read eBay's list: every condition, and why under them
+    pc.conditions = { current: "USED_EXCELLENT", allowed: [], labels: {}, error: "eBay did not answer" };
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    await settle();
+    chips = conditionOf(nodes);
+    assert.equal(chips.chips.length, 16);
+    assert.deepEqual(chips.lines, [
+        "eBay's list for this category could not be read: showing all (eBay did not answer) (choice-note)",
+    ]);
+    cardOf(nodes, "ebay").button("Cancel").fire("click");
+
+    // an older server (404): every condition, nothing said; a chip pressed before it answers stays
+    pc.conditions = null;
+    cardOf(nodes, "ebay").button("Edit").fire("click");
+    conditionOf(nodes).tap("Used, good");
+    await settle();
+    chips = conditionOf(nodes);
+    assert.equal(chips.chips.length, 16);
+    assert.deepEqual(chips.chips.filter((c) => c.endsWith("*")), ["Used, good *"]);
+    assert.deepEqual(chips.lines, []);
+    cardOf(nodes, "ebay").button("Save").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { condition: "USED_GOOD" });
+    assert.equal(cardOf(nodes, "ebay").facts[2], "Condition: Used, good");
 });
 
 test("Post, Refresh and End: each sends its job, its step in the card's line, then the row read again", async (t) => {
