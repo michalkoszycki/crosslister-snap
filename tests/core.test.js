@@ -163,6 +163,16 @@ import {
 } from "../core.js";
 import {
     accountError,
+    ADDRESS_NEEDED,
+    addressBody,
+    policiesLine,
+    SELLER_POLL_MAX,
+    SELLER_POLL_MS,
+    sellerError,
+    sellerLine,
+    sellerOf,
+    signinWords,
+    signupOf,
     applyDefaults,
     authHeaders,
     checkEmail,
@@ -3244,6 +3254,93 @@ test("Buy postings and Connect eBay refused: not there yet, not set up, or what 
     assert.equal(accountError("pay", 503, unset), unset, "the server's own words");
     assert.equal(accountError("pay", 0, "cannot reach the server"), "Could not open the payment page: cannot reach the server.");
     assert.equal(accountError("connect", 500, "the server answered 500"), "Could not open eBay: the server answered 500.");
+});
+
+// --- many sellers (Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue.") ---
+
+test("sign-ups open: the landing says the link makes the account; anything else, the words as they were", () => {
+    assert.equal(signupOf({ open: true }), true);
+    for (const closed of [{ open: false }, { open: "yes" }, {}, null, undefined, "open", 1]) {
+        assert.equal(signupOf(closed), false, JSON.stringify(closed));
+    }
+    assert.deepEqual(signinWords(true), {
+        button: "Sign in or create an account",
+        what: "We email you a link. New here? The same link creates your account; your first three postings are free.",
+    });
+    assert.deepEqual(signinWords(false), { button: "Sign in", what: "We email you a link. Open it on this phone and you are in." });
+});
+
+test("the eBay policies' words: setting up, failed with why, ready only the once", () => {
+    assert.equal(policiesLine("pending"), "setting up your policies...");
+    assert.equal(policiesLine("failed: no return policy allowed"), "policies failed: no return policy allowed; contact the developer");
+    assert.equal(policiesLine("failed"), "policies failed; contact the developer");
+    assert.equal(policiesLine("ready"), "", "ready, any other time: nothing to say");
+    assert.equal(policiesLine("ready", true), "policies ready");
+    assert.equal(policiesLine("none", true), "");
+    assert.equal(policiesLine("", true), "");
+    const anna = { connected: true, user: "anna_sells", policies: "ready" };
+    assert.equal(ebayLine(anna, true), "eBay: connected as anna_sells; policies ready");
+    assert.equal(ebayLine(anna), "eBay: connected as anna_sells");
+    assert.equal(ebayLine({ ...anna, connected: false }, true), "eBay: not connected");
+});
+
+test("GET /me/seller read leniently; the line when the address is needed", () => {
+    const answer = {
+        address: { line1: " 12 Oak St ", city: "Chicago", state: "IL", postal_code: "60601" },
+        complete: true,
+        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+    };
+    assert.deepEqual(sellerOf(answer), {
+        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" },
+        complete: true,
+        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+    });
+    // no address yet, no eBay word: blanks, and not complete
+    assert.deepEqual(sellerOf({ complete: false }), {
+        address: { line1: "", city: "", state: "", postal_code: "" },
+        complete: false,
+        ebay: null,
+    });
+    for (const none of [null, undefined, "x", 3, {}, { jobs: [] }]) assert.equal(sellerOf(none), null, JSON.stringify(none));
+
+    const needed = sellerOf({ ...answer, complete: false, ebay: { connected: true, user: "anna_sells", policies: "none" } });
+    assert.equal(sellerLine(needed), ADDRESS_NEEDED);
+    assert.equal(ADDRESS_NEEDED, "Your address is needed for shipping and pickup. Fill it in once.");
+    assert.equal(sellerLine(sellerOf(answer)), "", "the address all there");
+    assert.equal(sellerLine(sellerOf({ complete: false, ebay: { connected: false } })), "", "no eBay yet: not the moment");
+    assert.equal(sellerLine(sellerOf({ complete: false })), "");
+    assert.equal(sellerLine(null), "");
+    assert.equal(SELLER_POLL_MS, 10000);
+    assert.equal(SELLER_POLL_MS * SELLER_POLL_MAX, 3 * 60 * 1000, "three minutes at most");
+});
+
+test("Save address's body: trimmed, the state two letters upper-cased, the ZIP digits; a box not right is named", () => {
+    const good = { line1: "  12   Oak St  Apt 3 ", city: " Chicago ", state: " il ", zip: " 60601 " };
+    assert.deepEqual(addressBody(good), {
+        ok: true,
+        body: { address: { line1: "12 Oak St Apt 3", city: "Chicago", state: "IL", postal_code: "60601" } },
+    });
+    assert.equal(addressBody({ ...good, zip: "60601-1234" }).body.address.postal_code, "60601-1234");
+    assert.equal(addressBody({ ...good, zip: "606011234" }).body.address.postal_code, "60601-1234", "ZIP+4 without its dash");
+    assert.deepEqual(addressBody({ ...good, line1: "  " }), { ok: false, error: "Enter the street address." });
+    assert.deepEqual(addressBody({ ...good, city: "" }), { ok: false, error: "Enter the city." });
+    for (const state of ["", "I", "Ill", "Illinois", "1L", "I L"]) {
+        assert.deepEqual(addressBody({ ...good, state }), { ok: false, error: "The state is two letters, as IL." }, state);
+    }
+    for (const zip of ["", "6060", "606011", "60601-12", "ABCDE", "60 601"]) {
+        assert.deepEqual(addressBody({ ...good, zip }), { ok: false, error: "The ZIP is five digits, as 60601." }, zip);
+    }
+    assert.deepEqual(addressBody({}), { ok: false, error: "Enter the street address." });
+    assert.deepEqual(addressBody({ ...good, line1: 12 }), { ok: false, error: "Enter the street address." });
+});
+
+test("Save address refused: not there yet, the server's own words (a bad field, the admin's .env), or what went wrong", () => {
+    assert.equal(sellerError(404, "x"), "Saving the address is not available yet.");
+    assert.equal(sellerError(400, "postal_code: not a US ZIP"), "postal_code: not a US ZIP");
+    const admin = "The admin's address is in the server's .env; change it there.";
+    assert.equal(sellerError(409, admin), admin);
+    assert.equal(sellerError(0, "cannot reach the server"), "Could not save the address: cannot reach the server.");
+    assert.equal(sellerError(500, "the server answered 500"), "Could not save the address: the server answered 500.");
 });
 
 test("a press refused for want of postings (402) is marked so; any other refusal and a new press are not", () => {

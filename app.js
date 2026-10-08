@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.12.0";
+import { VERSION } from "./version.js?v=2.13.0";
 import {
     anyActive,
     bannerText,
@@ -135,6 +135,8 @@ import {
     SIGNIN_MISSING,
     SIGNIN_EXPIRED,
     signinError,
+    signinWords,
+    signupOf,
     meOf,
     CRAIGSLIST_OFF,
     venueAllowed,
@@ -146,6 +148,12 @@ import {
     returnLine,
     safeLink,
     userLine,
+    SELLER_POLL_MAX,
+    SELLER_POLL_MS,
+    addressBody,
+    sellerError,
+    sellerLine,
+    sellerOf,
     installState,
     installSteps,
     isIosDevice,
@@ -162,8 +170,8 @@ import {
     defaultsOf,
     conditionChoices,
     conditionRefused,
-} from "./core.js?v=2.12.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.12.0";
+} from "./core.js?v=2.13.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.13.0";
 import {
     addVenue,
     askLink,
@@ -183,8 +191,11 @@ import {
     getPhoto,
     getRow,
     getRowPhoto,
+    getSeller,
+    getSignup,
     getStats,
     patchRow,
+    patchSeller,
     PcError,
     postFeedback,
     postJob,
@@ -192,8 +203,8 @@ import {
     putPhoto,
     searchBook,
     startSession,
-} from "./pc.js?v=2.12.0";
-import { shrinkPhoto } from "./shrink.js?v=2.12.0";
+} from "./pc.js?v=2.13.0";
+import { shrinkPhoto } from "./shrink.js?v=2.13.0";
 import {
     bookCard,
     bookPriceValue,
@@ -206,8 +217,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.12.0";
-import { canScan, readIsbn } from "./scan.js?v=2.12.0";
+} from "./book.js?v=2.13.0";
+import { canScan, readIsbn } from "./scan.js?v=2.13.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -300,9 +311,23 @@ const offTaps = new Set();
  * or what went wrong).
  */
 const account = { packs: false, busy: false, status: "" };
+/**
+ * The Account block's Seller address (GET /me/seller), as the screen has it: the server's
+ * answer (sellerOf; null until asked, and from an older server's 404, which is no foldout),
+ * the foldout open, a Save on its way, its line, "policies ready" to be said (once), the
+ * poll's timer while eBay's policies are being set up and how many times it has asked, and
+ * `asked`, bumped per ask so a late answer for an older one is dropped.
+ */
+const seller = { info: null, open: false, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0 };
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
+/**
+ * GET /auth/signup's word on the landing (Michal, 2026-10-08: "What else do we need for the
+ * multi tenant? Let's continue."): anyone with an email may make an account; asked once, and
+ * false until the server says so (a 404, no answer: the words as they were).
+ */
+const signup = { open: false, asked: false };
 /** Chrome's install prompt, kept from beforeinstallprompt for our own button; good for one ask. */
 let installPrompt = null;
 /** Installed from this tab (the prompt accepted): the nudges go. */
@@ -554,6 +579,11 @@ function render() {
     const out = !settings();
     el.landing.hidden = !out || away || entry === "signin";
     el.signin.hidden = !out || away || entry !== "signin";
+    const words = signinWords(signup.open);
+    el.landingSignin.textContent = words.button;
+    el.signinWhat.textContent = words.what;
+    // About and privacy under the landing and Admin; the posting screens keep their foot clear
+    el.aboutLink.hidden = !out && !away;
     el.modes.hidden = out || away;
     el.work.hidden = out || away || mode !== "goods";
     el.book.hidden = out || away || mode !== "book";
@@ -1742,6 +1772,7 @@ function showAdmin(open) {
     if (!open) {
         // the Account block starts folded and quiet on the next visit
         Object.assign(account, { packs: false, status: "" });
+        quietSeller();
         renderAccount();
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
@@ -1777,6 +1808,7 @@ function showSettings(open) {
         el.pcAddress.value = readText("localStorage", PC_KEY);
         el.pcKey.value = readText("localStorage", KEY_KEY);
         el.settingsStatus.textContent = "";
+        loadSeller().catch(() => {});
     }
 }
 
@@ -3690,8 +3722,10 @@ function renderAccount() {
     const canBuy = packs.length > 0 && !(credits && credits.unlimited);
     const user = me ? userLine(me.user, !!(s && s.session)) : "";
     const left = creditsLine(credits);
-    const ebay = me ? ebayLine(me.ebay) : "";
-    el.account.hidden = !me && !account.status;
+    // the seller's answer is the newer word on her eBay (its policies follow a Save)
+    const ebayNow = (seller.info && seller.info.ebay) || (me ? me.ebay : null);
+    const ebay = ebayLine(ebayNow, seller.ready);
+    el.account.hidden = !me && !account.status && !seller.info;
     el.accountUser.textContent = user;
     el.accountUser.hidden = !user;
     el.accountCredits.textContent = left;
@@ -3715,9 +3749,151 @@ function renderAccount() {
     );
     el.accountEbay.textContent = ebay;
     el.accountEbay.hidden = !ebay;
-    el.accountConnect.hidden = !me || !me.ebay || me.ebay.connected;
+    el.accountConnect.hidden = !ebayNow || ebayNow.connected;
     el.accountConnect.disabled = account.busy;
+    renderSeller();
     el.accountStatus.textContent = account.status;
+}
+
+// --- the seller's address, under the eBay line --------------------------------------------
+// Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue." Another
+// seller's listings ship from, and are picked up at, her own address: the server keeps it
+// (GET/PATCH /me/seller) and sets up her eBay business policies from it.
+
+/** The Seller address foldout: shown once the server gave an answer, open or folded, its line and its Save. */
+function renderSeller() {
+    const info = seller.info;
+    el.sellerToggle.hidden = !info;
+    fold(el.sellerToggle, "Seller address", seller.open);
+    el.seller.hidden = !info || !seller.open;
+    const note = sellerLine(info);
+    el.sellerNote.textContent = note;
+    el.sellerNote.hidden = !note;
+    el.sellerSave.disabled = seller.busy;
+    el.sellerStatus.textContent = seller.status;
+}
+
+/** The four boxes as the server has the address (Settings opened, a Save answered). */
+function fillSeller(info) {
+    el.sellerLine1.value = info.address.line1;
+    el.sellerCity.value = info.address.city;
+    el.sellerState.value = info.address.state;
+    el.sellerZip.value = info.address.postal_code;
+}
+
+/** Folded and quiet for the next visit, and no more asking about the policies. */
+function quietSeller() {
+    clearTimeout(seller.poll);
+    Object.assign(seller, { open: false, status: "", ready: false, poll: null, polls: 0 });
+    seller.asked += 1;
+}
+
+/**
+ * GET /me/seller, as Settings opens: the boxes filled, and the foldout open by itself, saying
+ * why, when eBay is connected and the address is missing. An older server's 404: no foldout.
+ */
+async function loadSeller() {
+    const pc = settings();
+    if (!pc) return;
+    seller.asked += 1;
+    const mine = seller.asked;
+    try {
+        const info = sellerOf(await getSeller(pc));
+        if (mine !== seller.asked) return;
+        seller.info = info;
+        if (info) {
+            fillSeller(info);
+            if (sellerLine(info)) seller.open = true;
+            if (info.ebay && info.ebay.policies === "pending") pollSeller(true);
+        }
+    } catch (e) {
+        if (mine !== seller.asked) return;
+        if (e.status === 404) seller.info = null;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    }
+    renderAccount();
+}
+
+/**
+ * Save address: PATCH /me/seller with the four boxes (addressBody), or the box that is not
+ * right named and nothing sent. Saved, the eBay line follows the answer's policies: asked
+ * again every 10 s while they are being set up.
+ */
+async function saveSeller() {
+    const pc = settings();
+    if (!pc || seller.busy) return;
+    const made = addressBody({
+        line1: el.sellerLine1.value,
+        city: el.sellerCity.value,
+        state: el.sellerState.value,
+        zip: el.sellerZip.value,
+    });
+    if (!made.ok) {
+        seller.status = made.error;
+        renderAccount();
+        return;
+    }
+    seller.busy = true;
+    seller.status = "Saving...";
+    // a poll still on its way is for the address before this one
+    clearTimeout(seller.poll);
+    seller.poll = null;
+    seller.asked += 1;
+    const mine = seller.asked;
+    renderAccount();
+    try {
+        const info = sellerOf(await patchSeller(pc, made.body));
+        // Admin closed meanwhile (or another account): the next visit asks afresh
+        if (mine !== seller.asked) return;
+        seller.status = "saved";
+        if (info) {
+            seller.info = info;
+            fillSeller(info);
+            const policies = info.ebay ? info.ebay.policies : "";
+            seller.ready = policies === "ready";
+            if (policies === "pending") pollSeller(true);
+        }
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === seller.asked) seller.status = sellerError(e.status, e.message);
+    } finally {
+        seller.busy = false;
+        renderAccount();
+    }
+}
+
+/**
+ * While eBay's policies are being set up: GET /me/seller every 10 s until they are ready
+ * (said once) or failed, three minutes at most (`fresh` starts the count again). The boxes
+ * are left as he may be typing in them.
+ * @param {boolean} fresh
+ */
+function pollSeller(fresh) {
+    clearTimeout(seller.poll);
+    if (fresh) seller.polls = 0;
+    if (seller.polls >= SELLER_POLL_MAX) {
+        seller.poll = null;
+        return;
+    }
+    seller.poll = setTimeout(async () => {
+        seller.poll = null;
+        seller.polls += 1;
+        const pc = settings();
+        if (!pc) return;
+        const mine = seller.asked;
+        try {
+            const info = sellerOf(await getSeller(pc));
+            if (mine !== seller.asked || !info) return;
+            seller.info = info;
+        } catch (e) {
+            if (e.status === 401) heard(401);
+            if (mine !== seller.asked) return;
+        }
+        const policies = seller.info && seller.info.ebay ? seller.info.ebay.policies : "";
+        if (policies === "ready") seller.ready = true;
+        renderAccount();
+        if (policies === "pending") pollSeller(false);
+    }, SELLER_POLL_MS);
 }
 
 /**
@@ -3797,12 +3973,15 @@ function cameBack(back) {
 function toLanding(message) {
     me = null;
     meAsked = false;
+    seller.info = null;
+    quietSeller();
     serverStatus = null;
     clearTimeout(healthTimer);
     healthTimer = null;
     entry = "";
     el.landingStatus.textContent = message;
     if (!el.admin.hidden) showAdmin(false);
+    askSignup().catch(() => {});
     render();
     renderServer();
     renderExtras();
@@ -3831,6 +4010,22 @@ function renderSignOut() {
 }
 
 // --- the way in: the landing, sign-in, the home screen ------------------------------
+
+/**
+ * GET /auth/signup on the product's server, no key, no session, once while the landing is
+ * the screen: open to sign-ups, the landing's Sign in and the sign-in screen say the link
+ * also makes the account. A 404 or no answer: the words as they were.
+ */
+async function askSignup() {
+    if (signup.asked) return;
+    signup.asked = true;
+    try {
+        signup.open = signupOf(await getSignup(DEFAULT_SERVER));
+    } catch {
+        signup.open = false;
+    }
+    render();
+}
 
 /** The landing's Sign in, or the sign-in screen's Back. */
 function showSignin(open) {
@@ -4012,14 +4207,17 @@ async function saveSettings() {
         return;
     }
     el.settingsStatus.textContent = "Saved. Checking the server...";
-    // new settings, maybe another account: /me is asked afresh
+    // new settings, maybe another account: /me and the seller's address are asked afresh
     me = null;
     meAsked = false;
+    seller.info = null;
+    quietSeller();
     try {
         await checkPc(s);
         heard(200);
         el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
         loadMe().catch(() => {});
+        loadSeller().catch(() => {});
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
@@ -4336,6 +4534,17 @@ function main() {
         signinRemember: $("signin-remember"),
         signinSend: $("signin-send"),
         signinStatus: $("signin-status"),
+        signinWhat: $("signin-what"),
+        sellerToggle: $("seller-toggle"),
+        seller: $("seller"),
+        sellerNote: $("seller-note"),
+        sellerLine1: $("seller-line1"),
+        sellerCity: $("seller-city"),
+        sellerState: $("seller-state"),
+        sellerZip: $("seller-zip"),
+        sellerSave: $("seller-save"),
+        sellerStatus: $("seller-status"),
+        aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
         installDismiss: $("install-dismiss"),
@@ -4556,6 +4765,14 @@ function main() {
     });
     el.accountConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});
+    });
+    // Seller address: the foldout, and Save address
+    el.sellerToggle.addEventListener("click", () => {
+        seller.open = !seller.open;
+        renderAccount();
+    });
+    el.sellerSave.addEventListener("click", () => {
+        saveSeller().catch(() => {});
     });
     // a venue button refused for want of postings: its Buy postings opens the Account block
     for (const node of [el.ebayBuy, el.craigslistBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
@@ -4779,6 +4996,8 @@ function main() {
     if (back) cameBack(back);
     if (token) signIn(token).catch(() => {});
     else checkServer().catch(() => {});
+    // the landing on screen: does the product's server take new accounts?
+    if (!token && !settings()) askSignup().catch(() => {});
 }
 
 main();

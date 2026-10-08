@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.12.0";
+import { noteDirty, unsent } from "./queue.js?v=2.13.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.12.0";
+} from "./book.js?v=2.13.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -225,6 +225,32 @@ export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the
 export const SIGNIN_EXPIRED = "Your sign-in expired; send yourself a new link";
 
 /**
+ * GET /auth/signup's answer: true when anyone with an email may make an account by asking
+ * for a sign-in link; false for anything else (a closed server, or none that says).
+ * @param {unknown} answer
+ * @returns {boolean}
+ */
+export function signupOf(answer) {
+    return !!answer && typeof answer === "object" && /** @type {Record<string, unknown>} */ (answer).open === true;
+}
+
+/**
+ * The landing's Sign in and the sign-in screen's line (Michal, 2026-10-08: "What else do we
+ * need for the multi tenant? Let's continue."): a server open to sign-ups says the same link
+ * makes the account; otherwise the words are as they were.
+ * @param {boolean} open signupOf's
+ * @returns {{button:string, what:string}}
+ */
+export function signinWords(open) {
+    return open
+        ? {
+              button: "Sign in or create an account",
+              what: "We email you a link. New here? The same link creates your account; your first three postings are free.",
+          }
+        : { button: "Sign in", what: "We email you a link. Open it on this phone and you are in." };
+}
+
+/**
  * The landing's line when a sign-in link did not sign him in.
  * @param {number} status the PcError's (0: no answer)
  * @param {string} message errorText's words
@@ -352,22 +378,119 @@ export function packLabel(pack) {
 }
 
 /**
- * The account's eBay line: "eBay: connected as anna", with the business policies' state
- * while they are not ready ("setting up your policies...", "policies failed: <why>;
- * contact the developer"), or "eBay: not connected"; "" when the server does not say.
- * @param {Ebay|null} ebay
+ * The business policies' words after the eBay line: "setting up your policies..." while
+ * the server makes them, "policies failed: <why>; contact the developer", and "policies
+ * ready" only the once (`justReady`: a Save of the address, or the poll after it, saw them
+ * ready); "" otherwise ("ready" any other time, "none", a server that does not say).
+ * @param {string} state "ready" | "pending" | "failed: <why>" | "none"
+ * @param {boolean} [justReady]
  * @returns {string}
  */
-export function ebayLine(ebay) {
+export function policiesLine(state, justReady = false) {
+    if (state === "pending") return "setting up your policies...";
+    if (/^failed\b/.test(state)) {
+        const why = state.replace(/^failed:?/, "").trim();
+        return `policies failed${why ? `: ${why}` : ""}; contact the developer`;
+    }
+    return state === "ready" && justReady ? "policies ready" : "";
+}
+
+/**
+ * The account's eBay line: "eBay: connected as anna", with the business policies' state
+ * while they are not ready (policiesLine), or "eBay: not connected"; "" when the server
+ * does not say.
+ * @param {Ebay|null} ebay
+ * @param {boolean} [justReady] policiesLine's: "policies ready" said once
+ * @returns {string}
+ */
+export function ebayLine(ebay, justReady = false) {
     if (!ebay) return "";
     if (!ebay.connected) return "eBay: not connected";
     const who = ebay.user ? `eBay: connected as ${ebay.user}` : "eBay: connected";
-    if (ebay.policies === "pending") return `${who}; setting up your policies...`;
-    if (/^failed\b/.test(ebay.policies)) {
-        const why = ebay.policies.replace(/^failed:?/, "").trim();
-        return `${who}; policies failed${why ? `: ${why}` : ""}; contact the developer`;
-    }
-    return who;
+    const policies = policiesLine(ebay.policies, justReady);
+    return policies ? `${who}; ${policies}` : who;
+}
+
+// --- the seller's address (Michal, 2026-10-08: "What else do we need for the multi tenant?
+// Let's continue."): another seller's listings ship from, and are picked up at, her own
+// address; the server keeps it (GET/PATCH /me/seller) and sets up her eBay policies from it.
+
+/** How often the page asks GET /me/seller again while eBay's policies are being set up. */
+export const SELLER_POLL_MS = 10000;
+
+/** ... and how many times at most: three minutes of asking. */
+export const SELLER_POLL_MAX = 18;
+
+/** The foldout's line when it opens by itself: eBay is connected and the address is missing. */
+export const ADDRESS_NEEDED = "Your address is needed for shipping and pickup. Fill it in once.";
+
+/**
+ * The seller's address as the server keeps it, whether it is all there, and her eBay.
+ * @typedef {{address:{line1:string, city:string, state:string, postal_code:string}, complete:boolean, ebay:Ebay|null}} Seller
+ */
+
+/**
+ * GET (or PATCH) /me/seller's answer; null for one that is not one (no address and no
+ * word on whether it is complete).
+ * @param {unknown} answer
+ * @returns {Seller|null}
+ */
+export function sellerOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    const at = a.address && typeof a.address === "object" ? /** @type {Record<string, unknown>} */ (a.address) : null;
+    if (!at && typeof a.complete !== "boolean") return null;
+    const field = (k) => (at ? plain(at[k]) : "");
+    return {
+        address: { line1: field("line1"), city: field("city"), state: field("state"), postal_code: field("postal_code") },
+        complete: a.complete === true,
+        ebay: ebayOf(a.ebay),
+    };
+}
+
+/**
+ * The foldout's own line: why it opens by itself when Settings does (eBay connected, the
+ * address not all there: that is the moment it is needed); "" otherwise, and it stays folded.
+ * @param {Seller|null} seller
+ * @returns {string}
+ */
+export function sellerLine(seller) {
+    return seller && !seller.complete && seller.ebay && seller.ebay.connected ? ADDRESS_NEEDED : "";
+}
+
+/**
+ * Save address's body, from the four boxes as typed: each trimmed (inner spaces one), the
+ * state two letters upper-cased, the ZIP five digits (or ZIP+4); a box that is not right is
+ * named, and nothing is sent.
+ * @param {{line1?:unknown, city?:unknown, state?:unknown, zip?:unknown}} fields
+ * @returns {{ok:true, body:{address:{line1:string, city:string, state:string, postal_code:string}}} | {ok:false, error:string}}
+ */
+export function addressBody({ line1, city, state, zip } = {}) {
+    const text = (x) => (typeof x === "string" ? x.trim().replace(/\s+/g, " ") : "");
+    const street = text(line1);
+    if (!street) return { ok: false, error: "Enter the street address." };
+    const town = text(city);
+    if (!town) return { ok: false, error: "Enter the city." };
+    const st = text(state).toUpperCase();
+    if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
+    const z = /^(\d{5})(?:[- ]?(\d{4}))?$/.exec(text(zip));
+    if (!z) return { ok: false, error: "The ZIP is five digits, as 60601." };
+    const postal = z[2] ? `${z[1]}-${z[2]}` : z[1];
+    return { ok: true, body: { address: { line1: street, city: town, state: st, postal_code: postal } } };
+}
+
+/**
+ * The foldout's line when Save address did not go: a server without the route (404) has it
+ * not available yet; a refusal (400 naming the field, the admin's 409: the address is in the
+ * server's .env) is the server's own words; anything else says what went wrong.
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function sellerError(status, message) {
+    if (status === 404) return "Saving the address is not available yet.";
+    if (status === 400 || status === 409) return message;
+    return `Could not save the address: ${message}.`;
 }
 
 /**

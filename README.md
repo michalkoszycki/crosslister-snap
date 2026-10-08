@@ -68,9 +68,10 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | File | What it is |
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
-| `app.js` | screen wiring: the landing, sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings and its Account block, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
+| `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in and the install nudge, photos, the upload queue, the AI mark (a book's main mark), Admin (Settings and its Account block with the Seller address, the inventory, a listing's customize, its cards and their actions, Feedback, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too |
+| `pc.js` | every call to the server, Admin's inventory and its actions, `/me`, Feedback, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -226,6 +227,64 @@ nothing of them (and answers the new routes with a 404, taken as "not available"
   same way says the server's words on the card's line.
 - **The CSP** is unchanged: the page only navigates to Stripe and eBay, which
   `connect-src` does not govern, and it sets no `navigate-to`.
+
+## Many sellers: sign-up, the seller's address, About (2.13.0)
+
+Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue." The server
+grows in parallel; the page builds to its contract and takes a 404 as "not available", so an
+older server looks exactly as it did.
+
+- **Sign-up wording.** On a load with no settings and no session (the landing; not one opened
+  from a sign-in link), the page asks `GET /auth/signup` of `DEFAULT_SERVER`, with no key and
+  no session, once. `{"open": true}` (`signupOf`) has the landing's **Sign in** read **Sign in
+  or create an account** and the sign-in screen say `We email you a link. New here? The same
+  link creates your account; your first three postings are free.` (`signinWords`, written into
+  `#landing-signin` and `#signin-what`). `false`, a 404 or no answer: the words as they were.
+  The link is asked for exactly as before; the server makes the account on the first link.
+- **Seller address**, in the Account block under the eBay line (`#seller-toggle`, `#seller`):
+  a foldout in customize's pattern with four small boxes, **Street address**, **City**,
+  **State**, **ZIP** (`#seller-line1`, `#seller-city`, `#seller-state`, `#seller-zip`, each with
+  its `autocomplete` so the phone can fill them), **Save address** (`#seller-save`) and its
+  line (`#seller-status`). `GET /me/seller` is asked each time Settings opens (and after Save
+  and check); the boxes take the address it gives. An older server's 404: no foldout. It opens
+  by itself, saying `Your address is needed for shipping and pickup. Fill it in once.`
+  (`#seller-note`, `sellerLine`), when `complete` is false and eBay is connected: that is the
+  moment the address is needed. Otherwise it waits folded.
+  - **Save address** checks the boxes first (`addressBody`): each trimmed, inner spaces one,
+    the state two letters upper-cased (`il` is `IL`), the ZIP five digits or ZIP+4
+    (`606011234` is `60601-1234`); a box not right is named (`Enter the street address.`,
+    `Enter the city.`, `The state is two letters, as IL.`, `The ZIP is five digits, as
+    60601.`) and nothing is sent. Then `PATCH /me/seller {"address": {"line1", "city",
+    "state", "postal_code"}}`; the line says `Saving...`, then `saved`, and the boxes take the
+    address as the answer has it. A 400 (a bad field) and the admin's 409 (his address is in
+    the server's `.env`) show the server's words; a 404 `Saving the address is not available
+    yet.`; anything else `Could not save the address: <why>.` (`sellerError`).
+  - **The eBay line follows the answer's policies** (`policiesLine`, inside `ebayLine`):
+    `eBay: connected as anna_sells; setting up your policies...` while `pending`, and the page
+    asks `GET /me/seller` again every 10 s (`SELLER_POLL_MS`) until they are `ready` or
+    `failed`, 18 times at most (three minutes; `SELLER_POLL_MAX`), leaving the boxes alone;
+    ready, it says `; policies ready` once (until Admin closes); failed, `; policies failed:
+    <why>; contact the developer`. Opening Settings onto a pending answer starts the same
+    asking. `/me/seller`'s `ebay` is the newer word, so the eBay line (and Connect eBay) read
+    it over `/me`'s once it has come.
+  - Closing Admin folds it, clears its line and stops the asking; Sign out or Forget this
+    server lets the answer go with the account. Nothing of it is stored on the phone.
+- **About and privacy** (`about.html`): a plain page beside the app, in its look (the header
+  band with the mark, the stylesheet and Manrope) and with no script at all (its CSP allows
+  none): what Snap is and who runs it (`Snap is run by its developer; contact: the Feedback box
+  in Admin, or the email below`, with a `mailto:`; the address is a placeholder,
+  `support@example.com`, until the support address is chosen), **Privacy** in plain words (what
+  the server keeps: the photos and listings, the eBay token to list for you, the email for
+  sign-in, the seller address, usage counts; that marked photos and the note go to the AI
+  service that drafts the listing; never card details, which go to Stripe; that eBay can ask us
+  to delete your eBay data and we do; that deleting an account is, for now, a request to the
+  developer), **Terms** (a tool that lists what you photograph on your own accounts; you are the
+  seller; three free postings then prepaid, used postings not refunded; the service may stop or
+  change) and the version (`data-version`, which `tools/bump-version.mjs` rewrites with the
+  `?v=`s). **← Back to Snap** goes to `./`. The footer's **About and privacy**
+  (`#about-link`) shows under the landing and under Admin, not under the posting screens. The
+  eBay developer console takes this page's address as the privacy policy URL:
+  `https://michalkoszycki.github.io/crosslister-snap/about.html`.
 
 ## The screen, top to bottom
 
@@ -652,6 +711,9 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
 | `DELETE <server>/auth/session`, Settings' Sign out, with `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
+| `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
+| `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes, the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Seller address foldout |
+| `PATCH <pc>/me/seller`, **Save address** | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits or `60601-1234`); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -1004,7 +1066,8 @@ Empty. With capacity to generate that card from there."
 
 - **The Account block** comes first, when the server's `/me` gives it: whose this phone
   is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
-  (see "The account: postings and eBay" above).
+  (see "The account: postings and eBay" above), and under it the **Seller address** (see
+  "Many sellers" above).
 - **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
   `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
   `http://127.0.0.1` and `http://localhost` for trying the page on the server
@@ -1031,7 +1094,7 @@ The address and key are stored in `localStorage` on the phone (`snap.pc`,
 none, or anything else, is `device`). Also kept: a sign-in's session
 (`snap.session`, in `localStorage` with Keep me signed in, else `sessionStorage`),
 customize's defaults (`snap.customize.defaults`) and the day the home-screen
-banner was put away (`snap.install.dismissed`); `/me`'s answer is never stored. Every storage read and write is wrapped,
+banner was put away (`snap.install.dismissed`); `/me`'s and `/me/seller`'s answers are never stored. Every storage read and write is wrapped,
 so a private window or blocked site data only means Settings are not
 remembered.
 
@@ -1083,3 +1146,5 @@ publishes.**
 - A link from the server is only made tappable if it is an `http(s)` address, and
   it opens with `rel="noopener noreferrer"`.
 - Nothing is logged to the console; a test enforces that.
+- What the server keeps and why, in plain words for the people who use it, is `about.html`
+  (Privacy and Terms); it runs no script, and its CSP allows none.

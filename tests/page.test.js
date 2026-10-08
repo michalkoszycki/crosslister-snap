@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { itemIdFor, NAME_CHECK_MS, POLL_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
+import { ADDRESS_NEEDED, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -195,6 +195,18 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "account-packs",
         "account-ebay",
         "account-connect",
+        // under the eBay line, the seller's address (Michal, 2026-10-08: "What else do we need
+        // for the multi tenant? Let's continue."): its foldout, the line saying why it opened
+        // by itself, the four boxes, Save address and its line
+        "seller-toggle",
+        "seller",
+        "seller-note",
+        "seller-line1",
+        "seller-city",
+        "seller-state",
+        "seller-zip",
+        "seller-save",
+        "seller-status",
         "account-status",
         "settings-server",
         "pc-address",
@@ -750,18 +762,27 @@ test("Settings: a bad address is refused on the page; a good one is saved and ch
     await settle();
     assert.match(nodes.get("settings-status").textContent, /https/);
     assert.equal(local.map.size, 0, "nothing saved");
-    assert.equal(calls.length, 0);
+    // only the landing's question to the product's server, whether it takes new accounts
+    assert.deepEqual(calls.map((c) => c.url), ["https://michal-pc.mulley-themis.ts.net/auth/signup"]);
+    assert.deepEqual(calls[0].init.headers, {}, "no key, no session");
+    calls.length = 0;
 
     nodes.get("pc-address").value = "https://pc.tail1234.ts.net/";
     nodes.get("settings-save").fire("click");
     await settle();
     assert.equal(local.getItem("snap.pc"), "https://pc.tail1234.ts.net");
     assert.equal(local.getItem("snap.key"), "test-key-0123456789");
-    // the check, then who this key is (GET /me), both with the key
-    assert.deepEqual(calls.map((c) => c.url), ["https://pc.tail1234.ts.net/jobs?limit=1", "https://pc.tail1234.ts.net/me"]);
+    // the check, then who this key is (GET /me) and its seller's address, all with the key
+    assert.deepEqual(calls.map((c) => c.url), [
+        "https://pc.tail1234.ts.net/jobs?limit=1",
+        "https://pc.tail1234.ts.net/me",
+        "https://pc.tail1234.ts.net/me/seller",
+    ]);
     assert.equal(calls[0].init.headers["X-Crosslister-Key"], "test-key-0123456789");
     assert.equal(calls[1].init.headers["X-Crosslister-Key"], "test-key-0123456789");
     assert.equal(calls[1].init.headers["X-Crosslister-Session"], undefined);
+    assert.equal(calls[2].init.headers["X-Crosslister-Key"], "test-key-0123456789");
+    assert.equal(nodes.get("seller-toggle").hidden, true, "an answer that is not one: no foldout");
     assert.match(nodes.get("settings-status").textContent, /knows this key/);
     // with settings, the hint moves on to what the item still needs
     assert.equal(nodes.get("venue-hint").textContent, "Snap a photo first");
@@ -902,6 +923,12 @@ function jobContract(body) {
  * 402, no postings left; POST /pay/checkout keeps each body and auth in `pc.checkouts` and
  * answers `pc.pay` (a number: that status, 503 with the server's words); GET /ebay/connect
  * keeps each auth in `pc.connects` and answers `pc.connect` (a number: that status).
+ * Many sellers': GET /auth/signup keeps each call's auth and origin in `pc.signups` and answers
+ * `pc.signup` (null: a 404); GET /me/seller keeps each auth in `pc.sellerAsks` and answers
+ * `pc.seller` (null: a 404, as an older server); PATCH /me/seller keeps each body and auth in
+ * `pc.sellerSaves`, answers `pc.sellerRefuse` ({status, detail}) when set, else takes the
+ * address (complete) and answers the whole record, its eBay policies `pc.policiesAfterSave`
+ * when set. None of these is in `calls`.
  */
 function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {}, me = null, stats = null } = {}) {
     const pc = {
@@ -922,6 +949,13 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         pay: { url: STRIPE },
         connects: [],
         connect: { url: EBAY_CONSENT },
+        signups: [],
+        signup: null,
+        sellerAsks: [],
+        seller: null,
+        sellerSaves: [],
+        sellerRefuse: null,
+        policiesAfterSave: "",
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
@@ -929,16 +963,32 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const u = new URL(url);
         const parts = u.pathname.split("/").slice(1).map(decodeURIComponent);
         const headers = init.headers || {};
-        pc.auth.push(headers["X-Crosslister-Key"] ? `key ${headers["X-Crosslister-Key"]}` : headers["X-Crosslister-Session"] ? `session ${headers["X-Crosslister-Session"]}` : "none");
-        // the page's own server check and /me are counted apart, so `calls` stays the item's traffic
+        const auth = headers["X-Crosslister-Key"] ? `key ${headers["X-Crosslister-Key"]}` : headers["X-Crosslister-Session"] ? `session ${headers["X-Crosslister-Session"]}` : "none";
+        pc.auth.push(auth);
+        // the page's own server check, /me, the landing's sign-up word and the seller's address
+        // are counted apart, so `calls` stays the item's traffic
         const check = method === "GET" && parts[0] === "jobs" && !parts[1];
-        const asked = method === "GET" && parts[0] === "me";
+        const asked = method === "GET" && parts[0] === "me" && !parts[1];
+        const signup = method === "GET" && parts[0] === "auth" && parts[1] === "signup";
+        const sold = parts[0] === "me" && parts[1] === "seller";
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
-        else pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (signup) pc.signups.push({ auth, origin: u.origin });
+        else if (sold && method === "GET") pc.sellerAsks.push(auth);
+        else if (!sold) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
+        if (signup) return pc.signup ? json(pc.signup) : json({ detail: "Not Found" }, 404);
+        if (sold && method === "PATCH") {
+            pc.sellerSaves.push({ body, auth, type: headers["Content-Type"] });
+            if (!pc.seller) return json({ detail: "Not Found" }, 404);
+            if (pc.sellerRefuse) return json({ detail: pc.sellerRefuse.detail }, pc.sellerRefuse.status);
+            pc.seller = { ...pc.seller, address: body.address, complete: true };
+            if (pc.policiesAfterSave) pc.seller.ebay = { ...pc.seller.ebay, policies: pc.policiesAfterSave };
+            return json(pc.seller);
+        }
+        if (sold) return pc.seller ? json(pc.seller) : json({ detail: "Not Found" }, 404);
         if (parts[0] === "feedback" && method === "POST") {
             pc.feedback.push(body);
             if (pc.refuseFeedback) return json({ detail: pc.refuseFeedback }, 400);
@@ -6286,6 +6336,8 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "landing-status",
         "signin",
         "signin-back",
+        // its line, which a server open to sign-ups words for a new account too
+        "signin-what",
         "signin-email",
         "signin-remember",
         "signin-send",
@@ -6321,6 +6373,8 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     const screens = ["landing", "signin", "install-banner", "modes", "work", "book", "admin"];
     assert.deepEqual(shown(screens), ["landing"], "the whole screen, in place of the goods screen");
     assert.equal(pc.checks + pc.mes + pc.calls.length, 0, "nothing to ask without a server");
+    assert.deepEqual(pc.signups, [{ auth: "none", origin: SERVER }], "but the product's own, whether it takes new accounts");
+    assert.equal(nodes.get("landing-signin").textContent, "Sign in", "a 404: the words as they were");
 
     // not on the home screen, no prompt from the browser: Install unfolds the two taps
     assert.equal(nodes.get("landing-install").hidden, false);
@@ -6447,7 +6501,7 @@ test("Sign in: a link by email from the product's server, Keep me signed in with
     nodes.get("signin-send").fire("click");
     await settle();
     assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
-    assert.deepEqual(pc.origins, [SERVER], "the product's own server");
+    assert.deepEqual(pc.origins, [SERVER, SERVER], "the product's own server: whether it takes new accounts, then the link");
     assert.equal(nodes.get("signin-status").textContent, "Check your email for the link; it works on this phone.");
     nodes.get("signin-remember").checked = false;
     nodes.get("signin-send").fire("click");
@@ -7105,4 +7159,303 @@ test("Sign out tells the server first; refused or not reached, the phone forgets
     nodes.get("settings-signout").fire("click");
     await settle();
     assert.deepEqual(keyed.signouts, []);
+});
+// --- many sellers (Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue.") ---
+
+test("a server open to sign-ups: the landing's Sign in and the sign-in screen say the same link makes the account", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc();
+    pc.signup = { open: true };
+    const { nodes } = await loadPage({ fetchImpl: pc.fetch });
+    assert.deepEqual(pc.signups, [{ auth: "none", origin: SERVER }], "asked once, of the product's server, with nothing");
+    assert.equal(nodes.get("landing-signin").textContent, "Sign in or create an account");
+    nodes.get("landing-signin").fire("click");
+    assert.equal(
+        nodes.get("signin-what").textContent,
+        "We email you a link. New here? The same link creates your account; your first three postings are free."
+    );
+    // the link is asked for as ever
+    nodes.get("signin-email").value = "anna@example.com";
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.links.map((l) => l.body), [{ email: "anna@example.com", remember: true }]);
+
+    // closed to sign-ups, or a server that does not say (a 404): the words as they were
+    for (const answer of [{ open: false }, null]) {
+        const closed = signinPc();
+        closed.signup = answer;
+        const page = await loadPage({ fetchImpl: closed.fetch });
+        assert.equal(closed.signups.length, 1);
+        assert.equal(page.nodes.get("landing-signin").textContent, "Sign in");
+        assert.equal(page.nodes.get("signin-what").textContent, "We email you a link. Open it on this phone and you are in.");
+    }
+    // a phone with a key, or opened from a sign-in link: no landing, nothing asked
+    const keyed = signinPc();
+    await loadPage({ local: memoryStore(GOOD), fetchImpl: keyed.fetch });
+    const linked = signinPc();
+    await loadPage({ fetchImpl: linked.fetch, hash: "#login=tok-1" });
+    assert.deepEqual([keyed.signups, linked.signups], [[], []]);
+});
+
+test("Seller address sits under the eBay line, folded and hidden until the server answers; About and privacy in the footer", () => {
+    const account = /<div id="account" class="account" hidden>([\s\S]*?)<p id="account-status"/.exec(html)[1];
+    assert.match(account, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="seller-toggle"/);
+    assert.match(account, /<button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"\s+aria-controls="seller" hidden>▸ Seller address<\/button>/);
+    assert.match(account, /<div id="seller" class="seller" hidden>/);
+    for (const [id, label, fill] of [
+        ["seller-line1", "Street address", "address-line1"],
+        ["seller-city", "City", "address-level2"],
+        ["seller-state", "State", "address-level1"],
+        ["seller-zip", "ZIP", "postal-code"],
+    ]) {
+        assert.match(account, new RegExp(`<span class="field-label">${label}</span>\\s*<input id="${id}"[^>]*autocomplete="${fill}"`));
+    }
+    assert.match(account, /id="seller-zip"[^>]*inputmode="numeric"/);
+    assert.match(account, /<button type="button" id="seller-save"[^>]*>Save address<\/button>/);
+    assert.match(account, /<p id="seller-status"[^>]*aria-live="polite"><\/p>/);
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.seller-row \{ display: grid;/);
+    // the footer's link to the page eBay's developer console takes as the privacy policy
+    const footer = /<footer[^>]*>([\s\S]*?)<\/footer>/.exec(html)[1];
+    assert.match(footer, /<a id="about-link" class="about-link" href="about.html">About and privacy<\/a>/);
+    assert.match(css, /\.about-link\[hidden\] \{ display: none; \}/);
+});
+
+test("About and privacy: under the landing and Admin, not under the posting screens", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const first = await loadPage({ fetchImpl: fakePc().fetch });
+    assert.equal(first.nodes.get("about-link").hidden, false, "the landing's foot");
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("about-link").hidden, true, "the goods screen keeps its foot clear");
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("about-link").hidden, false, "Admin's foot");
+    nodes.get("admin-close").fire("click");
+    assert.equal(nodes.get("about-link").hidden, true);
+});
+
+test("about.html: what Snap is, privacy and terms, the version; no script, the app's look, a way back", async () => {
+    const page = readFileSync(join(root, "about.html"), "utf8");
+    const { VERSION } = await import("../version.js");
+    assert.ok(!/<script/i.test(page), "a plain page: no script at all");
+    const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(page)[1];
+    assert.match(csp, /default-src 'none'/);
+    assert.ok(!csp.includes("script-src"), "nothing may run");
+    assert.match(page, new RegExp(`<link rel="stylesheet" href="styles\\.css\\?v=${VERSION.replace(/\./g, "\\.")}">`));
+    assert.match(page, new RegExp(`data-version>${VERSION.replace(/\./g, "\\.")}<`), "the version it shows is VERSION");
+    assert.ok(readFileSync(join(root, "tools/bump-version.mjs"), "utf8").includes('"about.html"'), "the bump tool keeps it in step");
+    // the mark, the way back to the app, and the three parts
+    assert.match(page, /<svg class="mark" viewBox="0 0 132 132"[^>]*aria-label="Snap">/);
+    assert.match(page, /<a class="link back-link" href="\.\/">← Back to Snap<\/a>/);
+    for (const id of ["what", "privacy", "terms"]) assert.match(page, new RegExp(`<h2 id="${id}">`));
+    assert.match(page, /Snap is run by its developer; contact: the Feedback box in Admin, or the email below\./);
+    assert.match(page, /<a id="support" href="mailto:support@example\.com">support@example\.com<\/a>/);
+    const words = page.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    for (const said of [
+        "Your photos",
+        "Your eBay token, so Snap can list for you",
+        "Your email address, to send you sign-in links",
+        "Usage counts",
+        "What it never keeps: your card details. Payments go to Stripe",
+        "eBay can ask us to delete your eBay data",
+        "Deleting your account is, for now, a request to the developer",
+        "You are the seller",
+        "Your first three postings are free; after that, postings are prepaid. Postings already used are not refunded.",
+        "The service may stop or change at any time.",
+    ]) {
+        assert.ok(words.includes(said), `about.html says: ${said}`);
+    }
+    // every file it points at is in the repo
+    for (const m of page.matchAll(/(?:src|href)="([^"#:]+)"/g)) {
+        if (m[1] === "./") continue;
+        assert.ok(existsSync(join(root, m[1].split("?")[0])), `about.html points at a missing ${m[1]}`);
+    }
+});
+
+/** A connected eBay with no address yet, as GET /me/seller answers a new seller. */
+const NEW_SELLER = {
+    address: { line1: "", city: "", state: "", postal_code: "" },
+    complete: false,
+    ebay: { connected: true, user: "anna_sells", policies: "none" },
+};
+
+/** The Seller address foldout as the screen shows it. */
+function sellerOf(nodes) {
+    return {
+        toggle: nodes.get("seller-toggle").hidden ? null : nodes.get("seller-toggle").textContent,
+        open: !nodes.get("seller").hidden,
+        note: nodes.get("seller-note").hidden ? null : nodes.get("seller-note").textContent,
+        status: nodes.get("seller-status").textContent,
+        ebay: nodes.get("account-ebay").hidden ? null : nodes.get("account-ebay").textContent,
+    };
+}
+
+function typeAddress(nodes, { line1, city, state, zip }) {
+    nodes.get("seller-line1").value = line1;
+    nodes.get("seller-city").value = city;
+    nodes.get("seller-state").value = state;
+    nodes.get("seller-zip").value = zip;
+}
+
+test("Seller address: open by itself for a connected eBay with no address; saved, the policies set up and said ready once", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: NEW_SELLER.ebay } });
+    pc.seller = structuredClone(NEW_SELLER);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    assert.deepEqual(pc.sellerAsks, [], "not asked before Settings opens");
+    await openSettings(nodes);
+    await settle();
+    assert.deepEqual(pc.sellerAsks, ["key test-key-0123456789"]);
+    assert.deepEqual(sellerOf(nodes), {
+        toggle: "▾ Seller address",
+        open: true,
+        note: ADDRESS_NEEDED,
+        status: "",
+        ebay: "eBay: connected as anna_sells",
+    });
+    assert.equal(ADDRESS_NEEDED, "Your address is needed for shipping and pickup. Fill it in once.");
+    assert.equal(nodes.get("seller-toggle").attrs["aria-expanded"], "true");
+
+    // a box not right: named, nothing sent
+    nodes.get("seller-save").fire("click");
+    await settle();
+    assert.equal(sellerOf(nodes).status, "Enter the street address.");
+    typeAddress(nodes, { line1: " 12  Oak St ", city: "Chicago", state: "Illinois", zip: "60601" });
+    nodes.get("seller-save").fire("click");
+    await settle();
+    assert.equal(sellerOf(nodes).status, "The state is two letters, as IL.");
+    assert.deepEqual(pc.sellerSaves, []);
+
+    // saved: the server sets up her policies, and the eBay line says so while it does
+    pc.policiesAfterSave = "pending";
+    nodes.get("seller-state").value = "il";
+    nodes.get("seller-save").fire("click");
+    assert.equal(sellerOf(nodes).status, "Saving...");
+    assert.equal(nodes.get("seller-save").disabled, true, "one Save at a time");
+    await settle();
+    assert.deepEqual(pc.sellerSaves, [
+        {
+            body: { address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } },
+            auth: "key test-key-0123456789",
+            type: "application/json",
+        },
+    ]);
+    assert.deepEqual(sellerOf(nodes), {
+        toggle: "▾ Seller address",
+        open: true,
+        note: null,
+        status: "saved",
+        ebay: "eBay: connected as anna_sells; setting up your policies...",
+    });
+    assert.equal(nodes.get("seller-line1").value, "12 Oak St", "the boxes as the server keeps it");
+    assert.equal(nodes.get("seller-state").value, "IL");
+
+    // asked again every 10 s while they are pending ...
+    t.mock.timers.tick(SELLER_POLL_MS);
+    await settle();
+    assert.equal(pc.sellerAsks.length, 2);
+    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; setting up your policies...");
+    // ... and once ready, said so, and asked no more
+    pc.seller.ebay.policies = "ready";
+    t.mock.timers.tick(SELLER_POLL_MS);
+    await settle();
+    assert.equal(pc.sellerAsks.length, 3);
+    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; policies ready");
+    t.mock.timers.tick(SELLER_POLL_MS * 3);
+    await settle();
+    assert.equal(pc.sellerAsks.length, 3, "nothing more to wait for");
+
+    // Admin closed and opened again: "policies ready" was said once; folded, the address all there
+    nodes.get("admin-close").fire("click");
+    await openSettings(nodes);
+    await settle();
+    assert.deepEqual(sellerOf(nodes), {
+        toggle: "▸ Seller address",
+        open: false,
+        note: null,
+        status: "",
+        ebay: "eBay: connected as anna_sells",
+    });
+    assert.equal(nodes.get("seller-city").value, "Chicago");
+    // the toggle unfolds it
+    nodes.get("seller-toggle").fire("click");
+    assert.equal(sellerOf(nodes).open, true);
+});
+
+test("Seller address: failed policies say contact the developer; pending is asked about three minutes at most; refusals in the server's words", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const done = { ...NEW_SELLER, address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" }, complete: true };
+    const pc = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    pc.seller = structuredClone(done);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    await settle();
+    assert.equal(sellerOf(nodes).open, false, "the address all there: folded");
+    assert.equal(sellerOf(nodes).note, null);
+    nodes.get("seller-toggle").fire("click");
+    assert.equal(nodes.get("seller-zip").value, "60601");
+
+    // the policies could not be made: said, and nothing more asked
+    pc.policiesAfterSave = "failed: no return policy allowed";
+    nodes.get("seller-zip").value = "60601-1234";
+    nodes.get("seller-save").fire("click");
+    await settle();
+    assert.equal(pc.sellerSaves.at(-1).body.address.postal_code, "60601-1234");
+    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; policies failed: no return policy allowed; contact the developer");
+    const asks = pc.sellerAsks.length;
+    t.mock.timers.tick(SELLER_POLL_MS * 2);
+    await settle();
+    assert.equal(pc.sellerAsks.length, asks);
+
+    // pending that never ends: asked every 10 s, three minutes' worth, then left as it is
+    pc.policiesAfterSave = "pending";
+    nodes.get("seller-save").fire("click");
+    await settle();
+    for (let i = 0; i < SELLER_POLL_MAX + 4; i += 1) {
+        t.mock.timers.tick(SELLER_POLL_MS);
+        await settle();
+    }
+    assert.equal(pc.sellerAsks.length, asks + SELLER_POLL_MAX);
+    assert.equal(SELLER_POLL_MAX * SELLER_POLL_MS, 3 * 60 * 1000);
+    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; setting up your policies...");
+
+    // the admin: his address is in the server's .env (409); a bad field (400); no route yet (404)
+    for (const [status, detail, said] of [
+        [409, "The admin's address is in the server's .env; change it there.", "The admin's address is in the server's .env; change it there."],
+        [400, "postal_code: not a US ZIP", "postal_code: not a US ZIP"],
+        [404, "Not Found", "Saving the address is not available yet."],
+        [500, "boom", "Could not save the address: boom."],
+    ]) {
+        pc.sellerRefuse = { status, detail };
+        nodes.get("seller-save").fire("click");
+        await settle();
+        assert.equal(sellerOf(nodes).status, said, `answered ${status}`);
+    }
+});
+
+test("Seller address: no foldout from an older server, nor before an eBay is connected opens it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // an older server (its /me/seller a 404): the Account block as it was
+    const old = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
+    await openSettings(before.nodes);
+    await settle();
+    assert.equal(old.sellerAsks.length, 1);
+    assert.equal(sellerOf(before.nodes).toggle, null);
+    assert.equal(sellerOf(before.nodes).open, false);
+    assert.equal(accountOf(before.nodes).ebay, "eBay: not connected");
+
+    // no eBay yet, no address: the foldout there, folded, nothing said
+    const fresh = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    fresh.seller = { ...structuredClone(NEW_SELLER), ebay: { connected: false, user: "", policies: "none" } };
+    const page = await loadPage({ local: memoryStore(GOOD), fetchImpl: fresh.fetch });
+    await openSettings(page.nodes);
+    await settle();
+    assert.deepEqual(sellerOf(page.nodes), { toggle: "▸ Seller address", open: false, note: null, status: "", ebay: "eBay: not connected" });
+    assert.equal(page.nodes.get("account-connect").hidden, false);
+
+    // signed out: the address goes with the account
+    page.nodes.get("settings-signout").fire("click");
+    assert.equal(page.nodes.get("seller-toggle").hidden, true);
 });

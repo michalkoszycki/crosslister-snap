@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.12.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.12.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.13.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.13.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -98,11 +98,13 @@
   </section>
 
   <!-- Sign in by a link sent by email, to the product's own server; Keep me signed in keeps
-       the session on this phone, unticked for this tab only -->
+       the session on this phone, unticked for this tab only. A server open to sign-ups (GET
+       /auth/signup) has app.js say the same link makes the account, here and on the
+       landing's Sign in -->
   <section id="signin" class="landing" hidden>
     <button type="button" id="signin-back" class="link back-link">← Back</button>
     <h2 class="landing-name">Sign in</h2>
-    <p class="landing-what">We email you a link. Open it on this phone and you are in.</p>
+    <p id="signin-what" class="landing-what">We email you a link. Open it on this phone and you are in.</p>
     <label class="field">
       <span class="field-label">Email</span>
       <input id="signin-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off"
@@ -167,6 +169,39 @@
         <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
         <p id="account-ebay" class="small account-line"></p>
         <button type="button" id="account-connect" class="pill pill-small">Connect eBay</button>
+        <!-- the seller's address, under the eBay line (Michal, 2026-10-08: "What else do we need
+             for the multi tenant? Let's continue."): where her listings ship from and are picked
+             up, from GET /me/seller; it opens by itself, saying why, when eBay is connected and
+             the address is missing. An older server's 404: no foldout (app.js) -->
+        <button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"
+                aria-controls="seller" hidden>▸ Seller address</button>
+        <div id="seller" class="seller" hidden>
+          <p id="seller-note" class="small seller-note" hidden></p>
+          <label class="field field-small">
+            <span class="field-label">Street address</span>
+            <input id="seller-line1" class="small-input" type="text" autocomplete="address-line1"
+                   autocapitalize="words" spellcheck="false">
+          </label>
+          <label class="field field-small">
+            <span class="field-label">City</span>
+            <input id="seller-city" class="small-input" type="text" autocomplete="address-level2"
+                   autocapitalize="words" spellcheck="false">
+          </label>
+          <div class="seller-row">
+            <label class="field field-small">
+              <span class="field-label">State</span>
+              <input id="seller-state" class="small-input" type="text" autocomplete="address-level1"
+                     autocapitalize="characters" spellcheck="false" maxlength="2" placeholder="IL">
+            </label>
+            <label class="field field-small">
+              <span class="field-label">ZIP</span>
+              <input id="seller-zip" class="small-input" type="text" inputmode="numeric"
+                     autocomplete="postal-code" spellcheck="false" maxlength="10" placeholder="60601">
+            </label>
+          </div>
+          <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+          <p id="seller-status" class="small account-status" aria-live="polite"></p>
+        </div>
         <p id="account-status" class="small account-status" aria-live="polite"></p>
       </div>
       <p id="settings-server" class="server server-line"></p>
@@ -660,9 +695,13 @@
 </div>
 
 <footer class="small">
+  <!-- what Snap is, its privacy and its terms, a page of its own (the address eBay's developer
+       console takes as the privacy policy): under the landing and under Admin, not under the
+       posting screens (app.js) -->
+  <a id="about-link" class="about-link" href="about.html">About and privacy</a>
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.12.0"></script>
+<script type="module" src="app.js?v=2.13.0"></script>
 </body>
 </html>

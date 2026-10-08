@@ -113,12 +113,22 @@
 //   GET    <pc>/ebay/connect          -> {"url": eBay's consent page}; eBay sends the browser to the
 //                                      server, which sends it here as #ebay=connected or #ebay=failed
 //   (a server without them answers a 404: not available yet)
+// Many sellers (Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue."):
+//   GET    <pc>/auth/signup           no key, no session, on the landing -> {"open": bool}: anyone
+//                                      with an email may make an account by asking for a link
+//   GET    <pc>/me/seller             Settings opened -> {"address": {"line1", "city", "state",
+//                                      "postal_code"}, "complete": bool, "ebay": {"connected",
+//                                      "user", "policies": "ready"|"pending"|"failed: <why>"|"none"}}
+//   PATCH  <pc>/me/seller             Save address: {"address": {"line1", "city", "state",
+//                                      "postal_code"}} -> the same body; 400 names a bad field,
+//                                      409 for the admin (his address is in the server's .env)
+//   (404 from a server without them: no change to the words, no Seller address foldout)
 //
 // Every call carries the key in the X-Crosslister-Key header, or, on a phone signed in
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.12.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.13.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -448,4 +458,33 @@ export function checkout({ pc, ...auth }, pack) {
  */
 export function ebayConnect({ pc, ...auth }) {
     return call(`${pc}/ebay/connect`, auth);
+}
+
+/**
+ * Whether the product's server lets anyone with an email make an account (the landing's
+ * words). No key, no session.
+ * @param {string} pc the product's server (DEFAULT_SERVER)
+ * @returns {Promise<{open?:boolean}>}
+ */
+export function getSignup(pc) {
+    return call(`${pc}/auth/signup`, {});
+}
+
+/**
+ * The seller's address and her eBay, for Settings' Seller address.
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function getSeller({ pc, ...auth }) {
+    return call(`${pc}/me/seller`, auth);
+}
+
+/**
+ * Save address: the four fields (addressBody in core.js), answered as getSeller.
+ * @param {Settings} settings
+ * @param {{address:{line1:string, city:string, state:string, postal_code:string}}} body
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function patchSeller({ pc, ...auth }, body) {
+    return call(`${pc}/me/seller`, auth, { method: "PATCH", json: body });
 }
