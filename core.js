@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.16.0";
+import { noteDirty, unsent } from "./queue.js?v=2.16.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.16.0";
+} from "./book.js?v=2.16.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -234,6 +234,27 @@ export const LINK_SENT = "Check your email. Open the link on this device, or ent
 
 /** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
 export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
+
+/**
+ * The line under the landing's buttons while one is hovered, focused or held (Michal,
+ * 2026-10-08: "when you hover on I have a key, give a tooltip at the bottom below the
+ * buttons: key allows you to join a family account; in a similar way explain install"):
+ * what that button does, "" for no button.
+ * @param {string} which "signin", "key", "install", or ""
+ * @returns {string}
+ */
+export function landingHelp(which) {
+    switch (which) {
+        case "signin":
+            return "Sign in with your email: a link and a code are mailed to you. The first visit creates your account.";
+        case "key":
+            return "A key lets you join a family account: the person who runs the server gives it to you.";
+        case "install":
+            return "Install puts Snap on your home screen as an app: full screen, its own icon, no browser bar.";
+        default:
+            return "";
+    }
+}
 
 /** Said on the landing when the server no longer knows this phone's session (a 401). */
 export const SIGNIN_EXPIRED = "Your sign-in expired; send yourself a new link";

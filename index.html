@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.16.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.16.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.16.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.16.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -93,6 +93,10 @@
     <button type="button" id="landing-install" class="secondary landing-small" aria-expanded="false"
             aria-controls="landing-install-steps">Install</button>
     <p id="landing-install-steps" class="install-steps" hidden></p>
+    <!-- Michal, 2026-10-08: "when you hover on I have a key, give a tooltip at the bottom below
+         the buttons: key allows you to join a family account; in a similar way explain install".
+         One line under the buttons that says what the button under the finger (or pointer) does -->
+    <p id="landing-help" class="landing-help"></p>
     <p id="landing-status" class="landing-status" aria-live="polite"></p>
   </section>
 
@@ -770,6 +774,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.16.0"></script>
+<script type="module" src="app.js?v=2.16.1"></script>
 </body>
 </html>

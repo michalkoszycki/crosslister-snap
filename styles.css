@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.16.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.16.1") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1069,6 +1069,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .landing-tagline { margin: 0; font-size: 18px; font-weight: 700; color: var(--muted); }
 .landing-what { margin: 14px auto 0; max-width: 30em; font-size: 16px; }
 .secondary.landing-small { display: inline-flex; width: auto; min-width: 11em; min-height: 44px; margin: 10px 4px 0; font-size: 15px; }
+/* what the hovered, focused or held button does, under the buttons (Michal, 2026-10-08) */
+.landing-help { min-height: 2.6em; margin: 12px 2px 0; font-size: 14px; color: var(--muted); }
 .landing-status { margin: 14px 2px 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
 .landing-status:empty { display: none; }
 #signin { text-align: left; }

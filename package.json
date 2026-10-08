@@ -1,6 +1,6 @@
 {
   "name": "crosslister-snap",
-  "version": "2.16.0",
+  "version": "2.16.1",
   "private": true,
   "type": "module",
   "description": "Snap item photos on the phone; the home server lists them on eBay and Craigslist.",

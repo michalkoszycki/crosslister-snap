@@ -6455,6 +6455,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "landing-key",
         "landing-install",
         "landing-install-steps",
+        "landing-help",
         "landing-status",
         "signin",
         "signin-back",
@@ -6520,6 +6521,21 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     assert.equal(pc.checks + pc.mes + pc.calls.length, 0, "nothing to ask without a server");
     assert.deepEqual(pc.signups, [{ auth: "none", origin: SERVER }], "but the product's own, whether it takes new accounts");
     assert.equal(nodes.get("landing-signin").textContent, "Sign in", "a 404: the words as they were");
+
+    // the help line under the buttons says what the hovered, focused or held one does
+    // (Michal, 2026-10-08: "key allows you to join a family account; in a similar way explain install")
+    assert.equal(nodes.get("landing-help").textContent, "");
+    nodes.get("landing-key").fire("mouseenter");
+    assert.match(nodes.get("landing-help").textContent, /^A key lets you join a family account/);
+    nodes.get("landing-key").fire("mouseleave");
+    assert.equal(nodes.get("landing-help").textContent, "");
+    nodes.get("landing-install").fire("touchstart");
+    assert.match(nodes.get("landing-help").textContent, /^Install puts Snap on your home screen/);
+    nodes.get("landing-install").fire("touchend");
+    nodes.get("landing-signin").fire("focus");
+    assert.match(nodes.get("landing-help").textContent, /^Sign in with your email/);
+    nodes.get("landing-signin").fire("blur");
+    assert.equal(nodes.get("landing-help").textContent, "");
 
     // not on the home screen, no prompt from the browser: Install unfolds the two taps
     assert.equal(nodes.get("landing-install").hidden, false);
