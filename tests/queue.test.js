@@ -201,6 +201,30 @@ test("the same name the same day is the same item: its photos join, ours number 
     assert.deepEqual(nextTask(s), { kind: "photo", id: "p1", n: 6 }, "nothing is overwritten");
 });
 
+test("goods with no name go at once, the item asked for with a blank name; a book still waits for its", () => {
+    // Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening the app."
+    let s = reduce(initialState(""), { type: "add", id: "p1", name: "Unnamed-1.jpg", n: 1 });
+    assert.deepEqual(nextTask(s), { kind: "item", name: "" });
+    s = step(s, { item: "Unnamed 2026-10-08 1701", name: "Unnamed 2026-10-08 1701", unnamed: true }).s;
+    assert.equal(s.unnamed, true);
+    assert.deepEqual(nextTask(s), { kind: "photo", id: "p1", n: 1 });
+    const book = reduce(initialState("", "book"), { type: "add", id: "b1", name: "Book-1.jpg", n: 1 });
+    assert.equal(nextTask(book), null, "a book's folder is named by its ISBN or title");
+});
+
+test("a server that refused a blank name: the item waits for the name; a name the PC has today holds it", () => {
+    let s = reduce(initialState(""), { type: "add", id: "p1", name: "Unnamed-1.jpg", n: 1 });
+    s = step(s, { status: 400, error: "the item needs a name" }).s;
+    assert.equal(s.needsName, true);
+    assert.equal(nextTask(s), null, "nothing to send until he names it");
+    s = reduce(s, { type: "setItem", itemName: "Lamp" });
+    assert.deepEqual(nextTask(s), { kind: "item", name: "Lamp" });
+    // the name check said the PC already has a Lamp today: held until another name
+    const taken = reduce(s, { type: "nameTaken", itemName: "Lamp", photos: 3 });
+    assert.equal(nextTask(taken), null);
+    assert.deepEqual(nextTask(reduce(taken, { type: "setItem", itemName: "Lamp brass" })), { kind: "item", name: "Lamp brass" });
+});
+
 test("ebay and craigslist open when every photo is on the PC and one is marked AI", () => {
     let s = snapped(2);
     s = reduce(s, { type: "toggleAi", id: "p1" });

@@ -1,7 +1,8 @@
 // queue.js -- the upload queue: what goes to the PC next, one request at a time.
 //
 // Every photo goes to the PC right after it is taken, as the first version of
-// this page did with its cloud folder: the item folder is made on the PC with the first photo (POST /items),
+// this page did with its cloud folder: the item folder is made on the PC with the first photo (POST /items,
+// {"name": ""} for goods snapped with the name box empty: the PC names that folder itself),
 // then each photo is PUT as its own request, a photo struck out with the x is
 // DELETEd there too, and the note follows a moment after he stops typing.
 //
@@ -55,7 +56,11 @@ export function nextTask(state) {
     if (state.busy || state.stalled || !state.online) return null;
     if (!state.itemId) {
         const waiting = state.photos.some((p) => p.status === "waiting");
-        return waiting && state.itemName ? { kind: "item", name: state.itemName } : null;
+        // goods may go with no name, made unnamed (Michal, 2026-10-08), unless the server
+        // refused that (needsName); a book is named by its ISBN or title; a name the PC
+        // already has today holds the item until he types another
+        const named = !!state.itemName || (state.mode !== "book" && !state.needsName);
+        return waiting && named && !state.nameTaken ? { kind: "item", name: state.itemName } : null;
     }
     if (state.deletes.length > 0) return { kind: "delete", n: state.deletes[0] };
     const photo = state.photos.find((p) => p.status === "waiting");

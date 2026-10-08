@@ -126,6 +126,9 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
         // that toggle default off, in customization"
         "comps",
+        // Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
+        // of mine are quite dark."
+        "fix-dark",
         // Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
         // the end, in case someone wants to change something permanently"
         "customize-default",
@@ -471,6 +474,22 @@ test("no test file is left over from the OneDrive page", () => {
 
 // --- the DOM stub ----------------------------------------------------------
 
+/** RGBA pixels, `n` of them, each grey `level` (0..255), or `level(i)` for the i-th. */
+function greys(n, level) {
+    const out = [];
+    for (let i = 0; i < n; i += 1) {
+        const v = typeof level === "function" ? level(i) : level;
+        out.push(v, v, v, 255);
+    }
+    return out;
+}
+/** A well lit photo: Fix dark photos leaves it alone. */
+const BRIGHT = greys(64, (i) => 60 + i * 3);
+/** A dark one: Fix dark photos brightens it. */
+const DARK = greys(64, (i) => 5 + i);
+/** What the shrinking canvas holds (getImageData): a test darkens it and puts it back. */
+let picture = BRIGHT;
+
 function fakeElement(id = "", tag = "") {
     const classes = new Set();
     const attrs = {};
@@ -531,10 +550,20 @@ function fakeElement(id = "", tag = "") {
             if (deep) copy.children = this.children.map((k) => (typeof k === "string" ? k : k.cloneNode(true)));
             return copy;
         },
-        // canvas, for shrink.js
-        getContext: () => ({ drawImage() {} }),
+        // canvas, for shrink.js: its pixels are `picture`'s (bright unless a test darkens it),
+        // and a JPEG made after Fix dark photos wrote them back says "lit"
+        getContext() {
+            const canvas = this;
+            return {
+                drawImage() {},
+                getImageData: () => ({ data: Uint8ClampedArray.from(picture) }),
+                putImageData() {
+                    canvas.lit = true;
+                },
+            };
+        },
         toBlob(cb, type) {
-            cb(new Blob([`jpeg ${this.width}x${this.height}`], { type }));
+            cb(new Blob([`jpeg ${this.width}x${this.height}${this.lit ? " lit" : ""}`], { type }));
         },
     };
 }
@@ -896,6 +925,7 @@ function card(nodes, i) {
         li,
         x: child("kill"),
         ai: child("ai-mark"),
+        lit: child("lit-mark"),
         badge: child("badge"),
         remote: child("shot-remote"),
         img: li.children.find((c) => c.tag === "img"),
@@ -907,6 +937,11 @@ function badges(nodes) {
 }
 
 const TODAY = "2026-09-24";
+
+/** The n-th unnamed item the fake server makes: its id and its name, "Unnamed 2026-10-08 1701" first. */
+function unnamedId(n) {
+    return `Unnamed 2026-10-08 17${String(n).padStart(2, "0")}`;
+}
 
 /**
  * What is wrong with a POST /jobs body as the PC reads it, or "" when nothing:
@@ -951,6 +986,9 @@ function jobContract(body) {
  * `pc.reviews` and answers 204, or `pc.refuseReview` ({status, detail}) when set. Neither is in
  * `calls`. `pc.pending` (the server's words) answers every call but /me, /ebay/connect and the
  * sign-in lane with a 403, as a server does a sign-up waiting for eBay.
+ * 2.15.0's: POST /items keeps each body in `pc.itemBodies`; {"name": ""} makes a new unnamed folder
+ * named as the server names it, the n-th a minute after 17:00 (unnamedId), or answers 400 while
+ * `pc.namesNeeded` (a server from before).
  */
 function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {}, me = null, stats = null } = {}) {
     const pc = {
@@ -983,6 +1021,8 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         reviews: [],
         refuseReview: null,
         pending: "",
+        itemBodies: [],
+        namesNeeded: false,
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
@@ -1054,6 +1094,14 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json({ detail: pc.broke }, 402);
         }
         if (parts[0] === "items" && method === "POST") {
+            pc.itemBodies.push(body);
+            // no name (2.15.0): a new folder the server names; an older server refuses it
+            if (body.name === "") {
+                if (pc.namesNeeded) return json({ detail: "the item needs a name" }, 400);
+                const item = unnamedId(pc.itemBodies.filter((b) => b.name === "").length);
+                pc.items.set(item, { photos: new Map(), note: "", sku: null, jobs: [] });
+                return json({ item, name: item, unnamed: true, photos: [] });
+            }
             const item = `${body.name} ${TODAY}`;
             if (!pc.items.has(item)) pc.items.set(item, { photos: new Map(), note: "", sku: null, jobs: [] });
             return json({ item, photos: [...pc.items.get(item).photos.keys()].sort((a, b) => a - b) });
@@ -4267,7 +4315,9 @@ test("a fresh load is the goods screen, exactly as before", async (t) => {
     assert.equal(nodes.get("book").hidden, true);
     assert.equal(nodes.get("mode-goods").attrs["aria-pressed"], "true");
     assert.equal(nodes.get("mode-book").attrs["aria-pressed"], "false");
-    assert.equal(nodes.get("hint").textContent, "Type the item name to start snapping.");
+    // Snap from the moment the page opens (Michal, 2026-10-08): no name needed, nothing to say
+    assert.equal(nodes.get("hint").hidden, true);
+    assert.equal(nodes.get("snap-input").disabled, false);
     assert.equal(nodes.get("venue-hint").textContent, "Snap a photo first");
     assert.equal(local.getItem("snap.mode"), null, "nothing written until he chooses");
 });
@@ -5726,7 +5776,7 @@ test("a name the PC already has today is flagged after a pause and Snap waits fo
 
     // another name: free, and the strip opens
     await typeName(nodes, "Lamp brass");
-    assert.equal(nodes.get("hint").textContent, "Type the item name to start snapping.", "cleared as he types");
+    assert.equal(nodes.get("hint").hidden, true, "cleared as he types");
     assert.equal(nodes.get("item-name").classList.contains("taken"), false);
     t.mock.timers.tick(NAME_CHECK_MS);
     await settle();
@@ -8023,4 +8073,257 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     n.get("admin-close").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
+});
+// --- the optional item name (Michal, 2026-10-08) ------------------------------------------------
+
+/** The names under the photos of the goods strip. */
+function shotNames(nodes) {
+    return nodes.get("strip").children.map((li) => li.children.find((c) => c.className === "shot-name").textContent);
+}
+
+test("Snap with the name box empty: the item is made unnamed at once, and its title names it above the price and in the walk", async (t) => {
+    // Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening the
+    // app. The snap button is the important part, keep it where it is."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let drafted = false;
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        jobs: {
+            j1: () => ({
+                state: drafted ? "done" : "running",
+                step: drafted ? "posted" : "drafting the listing",
+                sku: drafted ? "B-0050" : "",
+                price: drafted ? "18.00" : "",
+                title: drafted ? "Brass Table Lamp" : "",
+                links: drafted ? { ebay: "https://www.ebay.com/itm/50" } : {},
+            }),
+        },
+    });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    const item = unnamedId(1);
+    assert.match(html, /id="item-name"[^>]*placeholder="Name \(optional\): the listing's title names it"/);
+    assert.equal(nodes.get("snap-input").disabled, false, "Snap from the first moment");
+    assert.equal(nodes.get("gallery-input").disabled, false);
+    assert.equal(nodes.get("hint").hidden, true);
+
+    snap(nodes, 2);
+    await settle();
+    assert.deepEqual(pc.itemBodies, [{ name: "" }], "the item asked for with no name");
+    assert.deepEqual(pc.calls, ["POST /items", `PUT /items/${item}/photos/1`, `PUT /items/${item}/photos/2`]);
+    assert.deepEqual(badges(nodes), ["sent", "sent"]);
+    assert.deepEqual(shotNames(nodes), ["Unnamed-1.jpg", "Unnamed-2.jpg"]);
+    assert.equal(nodes.get("item-name").readOnly, false, "open for a name the history calls it by");
+    assert.equal(nodes.get("cleaned").hidden, true);
+    assert.deepEqual(JSON.parse(local.getItem("snap.item")), { itemName: "", itemId: item, ai: [], unnamed: true, serverName: item });
+
+    // the listing: its title above the price, as for any item, once the row is drafted
+    card(nodes, 0).ai.fire("click");
+    assert.equal(nodes.get("ebay-btn").disabled, false, "no name asked for");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1] }]);
+    assert.equal(nodes.get("title-line").hidden, true, "no title before the draft");
+    drafted = true;
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("title-line").hidden, false);
+    assert.equal(nodes.get("title-line").textContent, "Brass Table Lamp");
+    assert.equal(nodes.get("price-line").textContent, "$18");
+    assert.equal(JSON.parse(local.getItem("snap.item")).title, "Brass Table Lamp");
+
+    // NEXT: the history keeps the title, so the walk never calls it "Unnamed 2026-10-08 1701"
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")), [
+        { itemName: "", itemId: item, ai: [1], unnamed: true, serverName: item, title: "Brass Table Lamp" },
+    ]);
+    // a named item next: its name goes, and fixes the box, as ever
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    assert.deepEqual(pc.itemBodies, [{ name: "" }, { name: "Vase" }]);
+    assert.equal(nodes.get("item-name").readOnly, true);
+
+    nav.back();
+    await settle();
+    assert.equal(nodes.get("message").textContent, 'Back to "Brass Table Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(nodes.get("item-name").value, "");
+    assert.equal(nodes.get("title-line").textContent, "Brass Table Lamp");
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/50");
+    assert.deepEqual(shotNames(nodes), ["Unnamed-1.jpg", "Unnamed-2.jpg"]);
+    assert.equal(card(nodes, 0).img.src, "blob:stub", "its photos fetched back");
+    nav.forward();
+    await settle();
+    assert.equal(nodes.get("item-name").value, "Vase");
+    assert.equal(nodes.get("message").textContent, 'Back on "Vase", the item you were on.');
+});
+
+test("an unnamed item survives a reload; a name typed for it is the history's; with none the walk says Unnamed and the time", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const nav = fakeHistory();
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local, nav, fetchImpl: pc.fetch });
+    const first = unnamedId(1);
+    snap(nodes, 1);
+    await settle();
+    // a name typed once the item is made: the phone's, nothing sent (the server has no rename)
+    await typeName(nodes, "Brass lamp");
+    t.mock.timers.tick(NAME_CHECK_MS);
+    await settle();
+    assert.deepEqual(pc.calls, ["POST /items", `PUT /items/${first}/photos/1`], "no rename, no name check");
+    assert.equal(JSON.parse(local.getItem("snap.item")).label, "Brass lamp");
+
+    // a reload: the item read back, its box holding the name typed for it, still open
+    const again = await loadPage({ local, nav, fetchImpl: pc.fetch });
+    const n = again.nodes;
+    assert.equal(n.get("item-name").value, "Brass lamp");
+    assert.equal(n.get("item-name").readOnly, false);
+    assert.equal(n.get("strip").children.length, 1);
+    assert.deepEqual(pc.itemBodies, [{ name: "" }], "the same item, not a new one");
+    // more photos join it, numbered on
+    snap(n, 1);
+    await settle();
+    assert.equal(pc.calls.at(-1), `PUT /items/${first}/photos/2`);
+
+    // NEXT; a second unnamed item, no name typed, numbered from 1 in its own new folder; NEXT
+    n.get("next-item").fire("click");
+    await settle();
+    snap(n, 1);
+    await settle();
+    assert.deepEqual(pc.itemBodies, [{ name: "" }, { name: "" }]);
+    assert.equal(pc.calls.at(-1), `PUT /items/${unnamedId(2)}/photos/1`);
+    n.get("next-item").fire("click");
+    await settle();
+    nav.back();
+    await settle();
+    assert.equal(n.get("message").textContent, 'Back to "Unnamed 17:02", as it was left. NEXT starts a new item.');
+    nav.back();
+    await settle();
+    assert.equal(n.get("message").textContent, 'Back to "Brass lamp", as it was left. NEXT starts a new item.');
+    assert.equal(n.get("item-name").value, "Brass lamp");
+    assert.equal(n.get("strip").children.length, 2);
+});
+
+test("an older server refuses a blank name (400): the photos wait for the name, which then goes as ever", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    pc.namesNeeded = true;
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    snap(nodes, 1);
+    await settle();
+    assert.deepEqual(pc.itemBodies, [{ name: "" }]);
+    assert.deepEqual(badges(nodes), ["waiting"]);
+    assert.equal(nodes.get("offline").hidden, true, "the server answered: nothing to retry");
+    assert.equal(nodes.get("hint").hidden, false);
+    assert.equal(nodes.get("hint").textContent, "Type the item name to start snapping.");
+    assert.equal(nodes.get("snap-input").disabled, true, "the rule from before: the name first");
+    assert.equal(nodes.get("progress").textContent, "1 photo, waiting for the item name");
+    card(nodes, 0).ai.fire("click");
+    const wait = "This server needs the item name: type it so the photos can go to the server";
+    assert.equal(nodes.get("venue-hint").textContent, wait);
+    assert.equal(nodes.get("done-hint").textContent, wait);
+    assert.equal(nodes.get("item-name").readOnly, false);
+
+    // the name typed: once he stops, the folder is made with it and the photo goes
+    await typeName(nodes, "Lamp");
+    assert.equal(pc.itemBodies.length, 1, "not on every keystroke");
+    assert.deepEqual(shotNames(nodes), ["Lamp-1.jpg"]);
+    t.mock.timers.tick(NAME_CHECK_MS);
+    await settle();
+    assert.deepEqual(pc.itemBodies, [{ name: "" }, { name: "Lamp" }]);
+    assert.equal(pc.calls.at(-1), `PUT /items/Lamp ${TODAY}/photos/1`);
+    assert.deepEqual(badges(nodes), ["sent"]);
+    assert.equal(nodes.get("ebay-btn").disabled, false);
+
+    // the next item: still a server that wants names
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("snap-input").disabled, true);
+    assert.equal(nodes.get("hint").textContent, "Type the item name to start snapping.");
+    snap(nodes, 1);
+    await settle();
+    assert.equal(nodes.get("strip").children.length, 0);
+    assert.equal(nodes.get("message").textContent, "Type the item name to start snapping.");
+    assert.equal(pc.itemBodies.length, 2, "no blank name asked for again");
+});
+
+// --- Fix dark photos (Michal, 2026-10-08) -------------------------------------------------------
+
+test("Fix dark photos: a dark photo is brightened before it goes and its lit badge compares; unticked it goes as taken; Save as default keeps it", async (t) => {
+    // Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some of
+    // mine are quite dark."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const urls = [];
+    globalThis.URL.createObjectURL = (blob) => {
+        urls.push(blob);
+        return `blob:${urls.length}`;
+    };
+    const onPc = () => pc.items.get(unnamedId(1)).photos;
+    assert.match(html, /<input id="fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<small>/);
+    assert.equal(nodes.get("fix-dark").checked, true, "on by default");
+    try {
+        picture = DARK;
+        snap(nodes, 1);
+        await settle();
+        assert.equal(onPc().get(1), "jpeg 2000x1500 lit", "the brightened one is what goes");
+        const lit = card(nodes, 0).lit;
+        assert.equal(lit.textContent, "lit");
+        assert.equal(lit.className, "lit-mark");
+        assert.equal(lit.attrs["aria-pressed"], "true");
+        assert.equal(card(nodes, 0).img.src, "blob:1");
+        assert.equal(await urls[0].text(), "jpeg 2000x1500 lit");
+        assert.equal(await urls[1].text(), "jpeg 2000x1500", "the picture as taken, kept for the look");
+        // a tap: as taken; another: brightened again; nothing goes to the server again
+        const calls = pc.calls.length;
+        lit.fire("click");
+        assert.equal(card(nodes, 0).img.src, "blob:2");
+        assert.equal(card(nodes, 0).lit.className, "lit-mark before");
+        assert.equal(card(nodes, 0).lit.attrs["aria-pressed"], "false");
+        card(nodes, 0).lit.fire("click");
+        assert.equal(card(nodes, 0).img.src, "blob:1");
+        await settle();
+        assert.equal(pc.calls.length, calls, "no new upload on the toggle");
+        assert.equal(onPc().get(1), "jpeg 2000x1500 lit", "sent brightened, it stays so");
+
+        // a well lit photo is left alone: no badge
+        picture = BRIGHT;
+        snap(nodes, 1);
+        await settle();
+        assert.equal(onPc().get(2), "jpeg 2000x1500");
+        assert.equal(card(nodes, 1).lit, undefined);
+
+        // unticked: a dark photo goes as taken
+        nodes.get("fix-dark").checked = false;
+        nodes.get("fix-dark").fire("change");
+        picture = DARK;
+        snap(nodes, 1);
+        await settle();
+        assert.equal(onPc().get(3), "jpeg 2000x1500");
+        assert.equal(card(nodes, 2).lit, undefined);
+
+        // NEXT: on again; unticked and saved as default, every new item starts off
+        nodes.get("next-item").fire("click");
+        await settle();
+        assert.equal(nodes.get("fix-dark").checked, true, "NEXT: back to the default");
+        nodes.get("fix-dark").checked = false;
+        nodes.get("fix-dark").fire("change");
+        nodes.get("customize-default").fire("click");
+        assert.equal(local.getItem("snap.photos.fixdark"), "off");
+        snap(nodes, 1);
+        await settle();
+        assert.equal(card(nodes, 0).lit, undefined);
+        nodes.get("next-item").fire("click");
+        await settle();
+        assert.equal(nodes.get("fix-dark").checked, false, "saved off: the next item starts off");
+        const again = await loadPage({ local, fetchImpl: pc.fetch });
+        assert.equal(again.nodes.get("fix-dark").checked, false, "and after a reload");
+    } finally {
+        picture = BRIGHT;
+    }
 });

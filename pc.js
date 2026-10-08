@@ -1,7 +1,10 @@
 // pc.js -- every call the page makes to the home PC (`crosslister serve`).
 //
 // The item, while the photos are taken (it is a folder in the PC's inbox):
-//   POST   <pc>/items                 {"name"} -> {"item": id, "photos": [n...]}
+//   POST   <pc>/items                 {"name"} -> {"item": id, "photos": [n...]}; {"name": ""} (goods
+//                                      snapped with the box empty, 2.15.0) -> {"item", "name":
+//                                      "Unnamed 2026-10-08 1701", "unnamed": true}, a new folder;
+//                                      an older server answers that 400, and the name is needed again
 //   PUT    <pc>/items/<id>/photos/<n>  the JPEG itself (Content-Type image/jpeg)
 //                                      -> {"item", "n", "bytes"}; a retry overwrites
 //   DELETE <pc>/items/<id>/photos/<n>  -> {"item", "n", "deleted"}; safe to repeat
@@ -38,7 +41,9 @@
 //                                       always sent, the first photo unless he moved the mark)
 //                                      The barcode picture from Scan is never uploaded.
 //                                      -> {"job": id, "state": "queued", "ahead": n}
-//   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead"}
+//   GET    <pc>/jobs/<id>             -> {"state", "step", "sku", "links", "error", "ahead", "price",
+//                                          "title"}: the row's price and title once drafted, "" before
+//                                          (the title names an unnamed item on the phone)
 //   DELETE <pc>/jobs/<id>             a paused job button's reset (any job, Admin's action
 //                                      jobs too, since 2026-10-07) -> {"job", "state": "cancelled" |
 //                                      "stopping"}: a queued job is dropped (nothing paid), the
@@ -144,7 +149,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.14.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.15.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -211,10 +216,10 @@ function itemUrl(pc, item) {
 }
 
 /**
- * Make (or find) today's item folder for this name.
+ * Make (or find) today's item folder for this name; "" makes a new unnamed one.
  * @param {Settings} settings
- * @param {string} name the cleaned item name
- * @returns {Promise<{item:string, photos:number[]}>}
+ * @param {string} name the cleaned item name, or ""
+ * @returns {Promise<{item:string, photos:number[], name?:string, unnamed?:boolean}>}
  */
 export function createItem({ pc, ...auth }, name) {
     return call(`${pc}/items`, auth, { method: "POST", json: { name } });
