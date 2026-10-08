@@ -203,6 +203,23 @@ import {
     statsQuery,
     statsTable,
     venueAllowed,
+    ARCHIVE_MISSING,
+    archiveError,
+    archivedLine,
+    feedbackWord,
+    inboxHead,
+    inboxOf,
+    inventorySku,
+    pendingLine,
+    refusalLine,
+    serverLine,
+    SIGNUP_UNFINISHED,
+    signupStep,
+    SWIPE_MAX_PX,
+    SWIPE_SHARE,
+    SWIPE_SLOP_PX,
+    swipeState,
+    UNDO_MS,
 } from "../core.js";
 import {
     bookCard,
@@ -2396,8 +2413,10 @@ test("the inventory's query: every key sent, each encoded, All as blank, the lim
     assert.equal(INVENTORY_LIMIT, 200);
     assert.equal(INVENTORY_DEBOUNCE_MS, 400);
     assert.deepEqual(INVENTORY_VENUES, ["", "ebay", "craigslist"]);
-    assert.deepEqual(INVENTORY_STATUSES, ["", "draft", "listed", "sold", "ended"]);
+    // Archived last (Michal, 2026-10-08: "swipe left or right to archive, so you no longer see it in the list")
+    assert.deepEqual(INVENTORY_STATUSES, ["", "draft", "listed", "sold", "ended", "archived"]);
     assert.equal(inventoryQuery({}), "q=&venue=&status=&limit=200&sort=age&order=desc");
+    assert.equal(inventoryQuery({ status: "archived" }), "q=&venue=&status=archived&limit=200&sort=age&order=desc");
     assert.equal(
         inventoryQuery({ q: "  blue lamp & co ", venue: "ebay", status: "sold", sort: "price-asc" }),
         "q=blue%20lamp%20%26%20co&venue=ebay&status=sold&limit=200&sort=price&order=asc"
@@ -3153,17 +3172,20 @@ test("sign-in: the email, the link's token, the session it buys, and what a fail
 test("GET /me read leniently; craigslist off only when it says so", () => {
     assert.deepEqual(meOf({ user: "michal", admin: true, craigslist: false, venues: ["ebay", 3] }), {
         user: "michal",
+        email: "",
         admin: true,
         craigslist: false,
         venues: ["ebay"],
         credits: null,
         packs: [],
         ebay: null,
+        pending: false,
+        registered: true,
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null },
-        "silent: as today"
+        { user: "", email: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true },
+        "silent: as today, an account with nothing left to sign up for"
     );
     assert.equal(meOf(null), null);
     assert.equal(venueAllowed(null, "craigslist"), true, "an older server's 404: as today");
@@ -3419,7 +3441,8 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
     };
     assert.deepEqual(statsTable(answer), {
         rows: [
-            ["jobs", "40: 31 done, 6 failed, 3 cancelled"],
+            // Michal, 2026-10-08: "I don't understand the jobs count on the stats."
+            ["Actions sent", "40: 31 done, 6 failed, 3 cancelled"],
             ["posted on eBay", "22"],
             ["posted on craigslist", "7"],
             ["drafted", "30"],
@@ -3433,7 +3456,7 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
         ],
     });
     // anything missing or odd reads as nothing, never a crash
-    assert.deepEqual(statsTable(null).rows[0], ["jobs", "0: 0 done, 0 failed, 0 cancelled"]);
+    assert.deepEqual(statsTable(null).rows[0], ["Actions sent", "0: 0 done, 0 failed, 0 cancelled"]);
     assert.deepEqual(statsTable({ jobs: { total: "x" }, per_user: "no" }).users, []);
 });
 
@@ -3461,4 +3484,109 @@ test("customize defaults: read leniently, kept without the quantity, a new item 
     // a job on its way fixes customize, defaults or not
     const sending = reduce(initialState("Vase"), { type: "jobSending", venue: "ebay" });
     assert.equal(applyDefaults(sending, saved), sending);
+});
+
+// --- 2.14.0 (Michal, 2026-10-08): See in inventory, archive by a swipe, the Feedback inbox,
+// the stats' words, the sign-up's two steps ---------------------------------------------------
+
+test("See in inventory: the row's sku once a venue has the listing up with its link; nothing before", () => {
+    const fresh = initialState("Lamp");
+    assert.equal(inventorySku(fresh), "");
+    const up = (job) => ({ ...fresh, sku: "B-0042", jobs: { ...fresh.jobs, ebay: { ...idleJob(), ...job } } });
+    assert.equal(inventorySku(up({ phase: "running", step: "drafting the listing" })), "", "still posting");
+    assert.equal(inventorySku(up({ phase: "done", link: "", held: true })), "", "saved, not posted: no listing up");
+    assert.equal(inventorySku(up({ phase: "failed", error: "no" })), "");
+    assert.equal(inventorySku(up({ phase: "done", link: "https://www.ebay.com/itm/1" })), "B-0042");
+    assert.equal(inventorySku({ ...up({ phase: "done", link: "https://www.ebay.com/itm/1" }), sku: "" }), "", "no row named");
+    // craigslist's link is as good as eBay's
+    const cl = { ...fresh, sku: "C-1", jobs: { ...fresh.jobs, craigslist: { ...idleJob(), phase: "done", link: "https://sfbay.craigslist.org/x/1.html" } } };
+    assert.equal(inventorySku(cl), "C-1");
+});
+
+test("a finger on a list row: a swipe once it goes sideways, a scroll up or down, past the mark at 40% or 120 px", () => {
+    assert.equal(SWIPE_SLOP_PX, 10);
+    assert.equal(SWIPE_SHARE, 0.4);
+    assert.equal(SWIPE_MAX_PX, 120);
+    assert.equal(UNDO_MS, 6000);
+    const start = { x: 200, y: 300 };
+    assert.deepEqual(swipeState(start, { x: 206, y: 304 }, 360), { dx: 0, decided: "none", past: false }, "not far enough to say");
+    assert.deepEqual(swipeState(start, { x: 230, y: 305 }, 360), { dx: 30, decided: "swipe", past: false });
+    assert.deepEqual(swipeState(start, { x: 205, y: 340 }, 360), { dx: 0, decided: "scroll", past: false });
+    // the row's 40% is 144 px on a 360 px row: 120 px comes first
+    assert.equal(swipeState(start, { x: 319, y: 300 }, 360).past, false);
+    assert.deepEqual(swipeState(start, { x: 320, y: 300 }, 360), { dx: 120, decided: "swipe", past: true });
+    assert.deepEqual(swipeState(start, { x: 80, y: 310 }, 360), { dx: -120, decided: "swipe", past: true }, "left as well as right");
+    // a narrow row: 40% of 200 is 80 px
+    assert.equal(swipeState(start, { x: 279, y: 300 }, 200).past, false);
+    assert.equal(swipeState(start, { x: 280, y: 300 }, 200).past, true);
+    // a width not known: 120 px
+    assert.equal(swipeState(start, { x: 319, y: 300 }, 0).past, false);
+    assert.equal(swipeState(start, { x: 320, y: 300 }, 0).past, true);
+    // the first call stands: a swipe drifting up stays a swipe, a scroll drifting sideways stays a scroll
+    assert.deepEqual(swipeState(start, { x: 330, y: 500 }, 360, "swipe"), { dx: 130, decided: "swipe", past: true });
+    assert.deepEqual(swipeState(start, { x: 400, y: 310 }, 360, "scroll"), { dx: 0, decided: "scroll", past: false });
+    assert.deepEqual(swipeState(start, { x: 202, y: 301 }, 360, "swipe"), { dx: 2, decided: "swipe", past: false }, "back near where it started");
+    // the undo bar's words, and a refusal
+    assert.equal(archivedLine("Brass desk lamp"), "Archived Brass desk lamp");
+    assert.equal(ARCHIVE_MISSING, "Archiving is not available on this server yet");
+    assert.equal(archiveError("A1", 404, "Not Found"), ARCHIVE_MISSING);
+    assert.equal(archiveError("A1", 0, "cannot reach the server"), "A1: cannot reach the server");
+    assert.equal(archiveError("A1", 400, "archived: not a boolean"), "A1: archived: not a boolean");
+});
+
+test("the Feedback inbox: its new entries read leniently, each one's first line, the count in the toggle", () => {
+    const answer = {
+        entries: [
+            {
+                id: "f9",
+                user: "anna",
+                created: "2026-10-08T14:03:00Z",
+                text: " The craigslist button is grey \n",
+                screen: "goods",
+                version: "2.13.0",
+                user_agent: "Mozilla/5.0",
+                job: { id: "j7", action: "", venue: "ebay", state: "failed", step: "", error: "eBay said no", summary: "" },
+                reviewed: false,
+            },
+            { id: "f8", user: "", created: "", text: "Hi", screen: "", job: null, reviewed: false },
+            { id: "f7", user: "wife", text: "seen", reviewed: true },
+            { user: "no id", text: "x" },
+            "junk",
+        ],
+    };
+    assert.deepEqual(inboxOf(answer), [
+        { id: "f9", user: "anna", created: "2026-10-08T14:03:00Z", text: "The craigslist button is grey", screen: "goods", error: "eBay said no" },
+        { id: "f8", user: "", created: "", text: "Hi", screen: "", error: "" },
+    ]);
+    for (const none of [null, {}, { entries: "x" }, "x"]) assert.deepEqual(inboxOf(none), [], JSON.stringify(none));
+    const [first, second] = inboxOf(answer);
+    assert.equal(inboxHead(first, 0), "anna · 2026-10-08 14:03 · goods");
+    assert.equal(inboxHead(first, -300), "anna · 2026-10-08 09:03 · goods", "in the phone's own time");
+    assert.equal(inboxHead(second, 0), "someone");
+    assert.equal(feedbackWord(3), "Feedback (3)");
+    assert.equal(feedbackWord(0), "Feedback");
+});
+
+test("a sign-up's steps from /me: Connect eBay while pending, then the address, then nothing left", () => {
+    const pending = meOf({ user: "", email: "anna@example.com", pending: true, registered: false, ebay: { connected: false } });
+    assert.equal(pending.pending, true);
+    assert.equal(pending.email, "anna@example.com");
+    assert.equal(signupStep(pending), "ebay");
+    const connected = meOf({ user: "anna", pending: false, registered: false, ebay: { connected: true, user: "anna_sells" } });
+    assert.equal(signupStep(connected), "address");
+    assert.equal(signupStep(meOf({ user: "anna", pending: false, registered: true })), "");
+    assert.equal(signupStep(meOf({ user: "michal" })), "", "a server that does not say: registered");
+    assert.equal(signupStep(meOf({ user: "", registered: false })), "", "no account to finish");
+    assert.equal(signupStep(null), "", "an older server");
+    assert.equal(pendingLine("anna@example.com"), "Signed in as anna@example.com, not registered yet");
+    assert.equal(pendingLine(""), "Signed in, not registered yet");
+    // the server's refusal while pending, said as it is wherever a refusal is said
+    assert.equal(SIGNUP_UNFINISHED, "Connect eBay to finish signing up.");
+    assert.equal(errorText(403, SIGNUP_UNFINISHED), SIGNUP_UNFINISHED);
+    assert.equal(refusalLine("Could not read the inventory", 403, SIGNUP_UNFINISHED), SIGNUP_UNFINISHED);
+    assert.equal(refusalLine("Could not read the inventory", 0, "cannot reach the server"), "Could not read the inventory: cannot reach the server.");
+    assert.equal(refusalLine("Not sent", 403, "admins only"), "Not sent: admins only.");
+    // the server answered, refusing: it is there
+    assert.deepEqual(serverLine(true, 403), { text: "server ok", kind: "ok" });
+    assert.deepEqual(serverLine(true, 0), { text: "server off", kind: "bad" });
 });

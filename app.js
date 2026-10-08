@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.13.0";
+import { VERSION } from "./version.js?v=2.14.0";
 import {
     anyActive,
     bannerText,
@@ -170,10 +170,22 @@ import {
     defaultsOf,
     conditionChoices,
     conditionRefused,
-} from "./core.js?v=2.13.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.13.0";
+    inventorySku,
+    UNDO_MS,
+    archiveError,
+    archivedLine,
+    swipeState,
+    feedbackWord,
+    inboxHead,
+    inboxOf,
+    pendingLine,
+    refusalLine,
+    signupStep,
+} from "./core.js?v=2.14.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.14.0";
 import {
     addVenue,
+    archiveRow,
     askLink,
     cancelJob,
     checkout,
@@ -184,6 +196,7 @@ import {
     endSession,
     getBook,
     getConditions,
+    getFeedbackInbox,
     getInventory,
     getItem,
     getJob,
@@ -201,10 +214,11 @@ import {
     postJob,
     putNote,
     putPhoto,
+    reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.13.0";
-import { shrinkPhoto } from "./shrink.js?v=2.13.0";
+} from "./pc.js?v=2.14.0";
+import { shrinkPhoto } from "./shrink.js?v=2.14.0";
 import {
     bookCard,
     bookPriceValue,
@@ -217,8 +231,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.13.0";
-import { canScan, readIsbn } from "./scan.js?v=2.13.0";
+} from "./book.js?v=2.14.0";
+import { canScan, readIsbn } from "./scan.js?v=2.14.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -347,6 +361,11 @@ let lastJob = "";
 const visit = { from: "goods", sawCard: false };
 /** Admin's Feedback and Stats foldouts, open or folded; the Stats chip; Stats asked, per ask. */
 const extras = { feedback: false, stats: false, since: DEFAULT_STATS_SINCE, asked: 0, refused: false };
+/**
+ * The admin's Feedback inbox (GET /feedback?new=1): its new entries (inboxOf), the ids whose
+ * Reviewed is on its way, asked per ask, and refused for good (403, or an older server's 404).
+ */
+const inbox = { entries: [], busy: new Set(), asked: 0, refused: false };
 
 /**
  * The status bar's colours as index.html gives them, read before a chosen look first
@@ -398,6 +417,13 @@ const admin = {
 };
 /** The inventory's search box asks the PC once he stops typing. */
 let searchTimer = null;
+/**
+ * A finger on a list row (the swipe that archives it): its sku, its pointer, where it went
+ * down, swipeState's call so far and where it is; null when none is.
+ */
+let swipe = null;
+/** The row last swiped off the list, while the undo bar offers it back, and the bar's timer. */
+const undo = { entry: null, timer: null };
 
 /** The sync bar, an Admin job task as a card is (jobTask); its action the direction last pressed ("from" | "to"). */
 const sync = jobTask();
@@ -582,11 +608,15 @@ function render() {
     const words = signinWords(signup.open);
     el.landingSignin.textContent = words.button;
     el.signinWhat.textContent = words.what;
+    // a sign-up not finished (GET /me): its two steps in place of the posting screens
+    const signing = !out && !!signupStep(me);
+    el.signupSteps.hidden = !signing || away;
+    renderSignup();
     // About and privacy under the landing and Admin; the posting screens keep their foot clear
-    el.aboutLink.hidden = !out && !away;
-    el.modes.hidden = out || away;
-    el.work.hidden = out || away || mode !== "goods";
-    el.book.hidden = out || away || mode !== "book";
+    el.aboutLink.hidden = !out && !away && !signing;
+    el.modes.hidden = out || away || signing;
+    el.work.hidden = out || away || signing || mode !== "goods";
+    el.book.hidden = out || away || signing || mode !== "book";
     renderInstall(out || away);
 
     renderGoods();
@@ -630,6 +660,7 @@ function renderGoods() {
     // the row's price, above both buttons: one job's answer serves the other too
     renderPriceLine(el.titleLine, titleLine(state));
     renderPriceLine(el.priceLine, priceLine(state));
+    el.seeInventory.hidden = !inventorySku(state);
     let hint = "";
     for (const venue of VENUES) {
         // painted first, then its hint taken: ||= alone would skip painting the second button
@@ -741,6 +772,7 @@ function renderBook() {
     // the price is typed on the page: above the button from the press, until the PC says its own
     renderPriceLine(el.bookTitleLine, titleLine(state));
     renderPriceLine(el.bookPriceLine, priceLine(state, bookPriceValue(book.price)));
+    el.bookSeeInventory.hidden = !inventorySku(state);
     const venueHint = renderVenue("book", "ebay", !!settings(), {
         btn: el.bookEbayBtn,
         reset: el.bookEbayReset,
@@ -1763,9 +1795,13 @@ function adminShown(open) {
  * Admin opens on Settings while they are missing or wrong, and otherwise on the
  * inventory, asked afresh, or on the listing left open there (Michal, 2026-10-07:
  * "When I press admin I want to land on this same page tho as if the open card
- * was there all along"). Closed, it lets go of the photos it fetched.
+ * was there all along"), or on the listing `card` names (See in inventory). A sign-up not
+ * finished opens on Settings, where its Account block is: the inventory would be refused.
+ * Closed, it lets go of the photos it fetched.
+ * @param {boolean} open
+ * @param {string} [card] a listing's sku to land on
  */
-function showAdmin(open) {
+function showAdmin(open, card = "") {
     // Feedback says where he came from: the posting screen behind Admin, or none (the landing)
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
@@ -1778,15 +1814,19 @@ function showAdmin(open) {
         clearTimeout(searchTimer);
         searchTimer = null;
         admin.asked += 1;
+        dropSwipe();
+        dropUndo();
         showList();
         dropThumbs();
         return;
     }
     const ok = !!settings();
-    showSettings(!ok);
-    const sku = ok ? readText("localStorage", CARD_KEY) : "";
+    const signing = ok && !!signupStep(me);
+    showSettings(!ok || signing);
+    loadInbox().catch(() => {});
+    const sku = ok && !signing ? card || readText("localStorage", CARD_KEY) : "";
     if (!sku) {
-        showInventory(ok);
+        showInventory(ok && !signing);
         return;
     }
     admin.inventoryOpen = true;
@@ -1870,6 +1910,8 @@ function renderFilters() {
     for (const { value, node } of el.inventoryVenues) node.setAttribute("aria-pressed", value === admin.venue ? "true" : "false");
     for (const { value, node } of el.inventoryStates) node.setAttribute("aria-pressed", value === admin.status ? "true" : "false");
     for (const { value, node } of el.inventorySorts) node.setAttribute("aria-pressed", value === admin.sort ? "true" : "false");
+    // archiving hides a row; it ends no listing: said once, under the chip that lists them
+    el.inventoryArchivedNote.hidden = admin.status !== "archived";
 }
 
 /**
@@ -1900,7 +1942,7 @@ async function loadInventory(lead = "") {
     } catch (e) {
         if (mine !== admin.asked) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.inventoryStatus.textContent = [lead, `Could not read the inventory: ${e.message}.`].filter(Boolean).join(" ");
+        el.inventoryStatus.textContent = [lead, refusalLine("Could not read the inventory", e.status, e.message)].filter(Boolean).join(" ");
         // a key the PC does not know: Settings is where it is put right (a session it no
         // longer knows took the page back to the landing already: heard)
         if (e.status === 401 && settings()) showSettings(true);
@@ -1914,9 +1956,10 @@ async function loadInventory(lead = "") {
     if (el.inventoryPhotos.checked) fetchThumbs(pc, mine).catch(() => {});
 }
 
-/** The list: one row per listing, with photo 1's tile on its left while Show photos is on. */
+/** The list: one row per listing, with photo 1's tile on its left while Show photos is on; a swipe under way is let go. */
 function renderRows() {
     dropThumbs();
+    dropSwipe();
     admin.parts.clear();
     const photos = !!el.inventoryPhotos.checked;
     el.inventoryList.replaceChildren(...admin.rows.map((row) => rowNode(row, photos)));
@@ -1946,14 +1989,17 @@ function linkNode(url, className, word) {
  */
 function rowNode(row, photos) {
     const li = document.createElement("li");
-    li.className = "inv-row";
+    li.className = "inv-item";
+    // the row itself, over the grey Archive panel a swipe uncovers
+    const card = document.createElement("div");
+    card.className = "inv-row";
     if (photos) {
         // a blank tile until photo 1 comes (fetchThumbs), or for a row with none
         const tile = document.createElement("span");
         tile.className = "inv-thumb";
         tile.textContent = Number(row.photos) > 0 ? "" : "no photo";
         admin.tiles.set(row.sku, tile);
-        li.append(tile);
+        card.append(tile);
     }
     const words = document.createElement("div");
     words.className = "inv-words";
@@ -1969,18 +2015,40 @@ function rowNode(row, photos) {
     const badges = document.createElement("span");
     badges.className = "inv-badges";
     words.append(open, badges);
+    // a row the Archived chip lists comes back with Unarchive, in place of the swipe
+    const unarchive =
+        admin.status === "archived"
+            ? actionButton("Unarchive", "pill pill-small inv-unarchive", false, () => {
+                  unarchiveRow(row.sku).catch(() => {});
+              })
+            : null;
+    if (unarchive) words.append(unarchive);
     const steps = document.createElement("div");
     steps.className = "inv-steps";
     const up = dialButton(row.sku, 1, "+", "price up");
     const down = dialButton(row.sku, -1, "−", "price down");
     steps.append(up, down);
-    li.append(words, steps);
+    card.append(words, steps);
+    if (unarchive) li.append(card);
+    else {
+        const panel = document.createElement("span");
+        panel.className = "inv-archive";
+        panel.setAttribute("aria-hidden", "true");
+        panel.textContent = "Archive";
+        li.append(panel, card);
+    }
     // the row as the PC last gave it: a dial's PATCH puts its answer here; `shown`, the
-    // price a dial is at (held, or its PATCH on its way), null otherwise
-    const parts = { row, line, badges, up, down, shown: null };
+    // price a dial is at (held, or its PATCH on its way), null otherwise; `swiped`, a finger
+    // moved on it since it went down, so the click it may end with opens nothing
+    const parts = { row, li, card, line, badges, up, down, unarchive, shown: null, swiped: false };
     open.addEventListener("click", () => {
+        if (parts.swiped) {
+            parts.swiped = false;
+            return;
+        }
         openRow(parts.row, open).catch(() => {});
     });
+    if (!unarchive) swipeable(row.sku, open);
     admin.parts.set(row.sku, parts);
     paintTile(row.sku);
     return li;
@@ -2016,6 +2084,7 @@ function paintTile(sku) {
     const held = !!dial && dial.sku === sku;
     parts.up.disabled = busy;
     parts.down.disabled = busy || (!held && dialPrice(row.price, -1, 1) >= (Number(row.price) || 0));
+    if (parts.unarchive) parts.unarchive.disabled = busy;
 }
 
 /** A row's job task on the list, made the first time it is asked for. */
@@ -2165,6 +2234,199 @@ async function sendPrice(sku, price) {
     }
     el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
     paintTile(sku);
+}
+
+// --- a row swiped off the list: archived -----------------------------------------------------
+//
+// Michal, 2026-10-08: "Inventory list should have swipe left or right to archive, so you no
+// longer see it in the list, kind of like what the Gmail app has on the phone." The row's own
+// button (it reaches over the whole row) takes the finger: the row follows it sideways over a
+// grey Archive panel, and past swipeState's mark, lifted, it slides out and is archived
+// (PATCH {"archived": true}); short of it, or once the finger goes up or down the page, it
+// slides back. The + and −, the badges and Unarchive sit above the button, so a press on them
+// never starts a swipe. Archiving hides a row; it ends no listing. An undo bar under the list
+// offers it back for UNDO_MS.
+
+/** A row's button made the swipe's: pointer events (a touch's come as pointers too). */
+function swipeable(sku, open) {
+    open.addEventListener("pointerdown", (e) => startSwipe(sku, open, e));
+    open.addEventListener("pointermove", (e) => moveSwipe(sku, e));
+    open.addEventListener("pointerup", (e) => endSwipe(sku, e));
+    open.addEventListener("pointercancel", () => {
+        if (swipe && swipe.sku === sku) dropSwipe();
+    });
+}
+
+/** A finger down on a row: followed from here, unless the row is busy or the list is not the live one. */
+function startSwipe(sku, open, e) {
+    const parts = admin.parts.get(sku);
+    if (!parts) return;
+    parts.swiped = false;
+    if (swipe || !settings() || rowTaskBusy(rowTask(sku))) return;
+    swipe = { sku, id: e.pointerId, start: { x: e.clientX, y: e.clientY }, decided: "none", dx: 0, past: false };
+    // the finger's moves stay the row's even once it is past the row's edge
+    if (typeof open.setPointerCapture === "function") {
+        try {
+            open.setPointerCapture(e.pointerId);
+        } catch {
+            /* a pointer already gone: its up or cancel ends the swipe all the same */
+        }
+    }
+}
+
+/** The finger moving: the row follows it sideways, or, gone up or down the page, lets it scroll. */
+function moveSwipe(sku, e) {
+    if (!swipe || swipe.sku !== sku || e.pointerId !== swipe.id) return;
+    const parts = admin.parts.get(sku);
+    if (!parts) return;
+    const now = swipeState(swipe.start, { x: e.clientX, y: e.clientY }, parts.card.offsetWidth || 0, swipe.decided);
+    swipe.decided = now.decided;
+    if (now.decided === "none") return;
+    parts.swiped = true;
+    if (now.decided === "scroll") {
+        dropSwipe();
+        return;
+    }
+    swipe.dx = now.dx;
+    swipe.past = now.past;
+    slideRow(parts, now.dx);
+}
+
+/** The finger lifted: past the mark the row is archived, short of it it slides back. */
+function endSwipe(sku, e) {
+    if (!swipe || swipe.sku !== sku || e.pointerId !== swipe.id) return;
+    const { past, dx } = swipe;
+    swipe = null;
+    if (past) archiveSwiped(sku, dx > 0 ? 1 : -1).catch(() => {});
+    else {
+        const parts = admin.parts.get(sku);
+        if (parts) slideRow(parts, 0);
+    }
+}
+
+/** No swipe any more (a scroll, a cancel, Admin closed): its row back in its place. */
+function dropSwipe() {
+    if (!swipe) return;
+    const parts = admin.parts.get(swipe.sku);
+    swipe = null;
+    if (parts) slideRow(parts, 0);
+}
+
+/** The row `dx` px aside, the Archive panel showing on the side it uncovers; 0 is back in place. */
+function slideRow(parts, dx) {
+    parts.li.classList.toggle("swiping", dx !== 0);
+    parts.li.classList.toggle("toward-right", dx > 0);
+    parts.card.style.transform = dx ? `translateX(${dx}px)` : "";
+}
+
+/** The list's rows on screen as admin.rows has them, each the row node it already has. */
+function showRows() {
+    el.inventoryList.replaceChildren(...admin.rows.map((r) => admin.parts.get(r.sku)).filter(Boolean).map((p) => p.li));
+}
+
+/**
+ * A row swiped past the mark: it slides out toward `direction` (1 right, -1 left), the PATCH
+ * goes, and once the server has it the row leaves the list and the undo bar offers it back. A
+ * server without archiving (404) says so; any refusal puts the row back where it was.
+ * @param {string} sku
+ * @param {1|-1} direction
+ */
+async function archiveSwiped(sku, direction) {
+    const parts = admin.parts.get(sku);
+    const task = rowTask(sku);
+    const pc = settings();
+    if (!parts || !pc) return;
+    task.wait = "archiving";
+    slideRow(parts, 0);
+    parts.li.classList.add("leaving");
+    parts.li.classList.toggle("toward-right", direction > 0);
+    parts.card.style.transform = `translateX(${direction * 110}%)`;
+    paintTile(sku);
+    try {
+        await archiveRow(pc, sku, true);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        task.wait = "";
+        el.inventoryStatus.textContent = archiveError(sku, e.status, e.message);
+        parts.li.classList.remove("leaving");
+        slideRow(parts, 0);
+        paintTile(sku);
+        return;
+    }
+    heard(200);
+    task.wait = "";
+    const at = admin.rows.findIndex((r) => r.sku === sku);
+    admin.rows = admin.rows.filter((r) => r.sku !== sku);
+    showRows();
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    offerUndo({ sku, row: parts.row, at, parts });
+}
+
+/** The undo bar under the list, for UNDO_MS: "Archived <title>" and Undo. A newer archive takes its place. */
+function offerUndo(entry) {
+    clearTimeout(undo.timer);
+    undo.entry = entry;
+    el.inventoryUndoText.textContent = archivedLine(rowTitle(entry.row));
+    el.inventoryUndo.hidden = false;
+    undo.timer = setTimeout(dropUndo, UNDO_MS);
+}
+
+function dropUndo() {
+    clearTimeout(undo.timer);
+    undo.timer = null;
+    undo.entry = null;
+    el.inventoryUndo.hidden = true;
+}
+
+/**
+ * Undo: the row archived last is unarchived (PATCH {"archived": false}) and back in its place
+ * on the list it left; the list asked for again when that list is no longer the one shown.
+ */
+async function undoArchive() {
+    const entry = undo.entry;
+    const pc = settings();
+    if (!entry || !pc) return;
+    dropUndo();
+    try {
+        await archiveRow(pc, entry.sku, false);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.inventoryStatus.textContent = archiveError(entry.sku, e.status, e.message);
+        return;
+    }
+    heard(200);
+    if (admin.parts.get(entry.sku) !== entry.parts || admin.rows.some((r) => r.sku === entry.sku)) {
+        loadInventory().catch(() => {});
+        return;
+    }
+    entry.parts.li.classList.remove("leaving");
+    slideRow(entry.parts, 0);
+    admin.rows.splice(Math.max(0, Math.min(entry.at, admin.rows.length)), 0, entry.row);
+    showRows();
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+}
+
+/** Unarchive, on a row the Archived chip lists: back on the lists, and off this one. */
+async function unarchiveRow(sku) {
+    const task = rowTask(sku);
+    const pc = settings();
+    if (!pc || rowTaskBusy(task)) return;
+    task.wait = "archiving";
+    paintTile(sku);
+    try {
+        await archiveRow(pc, sku, false);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        task.wait = "";
+        el.inventoryStatus.textContent = archiveError(sku, e.status, e.message);
+        paintTile(sku);
+        return;
+    }
+    heard(200);
+    task.wait = "";
+    admin.rows = admin.rows.filter((r) => r.sku !== sku);
+    showRows();
+    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
 }
 
 /**
@@ -2401,7 +2663,7 @@ async function openRow(row, from) {
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
-        const said = `Could not read ${row.sku}: ${e.message}.`;
+        const said = refusalLine(`Could not read ${row.sku}`, e.status, e.message);
         if (!from && e.status === 404) {
             removeText("localStorage", CARD_KEY);
             showList();
@@ -3301,7 +3563,7 @@ async function askJob(c, mine, paint) {
         whole = await getRow(pc, admin.row.sku);
     } catch (e) {
         if (mine !== admin.shown) return;
-        detailLine(`Could not read ${admin.row.sku}: ${e.message}.`);
+        detailLine(refusalLine(`Could not read ${admin.row.sku}`, e.status, e.message));
         renderCards();
         return;
     }
@@ -3416,7 +3678,10 @@ function renderExtras() {
     const card = !el.inventoryDetail.hidden;
     el.feedbackToggle.hidden = card;
     el.feedback.hidden = card || !extras.feedback;
-    fold(el.feedbackToggle, "Feedback", extras.feedback);
+    // an admin's new entries, counted in the toggle and listed above the box
+    const entries = me && me.admin ? inbox.entries : [];
+    fold(el.feedbackToggle, feedbackWord(entries.length), extras.feedback);
+    el.feedbackInbox.hidden = !entries.length;
     const stats = !card && !!me && me.admin && !extras.refused;
     el.statsToggle.hidden = !stats;
     el.stats.hidden = !stats || !extras.stats;
@@ -3469,9 +3734,82 @@ async function sendFeedback() {
         el.feedbackStatus.textContent = FEEDBACK_SENT;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.feedbackStatus.textContent = `Not sent: ${e.message}.`;
+        el.feedbackStatus.textContent = refusalLine("Not sent", e.status, e.message);
     } finally {
         el.feedbackSend.disabled = false;
+    }
+}
+
+/**
+ * The admin's Feedback inbox (Michal, 2026-10-08), asked as Admin opens, as /me says he is an
+ * admin, and as the foldout opens: the new entries, newest first. A 403 or an older server's
+ * 404 leaves Feedback as everyone else has it; no answer keeps what it had.
+ */
+async function loadInbox() {
+    const pc = settings();
+    if (!pc || !me || !me.admin || inbox.refused) return;
+    inbox.asked += 1;
+    const mine = inbox.asked;
+    let answer;
+    try {
+        answer = await getFeedbackInbox(pc);
+    } catch (e) {
+        if (mine !== inbox.asked) return;
+        if (e.status === 403 || e.status === 404) {
+            inbox.refused = true;
+            inbox.entries = [];
+            renderExtras();
+        }
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        return;
+    }
+    if (mine !== inbox.asked) return;
+    heard(200);
+    inbox.entries = inboxOf(answer);
+    renderInbox();
+}
+
+/** Each new entry: who, when, from where, the words, its job's error if it failed, and Reviewed. */
+function renderInbox() {
+    el.feedbackInbox.replaceChildren(
+        ...inbox.entries.map((entry) => {
+            const box = document.createElement("div");
+            box.className = "inbox-entry";
+            const line = (className, text) => {
+                const p = document.createElement("p");
+                p.className = className;
+                p.textContent = text;
+                return p;
+            };
+            box.append(line("inbox-head", inboxHead(entry)), line("inbox-text", entry.text));
+            if (entry.error) box.append(line("inbox-error", `Job error: ${entry.error}`));
+            box.append(
+                actionButton("Reviewed", "pill pill-small", inbox.busy.has(entry.id), () => {
+                    reviewEntry(entry.id).catch(() => {});
+                })
+            );
+            return box;
+        })
+    );
+    renderExtras();
+}
+
+/** Reviewed: PATCH /feedback/<id> {"reviewed": true}, and the entry leaves the inbox; refused, it stays and the line says why. */
+async function reviewEntry(id) {
+    const pc = settings();
+    if (!pc || inbox.busy.has(id)) return;
+    inbox.busy.add(id);
+    renderInbox();
+    try {
+        await reviewFeedback(pc, id);
+        heard(200);
+        inbox.entries = inbox.entries.filter((e) => e.id !== id);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.feedbackStatus.textContent = refusalLine("Not marked reviewed", e.status, e.message);
+    } finally {
+        inbox.busy.delete(id);
+        renderInbox();
     }
 }
 
@@ -3506,7 +3844,7 @@ async function loadStats() {
     const figures = document.createElement("table");
     for (const [label, value] of rows) figures.append(tableRow("th", [label], value));
     const people = document.createElement("table");
-    people.append(tableRow("th", ["user", "jobs", "posted", "cost"]));
+    people.append(tableRow("th", ["user", "actions", "posted", "cost"]));
     for (const [name, ...rest] of users) people.append(tableRow("td", [name, ...rest]));
     el.statsTable.replaceChildren(figures, ...(users.length ? [people] : []));
 }
@@ -3687,7 +4025,9 @@ async function loadMe() {
     const pc = settings();
     if (!pc) return;
     meAsked = true;
-    extras.refused = false; // another account may be allowed Stats
+    // another account may be allowed Stats and the Feedback inbox
+    extras.refused = false;
+    inbox.refused = false;
     try {
         me = meOf(await getMe(pc));
     } catch (e) {
@@ -3695,14 +4035,42 @@ async function loadMe() {
         if (e.status === 401) heard(401);
     }
     renderMe();
+    if (!el.admin.hidden) loadInbox().catch(() => {});
 }
 
-/** What /me changes on screen: the craigslist button, an empty craigslist card, Stats, the Account block. */
+/**
+ * What /me changes on screen: the craigslist button, an empty craigslist card, Stats, the
+ * Account block, and a sign-up's steps in place of the posting screens.
+ */
 function renderMe() {
     render();
     renderExtras();
     renderAccount();
     if (admin.row) renderCards();
+}
+
+/**
+ * Finish signing up (Michal, 2026-10-08), while /me says the sign-up is not done: step 1,
+ * Connect eBay, until eBay made the account a real one (then ticked, its button gone); step
+ * 2, the address, greyed until then. Its line is the Account block's (Connect eBay's way out
+ * and what went wrong, a 503's words among them).
+ */
+function renderSignup() {
+    const step = settings() ? signupStep(me) : "";
+    const connected = step === "address";
+    el.signupStepEbay.classList.toggle("done", connected);
+    el.signupConnect.hidden = connected;
+    el.signupConnect.disabled = account.busy;
+    el.signupStepAddress.classList.toggle("off", !connected);
+    el.signupAddress.disabled = !connected;
+    el.signupStatus.textContent = step ? account.status : "";
+}
+
+/** Settings' Seller address unfolded, its note saying why: step 2 of a sign-up. */
+function openSeller() {
+    seller.open = true;
+    renderAccount();
+    if (typeof el.sellerToggle.scrollIntoView === "function") el.sellerToggle.scrollIntoView({ block: "start" });
 }
 
 // --- Settings' Account block: postings, Buy postings, Connect eBay --------------------------
@@ -3720,7 +4088,7 @@ function renderAccount() {
     const packs = me ? me.packs : [];
     // an unlimited key has nothing to buy
     const canBuy = packs.length > 0 && !(credits && credits.unlimited);
-    const user = me ? userLine(me.user, !!(s && s.session)) : "";
+    const user = !me ? "" : me.pending ? pendingLine(me.email) : userLine(me.user, !!(s && s.session));
     const left = creditsLine(credits);
     // the seller's answer is the newer word on her eBay (its policies follow a Save)
     const ebayNow = (seller.info && seller.info.ebay) || (me ? me.ebay : null);
@@ -3753,6 +4121,7 @@ function renderAccount() {
     el.accountConnect.disabled = account.busy;
     renderSeller();
     el.accountStatus.textContent = account.status;
+    renderSignup();
 }
 
 // --- the seller's address, under the eBay line --------------------------------------------
@@ -3853,6 +4222,8 @@ async function saveSeller() {
             seller.ready = policies === "ready";
             if (policies === "pending") pollSeller(true);
         }
+        // a sign-up's last step: the address in, /me says registered, and the goods screen is his
+        if (signupStep(me) === "address") loadMe().catch(() => {});
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         if (mine === seller.asked) seller.status = sellerError(e.status, e.message);
@@ -3963,7 +4334,12 @@ async function leaveFor(what, meanwhile, ask) {
 function cameBack(back) {
     account.status = returnLine(back);
     openAccount(false);
-    loadMe().catch(() => {});
+    loadMe()
+        .then(() => {
+            // a sign-up's eBay connected: the account is real now, and the address is next
+            if (back.kind === "ebay" && signupStep(me) === "address" && !el.admin.hidden) openSeller();
+        })
+        .catch(() => {});
 }
 
 /**
@@ -4184,7 +4560,10 @@ async function checkServer() {
         }
         if (stalled) pump();
     } catch (e) {
-        heard(e instanceof PcError ? e.status : 0);
+        const status = e instanceof PcError ? e.status : 0;
+        heard(status);
+        // a sign-up not finished is refused all but /me, which says what is left to do
+        if (status === 403 && !meAsked) loadMe().catch(() => {});
     } finally {
         checking = false;
         scheduleHealth();
@@ -4220,7 +4599,7 @@ async function saveSettings() {
         loadSeller().catch(() => {});
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
-        el.settingsStatus.textContent = `Saved, but: ${e.message}.`;
+        el.settingsStatus.textContent = refusalLine("Saved, but", e.status, e.message);
     }
     scheduleHealth();
     // photos taken before the settings were right go now
@@ -4535,6 +4914,12 @@ function main() {
         signinSend: $("signin-send"),
         signinStatus: $("signin-status"),
         signinWhat: $("signin-what"),
+        signupSteps: $("signup-steps"),
+        signupStepEbay: $("signup-step-ebay"),
+        signupConnect: $("signup-connect"),
+        signupStepAddress: $("signup-step-address"),
+        signupAddress: $("signup-address"),
+        signupStatus: $("signup-status"),
         sellerToggle: $("seller-toggle"),
         seller: $("seller"),
         sellerNote: $("seller-note"),
@@ -4551,6 +4936,7 @@ function main() {
         installSteps: $("install-steps"),
         feedbackToggle: $("feedback-toggle"),
         feedback: $("feedback"),
+        feedbackInbox: $("feedback-inbox"),
         feedbackText: $("feedback-text"),
         feedbackJob: $("feedback-job"),
         feedbackSend: $("feedback-send"),
@@ -4572,9 +4958,13 @@ function main() {
         options: $("options"),
         inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
         inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
+        inventoryArchivedNote: $("inventory-archived-note"),
         inventoryPhotos: $("inventory-photos"),
         inventorySorts: INVENTORY_SORTS.map(({ key }) => ({ value: key, node: $(`inventory-sort-${key}`) })),
         inventoryList: $("inventory-list"),
+        inventoryUndo: $("inventory-undo"),
+        inventoryUndoText: $("inventory-undo-text"),
+        inventoryUndoBtn: $("inventory-undo-btn"),
         inventoryDetail: $("inventory-detail"),
         inventoryBack: $("inventory-back"),
         detailHeading: $("detail-heading"),
@@ -4624,6 +5014,7 @@ function main() {
         noteStatus: $("note-status"),
         titleLine: $("title-line"),
         priceLine: $("price-line"),
+        seeInventory: $("see-inventory"),
         ebayBtn: $("ebay-btn"),
         ebayReset: $("ebay-reset"),
         ebayStatus: $("ebay-status"),
@@ -4691,6 +5082,7 @@ function main() {
         bookCustomizeDefaultStatus: $("book-customize-default-status"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
+        bookSeeInventory: $("book-see-inventory"),
         bookEbayBtn: $("book-ebay-btn"),
         bookEbayReset: $("book-ebay-reset"),
         bookEbayStatus: $("book-ebay-status"),
@@ -4776,9 +5168,26 @@ function main() {
     });
     // a venue button refused for want of postings: its Buy postings opens the Account block
     for (const node of [el.ebayBuy, el.craigslistBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
+    // See in inventory: Admin on the listing the item became, as its row's tap opens it
+    for (const [m, node] of [["goods", el.seeInventory], ["book", el.bookSeeInventory]]) {
+        node.addEventListener("click", () => {
+            const sku = inventorySku(slots[m]);
+            if (sku) showAdmin(true, sku);
+        });
+    }
+    // Finish signing up: Connect eBay, as the Account block's; then the address, in Settings
+    el.signupConnect.addEventListener("click", () => {
+        connectEbay().catch(() => {});
+    });
+    el.signupAddress.addEventListener("click", () => {
+        openAccount(false);
+        openSeller();
+    });
     el.feedbackToggle.addEventListener("click", () => {
         extras.feedback = !extras.feedback;
         renderExtras();
+        // an admin's inbox, asked afresh as it opens
+        if (extras.feedback) loadInbox().catch(() => {});
     });
     el.feedbackSend.addEventListener("click", () => {
         sendFeedback().catch(() => {});
@@ -4815,12 +5224,17 @@ function main() {
     });
     showOptions(readText("localStorage", OPTIONS_KEY) === "open");
     el.optionsToggle.addEventListener("click", toggleOptions);
-    // a finger lifted anywhere ends a dial too: its button may have been redrawn under it
+    // a finger lifted anywhere ends a dial too: its button may have been redrawn under it; and
+    // a swipe its row did not hear end (no pointer capture) slides back
     for (const type of ["pointerup", "pointercancel"]) {
         window.addEventListener(type, () => {
             if (dial) endDial(dial.sku);
+            dropSwipe();
         });
     }
+    el.inventoryUndoBtn.addEventListener("click", () => {
+        undoArchive().catch(() => {});
+    });
     for (const { value, node } of el.inventoryVenues) node.addEventListener("click", () => onFilter("venue", value));
     for (const { value, node } of el.inventoryStates) node.addEventListener("click", () => onFilter("status", value));
     for (const { value, node } of el.inventorySorts) node.addEventListener("click", () => onFilter("sort", value));

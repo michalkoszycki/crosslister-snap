@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { ADDRESS_NEEDED, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS } from "../core.js";
+import { ADDRESS_NEEDED, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -133,6 +133,8 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
         "title-line",
         "price-line",
+        // Michal, 2026-10-08: "After something is posted you should see 'see in inventory' below the price."
+        "see-inventory",
         // Michal, 2026-10-07: no red cancel under a pressed button any more ("The button,
         // within it, should just get 'tap again to cancel' instead of an external cancel line");
         // and later that day, under it while a tap has paused it, its reset ("The cancel should
@@ -240,6 +242,10 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "inventory-state-listed",
         "inventory-state-sold",
         "inventory-state-ended",
+        // Michal, 2026-10-08: "swipe left or right to archive, so you no longer see it in the
+        // list": the rows swiped off, and under the chips, once, that they stay live
+        "inventory-state-archived",
+        "inventory-archived-note",
         // Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)"
         "inventory-sort",
         "inventory-sort-newest",
@@ -249,6 +255,10 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         // Michal, 2026-10-07: "that checkbox should be at end of options. Not right in the awkward middle"
         "inventory-photos",
         "inventory-list",
+        // a row just swiped off: "Archived <title>" and Undo, for 6 s
+        "inventory-undo",
+        "inventory-undo-text",
+        "inventory-undo-btn",
         // a listing, in place of the list: the heading, the photo strip, then only the venue
         // cards (Michal, 2026-10-06: "there should only be eBay or and Craigslist card")
         "inventory-detail",
@@ -280,6 +290,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         // after the inventory (Michal, 2026-10-08): Feedback, then Stats, an admin's only
         "feedback-toggle",
         "feedback",
+        // an admin's inbox of new feedback, above the box (Michal, 2026-10-08)
+        "feedback-inbox",
         "feedback-text",
         "feedback-job",
         "feedback-send",
@@ -292,6 +304,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "stats-since-all",
         "stats-status",
         "stats-table",
+        // what the counts mean (Michal, 2026-10-08: "I don't understand the jobs count on the stats.")
+        "stats-note",
         // the sync bar, below the inventory list, sticking to the bottom of the screen
         "sync-bar",
         // each with its half of the sync symbol (Michal, 2026-10-07)
@@ -477,6 +491,8 @@ function fakeElement(id = "", tag = "") {
         height: 0,
         children: [],
         attrs,
+        // the row a swipe slides (its transform)
+        style: {},
         classList: {
             add: (c) => classes.add(c),
             remove: (c) => classes.delete(c),
@@ -922,13 +938,19 @@ function jobContract(body) {
  * The Account block's: `pc.broke` (the server's words) answers a posting's POST /jobs with a
  * 402, no postings left; POST /pay/checkout keeps each body and auth in `pc.checkouts` and
  * answers `pc.pay` (a number: that status, 503 with the server's words); GET /ebay/connect
- * keeps each auth in `pc.connects` and answers `pc.connect` (a number: that status).
+ * keeps each auth in `pc.connects` and answers `pc.connect` (a number: that status; 503 with the
+ * server's words, as one that cannot connect eBay yet).
  * Many sellers': GET /auth/signup keeps each call's auth and origin in `pc.signups` and answers
  * `pc.signup` (null: a 404); GET /me/seller keeps each auth in `pc.sellerAsks` and answers
  * `pc.seller` (null: a 404, as an older server); PATCH /me/seller keeps each body and auth in
  * `pc.sellerSaves`, answers `pc.sellerRefuse` ({status, detail}) when set, else takes the
  * address (complete) and answers the whole record, its eBay policies `pc.policiesAfterSave`
  * when set. None of these is in `calls`.
+ * 2.14.0's: GET /feedback?new=1 keeps each call's auth in `pc.inboxAsks` and answers `pc.inbox`
+ * (null: a 404; a number: that status); PATCH /feedback/<id> keeps each id, body and auth in
+ * `pc.reviews` and answers 204, or `pc.refuseReview` ({status, detail}) when set. Neither is in
+ * `calls`. `pc.pending` (the server's words) answers every call but /me, /ebay/connect and the
+ * sign-in lane with a 403, as a server does a sign-up waiting for eBay.
  */
 function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = {}, me = null, stats = null } = {}) {
     const pc = {
@@ -956,6 +978,11 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         sellerSaves: [],
         sellerRefuse: null,
         policiesAfterSave: "",
+        inboxAsks: [],
+        inbox: null,
+        reviews: [],
+        refuseReview: null,
+        pending: "",
     };
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
@@ -971,15 +998,28 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const asked = method === "GET" && parts[0] === "me" && !parts[1];
         const signup = method === "GET" && parts[0] === "auth" && parts[1] === "signup";
         const sold = parts[0] === "me" && parts[1] === "seller";
+        const inboxed = parts[0] === "feedback" && ((method === "GET" && !parts[1]) || method === "PATCH");
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
         else if (signup) pc.signups.push({ auth, origin: u.origin });
         else if (sold && method === "GET") pc.sellerAsks.push(auth);
-        else if (!sold) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (inboxed && method === "GET") pc.inboxAsks.push(`${auth} ${u.search}`);
+        else if (!sold && !inboxed) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
         if (signup) return pc.signup ? json(pc.signup) : json({ detail: "Not Found" }, 404);
+        const connecting = parts[0] === "ebay" && parts[1] === "connect";
+        if (pc.pending && !connecting) return json({ detail: pc.pending }, 403);
+        if (inboxed && method === "GET") {
+            if (pc.inbox === null) return json({ detail: "Not Found" }, 404);
+            return typeof pc.inbox === "number" ? json({ detail: "admins only" }, pc.inbox) : json(pc.inbox);
+        }
+        if (inboxed) {
+            pc.reviews.push({ id: parts[1], body, auth, type: headers["Content-Type"] });
+            if (pc.refuseReview) return json({ detail: pc.refuseReview.detail }, pc.refuseReview.status);
+            return new Response(null, { status: 204 });
+        }
         if (sold && method === "PATCH") {
             pc.sellerSaves.push({ body, auth, type: headers["Content-Type"] });
             if (!pc.seller) return json({ detail: "Not Found" }, 404);
@@ -1005,6 +1045,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         }
         if (parts[0] === "ebay" && parts[1] === "connect" && method === "GET") {
             pc.connects.push(pc.auth.at(-1));
+            if (pc.connect === 503) return json({ detail: "Connecting eBay is not set up on this server yet." }, 503);
             return typeof pc.connect === "number" ? json({ detail: "Not Found" }, pc.connect) : json(pc.connect);
         }
         // no postings left: a posting is refused (an action job, sync or end, is not a posting)
@@ -1671,15 +1712,19 @@ function actionContract(body) {
  * venue. POST /jobs with an "action" is checked against the contract, kept in
  * pc.posted and queued as a1, a2, ... (answered by `jobs`), or refused with
  * `pc.refuse[action]`'s words (a push, too, for a row not listed on eBay); any
- * other job is fakePc's own.
+ * other job is fakePc's own. A PATCH {"archived"} (kept in pc.patches too) puts the sku in
+ * or out of `pc.archived`, whose rows only GET /inventory?status=archived lists;
+ * `pc.noArchive` answers it with a 404, as a server without archiving does.
  */
-function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
-    const pc = fakePc({ jobs });
+function inventoryPc(rows, wholes = {}, { jobs = {}, ...rest } = {}) {
+    const pc = fakePc({ jobs, ...rest });
     const base = pc.fetch;
     pc.patches = [];
     pc.refusePatch = "";
     pc.refuse = {};
     pc.conditions = null;
+    pc.archived = new Set();
+    pc.noArchive = false;
     let made = 0;
     pc.fetch = async (url, init = {}) => {
         const method = init.method || "GET";
@@ -1705,9 +1750,21 @@ function inventoryPc(rows, wholes = {}, { jobs = {} } = {}) {
         if (parts[0] !== "inventory") return base(url, init);
         pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
-        if (!parts[1]) return json({ rows });
+        // the archived rows are listed by the Archived chip alone, every other listing leaves them out
+        if (!parts[1]) {
+            const archived = u.searchParams.get("status") === "archived";
+            return json({ rows: rows.filter((r) => pc.archived.has(r.sku) === archived) });
+        }
         const whole = wholes[parts[1]];
         if (!whole) return json({ detail: `no row ${parts[1]}` }, 404);
+        if (method === "PATCH" && "archived" in body) {
+            pc.patches.push(body);
+            if (pc.noArchive) return json({ detail: "Not Found" }, 404);
+            assert.deepEqual(Object.keys(body), ["archived"], "an archive sends nothing else");
+            if (body.archived) pc.archived.add(parts[1]);
+            else pc.archived.delete(parts[1]);
+            return json({ ...whole, archived: body.archived });
+        }
         if (parts[2] === "photos") {
             if (!whole.photos.some((p) => p.n === Number(parts[3]))) return json({ detail: "no such photo" }, 404);
             return new Response(`jpeg ${parts[1]} ${parts[3]}`, { status: 200, headers: { "Content-Type": "image/jpeg" } });
@@ -1753,19 +1810,28 @@ function foldOf(nodes, venue) {
     return `${badge.textContent} (${badge.className} ${badge.tag})${arrow}`;
 }
 
+/** A list item's row: the sheet that slides over its Archive panel. */
+function rowOf(li) {
+    return li.children.find((c) => c.className === "inv-row");
+}
+
 /** The list's rows as the screen shows them: the button's words, each part by its class. */
 function listed(nodes) {
     return nodes.get("inventory-list").children.map((li) => {
-        const words = li.children.find((c) => c.className === "inv-words");
-        const [open, badges] = words.children;
+        const row = rowOf(li);
+        const words = row.children.find((c) => c.className === "inv-words");
+        const [open, badges, unarchive] = words.children;
         const [title, line] = open.children;
         return {
             title: title.textContent,
             line: line.children.map((c) => c.textContent).join(" "),
             badges: badges.children.map((b) => `${b.textContent} (${b.className})`),
             links: badges.children,
-            thumb: li.children.find((c) => c.className === "inv-thumb"),
+            thumb: row.children.find((c) => c.className === "inv-thumb"),
             open,
+            li,
+            row,
+            unarchive,
         };
     });
 }
@@ -2165,9 +2231,9 @@ test("the sync bar's pressed button, tapped: paused at once; continue carries on
 
 /** A list row's + and − (the round two on its right, + on top), by the row's place in the list. */
 function stepsOf(nodes, i) {
-    const li = nodes.get("inventory-list").children[i];
-    const [up, down] = li.children.find((c) => c.className === "inv-steps").children;
-    return { up, down, last: li.children.at(-1).className };
+    const row = rowOf(nodes.get("inventory-list").children[i]);
+    const [up, down] = row.children.find((c) => c.className === "inv-steps").children;
+    return { up, down, last: row.children.at(-1).className };
 }
 
 /** A list row's eBay badge, as listed() finds the row's badges. */
@@ -4143,6 +4209,8 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-customize-default-status",
         "book-title-line",
         "book-price-line",
+        // once eBay has the book up, as on the goods screen (Michal, 2026-10-08)
+        "book-see-inventory",
         "book-ebay-btn",
         "book-ebay-reset",
         "book-ebay-status",
@@ -6342,6 +6410,13 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signin-remember",
         "signin-send",
         "signin-status",
+        // a sign-up not finished (Michal, 2026-10-08): Connect eBay, then the address
+        "signup-steps",
+        "signup-step-ebay",
+        "signup-connect",
+        "signup-step-address",
+        "signup-address",
+        "signup-status",
         "install-banner",
         "install-add",
         "install-dismiss",
@@ -6799,9 +6874,11 @@ test("Stats: an admin's only; 30d first, a chip asks again, a small table of cou
     assert.equal(pc.calls.at(-1), "GET /stats?since=30d");
     assert.equal(nodes.get("stats-since-30d").attrs["aria-pressed"], "true");
     const tables = nodes.get("stats-table").children.map((table) => table.children.map((tr) => tr.children.map((c) => `${c.tag}:${c.textContent}`)));
+    // Michal, 2026-10-08: "I don't understand the jobs count on the stats." The server's jobs
+    // are the actions sent, and the note under the table says what each count is
     assert.deepEqual(tables, [
         [
-            ["th:jobs", "td:40: 31 done, 6 failed, 3 cancelled"],
+            ["th:Actions sent", "td:40: 31 done, 6 failed, 3 cancelled"],
             ["th:posted on eBay", "td:22"],
             ["th:posted on craigslist", "td:7"],
             ["th:drafted", "td:30"],
@@ -6810,11 +6887,16 @@ test("Stats: an admin's only; 30d first, a chip asks again, a small table of cou
             ["th:model cost", "td:$12.34"],
         ],
         [
-            ["th:user", "th:jobs", "th:posted", "th:cost"],
+            ["th:user", "th:actions", "th:posted", "th:cost"],
             ["td:michal", "td:30", "td:21", "td:$9.10"],
             ["td:wife", "td:10", "td:8", "td:$3.24"],
         ],
     ]);
+    assert.match(
+        html,
+        /<div id="stats-table" class="stats-table"><\/div>\s*(<!--[\s\S]*?-->\s*)?<p id="stats-note" class="small stats-note">Actions: every press that reached the server \(a posting per venue, an end, a refresh, a push, a sync\)\. Posted: listings that went up\. Drafted: items the model wrote up\.<\/p>/
+    );
+    assert.equal(nodes.get("stats-note").hidden, false, "under the table, inside Stats");
 
     nodes.get("stats-since-7d").fire("click");
     await settle();
@@ -7458,4 +7540,484 @@ test("Seller address: no foldout from an older server, nor before an eBay is con
     // signed out: the address goes with the account
     page.nodes.get("settings-signout").fire("click");
     assert.equal(page.nodes.get("seller-toggle").hidden, true);
+});
+
+// --- 2.14.0 (Michal, 2026-10-08): See in inventory, archive by a swipe, the Feedback inbox,
+// the sign-up's two steps ---------------------------------------------------------------------
+
+test("See in inventory: under the price once a venue has the listing up; Admin on its card; NEXT clears it", async (t) => {
+    // Michal, 2026-10-08: "After something is posted you should see 'see in inventory' below the price."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let ebayState = "running";
+    const pc = inventoryPc([summary("B-0042")], { "B-0042": wholeRow("B-0042") }, {
+        jobs: {
+            j1: () => ({
+                state: ebayState,
+                step: ebayState === "running" ? "drafting the listing" : "",
+                sku: "B-0042",
+                price: "24.00",
+                links: ebayState === "done" ? { ebay: "https://www.ebay.com/itm/123" } : {},
+            }),
+        },
+    });
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.match(
+        html,
+        /<p id="price-line"[^>]*><\/p>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="see-inventory" class="link see-inventory" hidden>See in inventory<\/button>/
+    );
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("price-line").textContent, "$24");
+    assert.equal(nodes.get("see-inventory").hidden, true, "the row is saved, but nothing is up yet");
+    ebayState = "done";
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
+    assert.equal(nodes.get("see-inventory").hidden, false);
+
+    // tapped: Admin on the listing's own page, read by its sku as a row's tap reads it
+    const before = pc.calls.length;
+    nodes.get("see-inventory").fire("click");
+    await settle();
+    assert.deepEqual(
+        ["admin", "work", "inventory-detail", "inventory-browse"].map((id) => nodes.get(id).hidden),
+        [false, true, false, true]
+    );
+    assert.equal(pc.calls[before], "GET /inventory/B-0042");
+    assert.equal(nodes.get("detail-heading").textContent, "Item B-0042 · $24");
+    assert.equal(local.getItem("snap.admin.card"), "B-0042");
+    // Back is the list, asked for: there was none behind the card
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`);
+
+    // NEXT clears it with the rest
+    nodes.get("admin-close").fire("click");
+    nodes.get("next-item").fire("click");
+    await settle();
+    assert.equal(nodes.get("see-inventory").hidden, true);
+    assert.equal(nodes.get("price-line").hidden, true);
+});
+
+test("See in inventory on the book screen: a book read back with its eBay listing up", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const item = `Book ${ISBN} ${TODAY}`;
+    const local = memoryStore({
+        ...NO_PHOTOS,
+        "snap.mode": "book",
+        "snap.book": JSON.stringify({
+            mode: "book",
+            itemName: `Book ${ISBN}`,
+            itemId: item,
+            isbn: ISBN,
+            condition: "good",
+            price: "9",
+            main: 1,
+            lookup: { record: BOOK, price: "11", listings: BOOK.listings, route: "list" },
+        }),
+    });
+    const listedJob = { job: "j1", venue: "ebay", state: "done", step: "", sku: "BK-1", price: "9.00", links: { ebay: "https://www.ebay.com/itm/9" } };
+    const pc = inventoryPc([], { "BK-1": wholeRow("BK-1") }, {
+        books: { [ISBN]: BOOK },
+        items: { [item]: { photos: new Map([[1, "a"]]), note: "", sku: "BK-1", jobs: [listedJob] } },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("book-ebay-link").href, "https://www.ebay.com/itm/9");
+    assert.equal(nodes.get("book-see-inventory").hidden, false);
+    assert.equal(nodes.get("see-inventory").hidden, true, "the goods item has nothing up");
+    nodes.get("book-see-inventory").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-detail").hidden, false);
+    assert.ok(pc.calls.includes("GET /inventory/BK-1"));
+});
+
+/** A finger on a list row's button, as pointer events bring it. */
+function finger(open, id = 1) {
+    const at = (type) => (x, y) => open.fire(type, { pointerId: id, clientX: x, clientY: y });
+    return { down: at("pointerdown"), move: at("pointermove"), up: at("pointerup") };
+}
+
+test("a swipe archives a list row: it follows the finger over the Archive panel, slides out past 120 px, Undo puts it back", async (t) => {
+    // Michal, 2026-10-08: "Inventory list should have swipe left or right to archive, so you no
+    // longer see it in the list, kind of like what the Gmail app has on the phone."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const skus = ["A1", "B2", "C3"];
+    const pc = inventoryPc(
+        skus.map((s) => summary(s)),
+        Object.fromEntries(skus.map((s) => [s, wholeRow(s)]))
+    );
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    const titles = () => listed(nodes).map((r) => r.title);
+    assert.deepEqual(titles(), ["Item A1", "Item B2", "Item C3"]);
+
+    // each item: the grey Archive panel, hidden from a screen reader, under the row
+    const b2 = listed(nodes)[1];
+    assert.equal(b2.li.className, "inv-item");
+    assert.deepEqual(b2.li.children.map((c) => c.className), ["inv-archive", "inv-row"]);
+    assert.equal(b2.li.children[0].textContent, "Archive");
+    assert.equal(b2.li.children[0].attrs["aria-hidden"], "true");
+    // only the row's own button takes the finger: the + and − and the badges sit above it
+    assert.equal(b2.open.listeners.pointermove.length, 1);
+    const steps = stepsOf(nodes, 1);
+    for (const node of [steps.up, steps.down, ...b2.links]) assert.equal(node.listeners.pointermove, undefined);
+
+    // sideways: the row follows the finger, the panel on the side it uncovers
+    let f = finger(b2.open);
+    f.down(100, 50);
+    f.move(106, 52);
+    assert.equal(b2.row.style.transform, undefined, "not far enough to say");
+    f.move(160, 54);
+    assert.equal(b2.row.style.transform, "translateX(60px)");
+    assert.equal(b2.li.classList.contains("swiping"), true);
+    assert.equal(b2.li.classList.contains("toward-right"), true);
+    // short of the mark, lifted: back in place, nothing sent, and the click it ends with opens nothing
+    f.up(160, 54);
+    assert.equal(b2.row.style.transform, "");
+    assert.equal(b2.li.classList.contains("swiping"), false);
+    b2.open.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-detail").hidden, true);
+    assert.deepEqual(pc.patches, []);
+
+    // up or down the page: a scroll, and the row stays put however the finger then wanders
+    f.down(100, 50);
+    f.move(103, 80);
+    f.move(250, 82);
+    assert.equal(b2.row.style.transform, "");
+    f.up(250, 82);
+    assert.deepEqual(pc.patches, []);
+
+    // past 120 px and lifted: it slides out the way it went, and once the server has it, it
+    // leaves the list and the undo bar offers it back
+    f.down(100, 50);
+    f.move(230, 56);
+    assert.equal(b2.row.style.transform, "translateX(130px)");
+    f.up(230, 56);
+    assert.equal(b2.row.style.transform, "translateX(110%)");
+    assert.equal(b2.li.classList.contains("leaving"), true);
+    assert.equal(stepsOf(nodes, 1).up.disabled, true, "the row waits while it goes");
+    await settle();
+    assert.deepEqual(pc.patches, [{ archived: true }]);
+    assert.equal(pc.calls.filter((c) => c.startsWith("PATCH")).at(-1), "PATCH /inventory/B2");
+    assert.deepEqual(titles(), ["Item A1", "Item C3"]);
+    assert.equal(nodes.get("inventory-status").textContent, "2 listings");
+    assert.equal(nodes.get("inventory-undo").hidden, false);
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2");
+    b2.open.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-detail").hidden, true, "the swipe's own click opens nothing");
+
+    // Undo: back where it was, as it was
+    nodes.get("inventory-undo-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.patches, [{ archived: true }, { archived: false }]);
+    assert.deepEqual(titles(), ["Item A1", "Item B2", "Item C3"]);
+    assert.equal(nodes.get("inventory-undo").hidden, true);
+    assert.equal(listed(nodes)[1].row.style.transform, "");
+    assert.equal(listed(nodes)[1].li.classList.contains("leaving"), false);
+    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+
+    // to the left as well; the bar goes by itself after 6 s
+    const c3 = listed(nodes)[2];
+    f = finger(c3.open, 2);
+    f.down(300, 50);
+    f.move(170, 50);
+    assert.equal(c3.li.classList.contains("toward-right"), false);
+    f.up(170, 50);
+    assert.equal(c3.row.style.transform, "translateX(-110%)");
+    await settle();
+    assert.deepEqual(pc.patches.at(-1), { archived: true });
+    assert.deepEqual(titles(), ["Item A1", "Item B2"]);
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item C3");
+    t.mock.timers.tick(UNDO_MS - 1);
+    assert.equal(nodes.get("inventory-undo").hidden, false);
+    t.mock.timers.tick(1);
+    assert.equal(nodes.get("inventory-undo").hidden, true);
+
+    // a server without archiving: said, and the row slides back
+    pc.noArchive = true;
+    const a1 = listed(nodes)[0];
+    f = finger(a1.open, 3);
+    f.down(100, 50);
+    f.move(240, 50);
+    f.up(240, 50);
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "Archiving is not available on this server yet");
+    assert.deepEqual(titles(), ["Item A1", "Item B2"]);
+    assert.equal(a1.row.style.transform, "");
+    assert.equal(a1.li.classList.contains("leaving"), false);
+    assert.equal(stepsOf(nodes, 0).up.disabled, false);
+    assert.equal(nodes.get("inventory-undo").hidden, true);
+
+    // a plain tap still opens the listing
+    f = finger(a1.open, 4);
+    f.down(100, 50);
+    f.up(100, 50);
+    a1.open.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-detail").hidden, false);
+
+    // the page leaves up and down to the browser on the row; the row follows the finger with no lag
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.inv-open \{[^}]*touch-action: pan-y;/);
+    assert.match(css, /\.inv-item\.swiping \.inv-row \{ transition: none; \}/);
+});
+
+test("the Archived chip lists only the archived rows, each with Unarchive in place of the swipe, and says they stay live", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1"), summary("Z9")], { A1: wholeRow("A1"), Z9: wholeRow("Z9") });
+    pc.archived.add("Z9");
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1"], "every other listing leaves it out");
+    assert.match(html, /<div id="inventory-state" class="chips chips-six"/);
+    assert.match(html, /id="inventory-state-archived" class="chip" data-value="archived"\s+aria-pressed="false">Archived</);
+    assert.equal(nodes.get("inventory-archived-note").hidden, true);
+
+    nodes.get("inventory-state-archived").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=archived&limit=200&sort=age&order=desc");
+    assert.equal(nodes.get("inventory-state-archived").attrs["aria-pressed"], "true");
+    // said once, under the chips: archiving hides a row, it ends no listing
+    assert.equal(nodes.get("inventory-archived-note").hidden, false);
+    assert.match(
+        html,
+        /<\/div>\s*<p id="inventory-archived-note" class="small options-note" hidden>Archived listings stay live on their venues<\/p>/
+    );
+    const [z9] = listed(nodes);
+    assert.equal(z9.title, "Item Z9");
+    assert.deepEqual(z9.li.children.map((c) => c.className), ["inv-row"], "no Archive panel under it");
+    assert.equal(z9.open.listeners.pointerdown, undefined, "no swipe");
+    assert.equal(z9.unarchive.textContent, "Unarchive");
+    assert.equal(z9.unarchive.className, "pill pill-small inv-unarchive");
+
+    // Unarchive: PATCH {"archived": false}, and the row is off this list
+    z9.unarchive.fire("click");
+    assert.equal(z9.unarchive.disabled, true, "on its way");
+    await settle();
+    assert.deepEqual(pc.patches, [{ archived: false }]);
+    assert.equal(pc.calls.filter((c) => c.startsWith("PATCH")).at(-1), "PATCH /inventory/Z9");
+    assert.deepEqual(listed(nodes), []);
+    assert.equal(nodes.get("inventory-status").textContent, "No listings match.");
+
+    // back on All, it is listed again, swipeable; the note goes
+    nodes.get("inventory-state-all").fire("click");
+    await settle();
+    assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1", "Item Z9"]);
+    assert.equal(listed(nodes)[1].unarchive, undefined);
+    assert.equal(nodes.get("inventory-archived-note").hidden, true);
+
+    // a server without archiving says so for Unarchive too
+    pc.archived.add("A1");
+    pc.noArchive = true;
+    nodes.get("inventory-state-archived").fire("click");
+    await settle();
+    listed(nodes)[0].unarchive.fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory-status").textContent, "Archiving is not available on this server yet");
+    assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1"]);
+    assert.equal(listed(nodes)[0].unarchive.disabled, false);
+});
+
+/** The admin's inbox as GET /feedback?new=1 answers it: two new entries, newest first. */
+const INBOX = {
+    entries: [
+        {
+            id: "f9",
+            user: "anna",
+            created: "2026-10-08T14:03:00Z",
+            text: "The craigslist button is grey",
+            screen: "goods",
+            version: "2.13.0",
+            user_agent: "Mozilla/5.0 (Linux; Android 15)",
+            job: { id: "j7", action: "", venue: "ebay", state: "failed", step: "", error: "eBay said no", summary: "" },
+            reviewed: false,
+        },
+        { id: "f8", user: "wife", created: "2026-10-07T09:00:00Z", text: "Love it", screen: "card", version: "2.13.0", user_agent: "", job: null, reviewed: false },
+    ],
+};
+
+test("Feedback, for an admin: the new entries above the box, counted in its toggle; Reviewed takes one away", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    pc.inbox = structuredClone(INBOX);
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    assert.deepEqual(pc.inboxAsks, [], "not before Admin opens");
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.deepEqual(pc.inboxAsks, ["key test-key-0123456789 ?new=1"]);
+    assert.equal(nodes.get("feedback-toggle").textContent, "▸ Feedback (2)");
+    assert.equal(nodes.get("feedback").hidden, true);
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.equal(pc.inboxAsks.length, 2, "asked afresh as it opens");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback (2)");
+    assert.equal(nodes.get("feedback-inbox").hidden, false);
+    assert.match(html, /<div id="feedback" class="card" hidden>\s*<div id="feedback-inbox" class="feedback-inbox"[^>]*hidden><\/div>\s*<label class="field">/);
+    const entries = () => nodes.get("feedback-inbox").children.map((box) => box.children.map((c) => c.textContent));
+    const [first, second] = entries();
+    // who, when (in the phone's own time), from where; the words; the job's error; Reviewed
+    assert.match(first[0], /^anna · 2026-10-0[78] \d\d:\d\d · goods$/);
+    assert.deepEqual(first.slice(1), ["The craigslist button is grey", "Job error: eBay said no", "Reviewed"]);
+    assert.match(second[0], /^wife · 2026-10-0[67] \d\d:\d\d · card$/);
+    assert.deepEqual(second.slice(1), ["Love it", "Reviewed"]);
+
+    // Reviewed: PATCH /feedback/f9 {"reviewed": true}, and it leaves the inbox
+    const reviewed = () => nodes.get("feedback-inbox").children[0].children.at(-1);
+    reviewed().fire("click");
+    assert.equal(reviewed().disabled, true, "on its way");
+    await settle();
+    assert.deepEqual(pc.reviews, [{ id: "f9", body: { reviewed: true }, auth: "key test-key-0123456789", type: "application/json" }]);
+    assert.equal(entries().length, 1);
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback (1)");
+    // refused: it stays, and the line says why
+    pc.refuseReview = { status: 400, detail: "no such feedback" };
+    reviewed().fire("click");
+    await settle();
+    assert.equal(entries().length, 1);
+    assert.equal(nodes.get("feedback-status").textContent, "Not marked reviewed: no such feedback.");
+    pc.refuseReview = null;
+    reviewed().fire("click");
+    await settle();
+    assert.deepEqual(pc.reviews.map((r) => r.id), ["f9", "f8", "f8"]);
+    assert.equal(nodes.get("feedback-inbox").hidden, true, "nothing new: no inbox");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback");
+
+    // anyone else: the box alone, the inbox never asked for
+    const wife = inventoryPc([summary("A1")]);
+    wife.me = { user: "wife", admin: false, craigslist: true, venues: ["ebay"] };
+    wife.inbox = structuredClone(INBOX);
+    const other = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: wife.fetch });
+    other.nodes.get("admin-toggle").fire("click");
+    await settle();
+    other.nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.deepEqual(wife.inboxAsks, []);
+    assert.equal(other.nodes.get("feedback-inbox").hidden, true);
+    assert.equal(other.nodes.get("feedback-toggle").textContent, "▾ Feedback");
+
+    // an admin on a server that refuses it (or has none): asked once, then as everyone else
+    const older = inventoryPc([summary("A1")]);
+    older.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay"] };
+    older.inbox = 403;
+    const old = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: older.fetch });
+    old.nodes.get("admin-toggle").fire("click");
+    await settle();
+    old.nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.equal(older.inboxAsks.length, 1);
+    assert.equal(old.nodes.get("feedback-inbox").hidden, true);
+    assert.equal(old.nodes.get("feedback-toggle").textContent, "▾ Feedback");
+});
+
+test("a sign-up waiting for eBay: Finish signing up in place of the posting screens; Connect eBay, the address, then the goods screen", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const PENDING_ME = {
+        user: "",
+        email: "anna@example.com",
+        admin: false,
+        craigslist: true,
+        venues: [],
+        pending: true,
+        registered: false,
+        credits: { free_left: 3, bought_left: 0 },
+        packs: [],
+        ebay: { connected: false, user: "", policies: "none" },
+    };
+    const pc = fakePc({ me: structuredClone(PENDING_ME) });
+    pc.pending = "Connect eBay to finish signing up.";
+    pc.connect = 503;
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const screens = ["landing", "signin", "signup-steps", "modes", "work", "book", "admin"];
+    const shown = (n) => screens.filter((id) => !n.get(id).hidden);
+    assert.deepEqual(shown(nodes), ["signup-steps"], "in place of the posting screens");
+    assert.equal(pc.checks, 1);
+    assert.equal(pc.mes, 1, "the check refused: /me says why");
+    assert.equal(server(nodes), "server ok (ok)", "the server answered, refusing");
+    assert.equal(nodes.get("signup-step-ebay").classList.contains("done"), false);
+    assert.equal(nodes.get("signup-connect").hidden, false);
+    assert.equal(nodes.get("signup-step-address").classList.contains("off"), true, "step 2 greyed");
+    assert.equal(nodes.get("signup-address").disabled, true);
+    assert.equal(nodes.get("about-link").hidden, false);
+    assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish signing up<\/h2>/);
+    assert.match(html, /id="signup-connect" class="big">Connect eBay</);
+    assert.match(html, /<span class="signup-word">then your address<\/span>/);
+
+    // Connect eBay, here as in the Account block: a server that cannot yet says its own words
+    nodes.get("signup-connect").fire("click");
+    assert.equal(nodes.get("signup-status").textContent, "Opening eBay...");
+    assert.equal(nodes.get("signup-connect").disabled, true);
+    await settle();
+    assert.deepEqual(pc.connects, ["session sess-1"]);
+    assert.equal(nodes.get("signup-status").textContent, "Connecting eBay is not set up on this server yet.");
+    pc.connect = { url: EBAY_CONSENT };
+    nodes.get("signup-connect").fire("click");
+    await settle();
+    assert.deepEqual(globalThis.location.assigned, [EBAY_CONSENT]);
+
+    // Admin meanwhile: on Settings, whose Account block says who and that it is not an account yet
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("inventory").hidden, true, "the inventory would be refused");
+    assert.ok(!pc.calls.some((c) => c.startsWith("GET /inventory")));
+    assert.equal(nodes.get("account-user").textContent, "Signed in as anna@example.com, not registered yet");
+    assert.equal(nodes.get("account-ebay").textContent, "eBay: not connected");
+    // the server's refusal, wherever a refusal is said, in its own words
+    nodes.get("feedback-toggle").fire("click");
+    nodes.get("feedback-text").value = "Stuck";
+    nodes.get("feedback-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("feedback-status").textContent, "Connect eBay to finish signing up.");
+    nodes.get("admin-close").fire("click");
+    assert.deepEqual(shown(nodes), ["signup-steps"]);
+
+    // back from eBay: the account is real now, and Settings opens on the Seller address, saying why
+    pc.pending = "";
+    pc.me = { ...PENDING_ME, user: "anna", email: "", pending: false, registered: false, ebay: { connected: true, user: "anna_sells", policies: "none" } };
+    pc.seller = structuredClone(NEW_SELLER);
+    const back = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    const n = back.nodes;
+    assert.equal(globalThis.location.hash, "");
+    assert.equal(pc.mes, 2, "asked again, once");
+    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
+    assert.equal(n.get("seller-note").textContent, ADDRESS_NEEDED);
+    assert.equal(n.get("account-status").textContent, "eBay connected");
+    assert.equal(n.get("account-user").textContent, "Signed in as anna");
+    // closed: step 1 ticked, step 2 open
+    n.get("admin-close").fire("click");
+    assert.deepEqual(shown(n), ["signup-steps"]);
+    assert.equal(n.get("signup-step-ebay").classList.contains("done"), true);
+    assert.equal(n.get("signup-connect").hidden, true);
+    assert.equal(n.get("signup-step-address").classList.contains("off"), false);
+    assert.equal(n.get("signup-address").disabled, false);
+
+    // step 2: Settings' Seller address; saved, /me says registered, and the goods screen is hers
+    n.get("signup-address").fire("click");
+    await settle();
+    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
+    pc.me = { ...pc.me, registered: true };
+    typeAddress(n, { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    n.get("seller-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
+    assert.equal(pc.mes, 3, "asked once the address is in");
+    n.get("admin-close").fire("click");
+    assert.deepEqual(shown(n), ["modes", "work"]);
+    assert.equal(n.get("signup-steps").hidden, true);
 });

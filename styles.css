@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.13.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.14.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -693,6 +693,10 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
 .chips.chips-three { grid-template-columns: repeat(3, 1fr); }
 .chips.chips-five { grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .chips-five .chip { padding: 6px 2px; font-size: 13px; }
+/* the six statuses, Archived the last: two rows of three, so "Archived" never squeezes */
+.chips.chips-six { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.chips-six .chip { padding: 6px 2px; font-size: 13px; }
+.options-note { margin: 4px 2px 0; color: var(--muted); }
 /* Newest | Oldest | Price ↓ | Price ↑: one row, even at 360 px */
 .chips.chips-four { grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .chips-four .chip { padding: 6px 2px; font-size: 13px; }
@@ -705,9 +709,55 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
     flex-direction: column;
     gap: 8px;
 }
+/* a list item: the row, and behind it the grey Archive panel a swipe uncovers (Michal,
+   2026-10-08: "swipe left or right to archive ... kind of like what the Gmail app has on the
+   phone"). The row follows the finger (app.js sets its transform; no transition while the
+   finger is on it), and slides back, or out, when it lifts. */
+.inv-item { position: relative; border-radius: var(--radius); }
+.inv-archive {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 22px;
+    border-radius: var(--radius);
+    background: var(--line);
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 800;
+}
+.inv-item.swiping .inv-archive, .inv-item.leaving .inv-archive { display: flex; }
+/* the row sliding out never widens the page */
+.inv-item.swiping, .inv-item.leaving { overflow: hidden; }
+/* swiped to the right, the panel shows on the left */
+.inv-item.toward-right .inv-archive { justify-content: flex-start; }
+.inv-item .inv-row { transition: transform 0.18s ease-out; }
+.inv-item.swiping .inv-row { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    .inv-item .inv-row { transition: none; }
+}
+/* Unarchive, on a row the Archived chip lists: a small pill above the row's tap */
+.inv-unarchive { position: relative; z-index: 1; align-self: flex-start; margin-top: 2px; }
+/* the bar under the list while a row just archived can come back */
+.undo-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 10px 0 0;
+    padding: 4px 6px 4px 14px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-ink);
+}
+.undo-words { min-width: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.link.undo-btn { min-height: 40px; padding: 8px 12px; color: inherit; font-size: 15px; font-weight: 800; }
 /* a listing: a sheet-cornered white row, never wider than the screen. Its button (the
    title and the line) reaches over the whole row with ::after, so the row is one tap
-   target; a listed badge's link sits above that, its own target. */
+   target; a listed badge's link sits above that, its own target. Sideways the button is the
+   swipe's (touch-action: pan-y leaves the page's own scroll to the browser); the badges and
+   the + and −, above it, never start one. */
 .inv-row {
     position: relative;
     display: flex;
@@ -733,6 +783,7 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
     color: inherit;
     border: none;
     border-radius: 0;
+    touch-action: pan-y;
 }
 .inv-open:focus-visible { outline: none; }
 .inv-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius); }
@@ -1011,6 +1062,18 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .install-dismiss { min-width: 40px; min-height: 40px; padding: 0; background: none; color: inherit; font-size: 22px; line-height: 1; }
 /* these blocks' own display rules would otherwise beat the hidden attribute */
 .landing [hidden], .install-banner[hidden], .install-banner [hidden] { display: none; }
+/* Finish signing up (Michal, 2026-10-08): the landing's voice, left aligned as sign-in is, the
+   two steps numbered; the one not yet open is faded, the one done is ticked and quiet */
+#signup-steps { text-align: left; }
+#signup-steps .landing-name { font-size: 32px; }
+#signup-steps .landing-what { margin-left: 0; }
+.signup-list { margin: 18px 0 0; padding-left: 1.4em; }
+.signup-step { margin: 0 0 16px; font-size: 16px; font-weight: 800; }
+.signup-step::marker { font-weight: 800; }
+.signup-word { display: block; margin-bottom: 8px; }
+.signup-step.done .signup-word::after { content: " ✓"; color: var(--ok); }
+.signup-step.done { color: var(--muted); }
+.signup-step.off { opacity: 0.45; }
 
 /* craigslist for an account without it (Michal, 2026-10-08: "Keep the Craigslist button gray
    and when tapped write 'contact developer'"): grey, yet it takes the tap that says why */
@@ -1041,12 +1104,25 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* under a venue button refused for want of postings: to Settings' Account block */
 .link.buy-link { display: block; min-height: 40px; padding: 8px 2px 0; font-size: 14px; text-decoration: underline; }
 .link.buy-link[hidden] { display: none; }
+/* under the price once a venue has the listing up (Michal, 2026-10-08): to its inventory card */
+.link.see-inventory { display: block; min-height: 40px; margin: -6px auto 6px; padding: 8px 12px; font-size: 14px; text-decoration: underline; }
+.link.see-inventory[hidden] { display: none; }
 
-/* Admin's Stats: a small table of counts, the users under it */
+/* Admin's Stats: a small table of counts, the users under it, and what the counts mean */
 .stats-table table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 14px; }
 .stats-table th, .stats-table td { padding: 6px 4px; text-align: left; border-bottom: 1px solid var(--line); }
 .stats-table th { font-weight: 700; color: var(--muted); }
 .stats-table td { overflow-wrap: anywhere; }
+.stats-note { margin: 10px 2px 0; font-size: 13px; color: var(--muted); }
+
+/* the admin's Feedback inbox, above the box: one small sheet per new entry, its Reviewed */
+.feedback-inbox { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; }
+.inbox-entry { padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1.5px solid var(--line); }
+.inbox-entry p { margin: 0; overflow-wrap: anywhere; }
+.inbox-head { font-size: 13px; font-weight: 700; color: var(--muted); }
+.inbox-text { margin-top: 4px; font-size: 15px; white-space: pre-wrap; }
+.inbox-entry .inbox-error { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--bad); }
+.inbox-entry .pill { margin-top: 8px; }
 
 .book-price-note { margin: 0 2px; }
 /* a book goes to eBay only: one full-width button where goods have two */

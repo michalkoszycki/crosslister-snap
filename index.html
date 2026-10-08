@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.13.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.13.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.14.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.14.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -116,6 +116,27 @@
     </label>
     <button type="button" id="signin-send" class="big">Send me a link</button>
     <p id="signin-status" class="landing-status" aria-live="polite"></p>
+  </section>
+
+  <!-- Finish signing up (Michal, 2026-10-08): an account signed in by email but not yet
+       registered sees its two steps in place of the posting screens, GET /me saying where it
+       stands: Connect eBay (the Account block's button, repeated here), then the address
+       (Settings' Seller address), greyed until eBay is connected. Registered, the goods
+       screen (app.js, signupStep in core.js) -->
+  <section id="signup-steps" class="landing signup" hidden>
+    <h2 class="landing-name">Finish signing up</h2>
+    <p class="landing-what">Two steps, once, and Snap lists for you.</p>
+    <ol class="signup-list">
+      <li id="signup-step-ebay" class="signup-step">
+        <span class="signup-word">Connect eBay, where your listings go</span>
+        <button type="button" id="signup-connect" class="big">Connect eBay</button>
+      </li>
+      <li id="signup-step-address" class="signup-step">
+        <span class="signup-word">then your address</span>
+        <button type="button" id="signup-address" class="secondary">Your address</button>
+      </li>
+    </ol>
+    <p id="signup-status" class="landing-status" aria-live="polite"></p>
   </section>
 
   <!-- the home screen, nudged: a thin banner over the posting screens while the page runs in
@@ -265,7 +286,7 @@
           </div>
           <div class="field">
             <span class="field-label">Status</span>
-            <div id="inventory-state" class="chips chips-five" role="group" aria-label="Status">
+            <div id="inventory-state" class="chips chips-six" role="group" aria-label="Status">
               <button type="button" id="inventory-state-all" class="chip" data-value=""
                       aria-pressed="true">All</button>
               <button type="button" id="inventory-state-draft" class="chip" data-value="draft"
@@ -276,7 +297,12 @@
                       aria-pressed="false">sold</button>
               <button type="button" id="inventory-state-ended" class="chip" data-value="ended"
                       aria-pressed="false">ended</button>
+              <!-- the rows swiped off the list (Michal, 2026-10-08: "swipe left or right to
+                   archive, so you no longer see it in the list"), each with Unarchive -->
+              <button type="button" id="inventory-state-archived" class="chip" data-value="archived"
+                      aria-pressed="false">Archived</button>
             </div>
+            <p id="inventory-archived-note" class="small options-note" hidden>Archived listings stay live on their venues</p>
           </div>
           <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
           <div class="field">
@@ -300,6 +326,11 @@
           </label>
         </div>
         <ul id="inventory-list" class="inventory-list"></ul>
+        <!-- a row just swiped off the list: its title and Undo, for UNDO_MS (core.js) -->
+        <div id="inventory-undo" class="undo-bar" role="status" hidden>
+          <span id="inventory-undo-text" class="undo-words"></span>
+          <button type="button" id="inventory-undo-btn" class="link undo-btn">Undo</button>
+        </div>
       </div>
 
       <!-- one listing, in place of the list: the heading, its photos, its customize, then one
@@ -361,10 +392,12 @@
     </div>
 
     <!-- Feedback, after the inventory: what happened, sent to the server with the screen it was
-         written from, the page's version and, ticked, the last job the page has -->
+         written from, the page's version and, ticked, the last job the page has. For an admin,
+         above the box, the new entries everyone sent, each with its Reviewed (app.js) -->
     <button type="button" id="feedback-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="feedback">▸ Feedback</button>
     <div id="feedback" class="card" hidden>
+      <div id="feedback-inbox" class="feedback-inbox" aria-label="New feedback" hidden></div>
       <label class="field">
         <span class="field-label">Feedback</span>
         <textarea id="feedback-text" rows="4" autocomplete="off" autocapitalize="sentences"
@@ -389,6 +422,8 @@
       </div>
       <p id="stats-status" class="small" aria-live="polite"></p>
       <div id="stats-table" class="stats-table"></div>
+      <!-- Michal, 2026-10-08: "I don't understand the jobs count on the stats." -->
+      <p id="stats-note" class="small stats-note">Actions: every press that reached the server (a posting per venue, an end, a refresh, a push, a sync). Posted: listings that went up. Drafted: items the model wrote up.</p>
     </div>
 
     <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
@@ -502,6 +537,9 @@
     <!-- the listing's title as the PC saved it, small, for a look (Michal, 2026-10-02) -->
     <p id="title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="price-line" class="price-line" aria-live="polite" hidden></p>
+    <!-- once a venue has it up (Michal, 2026-10-08: "After something is posted you should see
+         'see in inventory' below the price."): Admin on that listing, as its row's tap opens it -->
+    <button type="button" id="see-inventory" class="link see-inventory" hidden>See in inventory</button>
     <!-- under each button its reset, shown while a tap has paused its press (Michal,
          2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
          button should change to 'continue'") -->
@@ -672,6 +710,7 @@
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="book-price-line" class="price-line" aria-live="polite" hidden></p>
+    <button type="button" id="book-see-inventory" class="link see-inventory" hidden>See in inventory</button>
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
       <button type="button" id="book-ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
@@ -702,6 +741,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.13.0"></script>
+<script type="module" src="app.js?v=2.14.0"></script>
 </body>
 </html>

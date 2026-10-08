@@ -123,12 +123,28 @@
 //                                      "postal_code"}} -> the same body; 400 names a bad field,
 //                                      409 for the admin (his address is in the server's .env)
 //   (404 from a server without them: no change to the words, no Seller address foldout)
+// Archive, the Feedback inbox, sign-up's two steps (Michal, 2026-10-08):
+//   PATCH  <pc>/inventory/<sku>       a list row swiped off (or Undo, or Unarchive): {"archived":
+//                                      true | false} -> the whole row; rows carry "archived", and
+//                                      GET /inventory?status=archived lists only those
+//   GET    <pc>/feedback?new=1        the admin's inbox -> {"entries": [{"id", "user", "created",
+//                                      "text", "screen", "version", "user_agent", "job": {"id",
+//                                      "action", "venue", "state", "step", "error", "summary"} |
+//                                      null, "reviewed"}]}, newest first; 403 for anyone else
+//   PATCH  <pc>/feedback/<id>         Reviewed: {"reviewed": true} (an admin's only)
+//   GET /me adds "pending" and "registered" (and "email" while pending): a pending account
+//                                      (signed in by email, eBay not connected) is answered 403
+//                                      {"detail": "Connect eBay to finish signing up."} on every
+//                                      keyed route but /me, GET /ebay/connect and DELETE
+//                                      /auth/session; GET /ebay/connect answers 503 with its detail
+//                                      while the server cannot connect eBay yet
+//   (404 from a server without them: not available)
 //
 // Every call carries the key in the X-Crosslister-Key header, or, on a phone signed in
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.13.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.14.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -358,6 +374,17 @@ export function patchRow({ pc, ...auth }, sku, fields) {
 }
 
 /**
+ * A list row archived (swiped off the list) or back (Undo, Unarchive): it ends no listing.
+ * @param {Settings} settings
+ * @param {string} sku
+ * @param {boolean} archived
+ * @returns {Promise<Record<string, any>>} the whole row, as getRow gives it
+ */
+export function archiveRow(settings, sku, archived) {
+    return patchRow(settings, sku, { archived });
+}
+
+/**
  * An empty card's Add: the row goes on that venue too (nothing is posted yet).
  * @param {Settings} settings
  * @param {string} sku
@@ -399,6 +426,31 @@ export function getMe({ pc, ...auth }) {
  */
 export function postFeedback({ pc, ...auth }, body) {
     return call(`${pc}/feedback`, auth, { method: "POST", json: body });
+}
+
+/**
+ * The admin's Feedback inbox: the entries not yet reviewed, newest first (403 for anyone else).
+ * @param {Settings} settings
+ * @returns {Promise<{entries?:unknown}>}
+ */
+export function getFeedbackInbox({ pc, ...auth }) {
+    return call(`${pc}/feedback?new=1`, auth);
+}
+
+/**
+ * An inbox entry's Reviewed: it leaves the inbox. Whatever the server answers with, if
+ * anything, is not needed.
+ * @param {Settings} settings
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export async function reviewFeedback({ pc, ...auth }, id) {
+    const res = await request(`${pc}/feedback/${encodeURIComponent(id)}`, auth, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewed: true }),
+    });
+    if (!res.ok) throw await refused(res);
 }
 
 /**
