@@ -210,6 +210,9 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "seller-city",
         "seller-state",
         "seller-zip",
+        // what Snap sets up on her eBay, while the address is being given (Michal, 2026-10-08)
+        "seller-policies",
+        "seller-policy-list",
         "seller-save",
         "seller-status",
         "account-status",
@@ -6401,7 +6404,7 @@ const SERVER = "https://michal-pc.mulley-themis.ts.net";
 /**
  * fakePc with the sign-in lane on the product's server: POST /auth/link answers `link` (202,
  * or a status), each body and its auth in `pc.links`; POST /auth/session answers `made` (or
- * a status), each body in `pc.sessions`. A session in `pc.revoked` is a 401, as the server
+ * a status, refused with `pc.detail`), each body in `pc.sessions`. A session in `pc.revoked` is a 401, as the server
  * answers one it no longer knows. `pc.origins` is every call's origin. DELETE /auth/session
  * (Sign out) keeps each call's auth in `pc.signouts` and answers 204, or `pc.signout` (a status;
  * 0: the server cannot be reached).
@@ -6409,7 +6412,7 @@ const SERVER = "https://michal-pc.mulley-themis.ts.net";
 function signinPc({ link = 202, made = { session: "sess-1", user: "wife", remember: true }, ...rest } = {}) {
     const pc = fakePc(rest);
     const base = pc.fetch;
-    Object.assign(pc, { link, made, links: [], sessions: [], origins: [], revoked: new Set(), signouts: [], signout: 204 });
+    Object.assign(pc, { link, made, detail: "bad token", links: [], sessions: [], origins: [], revoked: new Set(), signouts: [], signout: 204 });
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
         const u = new URL(url);
@@ -6428,7 +6431,7 @@ function signinPc({ link = 202, made = { session: "sess-1", user: "wife", rememb
         }
         if (u.pathname === "/auth/session") {
             pc.sessions.push({ body: JSON.parse(init.body), auth });
-            return typeof pc.made === "number" ? json({ detail: "bad token" }, pc.made) : json(pc.made);
+            return typeof pc.made === "number" ? json({ detail: pc.detail }, pc.made) : json(pc.made);
         }
         if (pc.revoked.has(headers["X-Crosslister-Session"])) return json({ detail: "session expired" }, 401);
         return base(url, init);
@@ -6447,10 +6450,11 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         // Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app. Snap is simple.
         // Note that for the first landing page."
         "landing",
+        // Michal, 2026-10-08: Sign in first, then a key, then Install below them, smaller
+        "landing-signin",
+        "landing-key",
         "landing-install",
         "landing-install-steps",
-        "landing-key",
-        "landing-signin",
         "landing-status",
         "signin",
         "signin-back",
@@ -6460,11 +6464,19 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signin-remember",
         "signin-send",
         "signin-status",
+        // the mail's six-digit code (Michal, 2026-10-08), and the line for Safari on an iPhone
+        "signin-have-code",
+        "signin-code-form",
+        "signin-code",
+        "signin-code-send",
+        "signin-note",
         // a sign-up not finished (Michal, 2026-10-08): Connect eBay, then the address
         "signup-steps",
         "signup-step-ebay",
         "signup-connect",
         "signup-step-address",
+        // its word, which a prefilled address asks to confirm (Michal, 2026-10-08)
+        "signup-address-word",
         "signup-address",
         "signup-status",
         "install-banner",
@@ -6480,11 +6492,19 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     // Michal, 2026-10-08: three free postings per person, then prepaid; said small under the one-liner
     assert.match(landing, /<p class="landing-what">[^<]*<\/p>\s*<p class="landing-price">Three postings free, then prepaid\.<\/p>/);
     assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.landing-price \{[^}]*font-size: 13px;[^}]*color: var\(--muted\);/);
-    assert.match(landing, /id="landing-install"[^>]*>Install</);
-    assert.match(landing, /id="landing-key"[^>]*>I have a key</);
-    assert.match(landing, /id="landing-signin"[^>]*>Sign in</);
+    // Sign in the big pill; I have a key and Install the small ones under it
+    assert.match(landing, /<button type="button" id="landing-signin" class="big">Sign in</);
+    assert.match(landing, /<button type="button" id="landing-key" class="secondary landing-small">I have a key</);
+    assert.match(landing, /<button type="button" id="landing-install" class="secondary landing-small"[^>]*>Install</);
+    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.secondary\.landing-small \{[^}]*width: auto;[^}]*font-size: 15px;/);
     assert.match(html, /<input id="signin-remember" type="checkbox" checked>\s*<span>Keep me signed in<\/span>/);
     assert.match(html, /id="signin-send"[^>]*>Send me a link</);
+    // the code: a box a phone fills from the mail, its word above it, its button under it
+    assert.match(html, /<button type="button" id="signin-have-code" class="link have-code">I already have a code</);
+    assert.match(html, /<div id="signin-code-form" class="code-form" hidden>/);
+    assert.match(html, /<span class="field-label">Got the mail\? Enter the six-digit code from it<\/span>\s*<input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"/);
+    assert.match(html, /id="signin-code-send"[^>]*>Sign in with the code</);
+    assert.match(html, /<p id="signin-note" class="signin-note" hidden><\/p>/);
     assert.match(html, /<p class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
     assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Forget this server</);
 });
@@ -6627,7 +6647,7 @@ test("Sign in: a link by email from the product's server, Keep me signed in with
     await settle();
     assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
     assert.deepEqual(pc.origins, [SERVER, SERVER], "the product's own server: whether it takes new accounts, then the link");
-    assert.equal(nodes.get("signin-status").textContent, "Check your email for the link; it works on this phone.");
+    assert.equal(nodes.get("signin-status").textContent, "Check your email. Open the link on this device, or enter the code from the mail below.");
     nodes.get("signin-remember").checked = false;
     nodes.get("signin-send").fire("click");
     await settle();
@@ -6710,6 +6730,138 @@ test("unticked, the session lasts the tab; the server forgetting it brings the l
     const missing = signinPc({ made: 404 });
     const none = await loadPage({ local: memoryStore(), fetchImpl: missing.fetch, hash: "#login=tok" });
     assert.equal(none.nodes.get("landing-status").textContent, "Sign-in is not set up on this server yet. Ask the developer for a key.");
+});
+
+test("the mail's code: shown once the link is sent, it signs in as the link does; a wrong one keeps the box", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: 401 });
+    pc.detail = "that code is not right";
+    const local = memoryStore();
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("landing-signin").fire("click");
+    assert.equal(nodes.get("signin-code-form").hidden, true, "no code before a link is asked for");
+    assert.equal(nodes.get("signin-have-code").hidden, false);
+    nodes.get("signin-email").value = "wife@example.com";
+    nodes.get("signin-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-code-form").hidden, false, "the link sent: the code box under the line");
+    assert.equal(nodes.get("signin-have-code").hidden, true);
+
+    // not six digits: said, nothing sent
+    nodes.get("signin-code").value = "4829";
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "Enter the six digits from the mail.");
+    assert.deepEqual(pc.sessions, []);
+
+    // a wrong code: the server's words, the box kept for another try
+    nodes.get("signin-code").value = " 482 913 ";
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.sessions, [{ body: { email: "wife@example.com", code: "482913" }, auth: "none" }]);
+    assert.equal(nodes.get("signin-status").textContent, "That code is not right.");
+    assert.equal(nodes.get("signin-code-form").hidden, false);
+    assert.equal(nodes.get("signin-code").value, " 482 913 ");
+    assert.equal(nodes.get("signin-code-send").disabled, false);
+    // spent or expired, and an older server that knows no codes
+    pc.made = 410;
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "That code was used or has expired; send yourself a new link.");
+    pc.made = 422;
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "Codes are not available on this server yet; use the link in the mail.");
+    assert.equal(local.getItem("snap.session"), null, "nothing kept");
+
+    // the right one (Enter in the box will do): in, as a #login= link is
+    pc.made = { session: "sess-code", user: "wife", remember: true };
+    nodes.get("signin-code").value = "482913";
+    nodes.get("signin-code").fire("keydown", { key: "Enter" });
+    await settle();
+    assert.deepEqual(pc.sessions.at(-1), { body: { email: "wife@example.com", code: "482913" }, auth: "none" });
+    assert.ok(pc.origins.every((o) => o === SERVER), "all to the product's server");
+    assert.equal(local.getItem("snap.session"), "sess-code");
+    assert.deepEqual(["landing", "signin", "work"].map((id) => nodes.get(id).hidden), [true, true, false]);
+    assert.equal(server(nodes), "server ok (ok)");
+    assert.equal(pc.mes, 1, "who this is, after the check");
+});
+
+test("I already have a code: the box without a new link; Back folds it; unticked, the session lasts the tab", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: { session: "sess-tab", user: "wife", remember: false } });
+    const local = memoryStore();
+    const session = memoryStore();
+    const { nodes } = await loadPage({ local, session, fetchImpl: pc.fetch });
+    nodes.get("landing-signin").fire("click");
+    nodes.get("signin-have-code").fire("click");
+    assert.equal(nodes.get("signin-code-form").hidden, false);
+    assert.equal(nodes.get("signin-have-code").hidden, true);
+    assert.deepEqual(pc.links, [], "no new link asked for");
+    nodes.get("signin-back").fire("click");
+    nodes.get("landing-signin").fire("click");
+    assert.equal(nodes.get("signin-code-form").hidden, true, "Back folded it");
+
+    nodes.get("signin-have-code").fire("click");
+    nodes.get("signin-code").value = "123456";
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("signin-status").textContent, "Enter your email address.", "the code is for an address");
+    assert.deepEqual(pc.sessions, []);
+    nodes.get("signin-email").value = "wife@example.com";
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.sessions, [{ body: { email: "wife@example.com", code: "123456" }, auth: "none" }]);
+    assert.equal(session.getItem("snap.session"), "sess-tab", "this tab only, as the answer says");
+    assert.equal(local.getItem("snap.session"), null);
+    assert.equal(nodes.get("work").hidden, false);
+});
+
+test("an iPhone in Safari is told to sign in inside the installed Snap; the installed Snap gets the code after sending", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const iphone = { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15" };
+    const safari = await loadPage({ agent: iphone, fetchImpl: signinPc().fetch });
+    safari.nodes.get("landing-signin").fire("click");
+    assert.equal(safari.nodes.get("signin-note").hidden, false);
+    assert.equal(
+        safari.nodes.get("signin-note").textContent,
+        "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail."
+    );
+
+    const pc = signinPc();
+    const app = await loadPage({ agent: { ...iphone, standalone: true }, fetchImpl: pc.fetch });
+    app.nodes.get("landing-signin").fire("click");
+    assert.equal(app.nodes.get("signin-note").hidden, true, "already in the app: no note");
+    assert.equal(app.nodes.get("signin-code-form").hidden, true);
+    app.nodes.get("signin-email").value = "wife@example.com";
+    app.nodes.get("signin-send").fire("click");
+    await settle();
+    assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
+    assert.equal(app.nodes.get("signin-code-form").hidden, false, "the code box, for the mail's code");
+
+    const android = await loadPage({ agent: { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)", maxTouchPoints: 5 }, fetchImpl: signinPc().fetch });
+    android.nodes.get("landing-signin").fire("click");
+    assert.equal(android.nodes.get("signin-note").hidden, true);
+    assert.equal(android.nodes.get("signin-note").textContent, "");
+});
+
+test("a desktop browser is not nudged to install: no Install on the landing, no banner", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pcAgent = { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", platform: "Win32", maxTouchPoints: 0 };
+    const desk = await loadPage({ agent: pcAgent });
+    assert.equal(desk.nodes.get("landing").hidden, false);
+    assert.equal(desk.nodes.get("landing-install").hidden, true);
+    assert.equal(desk.nodes.get("landing-install-steps").hidden, true);
+    assert.equal(desk.nodes.get("landing-key").hidden, false, "the key and Sign in as ever");
+    assert.equal(desk.nodes.get("landing-signin").hidden, false);
+    const keyed = await loadPage({ agent: pcAgent, local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
+    assert.equal(keyed.nodes.get("work").hidden, false);
+    assert.equal(keyed.nodes.get("install-banner").hidden, true);
+    // a phone, or a touch screen: as before
+    const phone = await loadPage({ agent: { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)", maxTouchPoints: 5 } });
+    assert.equal(phone.nodes.get("landing-install").hidden, false);
+    const ipad = await loadPage({ agent: { userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 } });
+    assert.equal(ipad.nodes.get("landing-install").hidden, false, "an iPad says Mac, but has touch");
 });
 
 // --- the account: GET /me (Michal, 2026-10-08) --------------------------------------------------
@@ -7161,6 +7313,12 @@ test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account 
     });
     assert.equal((await back("#paid=cancelled")).nodes.get("account-status").textContent, "Payment cancelled");
     assert.equal((await back("#ebay=connected")).nodes.get("account-status").textContent, "eBay connected");
+    // Michal, 2026-10-08: an eBay account another Snap account has is said so; another reason as ever
+    const taken = await back("#ebay=failed:taken");
+    assert.equal(globalThis.location.hash, "");
+    assert.equal(taken.nodes.get("account-status").textContent, "That eBay account is already connected to another Snap account. Sign in to that one, or use a different eBay account.");
+    assert.equal(taken.pc.mes, 1);
+    assert.equal((await back("#ebay=failed:declined")).nodes.get("account-status").textContent, "eBay did not connect; try again or contact the developer");
     const failed = await back("#ebay=failed");
     assert.equal(failed.nodes.get("account-status").textContent, "eBay did not connect; try again or contact the developer");
     // Close: the goods screen, and the line said once
@@ -7332,7 +7490,7 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
 test("Seller address sits under the eBay line, folded and hidden until the server answers; About and privacy in the footer", () => {
     const account = /<div id="account" class="account" hidden>([\s\S]*?)<p id="account-status"/.exec(html)[1];
     assert.match(account, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="seller-toggle"/);
-    assert.match(account, /<button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"\s+aria-controls="seller" hidden>▸ Seller address<\/button>/);
+    assert.match(account, /<button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"\s+aria-controls="seller" hidden>▸ Address where you ship from<\/button>/);
     assert.match(account, /<div id="seller" class="seller" hidden>/);
     for (const [id, label, fill] of [
         ["seller-line1", "Street address", "address-line1"],
@@ -7443,14 +7601,21 @@ test("Seller address: open by itself for a connected eBay with no address; saved
     await settle();
     assert.deepEqual(pc.sellerAsks, ["key test-key-0123456789"]);
     assert.deepEqual(sellerOf(nodes), {
-        toggle: "▾ Seller address",
+        toggle: "▾ Address where you ship from",
         open: true,
         note: ADDRESS_NEEDED,
         status: "",
         ebay: "eBay: connected as anna_sells",
     });
-    assert.equal(ADDRESS_NEEDED, "Your address is needed for shipping and pickup. Fill it in once.");
+    // Michal, 2026-10-08: "then your address. what address?": what it is for, and who sees what
+    assert.equal(
+        ADDRESS_NEEDED,
+        "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state."
+    );
     assert.equal(nodes.get("seller-toggle").attrs["aria-expanded"], "true");
+    // typed in rather than prefilled: what Snap sets up is listed all the same, above Save address
+    assert.equal(nodes.get("seller-policies").hidden, false);
+    assert.equal(nodes.get("seller-save").textContent, "Save address");
 
     // a box not right: named, nothing sent
     nodes.get("seller-save").fire("click");
@@ -7477,7 +7642,7 @@ test("Seller address: open by itself for a connected eBay with no address; saved
         },
     ]);
     assert.deepEqual(sellerOf(nodes), {
-        toggle: "▾ Seller address",
+        toggle: "▾ Address where you ship from",
         open: true,
         note: null,
         status: "saved",
@@ -7506,7 +7671,7 @@ test("Seller address: open by itself for a connected eBay with no address; saved
     await openSettings(nodes);
     await settle();
     assert.deepEqual(sellerOf(nodes), {
-        toggle: "▸ Seller address",
+        toggle: "▸ Address where you ship from",
         open: false,
         note: null,
         status: "",
@@ -7587,7 +7752,7 @@ test("Seller address: no foldout from an older server, nor before an eBay is con
     const page = await loadPage({ local: memoryStore(GOOD), fetchImpl: fresh.fetch });
     await openSettings(page.nodes);
     await settle();
-    assert.deepEqual(sellerOf(page.nodes), { toggle: "▸ Seller address", open: false, note: null, status: "", ebay: "eBay: not connected" });
+    assert.deepEqual(sellerOf(page.nodes), { toggle: "▸ Address where you ship from", open: false, note: null, status: "", ebay: "eBay: not connected" });
     assert.equal(page.nodes.get("account-connect").hidden, false);
 
     // signed out: the address goes with the account
@@ -8009,7 +8174,11 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     assert.equal(nodes.get("about-link").hidden, false);
     assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish signing up<\/h2>/);
     assert.match(html, /id="signup-connect" class="big">Connect eBay</);
-    assert.match(html, /<span class="signup-word">then your address<\/span>/);
+    // Michal, 2026-10-08: "then your address. what address?": step 2 says where, and what it is for
+    const step2 = /<li id="signup-step-address"[^>]*>([\s\S]*?)<\/li>/.exec(html)[1];
+    assert.match(step2, /<span id="signup-address-word" class="signup-word">Address where you ship from<\/span>\s*<span class="signup-line">([^<]*)<\/span>/);
+    assert.equal(nodes.get("signup-address-word").textContent, "Address where you ship from");
+    assert.equal(/<span class="signup-line">([^<]*)<\/span>/.exec(step2)[1], ADDRESS_NEEDED, "the same line as the Settings foldout's");
 
     // Connect eBay, here as in the Account block: a server that cannot yet says its own words
     nodes.get("signup-connect").fire("click");
@@ -8073,6 +8242,111 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     n.get("admin-close").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
+});
+
+/** A sign-up back from eBay: a real account now, its address not given yet. */
+const CONNECTED_ME = {
+    user: "anna",
+    email: "",
+    admin: false,
+    craigslist: true,
+    venues: [],
+    pending: false,
+    registered: false,
+    credits: { free_left: 3, bought_left: 0 },
+    packs: [],
+    ebay: { connected: true, user: "anna_sells", policies: "none" },
+};
+
+test("an address prefilled from eBay: step 2 asks to confirm it, the boxes filled, what Snap sets up listed, Looks right sends them", async (t) => {
+    // Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the policies,
+    // after connecting eBay"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
+    pc.seller = {
+        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "" },
+        complete: false,
+        ebay: { connected: true, user: "anna_sells", policies: "none" },
+    };
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false], "open by itself");
+    assert.deepEqual(sellerOf(n), {
+        toggle: "▾ Address where you ship from",
+        open: true,
+        note: "Prefilled from your eBay account; change it if you ship from elsewhere.",
+        status: "",
+        ebay: "eBay: connected as anna_sells",
+    });
+    assert.deepEqual(["seller-line1", "seller-city", "seller-state", "seller-zip"].map((id) => n.get(id).value), ["12 Oak St", "Chicago", "IL", ""]);
+    // under the boxes, above the button: what Snap sets up on her eBay
+    assert.equal(n.get("seller-policies").hidden, false);
+    assert.deepEqual(
+        n.get("seller-policy-list").children.map((li) => li.textContent),
+        [
+            "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
+            "Returns: 30 days, buyer pays return shipping",
+            "Local pickup only, for items you mark pickup only",
+            "Your ship-from location: the address above",
+        ]
+    );
+    assert.match(html, /<p class="seller-policies-head">Snap will set up on your eBay account:<\/p>/);
+    assert.equal(n.get("seller-save").textContent, "Looks right");
+
+    // closed: step 2 asks to confirm it
+    n.get("admin-close").fire("click");
+    assert.equal(n.get("signup-steps").hidden, false);
+    assert.equal(n.get("signup-address-word").textContent, "Confirm the address where you ship from");
+    assert.equal(n.get("signup-step-address").classList.contains("done"), false);
+
+    // Looks right: the boxes as shown, the one missing named first
+    n.get("signup-address").fire("click");
+    await settle();
+    n.get("seller-save").fire("click");
+    await settle();
+    assert.equal(sellerOf(n).status, "The ZIP is five digits, as 60601.");
+    assert.deepEqual(pc.sellerSaves, []);
+    n.get("seller-zip").value = "60601";
+    pc.me = { ...pc.me, registered: true };
+    n.get("seller-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
+    assert.equal(n.get("seller-save").textContent, "Save address", "all there now");
+    assert.equal(n.get("seller-policies").hidden, true);
+    n.get("admin-close").fire("click");
+    assert.equal(n.get("signup-steps").hidden, true);
+    assert.equal(n.get("work").hidden, false, "the goods screen is hers");
+});
+
+test("an address that came all there from eBay: step 2 ticked; Settings opened from it asks /me again, the goods screen once registered", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
+    pc.seller = {
+        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" },
+        complete: true,
+        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+    };
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    assert.equal(sellerOf(n).note, null, "nothing to say: it is all there");
+    assert.equal(n.get("seller-policies").hidden, true);
+    assert.equal(n.get("seller-save").textContent, "Save address", "the foldout still takes a correction");
+    n.get("admin-close").fire("click");
+    assert.equal(n.get("signup-steps").hidden, false, "/me still says not registered");
+    assert.equal(n.get("signup-step-address").classList.contains("done"), true, "step 2 ticked");
+    assert.equal(n.get("signup-address-word").textContent, "Address where you ship from");
+    assert.equal(n.get("signup-address").disabled, false, "Settings' foldout still takes a correction");
+
+    // its button: Settings, whose address all there has /me asked again; registered, the goods screen
+    const mes = pc.mes;
+    pc.me = { ...pc.me, registered: true };
+    n.get("signup-address").fire("click");
+    await settle();
+    assert.equal(pc.mes, mes + 1);
+    assert.deepEqual(pc.sellerSaves, [], "nothing to send");
+    n.get("admin-close").fire("click");
+    assert.equal(n.get("signup-steps").hidden, true);
+    assert.equal(n.get("work").hidden, false);
 });
 // --- the optional item name (Michal, 2026-10-08) ------------------------------------------------
 

@@ -149,19 +149,24 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.15.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.16.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
  * @typedef {{pc:string, key?:string, session?:string}} Settings
  */
 
-/** An error with the HTTP status (0 = the PC could not be reached). */
+/**
+ * An error with the HTTP status (0 = the PC could not be reached), and the server's own
+ * detail as it said it ("" when none): a wrong sign-in code's 401 is said in its words,
+ * where errorText would say a key was wrong.
+ */
 export class PcError extends Error {
     constructor(status, detail) {
         super(errorText(status, detail));
         this.name = "PcError";
         this.status = status;
+        this.detail = typeof detail === "string" ? detail : "";
     }
 }
 
@@ -486,6 +491,17 @@ export function askLink(pc, body) {
  */
 export function startSession(pc, token) {
     return call(`${pc}/auth/session`, {}, { method: "POST", json: { token } });
+}
+
+/**
+ * The mail's six-digit code for a session, as the link's token is (Michal, 2026-10-08: the
+ * installed app on an iPhone, which a mailed link never opens). No key, no session.
+ * @param {string} pc the product's server (DEFAULT_SERVER)
+ * @param {{email:string, code:string}} body
+ * @returns {Promise<{session:string, user:string, remember:boolean}>}
+ */
+export function codeSession(pc, body) {
+    return call(`${pc}/auth/session`, {}, { method: "POST", json: body });
 }
 
 /**

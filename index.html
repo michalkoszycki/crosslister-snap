@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.15.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.15.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.16.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.16.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -68,8 +68,9 @@
 <main>
   <!-- The landing (Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app.
        Snap is simple. Note that for the first landing page."): the whole screen, in place of the
-       goods screen, while this phone has no server address and key and no session. Install
-       first, then the two ways in: a key (Admin's Settings, as ever) or a sign-in link by email. -->
+       goods screen, while this phone has no server address and key and no session. Sign in
+       first (Michal, 2026-10-08: Install below sign-in, smaller), then a key (Admin's Settings,
+       as ever), then Install, small. -->
   <section id="landing" class="landing" hidden>
     <svg class="mark landing-mark" viewBox="0 0 132 132" width="96" height="96" aria-hidden="true">
       <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
@@ -84,16 +85,14 @@
     <p class="landing-tagline">a crosslisting app</p>
     <p class="landing-what">Photograph it, and it is listed on eBay and Craigslist with a price and a description.</p>
     <p class="landing-price">Three postings free, then prepaid.</p>
+    <button type="button" id="landing-signin" class="big">Sign in</button>
+    <button type="button" id="landing-key" class="secondary landing-small">I have a key</button>
     <!-- Michal, 2026-10-08: "If it is not on the home screen it should direct towards that
          install": Chrome's own prompt where it offered one, else the two taps unfold here;
-         gone when the page runs from the home screen -->
-    <button type="button" id="landing-install" class="big landing-install" aria-expanded="false"
+         gone when the page runs from the home screen, and on a desktop browser -->
+    <button type="button" id="landing-install" class="secondary landing-small" aria-expanded="false"
             aria-controls="landing-install-steps">Install</button>
     <p id="landing-install-steps" class="install-steps" hidden></p>
-    <div class="landing-ways">
-      <button type="button" id="landing-key" class="secondary">I have a key</button>
-      <button type="button" id="landing-signin" class="secondary">Sign in</button>
-    </div>
     <p id="landing-status" class="landing-status" aria-live="polite"></p>
   </section>
 
@@ -116,12 +115,25 @@
     </label>
     <button type="button" id="signin-send" class="big">Send me a link</button>
     <p id="signin-status" class="landing-status" aria-live="polite"></p>
+    <!-- the mail's six-digit code (Michal, 2026-10-08): an iPhone's installed Snap keeps its
+         own storage and a mailed link opens in Safari, so the app signs in by the code. Shown
+         once the link is sent, or by I already have a code (asked for elsewhere, say in Safari) -->
+    <button type="button" id="signin-have-code" class="link have-code">I already have a code</button>
+    <div id="signin-code-form" class="code-form" hidden>
+      <label class="field">
+        <span class="field-label">Got the mail? Enter the six-digit code from it</span>
+        <input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"
+               autocapitalize="off" spellcheck="false" maxlength="11" placeholder="123456">
+      </label>
+      <button type="button" id="signin-code-send" class="secondary">Sign in with the code</button>
+    </div>
+    <p id="signin-note" class="signin-note" hidden></p>
   </section>
 
   <!-- Finish signing up (Michal, 2026-10-08): an account signed in by email but not yet
        registered sees its two steps in place of the posting screens, GET /me saying where it
-       stands: Connect eBay (the Account block's button, repeated here), then the address
-       (Settings' Seller address), greyed until eBay is connected. Registered, the goods
+       stands: Connect eBay (the Account block's button, repeated here), then where you ship
+       from (Settings' foldout of that name), greyed until eBay is connected. Registered, the goods
        screen (app.js, signupStep in core.js) -->
   <section id="signup-steps" class="landing signup" hidden>
     <h2 class="landing-name">Finish signing up</h2>
@@ -132,7 +144,9 @@
         <button type="button" id="signup-connect" class="big">Connect eBay</button>
       </li>
       <li id="signup-step-address" class="signup-step">
-        <span class="signup-word">then your address</span>
+        <!-- Michal, 2026-10-08: "then your address. what address?": what it is for, said -->
+        <span id="signup-address-word" class="signup-word">Address where you ship from</span>
+        <span class="signup-line">eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
         <button type="button" id="signup-address" class="secondary">Your address</button>
       </li>
     </ol>
@@ -195,7 +209,7 @@
              up, from GET /me/seller; it opens by itself, saying why, when eBay is connected and
              the address is missing. An older server's 404: no foldout (app.js) -->
         <button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"
-                aria-controls="seller" hidden>▸ Seller address</button>
+                aria-controls="seller" hidden>▸ Address where you ship from</button>
         <div id="seller" class="seller" hidden>
           <p id="seller-note" class="small seller-note" hidden></p>
           <label class="field field-small">
@@ -219,6 +233,13 @@
               <input id="seller-zip" class="small-input" type="text" inputmode="numeric"
                      autocomplete="postal-code" spellcheck="false" maxlength="10" placeholder="60601">
             </label>
+          </div>
+          <!-- what Snap sets up on her eBay once the address is in, while it is being given
+               (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
+               policies, after connecting eBay"); the lines are POLICY_LINES in core.js -->
+          <div id="seller-policies" class="seller-policies" hidden>
+            <p class="seller-policies-head">Snap will set up on your eBay account:</p>
+            <ul id="seller-policy-list" class="seller-policy-list"></ul>
           </div>
           <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
           <p id="seller-status" class="small account-status" aria-live="polite"></p>
@@ -749,6 +770,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.15.0"></script>
+<script type="module" src="app.js?v=2.16.0"></script>
 </body>
 </html>
