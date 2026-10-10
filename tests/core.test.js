@@ -2022,8 +2022,8 @@ test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => 
 // Michal, 2026-09-28: a little arrow with the word customize before the buttons,
 // to edit the quantity and tick pickup only ("a pickup only item on eBay then").
 
-test("customize starts at one, shipped, a quick sale, posted, no comparisons, for goods and books alike", () => {
-    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: false });
+test("customize starts at one, shipped, a quick sale, posted, with comparisons, for goods and books alike", () => {
+    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: true });
     assert.deepEqual(initialState("x").customize, initialCustomize());
     assert.deepEqual(bookState().book.customize, initialCustomize());
     const goods = initialState("x");
@@ -2332,7 +2332,7 @@ test("the price grade and auto-post are kept for a reload only when not the defa
         // the PC saved the row unposted before the reload
         answer: { photos: [1, 2], sku: "B-1", jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", links: {} }] },
     });
-    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: false });
+    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: true });
     assert.equal(venueLine(back.jobs.ebay).text, "saved, not posted");
     assert.equal(venueButton(back, "ebay", true).enabled, true);
     // anything odd is the default
@@ -2359,67 +2359,70 @@ test("the price grade and auto-post are kept for a reload only when not the defa
     assert.deepEqual(bookBack.book.customize, { ...initialCustomize(), pricing: 2 });
 });
 
-// --- customize: the eBay comparisons (Michal, 2026-10-07) ----------------------------
+// --- customize: the eBay comparisons (Michal, 2026-10-07; on by default, 2026-10-10) ------
 // "Let's abandon checking eBay for similar items (call 1) and put that toggle default
-// off, in customization."
+// off, in customization." Then, after five real items re-drafted with and without it:
+// "Yes keep comparables on".
 
-test("Compare with eBay listings: off by default; ticked, comps: true in every body and said under both buttons", () => {
-    assert.equal(COMPS_NOTE, "with eBay comparisons");
-    assert.equal(customizeBody({ ...initialCustomize(), comps: false }).comps, undefined, "never comps: false");
-    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: true }), { comps: true });
-    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "yes" }), {}, "only true is true");
+test("Compare with eBay listings: on by default; unticked, comps: false in every body and said under both buttons", () => {
+    assert.equal(COMPS_NOTE, "without eBay comparisons");
+    assert.equal(customizeBody({ ...initialCustomize(), comps: true }).comps, undefined, "never comps: true");
+    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: false }), { comps: false });
+    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "no" }), {}, "only false is false");
 
     let s = sent(2, [2]);
-    assert.equal(JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })), `{"item":"${ITEM}","venue":"ebay","ai":[2]}`);
-    s = reduce(s, { type: "setComps", on: true });
     assert.equal(s.customize.comps, true);
+    assert.equal(JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })), `{"item":"${ITEM}","venue":"ebay","ai":[2]}`);
+    assert.equal(venueIdleNote(s, "ebay"), "", "left alone: nothing said");
+    s = reduce(s, { type: "setComps", on: false });
+    assert.equal(s.customize.comps, false);
     assert.deepEqual(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) }), {
         item: ITEM,
         venue: "ebay",
         ai: [2],
-        comps: true,
+        comps: false,
     });
-    assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), { sku: "B-9", venue: "craigslist", comps: true });
-    assert.equal(venueIdleNote(s, "ebay"), "with eBay comparisons");
-    assert.equal(venueIdleNote(s, "craigslist"), "with eBay comparisons");
+    assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), { sku: "B-9", venue: "craigslist", comps: false });
+    assert.equal(venueIdleNote(s, "ebay"), "without eBay comparisons");
+    assert.equal(venueIdleNote(s, "craigslist"), "without eBay comparisons");
     const all = reduce(reduce(s, { type: "setPricing", grade: 2 }), { type: "setPickupOnly", on: true });
-    assert.equal(venueIdleNote(all, "ebay"), "pickup only · fair price · with eBay comparisons");
+    assert.equal(venueIdleNote(all, "ebay"), "pickup only · fair price · without eBay comparisons");
 
     // fixed while a job is on its way, reset by NEXT
     const going = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
-    assert.equal(reduce(going, { type: "setComps", on: false }), going);
-    assert.equal(reduce(s, { type: "reset" }).customize.comps, false);
+    assert.equal(reduce(going, { type: "setComps", on: true }), going);
+    assert.equal(reduce(s, { type: "reset" }).customize.comps, true);
 
     // a book's is its own, and goes beside the book
-    const b = reduce(foundBook(), { type: "setComps", on: true });
-    assert.deepEqual([b.book.customize.comps, b.customize.comps], [true, false]);
+    const b = reduce(foundBook(), { type: "setComps", on: false });
+    assert.deepEqual([b.book.customize.comps, b.customize.comps], [false, true]);
     const bookBody = jobRequest({ venue: "ebay", item: b.itemId, book: bookForm(b), customize: customizeOf(b) });
-    assert.equal(bookBody.comps, true);
+    assert.equal(bookBody.comps, false);
     assert.equal("comps" in bookBody.book, false);
 });
 
-test("Compare with eBay listings is kept for a reload only when ticked, and read back", () => {
-    const on = reduce(sent(1, [1]), { type: "setComps", on: true });
-    assert.deepEqual(savedItem(on).customize, { quantity: "1", pickupOnly: false, comps: true });
-    assert.equal("customize" in savedItem(reduce(on, { type: "setComps", on: false })), false, "unticked: saved as ever");
+test("Compare with eBay listings is kept for a reload only when unticked, and read back", () => {
+    const off = reduce(sent(1, [1]), { type: "setComps", on: false });
+    assert.deepEqual(savedItem(off).customize, { quantity: "1", pickupOnly: false, comps: false });
+    assert.equal("customize" in savedItem(reduce(off, { type: "setComps", on: true })), false, "ticked: saved as ever");
     const back = reduce(initialState(""), {
         type: "recovered",
         mode: "goods",
         itemName: "Boots",
         itemId: ITEM,
-        customize: { quantity: "1", pickupOnly: false, comps: true },
+        customize: { quantity: "1", pickupOnly: false, comps: false },
         answer: { photos: [1] },
     });
-    assert.equal(back.customize.comps, true);
+    assert.equal(back.customize.comps, false);
     const odd = reduce(initialState(""), {
         type: "recovered",
         itemName: "Boots",
         itemId: ITEM,
-        customize: { quantity: "1", comps: "yes" },
+        customize: { quantity: "1", comps: "no" },
         answer: { photos: [1] },
     });
-    assert.equal(odd.customize.comps, false, "anything but true is off");
-    const book = reduce(foundBook(), { type: "setComps", on: true });
+    assert.equal(odd.customize.comps, true, "anything but false is the default, on");
+    const book = reduce(foundBook(), { type: "setComps", on: false });
     const bookBack = reduce(bookState(), {
         type: "recovered",
         mode: "book",
@@ -2428,7 +2431,7 @@ test("Compare with eBay listings is kept for a reload only when ticked, and read
         book: JSON.parse(JSON.stringify(savedItem(book))),
         answer: { photos: [1] },
     });
-    assert.equal(bookBack.book.customize.comps, true);
+    assert.equal(bookBack.book.customize.comps, false);
 });
 
 // --- Admin: the inventory (Michal, 2026-10-06) -----------------------------------------
@@ -3569,14 +3572,14 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
 });
 
 test("customize defaults: read leniently, kept without the quantity, a new item starts from them", () => {
-    const plain = { pricing: 1, autoPost: true, comps: false, pickupOnly: false };
+    const plain = { pricing: 1, autoPost: true, comps: true, pickupOnly: false };
     assert.deepEqual(customizeDefaults(null), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults("garbage"), { goods: plain, book: plain });
-    assert.deepEqual(customizeDefaults({ goods: { pricing: 7, autoPost: "no", comps: 1, pickupOnly: true } }), {
-        goods: { pricing: 1, autoPost: true, comps: false, pickupOnly: true },
+    assert.deepEqual(customizeDefaults({ goods: { pricing: 7, autoPost: "no", comps: 0, pickupOnly: true } }), {
+        goods: { pricing: 1, autoPost: true, comps: true, pickupOnly: true },
         book: plain,
     });
-    const goods = { pricing: 2, autoPost: false, comps: true, pickupOnly: true };
+    const goods = { pricing: 2, autoPost: false, comps: false, pickupOnly: true };
     assert.deepEqual(defaultsOf({ quantity: "3", ...goods }), goods, "never the quantity");
     const saved = customizeDefaults({ goods, book: { pricing: 3 } });
 

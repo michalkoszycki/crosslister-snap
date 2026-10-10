@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.17.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.17.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.17.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.17.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -551,7 +551,8 @@
         <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <!-- Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
-           that toggle default off, in customization." -->
+           that toggle default off, in customization." Then on by default, 2026-10-10, after five
+           real items re-drafted with and without it: "Yes keep comparables on". -->
       <label class="pickup">
         <input id="comps" type="checkbox">
         <span>Compare with eBay listings<small>sends eBay's similar listings to the AI for the first draft; slower, a little dearer</small></span>
@@ -779,6 +780,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.17.0"></script>
+<script type="module" src="app.js?v=2.17.1"></script>
 </body>
 </html>
