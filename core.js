@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.17.0";
+import { noteDirty, unsent } from "./queue.js?v=2.17.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.17.0";
+} from "./book.js?v=2.17.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1244,13 +1244,13 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
  * @property {1|2|3} pricing     the price grade (PRICING): 1 a quick sale, the default
  * @property {boolean} autoPost  the PC publishes (the default); off, it saves the row and the
  *                               button posts it on the next press
- * @property {boolean} comps     eBay's similar listings go to the AI for the first draft; off
- *                               by default
+ * @property {boolean} comps     eBay's similar listings go to the AI for the first draft; on
+ *                               by default since 2026-10-10 (off from 2026-10-07)
  */
 
 /**
  * What customize adds to a job's body, each key only when it is not the default.
- * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:true}} CustomizeBody
+ * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:false}} CustomizeBody
  */
 
 /**
@@ -1268,7 +1268,7 @@ export const DEFAULT_PRICING = 1;
 
 /** @returns {Customize} */
 export function initialCustomize() {
-    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: false };
+    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: true };
 }
 
 /**
@@ -1330,8 +1330,8 @@ export const QUANTITY_HINT = "Quantity (under customize) must be a whole number,
 /** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
 export const PICKUP_NOTE = "pickup only";
 
-/** Under both buttons, before the press, once Compare with eBay listings is ticked. */
-export const COMPS_NOTE = "with eBay comparisons";
+/** Under both buttons, before the press, once Compare with eBay listings is unticked. */
+export const COMPS_NOTE = "without eBay comparisons";
 
 /**
  * This item's customize: a book keeps its own in the book slice, goods at the top.
@@ -1345,9 +1345,9 @@ export function customizeOf(state) {
 /**
  * What customize adds to a job's body: `quantity` only when it is not 1,
  * `pickup_only` only when ticked, `pricing` only when it is not 1,
- * `auto_post: false` only when unticked and `comps: true` only when ticked, so
+ * `auto_post: false` only when unticked and `comps: false` only when unticked, so
  * an item left alone sends the same body as ever (and the PC's defaults, 1,
- * shipped, a quick sale, published and no comparisons, apply).
+ * shipped, a quick sale, published and with comparisons, apply).
  * @param {Customize} [customize]
  * @returns {CustomizeBody}
  */
@@ -1361,7 +1361,7 @@ export function customizeBody(customize) {
     const grade = pricingGrade(customize.pricing);
     if (grade > DEFAULT_PRICING) out.pricing = /** @type {2|3} */ (grade);
     if (customize.autoPost === false) out.auto_post = false;
-    if (customize.comps === true) out.comps = true;
+    if (customize.comps === false) out.comps = false;
     return out;
 }
 
@@ -1369,8 +1369,8 @@ export function customizeBody(customize) {
  * The line under a venue button before it is pressed: what customize changed,
  * so he sees it took, joined with " · ": "pickup only" under ebay once ticked
  * (craigslist is pickup anyway), the price grade when it is not a quick sale,
- * "saved, not posted" while auto-post is off, and "with eBay comparisons" once
- * ticked. Nothing when left alone.
+ * "saved, not posted" while auto-post is off, and "without eBay comparisons" once
+ * unticked. Nothing when left alone.
  * @param {SnapState} state
  * @param {string} venue
  * @returns {string}
@@ -1381,7 +1381,7 @@ export function venueIdleNote(state, venue) {
     if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
     if (pricingGrade(c.pricing) > DEFAULT_PRICING) said.push(pricingOf(c.pricing).word.toLowerCase());
     if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
-    if (c.comps === true) said.push(COMPS_NOTE);
+    if (c.comps === false) said.push(COMPS_NOTE);
     return said.join(" · ");
 }
 
@@ -1394,7 +1394,7 @@ function recoveredCustomize(saved) {
     c.pickupOnly = saved.pickupOnly === true;
     c.pricing = pricingGrade(saved.pricing) || DEFAULT_PRICING;
     c.autoPost = saved.autoPost !== false;
-    c.comps = saved.comps === true;
+    c.comps = saved.comps !== false;
     return c;
 }
 
@@ -1406,14 +1406,14 @@ function recoveredCustomize(saved) {
 function savedCustomize(c) {
     const grade = pricingGrade(c.pricing) || DEFAULT_PRICING;
     const plainly = c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false;
-    if (plainly && c.comps !== true) return {};
+    if (plainly && c.comps !== false) return {};
     return {
         customize: {
             quantity: c.quantity,
             pickupOnly: c.pickupOnly,
             ...(grade === DEFAULT_PRICING ? {} : { pricing: grade }),
             ...(c.autoPost === false ? { autoPost: false } : {}),
-            ...(c.comps === true ? { comps: true } : {}),
+            ...(c.comps === false ? { comps: false } : {}),
         },
     };
 }
@@ -1993,7 +1993,7 @@ export function reduce(state, action) {
         case "setAutoPost":
             return withCustomize(state, (c) => ({ ...c, autoPost: action.on !== false }));
         case "setComps":
-            return withCustomize(state, (c) => ({ ...c, comps: action.on === true }));
+            return withCustomize(state, (c) => ({ ...c, comps: action.on !== false }));
 
         case "setMode":
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;

@@ -554,15 +554,16 @@ same button, lit in green."
   in green, the button opens again (not green: nothing is up), and its next
   press posts the saved row by its sku, with no second model call. Last
   (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1)
-  and put that toggle default off, in customization."), **Compare with eBay
-  listings**, unticked, with the small print `sends eBay's similar listings to
-  the AI for the first draft; slower, a little dearer`; ticked, the body says
-  `"comps": true` and the server looks eBay up for the draft as it used to, left
-  alone it does not. Before a press, the line under each button says what
+  and put that toggle default off, in customization."; then on by default,
+  2.17.1, 2026-10-10, after five real items re-drafted with and without it: "Yes keep
+  comparables on"), **Compare with eBay listings**, ticked, with the small print
+  `sends eBay's similar listings to the AI for the first draft; slower, a little
+  dearer`; left alone the server looks eBay up for the draft, and unticked the
+  body says `"comps": false` and it does not. Before a press, the line under each button says what
   customize changed, joined with ` · `: `pickup only` (under ebay only), the
   grade when it is not a quick sale (`fair price`, `higher end`), `saved, not
-  posted` while that box is unticked and `with eBay comparisons` while this one
-  is ticked, e.g. `pickup only · fair price · saved, not posted`, so it is
+  posted` while that box is unticked and `without eBay comparisons` while this
+  one is unticked, e.g. `pickup only · fair price · saved, not posted`, so it is
   plain it took. All five go with either button, the second one's too (the server
   updates the saved row first), and lock while a job is on its way. Then **Fix dark
   photos**, ticked, with the small print `brightens a dark photo on the phone before it
@@ -880,7 +881,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
-| customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization.") | top-level `"comps": true`, only when ticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": true}`; never `"comps": false`: left alone, the server drafts without eBay's similar listings | the same |
+| customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
 | `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
@@ -924,7 +925,7 @@ the sku with the item until **NEXT** (the id and the AI marks also in
 ISBN, its title, author, year and format; after an ISBN miss, both, and
 `isbnMiss`), condition, price, main photo and found record in `snap.book`;
 either one's customize, `{"quantity", "pickupOnly"}` plus `"pricing"`,
-`"autoPost": false` and `"comps": true` when they are not the default, once it
+`"autoPost": false` and `"comps": false` when they are not the default, once it
 is not the default; a reload with `autoPost` off reads a job done with no link as
 `saved, not posted`; goods made unnamed add `"unnamed": true`, `"serverName"` and, once
 known, `"label"` and `"title"`). What NEXT left is in `snap.history`, the same records, oldest first,

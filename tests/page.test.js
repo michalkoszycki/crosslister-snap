@@ -952,7 +952,7 @@ function unnamedId(n) {
 /**
  * What is wrong with a POST /jobs body as the PC reads it, or "" when nothing:
  * a new item, a book, or a sku, each with customize's optional top-level keys
- * (`pricing` 2 or 3, `auto_post` false, `comps` true; 1, true and false are never sent).
+ * (`pricing` 2 or 3, `auto_post` false, `comps` false; 1, true and true are never sent).
  */
 function jobContract(body) {
     const known = ["item", "venue", "ai", "book", "sku", "quantity", "pickup_only", "pricing", "auto_post", "comps"];
@@ -962,7 +962,7 @@ function jobContract(body) {
     if (!body.sku && !body.item) return "neither an item nor a sku";
     if ("pricing" in body && ![2, 3].includes(body.pricing)) return `pricing ${body.pricing}`;
     if ("auto_post" in body && body.auto_post !== false) return `auto_post ${body.auto_post}`;
-    if ("comps" in body && body.comps !== true) return `comps ${body.comps}`;
+    if ("comps" in body && body.comps !== false) return `comps ${body.comps}`;
     if ("pickup_only" in body && body.pickup_only !== true) return `pickup_only ${body.pickup_only}`;
     if ("quantity" in body && !(Number.isInteger(body.quantity) && body.quantity > 1)) return `quantity ${body.quantity}`;
     return "";
@@ -5664,11 +5664,12 @@ test("a reload brings the price grade and post without asking back, and a row sa
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
 });
 
-// --- customize: the eBay comparisons (Michal, 2026-10-07) --------------------------------
+// --- customize: the eBay comparisons (Michal, 2026-10-07; on by default, 2026-10-10) ------
 // "Let's abandon checking eBay for similar items (call 1) and put that toggle default off,
-// in customization."
+// in customization." Then, after five real items re-drafted with and without it: "Yes keep
+// comparables on".
 
-test("customize, goods: Compare with eBay listings, off by default; ticked, comps: true goes and is said; NEXT unticks it", async (t) => {
+test("customize, goods: Compare with eBay listings, on by default; unticked, comps: false goes and is said; NEXT ticks it", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const local = memoryStore(GOOD);
     const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing", sku: "B-0090" }) } });
@@ -5684,25 +5685,25 @@ test("customize, goods: Compare with eBay listings, off by default; ticked, comp
     await settle();
     card(nodes, 0).ai.fire("click");
     nodes.get("customize-toggle").fire("click");
-    assert.equal(nodes.get("comps").checked, false);
+    assert.equal(nodes.get("comps").checked, true);
     assert.equal(nodes.get("ebay-status").textContent, "", "left alone: nothing said");
 
-    nodes.get("comps").checked = true;
+    nodes.get("comps").checked = false;
     nodes.get("comps").fire("change");
-    assert.equal(nodes.get("ebay-status").textContent, "with eBay comparisons");
-    assert.equal(nodes.get("craigslist-status").textContent, "with eBay comparisons");
-    assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, { quantity: "1", pickupOnly: false, comps: true });
+    assert.equal(nodes.get("ebay-status").textContent, "without eBay comparisons");
+    assert.equal(nodes.get("craigslist-status").textContent, "without eBay comparisons");
+    assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, { quantity: "1", pickupOnly: false, comps: false });
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
-    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], comps: true }]);
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1], comps: false }]);
     assert.equal(nodes.get("comps").disabled, true, "fixed while the job is on its way");
 
-    // NEXT: unticked again, and the next item's body says nothing of it
+    // NEXT: ticked again, and the next item's body says nothing of it
     nodes.get("next-item").fire("click");
     await settle();
-    assert.equal(nodes.get("comps").checked, false);
+    assert.equal(nodes.get("comps").checked, true);
     assert.equal(nodes.get("comps").disabled, false);
     await typeName(nodes, "Vase");
     snap(nodes, 1);
@@ -5715,7 +5716,7 @@ test("customize, goods: Compare with eBay listings, off by default; ticked, comp
     assert.deepEqual(pc.posted[1], { item: `Vase ${TODAY}`, venue: "ebay", ai: [1] });
 });
 
-test("customize, book: its own Compare with eBay listings; ticked, comps: true beside the book; a reload keeps it", async (t) => {
+test("customize, book: its own Compare with eBay listings; unticked, comps: false beside the book; a reload keeps it", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const local = memoryStore(GOOD);
     const pc = fakePc({ books: { [ISBN]: BOOK }, jobs: { j1: () => ({ state: "running", step: "listing the book" }) } });
@@ -5726,15 +5727,15 @@ test("customize, book: its own Compare with eBay listings; ticked, comps: true b
     fire(nodes, "book-snap-input");
     await settle();
     nodes.get("book-customize-toggle").fire("click");
-    assert.equal(nodes.get("book-comps").checked, false);
-    nodes.get("book-comps").checked = true;
+    assert.equal(nodes.get("book-comps").checked, true);
+    nodes.get("book-comps").checked = false;
     nodes.get("book-comps").fire("change");
-    assert.equal(nodes.get("comps").checked, false, "the goods box is its own");
-    assert.equal(nodes.get("book-ebay-status").textContent, "with eBay comparisons");
-    assert.equal(JSON.parse(local.getItem("snap.book")).customize.comps, true);
+    assert.equal(nodes.get("comps").checked, true, "the goods box is its own");
+    assert.equal(nodes.get("book-ebay-status").textContent, "without eBay comparisons");
+    assert.equal(JSON.parse(local.getItem("snap.book")).customize.comps, false);
 
     const again = await loadPage({ local, fetchImpl: pc.fetch, barcodes: [ISBN] });
-    assert.equal(again.nodes.get("book-comps").checked, true, "a reload keeps it ticked");
+    assert.equal(again.nodes.get("book-comps").checked, false, "a reload keeps it unticked");
     again.nodes.get("book-ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -5744,7 +5745,7 @@ test("customize, book: its own Compare with eBay listings; ticked, comps: true b
             item: `Book ${ISBN} ${TODAY}`,
             venue: "ebay",
             book: { ...NO_TYPING, isbn: ISBN, condition: "good", price: "11", main: 1 },
-            comps: true,
+            comps: false,
         },
     ]);
 });
@@ -6947,13 +6948,13 @@ test("Save as default: the grade and the three ticks, never the quantity; every 
     nodes.get("auto-post").fire("change");
     nodes.get("pickup-only").checked = true;
     nodes.get("pickup-only").fire("change");
-    nodes.get("comps").checked = true;
+    nodes.get("comps").checked = false;
     nodes.get("comps").fire("change");
     nodes.get("quantity").value = "3";
     nodes.get("quantity").fire("input");
     nodes.get("customize-default").fire("click");
-    const plain = { pricing: 1, autoPost: true, comps: false, pickupOnly: false };
-    const goods = { pricing: 2, autoPost: false, comps: true, pickupOnly: true };
+    const plain = { pricing: 1, autoPost: true, comps: true, pickupOnly: false };
+    const goods = { pricing: 2, autoPost: false, comps: false, pickupOnly: true };
     assert.deepEqual(JSON.parse(local.getItem("snap.customize.defaults")), { goods, book: plain });
     assert.equal(nodes.get("customize-default-status").textContent, "saved as your defaults");
     t.mock.timers.tick(2500);
@@ -6969,9 +6970,9 @@ test("Save as default: the grade and the three ticks, never the quantity; every 
     assert.equal(nodes.get("pricing").value, "2");
     assert.equal(nodes.get("auto-post").checked, false);
     assert.equal(nodes.get("pickup-only").checked, true);
-    assert.equal(nodes.get("comps").checked, true);
+    assert.equal(nodes.get("comps").checked, false);
     assert.equal(nodes.get("quantity").value, "1", "never the quantity");
-    assert.equal(nodes.get("ebay-status").textContent, "pickup only · fair price · saved, not posted · with eBay comparisons");
+    assert.equal(nodes.get("ebay-status").textContent, "pickup only · fair price · saved, not posted · without eBay comparisons");
 
     // a fresh load starts from them too; the book has its own, plain until saved
     const again = await loadPage({ local, fetchImpl: fakePc().fetch });
