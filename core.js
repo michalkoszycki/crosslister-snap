@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.16.1";
+import { noteDirty, unsent } from "./queue.js?v=2.17.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.16.1";
+} from "./book.js?v=2.17.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -536,6 +536,20 @@ export function ebayLine(ebay, justReady = false) {
     return policies ? `${who}; ${policies}` : who;
 }
 
+/**
+ * Connect eBay's word, on Finish signing up's step 1 and in the Account block: "Connect eBay"
+ * until it is, then the same button says so, lit green and done with (Michal, 2026-10-10: "It
+ * better just say eBay connected on the same button, lit in green"): "eBay connected:
+ * irenurmenet0", or "eBay connected" when the server does not name the user.
+ * @param {boolean} connected
+ * @param {string} user
+ * @returns {string}
+ */
+export function connectLabel(connected, user) {
+    if (!connected) return "Connect eBay";
+    return user ? `eBay connected: ${user}` : "eBay connected";
+}
+
 // --- the seller's address (Michal, 2026-10-08: "What else do we need for the multi tenant?
 // Let's continue."): another seller's listings ship from, and are picked up at, her own
 // address; the server keeps it (GET/PATCH /me/seller) and sets up her eBay policies from it.
@@ -626,7 +640,8 @@ export function sellerLine(seller) {
 
 /**
  * Save address's body, from the four boxes as typed: each trimmed (inner spaces one), the
- * state two letters upper-cased, the ZIP five digits (or ZIP+4); a box that is not right is
+ * state two letters upper-cased, the ZIP five digits; a ZIP+4 typed is taken, its first five
+ * sent (Michal, 2026-10-10), so it comes back five after Save. A box that is not right is
  * named, and nothing is sent.
  * @param {{line1?:unknown, city?:unknown, state?:unknown, zip?:unknown}} fields
  * @returns {{ok:true, body:{address:{line1:string, city:string, state:string, postal_code:string}}} | {ok:false, error:string}}
@@ -639,10 +654,9 @@ export function addressBody({ line1, city, state, zip } = {}) {
     if (!town) return { ok: false, error: "Enter the city." };
     const st = text(state).toUpperCase();
     if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
-    const z = /^(\d{5})(?:[- ]?(\d{4}))?$/.exec(text(zip));
+    const z = /^(\d{5})(?:[- ]?\d{4})?$/.exec(text(zip));
     if (!z) return { ok: false, error: "The ZIP is five digits, as 60601." };
-    const postal = z[2] ? `${z[1]}-${z[2]}` : z[1];
-    return { ok: true, body: { address: { line1: street, city: town, state: st, postal_code: postal } } };
+    return { ok: true, body: { address: { line1: street, city: town, state: st, postal_code: z[1] } } };
 }
 
 /**
@@ -709,8 +723,11 @@ export function accountError(what, status, message) {
     return what === "pay" ? `Could not open the payment page: ${message}.` : `Could not open eBay: ${message}.`;
 }
 
-/** Under the craigslist button, and in an empty craigslist card, for an account without it. */
-export const CRAIGSLIST_OFF = "Craigslist is not available for your account. Contact the developer.";
+/**
+ * Under the craigslist button, and in an empty craigslist card, for an account without it:
+ * where to ask for it (Michal, 2026-10-10), the page's own Feedback in Admin.
+ */
+export const CRAIGSLIST_OFF = "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.";
 
 /**
  * Whether this account may use a venue (Michal, 2026-10-08: "Keep the Craigslist button

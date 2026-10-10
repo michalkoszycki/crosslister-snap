@@ -210,7 +210,9 @@ and every behaviour are the live app's.
   false` (Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write
   'contact developer'"), the goods screen's **craigslist** button is grey, yet takes
   the tap (`aria-disabled`, not disabled), and a tap sends nothing and says under it
-  `Craigslist is not available for your account. Contact the developer.`; a
+  `Craigslist is not available for your account yet. Ask for it in Admin, Feedback.`
+  (`CRAIGSLIST_OFF`; since 2.17.0, Michal, 2026-10-10: where to ask, not "contact the
+  developer"); a
   listing's empty craigslist foldout says the same line in place of its Add. The
   sync bar is unchanged. A 404 (an older server) is everything as before. `/me` is
   asked again after every job ends (a venue button's, a card's, the sync bar's) and
@@ -244,7 +246,13 @@ nothing of them (and answers the new routes with a 404, taken as "not available"
     policies while they are not ready (`; setting up your policies...`, or `; policies
     failed: <why>; contact the developer`), or `eBay: not connected` with **Connect
     eBay**, which asks `GET /ebay/connect` and sends the browser to eBay's consent page;
-    a 404 says `Connecting eBay is not available yet.`;
+    a 404 says `Connecting eBay is not available yet.` Connected (2.17.0; Michal,
+    2026-10-10: "It better just say eBay connected on the same button, lit in green"), the
+    same button reads **eBay connected: anna_sells** (**eBay connected** when the server
+    names no user; `connectLabel`) in a listed badge's posted green (`--ok` on
+    `--ok-ink`, class `connected`) and is disabled, a tap doing nothing; under it a small
+    **Reconnect** link (`#account-reconnect`, shown only while connected) asks for eBay's
+    consent again, for a token eBay let lapse;
   - its own line (`#account-status`): what is on its way, what went wrong, the way back.
   Closing Admin folds the packs and clears the line.
 - **The way back.** Stripe sends the browser back to this page as `#paid=<postings>` or
@@ -307,8 +315,9 @@ older server looks exactly as it did.
     shipping`, `Local pickup only, for items you mark pickup only`, `Your ship-from location:
     the address above`.
   - **Save address** checks the boxes first (`addressBody`): each trimmed, inner spaces one,
-    the state two letters upper-cased (`il` is `IL`), the ZIP five digits or ZIP+4
-    (`606011234` is `60601-1234`); a box not right is named (`Enter the street address.`,
+    the state two letters upper-cased (`il` is `IL`), the ZIP five digits; a ZIP+4 is taken
+    in the box (`60601-1234`, `606011234`), and its first five are sent (2.17.0; Michal,
+    2026-10-10), so after Save the box shows `60601`; a box not right is named (`Enter the street address.`,
     `Enter the city.`, `The state is two letters, as IL.`, `The ZIP is five digits, as
     60601.`) and nothing is sent. Then `PATCH /me/seller {"address": {"line1", "city",
     "state", "postal_code"}}`; the line says `Saving...`, then `saved`, and the boxes take the
@@ -365,7 +374,10 @@ it stands (`signupStep` in core.js), and a server that says nothing of it is an 
 - **Back from eBay** (`#ebay=connected`): `/me` is asked again, as ever, and now names a user with
   `"registered": false`; Settings is open at the Account block, and its **Address where you ship
   from** unfolds with its note (`ADDRESS_NEEDED`, or, prefilled from eBay, `ADDRESS_PREFILLED` with
-  **Looks right**). Closed, the sign-up screen has step 1 ticked (its button gone) and step 2 open:
+  **Looks right**). Closed, the sign-up screen has step 1's button saying **eBay connected:
+  anna_sells** in the posted green, disabled (since 2.17.0, Michal, 2026-10-10: "It better just say
+  eBay connected on the same button, lit in green"; before, the button went and the step was
+  ticked: now the step has no tick, the button says it), and step 2 open:
   **Your address** opens the same foldout. Prefilled, step 2 reads **Confirm the address where you
   ship from** (`CONFIRM_SHIP_FROM`). Already `complete` after connect, step 2 is ticked too (its
   button stays, for a correction); opening the foldout then asks `/me` again, and the goods screen
@@ -404,6 +416,20 @@ opens in Safari, so whoever installed Snap was signed in in Safari and signed ou
   sign-up" above).
 - **An eBay account already another Snap account's** comes back as `#ebay=failed:taken` and is
   said so (see "The way back" above).
+
+## eBay connected in green (2.17.0)
+
+Michal, 2026-10-09/10, from running the real sign-up: "It better just say eBay connected on the
+same button, lit in green."
+
+- **Connect eBay, once connected**, on Finish signing up's step 1 and in the Account block, stays
+  and reads **eBay connected: <user>** in the posted green, disabled; the step has no tick, and
+  the Account block has a small **Reconnect** under it (see "The account" and "Finishing sign-up"
+  above).
+- **The grey craigslist button** says where to ask: `Craigslist is not available for your account
+  yet. Ask for it in Admin, Feedback.` (see "The account" under "The way in").
+- **The ZIP**: a ZIP+4 is still taken in the box, and five digits are sent (see the address under
+  "Many sellers").
 
 ## The screen, top to bottom
 
@@ -887,7 +913,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `DELETE <server>/auth/session`, Settings' Sign out, with `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
 | `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
-| `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits or `60601-1234`); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
+| `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits, a ZIP+4 typed sent as its first five since 2.17.0); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -1272,7 +1298,7 @@ Empty. With capacity to generate that card from there."
 
 - **The Account block** comes first, when the server's `/me` gives it: whose this phone
   is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
-  (see "The account: postings and eBay" above), and under it the **Seller address** (see
+  (**eBay connected: <user>** in green once it is, **Reconnect** under it) (see "The account: postings and eBay" above), and under it the **Seller address** (see
   "Many sellers" above).
 - **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
   `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus

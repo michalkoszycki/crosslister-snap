@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.16.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.17.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1115,6 +1115,10 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step.done .signup-word::after { content: " ✓"; color: var(--ok); }
 .signup-step.done { color: var(--muted); }
 .signup-step.off { opacity: 0.45; }
+/* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
+   say eBay connected on the same button, lit in green"): a listed badge's posted green, done
+   with, so not faded as a disabled button is */
+button.connected:disabled { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); opacity: 1; }
 
 /* craigslist for an account without it (Michal, 2026-10-08: "Keep the Craigslist button gray
    and when tapped write 'contact developer'"): grey, yet it takes the tap that says why */
@@ -1135,6 +1139,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .account-packs { display: flex; flex-wrap: wrap; gap: 6px; }
 .account-status { margin: 8px 0 0; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
 .account-status:empty { display: none; }
+/* Reconnect, under eBay connected: small and underlined, as Buy postings' link is, for a lapsed token */
+.link.reconnect-link { display: block; min-height: 40px; padding: 8px 2px 0; font-size: 14px; text-decoration: underline; }
 /* Seller address, under the eBay line: customize's quiet disclosure, then the four boxes
    small (16 px words, under which a phone zooms in), the state and ZIP side by side */
 .link.seller-toggle { margin-top: 6px; }

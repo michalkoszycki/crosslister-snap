@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.16.1";
+import { VERSION } from "./version.js?v=2.17.0";
 import {
     anyActive,
     bannerText,
@@ -151,6 +151,7 @@ import {
     accountError,
     creditsLine,
     ebayLine,
+    connectLabel,
     packLabel,
     returnHash,
     returnLine,
@@ -195,8 +196,8 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.16.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.16.1";
+} from "./core.js?v=2.17.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.17.0";
 import {
     addVenue,
     archiveRow,
@@ -232,8 +233,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.16.1";
-import { shrinkPhoto } from "./shrink.js?v=2.16.1";
+} from "./pc.js?v=2.17.0";
+import { shrinkPhoto } from "./shrink.js?v=2.17.0";
 import {
     bookCard,
     bookPriceValue,
@@ -246,8 +247,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.16.1";
-import { canScan, readIsbn } from "./scan.js?v=2.16.1";
+} from "./book.js?v=2.17.0";
+import { canScan, readIsbn } from "./scan.js?v=2.17.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -4138,17 +4139,16 @@ function renderMe() {
 
 /**
  * Finish signing up (Michal, 2026-10-08), while /me says the sign-up is not done: step 1,
- * Connect eBay, until eBay made the account a real one (then ticked, its button gone); step
- * 2, the address where you ship from, greyed until then (asked to be confirmed when eBay
- * prefilled it, ticked when it is all there). Its line is the Account block's (Connect eBay's
- * way out and what went wrong, a 503's words among them).
+ * Connect eBay, until eBay made the account a real one (then its button says eBay connected,
+ * in green: paintConnect); step 2, the address where you ship from, greyed until then (asked
+ * to be confirmed when eBay prefilled it, ticked when it is all there). Its line is the
+ * Account block's (Connect eBay's way out and what went wrong, a 503's words among them).
  */
 function renderSignup() {
     const step = settings() ? signupStep(me) : "";
     const connected = step === "address";
-    el.signupStepEbay.classList.toggle("done", connected);
-    el.signupConnect.hidden = connected;
-    el.signupConnect.disabled = account.busy;
+    const ebay = ebayNow();
+    paintConnect(el.signupConnect, connected, ebay ? ebay.user : "");
     el.signupStepAddress.classList.toggle("off", !connected);
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
     // there (ticked; Settings' foldout still takes a correction while /me catches up)
@@ -4157,6 +4157,25 @@ function renderSignup() {
     el.signupStepAddress.classList.toggle("done", address === "complete");
     el.signupAddress.disabled = !connected;
     el.signupStatus.textContent = step ? account.status : "";
+}
+
+/** The account's eBay, the seller's answer the newer word on it (its policies follow a Save). */
+function ebayNow() {
+    return (seller.info && seller.info.ebay) || (me ? me.ebay : null);
+}
+
+/**
+ * A Connect eBay button: its word (connectLabel), and once connected lit in the posted green
+ * and done with (Michal, 2026-10-10: "It better just say eBay connected on the same button,
+ * lit in green"), disabled as it is while eBay or Stripe is being asked.
+ * @param {HTMLButtonElement} btn
+ * @param {boolean} connected
+ * @param {string} user
+ */
+function paintConnect(btn, connected, user) {
+    btn.textContent = connectLabel(connected, user);
+    btn.classList.toggle("connected", connected);
+    btn.disabled = connected || account.busy;
 }
 
 /** Settings' Seller address unfolded, its note saying why: step 2 of a sign-up. */
@@ -4183,9 +4202,8 @@ function renderAccount() {
     const canBuy = packs.length > 0 && !(credits && credits.unlimited);
     const user = !me ? "" : me.pending ? pendingLine(me.email) : userLine(me.user, !!(s && s.session));
     const left = creditsLine(credits);
-    // the seller's answer is the newer word on her eBay (its policies follow a Save)
-    const ebayNow = (seller.info && seller.info.ebay) || (me ? me.ebay : null);
-    const ebay = ebayLine(ebayNow, seller.ready);
+    const ebay = ebayNow();
+    const ebayWords = ebayLine(ebay, seller.ready);
     el.account.hidden = !me && !account.status && !seller.info;
     el.accountUser.textContent = user;
     el.accountUser.hidden = !user;
@@ -4208,10 +4226,15 @@ function renderAccount() {
             return pill;
         })
     );
-    el.accountEbay.textContent = ebay;
-    el.accountEbay.hidden = !ebay;
-    el.accountConnect.hidden = !ebayNow || ebayNow.connected;
-    el.accountConnect.disabled = account.busy;
+    el.accountEbay.textContent = ebayWords;
+    el.accountEbay.hidden = !ebayWords;
+    // connected, the button says so in green and Reconnect under it is the way to eBay's
+    // consent again, for a token eBay let lapse (Michal, 2026-10-10)
+    const connected = !!ebay && ebay.connected;
+    el.accountConnect.hidden = !ebay;
+    paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
+    el.accountReconnect.hidden = !connected;
+    el.accountReconnect.disabled = account.busy;
     renderSeller();
     el.accountStatus.textContent = account.status;
     renderSignup();
@@ -5065,6 +5088,7 @@ function main() {
         accountPacks: $("account-packs"),
         accountEbay: $("account-ebay"),
         accountConnect: $("account-connect"),
+        accountReconnect: $("account-reconnect"),
         accountStatus: $("account-status"),
         landing: $("landing"),
         landingInstall: $("landing-install"),
@@ -5086,7 +5110,6 @@ function main() {
         signinCodeSend: $("signin-code-send"),
         signinNote: $("signin-note"),
         signupSteps: $("signup-steps"),
-        signupStepEbay: $("signup-step-ebay"),
         signupConnect: $("signup-connect"),
         signupStepAddress: $("signup-step-address"),
         signupAddress: $("signup-address"),
@@ -5365,9 +5388,12 @@ function main() {
         account.packs = !account.packs;
         renderAccount();
     });
-    el.accountConnect.addEventListener("click", () => {
-        connectEbay().catch(() => {});
-    });
+    // ... and, connected, Reconnect: eBay's consent again (a token eBay let lapse)
+    for (const node of [el.accountConnect, el.accountReconnect]) {
+        node.addEventListener("click", () => {
+            connectEbay().catch(() => {});
+        });
+    }
     // Seller address: the foldout, and Save address
     el.sellerToggle.addEventListener("click", () => {
         seller.open = !seller.open;

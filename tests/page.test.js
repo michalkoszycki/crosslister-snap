@@ -200,6 +200,9 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "account-packs",
         "account-ebay",
         "account-connect",
+        // connected, Connect eBay says so in green, and under it the way to eBay's consent
+        // again (Michal, 2026-10-10)
+        "account-reconnect",
         // under the eBay line, the seller's address (Michal, 2026-10-08: "What else do we need
         // for the multi tenant? Let's continue."): its foldout, the line saying why it opened
         // by itself, the four boxes, Save address and its line
@@ -6884,6 +6887,7 @@ test("a desktop browser is not nudged to install: no Install on the landing, no 
 
 test("an account without craigslist: its button grey yet tappable, saying why; its empty card says the same", async (t) => {
     // Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write 'contact developer'."
+    // Michal, 2026-10-10: and it says where to ask, the page's own Admin, Feedback
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const listedEbay = { ebay: summary("E1").statuses.ebay };
     const only = summary("E1", { venues: ["ebay"], statuses: listedEbay });
@@ -6902,7 +6906,7 @@ test("an account without craigslist: its button grey yet tappable, saying why; i
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
-    assert.equal(nodes.get("craigslist-status").textContent, "Craigslist is not available for your account. Contact the developer.");
+    assert.equal(nodes.get("craigslist-status").textContent, "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.");
     assert.equal(nodes.get("craigslist-status").hidden, false);
     assert.deepEqual(pc.posted, [], "nothing sent");
     assert.equal(cl.classList.contains("busy"), false);
@@ -6914,7 +6918,7 @@ test("an account without craigslist: its button grey yet tappable, saying why; i
     await settle();
     nodes.get("detail-craigslist-toggle").fire("click");
     const kids = nodes.get("detail-craigslist").children;
-    assert.equal(kids.at(-1).textContent, "Craigslist is not available for your account. Contact the developer.");
+    assert.equal(kids.at(-1).textContent, "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.");
     assert.ok(!kids.some((k) => k.className === "venue-actions"), "no Add");
     // the sync bar is unchanged
     assert.equal(buttonSays(nodes.get("sync-to")), "Sync to eBay");
@@ -7166,7 +7170,8 @@ function accountOf(nodes) {
         buy: !nodes.get("account-buy").hidden,
         packs: packs.hidden ? null : packs.children.map((p) => p.textContent),
         ebay: said("account-ebay"),
-        connect: !nodes.get("account-connect").hidden,
+        connect: said("account-connect"),
+        reconnect: !nodes.get("account-reconnect").hidden,
         status: nodes.get("account-status").textContent,
     };
 }
@@ -7208,7 +7213,8 @@ test("the Account block: whose it is, the postings left, Buy postings' packs to 
         buy: true,
         packs: null,
         ebay: "eBay: not connected",
-        connect: true,
+        connect: "Connect eBay",
+        reconnect: false,
         status: "",
     });
     assert.equal(nodes.get("account-buy").attrs["aria-expanded"], "false");
@@ -7277,7 +7283,8 @@ test("the Account block shows what the server gives: unlimited, no packs, eBay c
         buy: false,
         packs: null,
         ebay: "eBay: connected as michal_sells",
-        connect: false,
+        connect: "eBay connected: michal_sells",
+        reconnect: true,
         status: "",
     });
     // payments not set up (no packs): the count, no Buy; the policies still being set up
@@ -7296,11 +7303,52 @@ test("the Account block shows what the server gives: unlimited, no packs, eBay c
         buy: false,
         packs: null,
         ebay: null,
-        connect: false,
+        connect: null,
+        reconnect: false,
         status: "",
     });
     // no /me at all (a 404): no block
     assert.equal((await open(null)).shown, false);
+});
+
+test("eBay connected: the Account block's Connect eBay says so, in the posted green and done with; Reconnect under it goes to eBay again", async (t) => {
+    // Michal, 2026-10-10: "It better just say eBay connected on the same button, lit in green."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "irenurmenet0", policies: "ready" } } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    const connect = nodes.get("account-connect");
+    const reconnect = nodes.get("account-reconnect");
+    assert.equal(connect.textContent, "eBay connected: irenurmenet0");
+    assert.equal(connect.hidden, false);
+    assert.equal(connect.classList.contains("connected"), true);
+    assert.equal(connect.disabled, true, "a tap does nothing");
+    assert.equal(reconnect.hidden, false);
+    assert.match(html, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect<\/button>/);
+    // the green a listed badge has, not faded as a disabled button is
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /button\.connected:disabled \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); opacity: 1; \}/);
+    assert.match(css, /\.vbadge\.posted \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/, "the same green");
+
+    // Reconnect: eBay's consent again, for a token eBay let lapse
+    reconnect.fire("click");
+    assert.equal(accountOf(nodes).status, "Opening eBay...");
+    assert.equal(reconnect.disabled, true, "one at a time");
+    await settle();
+    assert.deepEqual(pc.connects, ["key test-key-0123456789"]);
+    assert.equal(globalThis.location.assigned.at(-1), EBAY_CONSENT);
+    assert.equal(reconnect.disabled, false);
+    assert.equal(connect.disabled, true, "still connected, still done with");
+
+    // no name from the server: eBay connected alone; not connected: no Reconnect
+    const nameless = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "", policies: "ready" } } }).fetch });
+    await openSettings(nameless.nodes);
+    assert.equal(nameless.nodes.get("account-connect").textContent, "eBay connected");
+    const not = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: structuredClone(ACCOUNT_ME) }).fetch });
+    await openSettings(not.nodes);
+    assert.equal(not.nodes.get("account-connect").classList.contains("connected"), false);
+    assert.equal(not.nodes.get("account-connect").disabled, false);
+    assert.equal(not.nodes.get("account-reconnect").hidden, true);
 });
 
 test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account block, the line says how it went, /me asked again", async (t) => {
@@ -7324,7 +7372,8 @@ test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account 
         buy: true,
         packs: null,
         ebay: "eBay: not connected",
-        connect: true,
+        connect: "Connect eBay",
+        reconnect: false,
         status: "10 postings added",
     });
     assert.equal((await back("#paid=cancelled")).nodes.get("account-status").textContent, "Payment cancelled");
@@ -7356,7 +7405,8 @@ test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account 
         buy: false,
         packs: null,
         ebay: null,
-        connect: false,
+        connect: null,
+        reconnect: false,
         status: "10 postings added",
     });
 });
@@ -7398,7 +7448,8 @@ test("no postings left (402): the server's words under the button and Buy postin
         buy: true,
         packs: ["10 postings, $5.00", "25 postings, $10.00"],
         ebay: "eBay: not connected",
-        connect: true,
+        connect: "Connect eBay",
+        reconnect: false,
         status: "",
     });
 
@@ -7505,7 +7556,7 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
 
 test("Seller address sits under the eBay line, folded and hidden until the server answers; About and privacy in the footer", () => {
     const account = /<div id="account" class="account" hidden>([\s\S]*?)<p id="account-status"/.exec(html)[1];
-    assert.match(account, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="seller-toggle"/);
+    assert.match(account, /id="account-reconnect"[^>]*>Reconnect<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="seller-toggle"/);
     assert.match(account, /<button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"\s+aria-controls="seller" hidden>▸ Address where you ship from<\/button>/);
     assert.match(account, /<div id="seller" class="seller" hidden>/);
     for (const [id, label, fill] of [
@@ -7717,7 +7768,9 @@ test("Seller address: failed policies say contact the developer; pending is aske
     nodes.get("seller-zip").value = "60601-1234";
     nodes.get("seller-save").fire("click");
     await settle();
-    assert.equal(pc.sellerSaves.at(-1).body.address.postal_code, "60601-1234");
+    // Michal, 2026-10-10: a ZIP+4 is taken, its five sent, and the box shows the five after Save
+    assert.equal(pc.sellerSaves.at(-1).body.address.postal_code, "60601");
+    assert.equal(nodes.get("seller-zip").value, "60601");
     assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; policies failed: no return policy allowed; contact the developer");
     const asks = pc.sellerAsks.length;
     t.mock.timers.tick(SELLER_POLL_MS * 2);
@@ -8185,6 +8238,9 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     assert.equal(server(nodes), "server ok (ok)", "the server answered, refusing");
     assert.equal(nodes.get("signup-step-ebay").classList.contains("done"), false);
     assert.equal(nodes.get("signup-connect").hidden, false);
+    assert.equal(nodes.get("signup-connect").textContent, "Connect eBay");
+    assert.equal(nodes.get("signup-connect").classList.contains("connected"), false);
+    assert.equal(nodes.get("signup-connect").disabled, false);
     assert.equal(nodes.get("signup-step-address").classList.contains("off"), true, "step 2 greyed");
     assert.equal(nodes.get("signup-address").disabled, true);
     assert.equal(nodes.get("about-link").hidden, false);
@@ -8237,11 +8293,17 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     assert.equal(n.get("seller-note").textContent, ADDRESS_NEEDED);
     assert.equal(n.get("account-status").textContent, "eBay connected");
     assert.equal(n.get("account-user").textContent, "Signed in as anna");
-    // closed: step 1 ticked, step 2 open
+    // closed: step 1's button says eBay connected, in the posted green and done with (Michal,
+    // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
+    // heading without a tick since the button says it; step 2 open
     n.get("admin-close").fire("click");
     assert.deepEqual(shown(n), ["signup-steps"]);
-    assert.equal(n.get("signup-step-ebay").classList.contains("done"), true);
-    assert.equal(n.get("signup-connect").hidden, true);
+    const connected = n.get("signup-connect");
+    assert.equal(connected.hidden, false, "the button stays");
+    assert.equal(connected.textContent, "eBay connected: anna_sells");
+    assert.equal(connected.classList.contains("connected"), true);
+    assert.equal(connected.disabled, true, "a tap does nothing");
+    assert.equal(n.get("signup-step-ebay").classList.contains("done"), false, "no tick: the button says it");
     assert.equal(n.get("signup-step-address").classList.contains("off"), false);
     assert.equal(n.get("signup-address").disabled, false);
 
