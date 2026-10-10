@@ -165,6 +165,7 @@ import {
     accountError,
     ADDRESS_NEEDED,
     addressBody,
+    connectLabel,
     policiesLine,
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
@@ -3246,7 +3247,8 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
     assert.equal(venueAllowed(meOf({ craigslist: true }), "craigslist"), true);
     assert.equal(venueAllowed(meOf({ craigslist: false }), "craigslist"), false);
     assert.equal(venueAllowed(meOf({ craigslist: false }), "ebay"), true, "only craigslist can be off");
-    assert.equal(CRAIGSLIST_OFF, "Craigslist is not available for your account. Contact the developer.");
+    // Michal, 2026-10-10: where to ask for it, the page's own Feedback
+    assert.equal(CRAIGSLIST_OFF, "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.");
 });
 
 // --- the Account block (Michal, 2026-10-08: three free postings per person, then prepaid) -------
@@ -3305,6 +3307,14 @@ test("the Account block's lines: whose it is, the postings left, a pack, the eBa
     assert.equal(ebay({ policies: "failed" }), "eBay: connected as anna_sells; policies failed; contact the developer");
     assert.equal(ebayLine({ connected: false, user: "", policies: "" }), "eBay: not connected");
     assert.equal(ebayLine(null), "", "an older server: no eBay line");
+});
+
+test("Connect eBay's word: Connect eBay until it is, then eBay connected on the same button, the user after it when known", () => {
+    // Michal, 2026-10-10: "It better just say eBay connected on the same button, lit in green."
+    assert.equal(connectLabel(false, ""), "Connect eBay");
+    assert.equal(connectLabel(false, "irenurmenet0"), "Connect eBay", "a name alone is not connected");
+    assert.equal(connectLabel(true, "irenurmenet0"), "eBay connected: irenurmenet0");
+    assert.equal(connectLabel(true, ""), "eBay connected");
 });
 
 test("the way back from Stripe or eBay, by the hash; a sign-in link's is not one", () => {
@@ -3422,14 +3432,16 @@ test("GET /me/seller read leniently; the line when the address is needed", () =>
     assert.equal(SELLER_POLL_MS * SELLER_POLL_MAX, 3 * 60 * 1000, "three minutes at most");
 });
 
-test("Save address's body: trimmed, the state two letters upper-cased, the ZIP digits; a box not right is named", () => {
+test("Save address's body: trimmed, the state two letters upper-cased, the ZIP five digits; a box not right is named", () => {
     const good = { line1: "  12   Oak St  Apt 3 ", city: " Chicago ", state: " il ", zip: " 60601 " };
     assert.deepEqual(addressBody(good), {
         ok: true,
         body: { address: { line1: "12 Oak St Apt 3", city: "Chicago", state: "IL", postal_code: "60601" } },
     });
-    assert.equal(addressBody({ ...good, zip: "60601-1234" }).body.address.postal_code, "60601-1234");
-    assert.equal(addressBody({ ...good, zip: "606011234" }).body.address.postal_code, "60601-1234", "ZIP+4 without its dash");
+    // Michal, 2026-10-10: a ZIP+4 is taken in the box, and its first five are sent
+    assert.equal(addressBody({ ...good, zip: "60601-1234" }).body.address.postal_code, "60601");
+    assert.equal(addressBody({ ...good, zip: "606011234" }).body.address.postal_code, "60601", "ZIP+4 without its dash");
+    assert.equal(addressBody({ ...good, zip: " 60601 1234 " }).body.address.postal_code, "60601", "ZIP+4 with a space");
     assert.deepEqual(addressBody({ ...good, line1: "  " }), { ok: false, error: "Enter the street address." });
     assert.deepEqual(addressBody({ ...good, city: "" }), { ok: false, error: "Enter the city." });
     for (const state of ["", "I", "Ill", "Illinois", "1L", "I L"]) {

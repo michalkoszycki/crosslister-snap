@@ -162,8 +162,8 @@ between them.
 Settings are empty or were not saved. In a private (incognito) tab nothing is
 remembered; use a normal tab or the home-screen icon.
 
-**The craigslist button is grey and says "Craigslist is not available for your account. Contact the developer."**
-The server says this key's account has no Craigslist. Ask Michal.
+**The craigslist button is grey and says "Craigslist is not available for your account yet. Ask for it in Admin, Feedback."**
+The server says this key's account has no Craigslist. Ask for it in Admin > **Feedback**.
 
 **Something odd happened**
 Admin > **Feedback**: write what happened and tap **Send**. It goes to the server

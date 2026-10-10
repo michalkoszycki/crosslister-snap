@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.16.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.16.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.17.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.17.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -137,7 +137,8 @@
   <!-- Finish signing up (Michal, 2026-10-08): an account signed in by email but not yet
        registered sees its two steps in place of the posting screens, GET /me saying where it
        stands: Connect eBay (the Account block's button, repeated here), then where you ship
-       from (Settings' foldout of that name), greyed until eBay is connected. Registered, the goods
+       from (Settings' foldout of that name), greyed until eBay is connected, when step 1's button
+       says eBay connected in green (Michal, 2026-10-10). Registered, the goods
        screen (app.js, signupStep in core.js) -->
   <section id="signup-steps" class="landing signup" hidden>
     <h2 class="landing-name">Finish signing up</h2>
@@ -208,6 +209,10 @@
         <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
         <p id="account-ebay" class="small account-line"></p>
         <button type="button" id="account-connect" class="pill pill-small">Connect eBay</button>
+        <!-- connected, the button above says so in green and does nothing (Michal, 2026-10-10:
+             "It better just say eBay connected on the same button, lit in green"); this is the
+             way to eBay's consent again, for a token eBay let lapse (app.js) -->
+        <button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect</button>
         <!-- the seller's address, under the eBay line (Michal, 2026-10-08: "What else do we need
              for the multi tenant? Let's continue."): where her listings ship from and are picked
              up, from GET /me/seller; it opens by itself, saying why, when eBay is connected and
@@ -774,6 +779,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.16.1"></script>
+<script type="module" src="app.js?v=2.17.0"></script>
 </body>
 </html>
