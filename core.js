@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.17.1";
+import { noteDirty, unsent } from "./queue.js?v=2.18.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.17.1";
+} from "./book.js?v=2.18.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -364,12 +364,14 @@ export function signinNote({ isIos, standalone }) {
 /**
  * GET /me: who this key or session is and what the account may do. Leniently read: a
  * craigslist or admin the server does not say is as today (craigslist on, admin off); no
- * credits, packs or eBay from an older server is no Account block to speak of. A sign-up
+ * credits, packs or eBay from an older server is no Account block to speak of. Poshmark the
+ * other way round (Michal, 2026-10-11: "make it available only to me"): on only when the
+ * server says `"poshmark": true`, since a server that does not say it cannot post there. A sign-up
  * still under way (Michal, 2026-10-08) says `pending` (signed in by email, eBay not yet
  * connected: no user yet, only the email) or, connected, `registered` false until the
  * address is in; a server that says neither is an account as today, pending nothing.
  * @param {unknown} answer
- * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean} | null}
+ * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, poshmark:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
@@ -379,6 +381,7 @@ export function meOf(answer) {
         email: plain(a.email),
         admin: a.admin === true,
         craigslist: a.craigslist !== false,
+        poshmark: a.poshmark === true,
         venues: Array.isArray(a.venues) ? a.venues.filter((v) => typeof v === "string") : [],
         credits: creditsOf(a.credits),
         packs: (Array.isArray(a.packs) ? a.packs : []).map(packOf).filter((p) => p !== null),
@@ -730,14 +733,29 @@ export function accountError(what, status, message) {
 export const CRAIGSLIST_OFF = "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.";
 
 /**
+ * The same line for any venue an account may lack, in the venue's name (Michal, 2026-10-11:
+ * Poshmark, "when other people press it, it should tell them the same message as it does when
+ * they press Craigslist"): CRAIGSLIST_OFF for craigslist.
+ * @param {string} venue
+ * @returns {string}
+ */
+export function venueOff(venue) {
+    const name = venue === "craigslist" ? "Craigslist" : venueName(venue);
+    return `${name} is not available for your account yet. Ask for it in Admin, Feedback.`;
+}
+
+/**
  * Whether this account may use a venue (Michal, 2026-10-08: "Keep the Craigslist button
- * gray and when tapped write 'contact developer'"): only craigslist can be off, and only
- * when /me says so; no answer (an older server's 404) is everything as today.
- * @param {{craigslist:boolean} | null} me
+ * gray and when tapped write 'contact developer'"): eBay always; craigslist unless /me says
+ * `"craigslist": false` (no answer, an older server's 404, is everything as today); poshmark
+ * only when /me says `"poshmark": true` (Michal, 2026-10-11: "make it available only to me"),
+ * so no answer, or a server that does not say it, is off: such a server cannot post there.
+ * @param {{craigslist:boolean, poshmark?:boolean} | null} me
  * @param {string} venue
  * @returns {boolean}
  */
 export function venueAllowed(me, venue) {
+    if (venue === "poshmark") return !!me && me.poshmark === true;
     return venue !== "craigslist" || !me || me.craigslist !== false;
 }
 
@@ -1012,8 +1030,18 @@ export function fitWithin(width, height, max = MAX_EDGE) {
 
 // --- the service contract ----------------------------------------------------
 
-/** The venues the two buttons send. */
-export const VENUES = ["ebay", "craigslist"];
+/**
+ * The venues the buttons send, in their order on screen. Poshmark (Michal, 2026-10-11: "I will
+ * myself use Poshmark a lot. Create that button, make it available only to me") is the admin's
+ * alone (venueAllowed), and the server only posts there: no refresh, end, push or edit yet.
+ */
+export const VENUES = ["ebay", "craigslist", "poshmark"];
+
+/**
+ * The venues the server can only post to (2026-10-11): a listing there is added, posted and
+ * opened, never refreshed, ended, pushed (synced) or edited from the page.
+ */
+export const POST_ONLY = ["poshmark"];
 
 /** The most photos one item may carry (the service refuses more). */
 export const MAX_PHOTOS = 24;
@@ -3212,13 +3240,15 @@ export function venueStatus(row, venue) {
 }
 
 /**
- * A venue's name in a sentence: "eBay", "craigslist" (the badges and buttons say "ebay",
- * as the venue buttons do).
+ * A venue's name in a sentence: "eBay", "craigslist", "Poshmark" (the badges and buttons say
+ * "ebay", "poshmark", as the venue buttons do).
  * @param {string} venue
  * @returns {string}
  */
 export function venueName(venue) {
-    return venue === "ebay" ? "eBay" : venue;
+    if (venue === "ebay") return "eBay";
+    if (venue === "poshmark") return "Poshmark";
+    return venue;
 }
 
 /**
@@ -3297,7 +3327,7 @@ export function rowHeading(row) {
 
 /**
  * The venues a row is on: those its `venues` names, in the app's order (ebay,
- * craigslist). The detail's card for any other venue is empty, with its Add.
+ * craigslist, poshmark). The detail's card for any other venue is empty, with its Add.
  * @param {Record<string, any>} row
  * @returns {string[]}
  */
@@ -3634,7 +3664,8 @@ export function venueFacts(row, venue) {
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * eBay's sync stays customize's Sync to eBay.
+ * eBay's sync stays customize's Sync to eBay. Poshmark (2026-10-11) is add, post and open
+ * alone: the server only posts there, it cannot yet refresh, end, push or edit a listing.
  * @param {Record<string, any>} row
  * @param {string} venue
  * @param {Unsynced[]} [unsynced] unsyncedList's
@@ -3643,6 +3674,7 @@ export function venueFacts(row, venue) {
 export function venueActions(row, venue, unsynced = []) {
     if (!rowVenues(row).includes(venue)) return ["add"];
     const s = venueStatus(row, venue);
+    if (POST_ONLY.includes(venue)) return s.status !== "listed" ? ["post"] : s.url ? ["open"] : [];
     if (s.status !== "listed") return ["post", "edit"];
     const behind = venue === "craigslist" && isUnsynced(unsynced, row.sku, venue);
     return [...(s.url ? ["open"] : []), ...(behind ? ["sync"] : []), "refresh", "end", "edit"];
@@ -3703,6 +3735,7 @@ export function actionJob(action, { sku = "", venue = "", direction = "" } = {})
     }
     if (action !== "end" && action !== "refresh" && action !== "push") throw new RangeError(`unknown action ${action}`);
     if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
+    if (POST_ONLY.includes(venue)) throw new RangeError(`${action} is not available on ${venue}`);
     return { action, sku, venue };
 }
 
@@ -4117,9 +4150,12 @@ export function unsyncedList(raw) {
         behind.set(e.sku, venues);
     }
     return [...behind]
-        .map(([sku, venues]) => ({ sku, venues: VENUES.filter((v) => venues.has(v)) }))
+        .map(([sku, venues]) => ({ sku, venues: PUSHED.filter((v) => venues.has(v)) }))
         .filter((e) => e.venues.length);
 }
+
+/** The venues a listing can be behind on: those a push reaches (not POST_ONLY's). */
+const PUSHED = VENUES.filter((v) => !POST_ONLY.includes(v));
 
 /**
  * `venue` of `sku` is behind on this phone's list.
@@ -4147,7 +4183,7 @@ export function unsyncedWith(list, sku, venue, on) {
     if (on) venues.add(venue);
     else venues.delete(venue);
     const rest = all.filter((e) => e.sku !== sku);
-    const kept = VENUES.filter((v) => venues.has(v));
+    const kept = PUSHED.filter((v) => venues.has(v));
     return kept.length ? [...rest, { sku, venues: kept }] : rest;
 }
 

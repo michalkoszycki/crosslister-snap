@@ -217,6 +217,9 @@ import {
     statsQuery,
     statsTable,
     venueAllowed,
+    venueOff,
+    VENUES,
+    POST_ONLY,
     ARCHIVE_MISSING,
     archiveError,
     archivedLine,
@@ -2439,7 +2442,9 @@ test("Compare with eBay listings is kept for a reload only when unticked, and re
 test("the inventory's query: every key sent, each encoded, All as blank, the limit last", () => {
     assert.equal(INVENTORY_LIMIT, 200);
     assert.equal(INVENTORY_DEBOUNCE_MS, 400);
-    assert.deepEqual(INVENTORY_VENUES, ["", "ebay", "craigslist"]);
+    // Michal, 2026-10-11: Poshmark, the third venue
+    assert.deepEqual(INVENTORY_VENUES, ["", "ebay", "craigslist", "poshmark"]);
+    assert.equal(inventoryQuery({ venue: "poshmark" }), "q=&venue=poshmark&status=&limit=200&sort=age&order=desc");
     // Archived last (Michal, 2026-10-08: "swipe left or right to archive, so you no longer see it in the list")
     assert.deepEqual(INVENTORY_STATUSES, ["", "draft", "listed", "sold", "ended", "archived"]);
     assert.equal(inventoryQuery({}), "q=&venue=&status=&limit=200&sort=age&order=desc");
@@ -3233,6 +3238,7 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         email: "",
         admin: true,
         craigslist: false,
+        poshmark: false,
         venues: ["ebay"],
         credits: null,
         packs: [],
@@ -3242,7 +3248,7 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", email: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true },
+        { user: "", email: "", admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true },
         "silent: as today, an account with nothing left to sign up for"
     );
     assert.equal(meOf(null), null);
@@ -3252,6 +3258,63 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
     assert.equal(venueAllowed(meOf({ craigslist: false }), "ebay"), true, "only craigslist can be off");
     // Michal, 2026-10-10: where to ask for it, the page's own Feedback
     assert.equal(CRAIGSLIST_OFF, "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.");
+    assert.equal(venueOff("craigslist"), CRAIGSLIST_OFF);
+});
+
+test("GET /me: poshmark on only when it says true; off says the craigslist line in its name", () => {
+    // Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it available
+    // only to me; when other people press it, it should tell them the same message as it does when
+    // they press Craigslist."
+    assert.equal(meOf({ user: "michal", admin: true, poshmark: true }).poshmark, true);
+    assert.equal(meOf({ user: "wife", poshmark: false }).poshmark, false);
+    for (const odd of [undefined, null, "true", 1, {}]) {
+        assert.equal(meOf({ user: "anna", poshmark: odd }).poshmark, false, `${JSON.stringify(odd)}: off`);
+    }
+    assert.equal(venueAllowed(meOf({ poshmark: true }), "poshmark"), true);
+    assert.equal(venueAllowed(meOf({ poshmark: false }), "poshmark"), false);
+    assert.equal(venueAllowed(meOf({ user: "michal", craigslist: true }), "poshmark"), false, "a server that does not say it cannot post there");
+    assert.equal(venueAllowed(null, "poshmark"), false, "no /me (an older server's 404): off, unlike craigslist");
+    assert.equal(venueAllowed(null, "craigslist"), true);
+    assert.equal(venueAllowed(meOf({ poshmark: false, craigslist: false }), "ebay"), true, "eBay is never off");
+    assert.equal(venueAllowed(meOf({ poshmark: true, craigslist: false }), "craigslist"), false, "each on its own flag");
+    assert.equal(venueOff("poshmark"), "Poshmark is not available for your account yet. Ask for it in Admin, Feedback.");
+    assert.equal(venueName("poshmark"), "Poshmark");
+});
+
+test("poshmark is a third venue the server only posts to: add, post, open; no refresh, end, sync or edit", () => {
+    assert.deepEqual(VENUES, ["ebay", "craigslist", "poshmark"]);
+    assert.deepEqual(POST_ONLY, ["poshmark"]);
+    assert.deepEqual(jobRequest({ venue: "poshmark", item: "Boots 2026-10-11", photos: [{ n: 1, ai: true }, { n: 2, ai: false }] }), {
+        item: "Boots 2026-10-11",
+        venue: "poshmark",
+        ai: [1],
+    });
+    assert.deepEqual(jobRequest({ venue: "poshmark", sku: "B-1" }), { sku: "B-1", venue: "poshmark" });
+    const base = { sku: "P1", venues: ["ebay"], statuses: { ebay: { status: "listed", url: "https://www.ebay.com/itm/1" } } };
+    assert.deepEqual(venueActions(base, "poshmark"), ["add"]);
+    assert.deepEqual(venueActions({ ...base, venues: ["ebay", "poshmark"] }, "poshmark"), ["post"], "on it, not listed: post alone, no edit");
+    const listed = {
+        ...base,
+        venues: ["ebay", "poshmark"],
+        statuses: { ...base.statuses, poshmark: { status: "listed", url: "https://poshmark.com/listing/abc" } },
+    };
+    assert.deepEqual(venueActions(listed, "poshmark", [{ sku: "P1", venues: ["poshmark"] }]), ["open"]);
+    assert.deepEqual(venueActions({ ...listed, statuses: { ...base.statuses, poshmark: { status: "listed" } } }, "poshmark"), []);
+    assert.deepEqual(venueActions({ ...listed, statuses: { ...base.statuses, poshmark: { status: "ended" } } }, "poshmark"), ["post"]);
+    assert.equal(actionWord("add", "poshmark"), "Add poshmark to this item");
+    assert.equal(actionWord("post", "poshmark"), "Post on poshmark");
+    for (const action of ["end", "refresh", "push"]) {
+        assert.throws(() => actionJob(action, { sku: "P1", venue: "poshmark" }), RangeError, action);
+    }
+    assert.equal(EDIT_FIELDS.poshmark, undefined, "never edited from the page");
+    assert.deepEqual(venueFacts(listed, "poshmark"), []);
+    assert.deepEqual(derivedFields(listed, "poshmark"), {});
+    // a listing is never behind on poshmark: nothing pushes there
+    assert.deepEqual(unsyncedList([{ sku: "P1", venues: ["poshmark", "ebay"] }]), [{ sku: "P1", venues: ["ebay"] }]);
+    assert.deepEqual(unsyncedWith([], "P1", "poshmark", true), []);
+    assert.deepEqual(leftUnsynced({ ...listed, price: "10.00" }, { ...listed, price: "12.00" }), ["ebay"]);
+    assert.deepEqual(rowVenues({ venues: ["poshmark", "ebay", "etsy"] }), ["ebay", "poshmark"]);
+    assert.deepEqual(venueBadge(base, "poshmark"), { text: "poshmark not added", said: "poshmark not added", kind: "absent", tick: false });
 });
 
 // --- the Account block (Michal, 2026-10-08: three free postings per person, then prepaid) -------

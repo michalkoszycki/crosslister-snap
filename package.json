@@ -3,7 +3,7 @@
   "version": "2.17.0",
   "private": true,
   "type": "module",
-  "description": "Snap item photos on the phone; the home server lists them on eBay and Craigslist.",
+  "description": "Snap item photos on the phone; the home server lists them on eBay, Craigslist and (the admin's) Poshmark.",
   "license": "MIT",
   "scripts": {
     "test": "node --test",

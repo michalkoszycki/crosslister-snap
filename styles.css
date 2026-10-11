@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.17.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.18.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -454,14 +454,22 @@ button.badge.failed {
 
 .shot-name { display: block; font-size: 10px; color: var(--muted); padding: 4px 6px 0; word-break: break-all; }
 
-/* ebay | craigslist, side by side, each with its status line and link under it */
+/* ebay | craigslist | poshmark, side by side, each with its status line and link under it;
+   three to a row even on a 320 px phone: the word scales with the screen (20 px from 500 px
+   up), the side padding and the gap to the ring tighten, so from 360 px a pressed "poshmark"
+   keeps its ring beside it (on a 320 px one the ring goes under the word); a pill that grows
+   taller than 64 px (the ring, "tap again to cancel") is a rounded box, not a circle, and a
+   column never grows past its third */
 .venues {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
     margin-top: 18px;
 }
 .venue { min-width: 0; }
+.venues .venue-btn { padding: 8px 2px; gap: 4px; font-size: clamp(14px, 4vw, 20px); border-radius: 32px; }
+.venues .tap-cancel { font-size: 11px; }
+.venues .venue-status, .venues .venue-link { font-size: 13px; }
 /* the venue buttons: outlined pills in ink, not filled, so Snap and NEXT stay the loud ones */
 .venue-btn {
     margin-top: 0;
@@ -729,7 +737,7 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
 .chips.chips-six { grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .chips-six .chip { padding: 6px 2px; font-size: 13px; }
 .options-note { margin: 4px 2px 0; color: var(--muted); }
-/* Newest | Oldest | Price ↓ | Price ↑: one row, even at 360 px */
+/* Newest | Oldest | Price ↓ | Price ↑, and All | ebay | craigslist | poshmark: one row, even at 360 px */
 .chips.chips-four { grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .chips-four .chip { padding: 6px 2px; font-size: 13px; }
 
