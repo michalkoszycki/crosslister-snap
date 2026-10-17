@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.18.0";
+import { noteDirty, unsent } from "./queue.js?v=2.19.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.18.0";
+} from "./book.js?v=2.19.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -671,6 +671,119 @@ export function sellerError(status, message) {
     if (status === 404) return "Saving the address is not available yet.";
     if (status === 400 || status === 409) return message;
     return `Could not save the address: ${message}.`;
+}
+
+// --- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
+// checkbox for footnote/header for all posts. When you check that, a text area appears; that
+// text will be input by the user and appended to the posting (with two return lines separating
+// it from the main text)."): the server keeps them (GET/PATCH /me/wrap), puts them round the
+// description of every listing it posts on the venues ticked, and POST /me/wrap/apply pushes
+// both onto the listings already up on one venue.
+
+/** The two parts, in their order in Settings. */
+export const WRAP_PARTS = ["header", "footer"];
+
+/** The most one part may hold, as the server takes it. */
+export const WRAP_MAX = 2000;
+
+/**
+ * A header or a footer as the server keeps it: on or off (off keeps the text: Michal, "If you
+ * uncheck it, it should not lose what you had"), its words, and the venues it goes on.
+ * @typedef {{on:boolean, text:string, venues:string[]}} WrapPart
+ * @typedef {{header:WrapPart, footer:WrapPart, available:string[]}} Wrap
+ */
+
+/** The venues a list names, each once, in VENUES' order; anything else dropped. */
+function venueList(x) {
+    const named = Array.isArray(x) ? x : [];
+    return VENUES.filter((v) => named.includes(v));
+}
+
+/**
+ * GET (or PATCH) /me/wrap's answer, leniently: a part not given is off, empty, on no venue;
+ * `available` (the venues this account posts to) is eBay when it names none. Null for an
+ * answer that is not one (neither part in it).
+ * @param {unknown} answer
+ * @returns {Wrap|null}
+ */
+export function wrapOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    const given = (k) => !!a[k] && typeof a[k] === "object";
+    if (!WRAP_PARTS.some(given)) return null;
+    const part = (k) => {
+        const p = given(k) ? /** @type {Record<string, unknown>} */ (a[k]) : {};
+        return { on: p.on === true, text: typeof p.text === "string" ? p.text : "", venues: venueList(p.venues) };
+    };
+    const available = venueList(a.available);
+    return { header: part("header"), footer: part("footer"), available: available.length ? available : ["ebay"] };
+}
+
+/**
+ * PATCH /me/wrap's body for one part: only what changed, any of `on`, `text` (its line
+ * endings plain, trimmed; at most WRAP_MAX characters, else named and nothing sent) and
+ * `venues` (known ones, each once).
+ * @param {"header"|"footer"} part
+ * @param {{on?:boolean, text?:unknown, venues?:unknown}} changes
+ * @returns {{ok:true, body:Record<string, Partial<WrapPart>>} | {ok:false, error:string}}
+ */
+export function wrapBody(part, { on, text, venues } = {}) {
+    if (!WRAP_PARTS.includes(part)) throw new RangeError(`unknown part ${part}`);
+    /** @type {Partial<WrapPart>} */
+    const body = {};
+    if (typeof on === "boolean") body.on = on;
+    if (text !== undefined) {
+        const words = typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
+        if (words.length > WRAP_MAX) return { ok: false, error: `At most ${WRAP_MAX} characters; this is ${words.length}.` };
+        body.text = words;
+    }
+    if (venues !== undefined) body.venues = venueList(venues);
+    return { ok: true, body: { [part]: body } };
+}
+
+/**
+ * The counter under a part's box: "120 / 2000".
+ * @param {string} text
+ * @returns {string}
+ */
+export function wrapCounter(text) {
+    return `${typeof text === "string" ? text.length : 0} / ${WRAP_MAX}`;
+}
+
+/**
+ * An Apply to: button's face: the venue as the venue buttons say it, and, ticked, the tick
+ * after it in the posted green (Michal, 2026-10-17: "once clicked the button changes to green
+ * with a check, our typical"), drawn by app.js as a listed badge's.
+ * @param {string} venue
+ * @param {boolean} on
+ * @returns {{text:string, tick:boolean}}
+ */
+export function venueTickLabel(venue, on) {
+    return { text: venue, tick: !!on };
+}
+
+/**
+ * The job button under a part, per venue ticked (Michal, 2026-10-17: "Finally a button 'Apply
+ * to all existing listings' (per the venue specified)").
+ * @param {string} venue
+ * @returns {string}
+ */
+export function applyLabel(venue) {
+    return `Apply to all existing ${venue} listings`;
+}
+
+/**
+ * A part's line when its change did not go: a server without the route (404) has it not
+ * available yet; a refusal (400: a bad value, a text too long) is the server's own words;
+ * anything else says what went wrong.
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function wrapError(status, message) {
+    if (status === 404) return "The header and footer are not available yet.";
+    if (status === 400) return message;
+    return `Could not save: ${message}.`;
 }
 
 /**

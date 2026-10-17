@@ -219,6 +219,28 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "seller-save",
         "seller-status",
         "account-status",
+        // under the Account block, a header and a footer on every listing (Michal, 2026-10-17:
+        // "once you check header you get a header foldout with all these options"): each row's
+        // tick, its foldout with the box and its counter, Apply to:'s pill per venue, Save and
+        // its line, then Apply to all existing listings per venue, each with its reset and line
+        "wrap",
+        ...["header", "footer"].flatMap((part) => [
+            `wrap-${part}-on`,
+            `wrap-${part}`,
+            `wrap-${part}-text`,
+            `wrap-${part}-count`,
+            `wrap-${part}-ebay`,
+            `wrap-${part}-craigslist`,
+            `wrap-${part}-save`,
+            `wrap-${part}-status`,
+            `wrap-${part}-apply`,
+            `wrap-${part}-apply-ebay`,
+            `wrap-${part}-apply-ebay-reset`,
+            `wrap-${part}-apply-ebay-status`,
+            `wrap-${part}-apply-craigslist`,
+            `wrap-${part}-apply-craigslist-reset`,
+            `wrap-${part}-apply-craigslist-status`,
+        ]),
         "settings-server",
         "pc-address",
         "pc-key",
@@ -823,17 +845,21 @@ test("Settings: a bad address is refused on the page; a good one is saved and ch
     await settle();
     assert.equal(local.getItem("snap.pc"), "https://pc.tail1234.ts.net");
     assert.equal(local.getItem("snap.key"), "test-key-0123456789");
-    // the check, then who this key is (GET /me) and its seller's address, all with the key
+    // the check, then who this key is (GET /me), its seller's address and its header and
+    // footer (2.19.0), all with the key
     assert.deepEqual(calls.map((c) => c.url), [
         "https://pc.tail1234.ts.net/jobs?limit=1",
         "https://pc.tail1234.ts.net/me",
         "https://pc.tail1234.ts.net/me/seller",
+        "https://pc.tail1234.ts.net/me/wrap",
     ]);
     assert.equal(calls[0].init.headers["X-Crosslister-Key"], "test-key-0123456789");
     assert.equal(calls[1].init.headers["X-Crosslister-Key"], "test-key-0123456789");
     assert.equal(calls[1].init.headers["X-Crosslister-Session"], undefined);
     assert.equal(calls[2].init.headers["X-Crosslister-Key"], "test-key-0123456789");
+    assert.equal(calls[3].init.headers["X-Crosslister-Key"], "test-key-0123456789");
     assert.equal(nodes.get("seller-toggle").hidden, true, "an answer that is not one: no foldout");
+    assert.equal(nodes.get("wrap").hidden, true, "nor any header and footer rows");
     assert.match(nodes.get("settings-status").textContent, /knows this key/);
     // with settings, the hint moves on to what the item still needs
     assert.equal(nodes.get("venue-hint").textContent, "Snap a photo first");
@@ -1022,6 +1048,13 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         sellerSaves: [],
         sellerRefuse: null,
         policiesAfterSave: "",
+        // GET /me/wrap's answer (null: an older server's 404), its PATCHes and applies
+        wrapAsks: [],
+        wrap: null,
+        wrapSaves: [],
+        wrapRefuse: null,
+        wrapApplies: [],
+        wrapApplyRefuse: "",
         inboxAsks: [],
         inbox: null,
         reviews: [],
@@ -1044,13 +1077,15 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const asked = method === "GET" && parts[0] === "me" && !parts[1];
         const signup = method === "GET" && parts[0] === "auth" && parts[1] === "signup";
         const sold = parts[0] === "me" && parts[1] === "seller";
+        const wrapped = parts[0] === "me" && parts[1] === "wrap";
         const inboxed = parts[0] === "feedback" && ((method === "GET" && !parts[1]) || method === "PATCH");
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
         else if (signup) pc.signups.push({ auth, origin: u.origin });
         else if (sold && method === "GET") pc.sellerAsks.push(auth);
+        else if (wrapped && method === "GET") pc.wrapAsks.push(auth);
         else if (inboxed && method === "GET") pc.inboxAsks.push(`${auth} ${u.search}`);
-        else if (!sold && !inboxed) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (!sold && !wrapped && !inboxed) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
@@ -1075,6 +1110,26 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json(pc.seller);
         }
         if (sold) return pc.seller ? json(pc.seller) : json({ detail: "Not Found" }, 404);
+        // the header and footer, as the server's contract (2026-10-17): a PATCH merges any subset
+        // into the parts and answers the GET body; a text over 2000 characters is refused
+        if (wrapped && parts[2] === "apply" && method === "POST") {
+            pc.wrapApplies.push({ body, auth, type: headers["Content-Type"] });
+            if (!pc.wrap) return json({ detail: "Not Found" }, 404);
+            if (pc.wrapApplyRefuse) return json({ detail: pc.wrapApplyRefuse }, 400);
+            return json({ job: `w-${body.venue}` });
+        }
+        if (wrapped && method === "PATCH") {
+            pc.wrapSaves.push({ body, auth, type: headers["Content-Type"] });
+            if (!pc.wrap) return json({ detail: "Not Found" }, 404);
+            if (pc.wrapRefuse) return json({ detail: pc.wrapRefuse.detail }, pc.wrapRefuse.status);
+            for (const [part, changes] of Object.entries(body)) {
+                assert.ok(["header", "footer"].includes(part), `no part ${part}`);
+                if ((changes.text || "").length > 2000) return json({ detail: `${part}.text: at most 2000 characters` }, 400);
+                pc.wrap[part] = { ...pc.wrap[part], ...changes };
+            }
+            return json(pc.wrap);
+        }
+        if (wrapped) return pc.wrap ? json(pc.wrap) : json({ detail: "Not Found" }, 404);
         if (parts[0] === "feedback" && method === "POST") {
             pc.feedback.push(body);
             if (pc.refuseFeedback) return json({ detail: pc.refuseFeedback }, 400);
@@ -8732,4 +8787,324 @@ test("Fix dark photos: a dark photo is brightened before it goes and its lit bad
     } finally {
         picture = BRIGHT;
     }
+});
+
+// --- 2.19.0 (Michal, 2026-10-17): a header and a footer on every listing ---------------------
+// "In default settings add a checkbox for footnote/header for all posts. When you check that, a
+// text area appears; that text will be input by the user and appended to the posting (with two
+// return lines separating it from the main text). Footnote and header are separate of course,
+// with separate on/off. If you uncheck it, it should not lose what you had: the text area should
+// open with the previous text. Below would be the venue buttons; 'Apply to:' above them; once
+// clicked the button changes to green with a check, our typical. If there is only one venue
+// available, as for a typical user, that can be checked right away. Finally a button 'Apply to
+// all existing listings' (per the venue specified). Since this is many options it should be a
+// foldout: once you check header you get a header foldout with all these options."
+
+/** GET /me/wrap for a seller who has set nothing yet, posting to eBay alone. */
+const NO_WRAP = {
+    header: { on: false, text: "", venues: [] },
+    footer: { on: false, text: "", venues: [] },
+    available: ["ebay"],
+};
+
+/** One row of the header and footer as the screen shows it. */
+function wrapRow(nodes, part) {
+    const n = (id) => nodes.get(`wrap-${part}${id}`);
+    const pill = (v) => {
+        const node = n(`-${v}`);
+        if (node.hidden) return null;
+        const ticked = node.attrs["aria-pressed"] === "true";
+        assert.equal(node.children.some((c) => c.tag === "svg"), ticked, "a tick only when ticked");
+        return ticked ? `${wordOf(node)} ✓` : wordOf(node);
+    };
+    const apply = (v) => (n(`-apply-${v}`).hidden ? null : buttonSays(n(`-apply-${v}`)));
+    return {
+        on: n("-on").checked,
+        open: !n("").hidden,
+        text: n("-text").value,
+        count: n("-count").textContent,
+        pills: [pill("ebay"), pill("craigslist")],
+        status: n("-status").textContent,
+        applies: n("-apply").hidden ? null : [apply("ebay"), apply("craigslist")],
+    };
+}
+
+function tickRow(nodes, part, on) {
+    nodes.get(`wrap-${part}-on`).checked = on;
+    nodes.get(`wrap-${part}-on`).fire("change");
+}
+
+test("header and footer: two rows under the Account block, each its foldout with the box, Apply to:, Save and the apply buttons", () => {
+    const settingsCard = /<div id="settings" class="card" hidden>([\s\S]*?)<p id="settings-server"/.exec(html)[1];
+    assert.match(settingsCard, /<p id="account-status"[^>]*><\/p>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="wrap" class="wrap" hidden>/);
+    const block = /<div id="wrap" class="wrap" hidden>([\s\S]*)$/.exec(settingsCard)[1];
+    for (const [part, word, where] of [
+        ["header", "Header", "above"],
+        ["footer", "Footer", "below"],
+    ]) {
+        // pickup only's pill row, its foldout folded under it
+        assert.match(block, new RegExp(`<label class="pickup">\\s*<input id="wrap-${part}-on" type="checkbox">\\s*<span>${word} on every listing</span>\\s*</label>\\s*<div id="wrap-${part}" class="wrap-fold" hidden>`));
+        assert.match(block, new RegExp(`<textarea id="wrap-${part}-text"[^>]*maxlength="2000"[^>]*aria-label="${word}"\\s+placeholder="Text added ${where} the description"></textarea>`));
+        assert.match(block, new RegExp(`<p id="wrap-${part}-count" class="small wrap-count">0 / 2000</p>\\s*<p class="small wrap-note">Added with a blank line between it and the description.</p>\\s*<p class="field-label wrap-to">Apply to:</p>`));
+        for (const v of ["ebay", "craigslist"]) {
+            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-${v}" class="pill pill-small wrap-venue" aria-pressed="false" hidden>${v}</button>`));
+            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-apply-${v}" class="pill pill-small" hidden>Apply to all existing ${v} listings</button>`));
+            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-apply-${v}-reset" class="reset-call" aria-label="reset Apply to all existing ${v} listings" hidden>reset</button>`));
+        }
+        assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-save" class="pill pill-ink pill-small wrap-save">Save</button>\\s*<p id="wrap-${part}-status"[^>]*aria-live="polite"></p>`));
+    }
+    // one push carries both parts, from either row: said under the apply buttons, in each row
+    assert.equal(block.match(/<p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue<\/p>\s*<\/div>/g).length, 2);
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    // on: the posted green, as eBay connected and a listed badge; off: outlined in ink
+    assert.match(css, /\.pill\.wrap-venue \{[^}]*background: none; border-color: var\(--ink\);/);
+    assert.match(css, /\.pill\.wrap-venue\[aria-pressed="true"\] \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/);
+});
+
+test("header and footer: a row ticked opens its foldout, eBay ticked with it for one venue; Save, untick keeps the text, a pill toggles; every body as sent", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    pc.wrap = structuredClone(NO_WRAP);
+    pc.wrap.footer.text = "Thanks for looking!";
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    assert.equal(nodes.get("wrap").hidden, true, "nothing before the server answers");
+    assert.deepEqual(pc.wrapAsks, [], "not asked before Settings opens");
+    await openSettings(nodes);
+    await settle();
+    assert.deepEqual(pc.wrapAsks, ["key test-key-0123456789"]);
+    assert.equal(nodes.get("wrap").hidden, false);
+    for (const part of ["header", "footer"]) {
+        assert.equal(wrapRow(nodes, part).on, false);
+        assert.equal(wrapRow(nodes, part).open, false, "folded while unticked");
+    }
+
+    // ticked: the foldout opens, and eBay, the only venue, is ticked in the same PATCH
+    tickRow(nodes, "header", true);
+    assert.deepEqual(wrapRow(nodes, "header"), {
+        on: true,
+        open: true,
+        text: "",
+        count: "0 / 2000",
+        pills: ["ebay ✓", null],
+        status: "",
+        applies: ["Apply to all existing ebay listings", null],
+    });
+    await settle();
+    assert.deepEqual(pc.wrapSaves, [
+        { body: { header: { on: true, venues: ["ebay"] } }, auth: "key test-key-0123456789", type: "application/json" },
+    ]);
+
+    // typed, counted, saved: trimmed, the box as the server keeps it
+    nodes.get("wrap-header-text").value = "  Free local pickup in Chicago.\r\n";
+    nodes.get("wrap-header-text").fire("input");
+    assert.equal(wrapRow(nodes, "header").count, "33 / 2000");
+    nodes.get("wrap-header-save").fire("click");
+    assert.equal(wrapRow(nodes, "header").status, "Saving...");
+    assert.equal(nodes.get("wrap-header-save").disabled, true, "one Save at a time");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Free local pickup in Chicago." } });
+    assert.equal(wrapRow(nodes, "header").status, "saved");
+    assert.equal(wrapRow(nodes, "header").text, "Free local pickup in Chicago.");
+    assert.equal(wrapRow(nodes, "header").count, "29 / 2000");
+    assert.equal(nodes.get("wrap-header-save").disabled, false);
+    // typing again: "saved" no longer speaks for the box
+    nodes.get("wrap-header-text").fire("input");
+    assert.equal(wrapRow(nodes, "header").status, "");
+
+    // unticked: {"on": false} alone, folded, the text kept; ticked again: the server's text, eBay as it was
+    tickRow(nodes, "header", false);
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: false } });
+    assert.equal(wrapRow(nodes, "header").open, false);
+    assert.equal(pc.wrap.header.text, "Free local pickup in Chicago.", "the server keeps it");
+    nodes.get("wrap-header-text").value = "typed but never saved";
+    tickRow(nodes, "header", true);
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: true } }, "eBay ticked already: not sent again");
+    assert.equal(wrapRow(nodes, "header").text, "Free local pickup in Chicago.", "the text the server has");
+    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay ✓", null]);
+
+    // the pill: off at once, outlined, the apply button gone; on again
+    nodes.get("wrap-header-ebay").fire("click");
+    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay", null]);
+    assert.equal(wrapRow(nodes, "header").applies, null);
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: [] } });
+    nodes.get("wrap-header-ebay").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: ["ebay"] } });
+    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay ✓", null]);
+
+    // the footer is its own: off with its text kept on the server, ticked it opens on that text
+    tickRow(nodes, "footer", true);
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { on: true, venues: ["ebay"] } });
+    assert.equal(wrapRow(nodes, "footer").text, "Thanks for looking!");
+    assert.equal(wrapRow(nodes, "footer").count, "19 / 2000");
+    assert.equal(wrapRow(nodes, "header").on, true, "the header untouched");
+    assert.equal(pc.wrapSaves.length, 7);
+    assert.ok(pc.wrapSaves.every((s) => s.auth === "key test-key-0123456789" && s.type === "application/json"));
+    assert.ok(!pc.calls.some((c) => c.includes("/me/wrap")), "counted apart");
+});
+
+test("header and footer: two venues tick none by themselves; a refusal puts the pill back and says why; a text too long is not sent", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    pc.wrap = { ...structuredClone(NO_WRAP), available: ["ebay", "craigslist"] };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    await settle();
+    tickRow(nodes, "footer", true);
+    await settle();
+    assert.deepEqual(pc.wrapSaves.map((s) => s.body), [{ footer: { on: true } }], "two venues: he chooses");
+    assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay", "craigslist"]);
+    assert.equal(wrapRow(nodes, "footer").applies, null, "no venue ticked, nothing to apply");
+    nodes.get("wrap-footer-craigslist").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["craigslist"] } });
+    assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay", "craigslist ✓"]);
+    assert.deepEqual(wrapRow(nodes, "footer").applies, [null, "Apply to all existing craigslist listings"]);
+    nodes.get("wrap-footer-ebay").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["ebay", "craigslist"] } }, "both, in the page's venue order");
+    assert.deepEqual(pc.wrap.footer.venues, ["ebay", "craigslist"]);
+
+    // refused: the pill as it was, and why on the row's line
+    for (const [status, detail, said] of [
+        [400, "footer.venues: craigslist is not connected", "footer.venues: craigslist is not connected"],
+        [404, "Not Found", "The header and footer are not available yet."],
+        [500, "boom", "Could not save: boom."],
+    ]) {
+        pc.wrapRefuse = { status, detail };
+        nodes.get("wrap-footer-craigslist").fire("click");
+        assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay ✓", "craigslist"], "at once");
+        await settle();
+        assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay ✓", "craigslist ✓"], `answered ${status}: back`);
+        assert.equal(wrapRow(nodes, "footer").status, said);
+    }
+    pc.wrapRefuse = null;
+
+    // more than 2000 characters (pasted past the box's own limit): named, nothing sent
+    const sent = pc.wrapSaves.length;
+    nodes.get("wrap-footer-text").value = "x".repeat(2001);
+    nodes.get("wrap-footer-save").fire("click");
+    await settle();
+    assert.equal(wrapRow(nodes, "footer").status, "At most 2000 characters; this is 2001.");
+    assert.equal(pc.wrapSaves.length, sent);
+    nodes.get("wrap-footer-text").value = "x".repeat(2000);
+    nodes.get("wrap-footer-save").fire("click");
+    await settle();
+    assert.equal(pc.wrapSaves.at(-1).body.footer.text.length, 2000);
+    assert.equal(wrapRow(nodes, "footer").status, "saved");
+});
+
+test("Apply to all existing listings: a job button as the sync bar's, one task for both rows; its summary under it; paused, reset; refused", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let applying = { state: "running", step: "updating eBay listings" };
+    const pc = fakePc({ jobs: { "w-ebay": () => applying } });
+    pc.wrap = {
+        header: { on: true, text: "Free local pickup.", venues: ["ebay"] },
+        footer: { on: true, text: "Thanks!", venues: ["ebay"] },
+        available: ["ebay"],
+    };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    await settle();
+    assert.deepEqual(wrapRow(nodes, "header").applies, ["Apply to all existing ebay listings", null]);
+    assert.equal(wrapRow(nodes, "header").text, "Free local pickup.");
+    assert.equal(wrapRow(nodes, "footer").text, "Thanks!");
+    const btn = nodes.get("wrap-header-apply-ebay");
+    const line = nodes.get("wrap-header-apply-ebay-status");
+
+    // the press: its ring and "tap again to cancel" at once, in both rows; the job after the second
+    btn.fire("click");
+    assert.equal(line.textContent, "sending");
+    assert.equal(btn.classList.contains("busy"), true);
+    assert.equal(buttonSays(btn), "Apply to all existing ebay listings / tap again to cancel");
+    assert.equal(buttonSays(nodes.get("wrap-footer-apply-ebay")), "Apply to all existing ebay listings / tap again to cancel", "one push for both");
+    assert.equal(nodes.get("wrap-footer-apply-ebay-status").textContent, "sending");
+    await settle();
+    assert.deepEqual(pc.wrapApplies, []);
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.wrapApplies, [{ body: { venue: "ebay" }, auth: "key test-key-0123456789", type: "application/json" }]);
+    assert.equal(line.textContent, "queued");
+    // the footer's button, tapped now, is the same task: nothing new is sent
+    nodes.get("wrap-footer-apply-ebay").fire("click");
+    await settle();
+    assert.equal(pc.wrapApplies.length, 1);
+    nodes.get("wrap-footer-apply-ebay").fire("click");
+    await settle();
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(pc.calls.at(-1), "GET /jobs/w-ebay");
+    assert.equal(line.textContent, "updating eBay listings");
+    assert.equal(line.className, "venue-status busy");
+
+    // done: the summary under both, the buttons their word again
+    applying = { state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(line.textContent, "3 listings updated, 10 unchanged, 0 failed");
+    assert.equal(line.className, "venue-status ok");
+    assert.equal(nodes.get("wrap-footer-apply-ebay-status").textContent, "3 listings updated, 10 unchanged, 0 failed");
+    assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
+    assert.equal(btn.classList.contains("busy"), false);
+    const polled = pc.calls.length;
+    t.mock.timers.tick(POLL_MS * 2);
+    await settle();
+    assert.equal(pc.calls.length, polled, "no more polls once it ended");
+
+    // within the second, a tap holds it: continue and reset, reset drops it, nothing sent
+    btn.fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS / 2);
+    btn.fire("click");
+    await settle();
+    assert.equal(line.textContent, "paused");
+    assert.equal(buttonSays(btn), "continue");
+    assert.equal(nodes.get("wrap-header-apply-ebay-reset").hidden, false);
+    assert.equal(nodes.get("wrap-footer-apply-ebay-reset").hidden, false);
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.equal(pc.wrapApplies.length, 1, "held: nothing leaves the phone");
+    nodes.get("wrap-footer-apply-ebay-reset").fire("click");
+    await settle();
+    assert.equal(line.textContent, "cancelled");
+    assert.equal(line.className, "venue-status bad");
+    assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
+    assert.equal(nodes.get("wrap-header-apply-ebay-reset").hidden, true);
+    t.mock.timers.tick(SEND_DELAY_MS * 3);
+    await settle();
+    assert.equal(pc.wrapApplies.length, 1, "the dropped press never goes");
+
+    // refused: the server's words under it, the button free
+    pc.wrapApplyRefuse = "eBay is not connected";
+    btn.fire("click");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(pc.wrapApplies.length, 2);
+    assert.equal(line.textContent, "eBay is not connected");
+    assert.equal(line.className, "venue-status bad");
+    assert.equal(btn.disabled, false);
+});
+
+test("header and footer: an older server (404) has no rows; signing out takes them away with the rest", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const old = fakePc();
+    const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
+    await openSettings(before.nodes);
+    await settle();
+    assert.equal(old.wrapAsks.length, 1);
+    assert.equal(before.nodes.get("wrap").hidden, true);
+
+    const pc = fakePc();
+    pc.wrap = { ...structuredClone(NO_WRAP), header: { on: true, text: "Hello", venues: ["ebay"] } };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    await settle();
+    assert.equal(nodes.get("wrap").hidden, false);
+    assert.equal(wrapRow(nodes, "header").text, "Hello");
+    nodes.get("settings-signout").fire("click");
+    assert.equal(nodes.get("wrap").hidden, true);
+    assert.equal(nodes.get("wrap-header-text").value, "", "nothing of hers left on the phone's screen");
 });

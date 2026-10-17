@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.18.0";
+import { VERSION } from "./version.js?v=2.19.0";
 import {
     anyActive,
     bannerText,
@@ -197,10 +197,18 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.18.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.18.0";
+    applyLabel,
+    venueTickLabel,
+    WRAP_PARTS,
+    wrapBody,
+    wrapCounter,
+    wrapError,
+    wrapOf,
+} from "./core.js?v=2.19.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.19.0";
 import {
     addVenue,
+    applyWrap,
     archiveRow,
     askLink,
     cancelJob,
@@ -224,8 +232,10 @@ import {
     getSeller,
     getSignup,
     getStats,
+    getWrap,
     patchRow,
     patchSeller,
+    patchWrap,
     PcError,
     postFeedback,
     postJob,
@@ -234,8 +244,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.18.0";
-import { shrinkPhoto } from "./shrink.js?v=2.18.0";
+} from "./pc.js?v=2.19.0";
+import { shrinkPhoto } from "./shrink.js?v=2.19.0";
 import {
     bookCard,
     bookPriceValue,
@@ -248,8 +258,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.18.0";
-import { canScan, readIsbn } from "./scan.js?v=2.18.0";
+} from "./book.js?v=2.19.0";
+import { canScan, readIsbn } from "./scan.js?v=2.19.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -361,6 +371,20 @@ const account = { packs: false, busy: false, status: "" };
  * `asked`, bumped per ask so a late answer for an older one is dropped.
  */
 const seller = { info: null, open: false, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0 };
+/**
+ * Settings' header and footer on every listing (GET /me/wrap), as the screen has them: the
+ * server's answer (wrapOf; null until asked, and from an older server's 404, which is no rows),
+ * each part's line and its Save on its way, `asked`, bumped per ask so a late answer for an
+ * older one is dropped, and per venue the job task (jobTask) of Apply to all existing
+ * listings: one push carries both parts, so the header's button and the footer's are one task.
+ */
+const wrap = {
+    info: null,
+    status: { header: "", footer: "" },
+    busy: { header: false, footer: false },
+    asked: 0,
+    apply: Object.fromEntries(VENUES.map((v) => [v, jobTask()])),
+};
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -1905,6 +1929,8 @@ function showAdmin(open, card = "") {
         Object.assign(account, { packs: false, status: "" });
         quietSeller();
         renderAccount();
+        Object.assign(wrap.status, { header: "", footer: "" });
+        renderWrap();
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
         searchTimer = null;
@@ -1944,6 +1970,7 @@ function showSettings(open) {
         el.pcKey.value = readText("localStorage", KEY_KEY);
         el.settingsStatus.textContent = "";
         loadSeller().catch(() => {});
+        loadWrap().catch(() => {});
     }
 }
 
@@ -4400,6 +4427,238 @@ function pollSeller(fresh) {
     }, SELLER_POLL_MS);
 }
 
+// --- a header and a footer on every listing, under the Account block ----------------------
+// Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts.
+// When you check that, a text area appears ... If you uncheck it, it should not lose what you
+// had ... Below would be the venue buttons; 'Apply to:' above them ... Finally a button 'Apply
+// to all existing listings' (per the venue specified)." The server keeps both (GET/PATCH
+// /me/wrap) and puts them round every description it posts.
+
+/**
+ * The two rows: each ticked as the server has it, its foldout open while it is; the box's
+ * counter; Apply to:'s pill per venue the account posts to, ticked in the posted green; Save
+ * and its line; and per venue ticked (or still pushing) Apply to all existing listings, a job
+ * button as the sync bar's, its line under it. No rows until the server answered.
+ */
+function renderWrap() {
+    const info = wrap.info;
+    el.wrap.hidden = !info;
+    for (const part of WRAP_PARTS) {
+        const p = el.wrapParts[part];
+        const now = info ? info[part] : null;
+        p.on.checked = !!now && now.on;
+        p.fold.hidden = !now || !now.on;
+        p.count.textContent = wrapCounter(p.text.value);
+        p.save.disabled = wrap.busy[part];
+        p.status.textContent = wrap.status[part];
+        let applies = false;
+        for (const venue of VENUES) {
+            const offered = !!info && info.available.includes(venue);
+            const ticked = !!now && now.venues.includes(venue);
+            const pill = p.venues[venue];
+            const face = venueTickLabel(venue, ticked);
+            pill.hidden = !offered;
+            pill.replaceChildren(...(face.tick ? [face.text, tickIcon()] : [face.text]));
+            pill.setAttribute("aria-pressed", ticked ? "true" : "false");
+            // one task per venue, painted under both rows: the push carries the header and the footer
+            const task = wrap.apply[venue];
+            const busy = pressed(task, "apply");
+            const { btn, reset, line } = p.apply[venue];
+            const shown = offered && (ticked || busy);
+            applies ||= shown;
+            btn.hidden = !shown;
+            btn.disabled = busy && !taskTap(task);
+            paintJobButton(btn, applyLabel(venue), {
+                busy,
+                cancel: busy && taskCancel(task),
+                paused: busy && task.paused,
+                reset,
+            });
+            const said = shown ? busyLine(task) : null;
+            line.textContent = said ? said.text : "";
+            line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
+        }
+        p.applies.hidden = !applies;
+    }
+}
+
+/** Each part's box as the server has its text (Settings opened, a row ticked again, a Save answered). */
+function fillWrap(info, parts) {
+    for (const part of parts) el.wrapParts[part].text.value = info[part].text;
+}
+
+/**
+ * GET /me/wrap, as Settings opens: the two rows, the boxes filled. An older server's 404: no
+ * rows. No answer keeps what the last one said.
+ */
+async function loadWrap() {
+    const pc = settings();
+    if (!pc) return;
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    try {
+        const info = wrapOf(await getWrap(pc));
+        if (mine !== wrap.asked) return;
+        wrap.info = info;
+        if (info) fillWrap(info, WRAP_PARTS);
+    } catch (e) {
+        if (mine !== wrap.asked) return;
+        if (e.status === 404) wrap.info = null;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    }
+    renderWrap();
+}
+
+/**
+ * One PATCH /me/wrap for a part (wrapBody): the screen follows the tap at once, and the
+ * server's answer then has the last word; a refusal puts the part back as it was (unless a
+ * newer change is on its way) and says why on the part's line. True once the server took it.
+ * @param {"header"|"footer"} part
+ * @param {{on?:boolean, text?:string, venues?:string[]}} changes
+ * @returns {Promise<boolean>}
+ */
+async function changeWrap(part, changes) {
+    const pc = settings();
+    if (!pc || !wrap.info) return false;
+    const made = wrapBody(part, changes);
+    if (!made.ok) {
+        wrap.status[part] = made.error;
+        renderWrap();
+        return false;
+    }
+    const before = wrap.info;
+    wrap.info = { ...before, [part]: { ...before[part], ...made.body[part] } };
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    renderWrap();
+    try {
+        const info = wrapOf(await patchWrap(pc, made.body));
+        if (mine === wrap.asked && info) wrap.info = info;
+        return true;
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === wrap.asked) wrap.info = before;
+        wrap.status[part] = wrapError(e.status, e.message);
+        return false;
+    } finally {
+        renderWrap();
+    }
+}
+
+/**
+ * A row ticked or unticked: {"on"} at once. Unticked, the text stays the server's and the
+ * box's; ticked again, the foldout opens on the text the server has. The first tick of a row
+ * on no venue, for an account that posts to one (Michal: "If there is only one venue
+ * available, as for a typical user, that can be checked right away"), ticks that one too, in
+ * the same PATCH.
+ * @param {"header"|"footer"} part
+ * @param {boolean} on
+ */
+function tickWrap(part, on) {
+    const info = wrap.info;
+    if (!info) return;
+    wrap.status[part] = "";
+    /** @type {{on:boolean, venues?:string[]}} */
+    const changes = { on };
+    if (on && info.available.length === 1 && info[part].venues.length === 0) changes.venues = info.available;
+    if (on) fillWrap(info, [part]);
+    changeWrap(part, changes).catch(() => {});
+}
+
+/** An Apply to: pill: that venue in or out of the part's venues, sent at once. */
+function toggleWrapVenue(part, venue) {
+    const info = wrap.info;
+    if (!info) return;
+    wrap.status[part] = "";
+    const now = info[part].venues;
+    const venues = now.includes(venue) ? now.filter((v) => v !== venue) : [...now, venue];
+    changeWrap(part, { venues }).catch(() => {});
+}
+
+/** Save: the part's text, its line saying so; the box as the server keeps it, unless typed in meanwhile. */
+async function saveWrap(part) {
+    if (wrap.busy[part] || !wrap.info || !settings()) return;
+    const box = el.wrapParts[part].text;
+    const sent = box.value;
+    wrap.busy[part] = true;
+    wrap.status[part] = "Saving...";
+    let saved = false;
+    try {
+        saved = await changeWrap(part, { text: sent });
+    } finally {
+        wrap.busy[part] = false;
+    }
+    if (saved) {
+        wrap.status[part] = "saved";
+        if (box.value === sent && wrap.info) fillWrap(wrap.info, [part]);
+    }
+    renderWrap();
+}
+
+/**
+ * Apply to all existing listings, either row's, for a venue: after the second a job button
+ * waits, POST /me/wrap/apply {"venue"}, then the job polled every POLL_MS as the sync bar's,
+ * its line under the button (queued, the server's step, its summary or its error); a tap on
+ * it pauses, reset calls it off. A refusal shows the server's words.
+ * @param {string} venue
+ */
+async function startApply(venue) {
+    const task = wrap.apply[venue];
+    if (task.wait || jobRunning(task.job)) {
+        if (pressed(task, "apply")) onTaskTap(task, renderWrap);
+        return;
+    }
+    const pc = settings();
+    if (!pc) return;
+    Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: "sending" });
+    const waited = pressWait(task);
+    renderWrap();
+    if (!(await waited)) return;
+    let answer;
+    try {
+        answer = await applyWrap(pc, venue);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        Object.assign(task, { action: "", wait: "", note: { text: e.message, kind: "bad" } });
+        renderWrap();
+        return;
+    }
+    // signed out meanwhile: the task is no longer the screen's
+    if (wrap.apply[venue] !== task) return;
+    heard(200);
+    task.wait = "";
+    task.job = { action: "wrap", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    task.ask = () => {
+        askTask(task, renderWrap)
+            .then(renderWrap)
+            .catch(() => {});
+    };
+    renderWrap();
+    later(task);
+}
+
+/**
+ * Signed out, or other settings saved: the rows and their answers go, any push's press is
+ * let go and no longer asked about (the job itself is the server's).
+ */
+function dropWrap() {
+    wrap.asked += 1;
+    wrap.info = null;
+    for (const part of WRAP_PARTS) {
+        wrap.status[part] = "";
+        wrap.busy[part] = false;
+        el.wrapParts[part].text.value = "";
+    }
+    for (const venue of VENUES) {
+        const task = wrap.apply[venue];
+        takeBack(task);
+        clearTimeout(task.timer);
+        clearTimeout(task.lateTimer);
+        wrap.apply[venue] = jobTask();
+    }
+    renderWrap();
+}
+
 /**
  * Admin open on Settings, at the Account block: where a venue button's Buy postings leads
  * (`packs`: its pack choice unfolded), and the way back from Stripe or eBay.
@@ -4484,6 +4743,7 @@ function toLanding(message) {
     meAsked = false;
     seller.info = null;
     quietSeller();
+    dropWrap();
     serverStatus = null;
     clearTimeout(healthTimer);
     healthTimer = null;
@@ -4778,17 +5038,20 @@ async function saveSettings() {
         return;
     }
     el.settingsStatus.textContent = "Saved. Checking the server...";
-    // new settings, maybe another account: /me and the seller's address are asked afresh
+    // new settings, maybe another account: /me, the seller's address and the header and
+    // footer are asked afresh
     me = null;
     meAsked = false;
     seller.info = null;
     quietSeller();
+    dropWrap();
     try {
         await checkPc(s);
         heard(200);
         el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
         loadMe().catch(() => {});
         loadSeller().catch(() => {});
+        loadWrap().catch(() => {});
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = refusalLine("Saved, but", e.status, e.message);
@@ -5133,6 +5396,32 @@ function main() {
         sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),
         sellerStatus: $("seller-status"),
+        wrap: $("wrap"),
+        wrapParts: Object.fromEntries(
+            WRAP_PARTS.map((part) => [
+                part,
+                {
+                    on: $(`wrap-${part}-on`),
+                    fold: $(`wrap-${part}`),
+                    text: $(`wrap-${part}-text`),
+                    count: $(`wrap-${part}-count`),
+                    venues: Object.fromEntries(VENUES.map((v) => [v, $(`wrap-${part}-${v}`)])),
+                    save: $(`wrap-${part}-save`),
+                    status: $(`wrap-${part}-status`),
+                    applies: $(`wrap-${part}-apply`),
+                    apply: Object.fromEntries(
+                        VENUES.map((v) => [
+                            v,
+                            {
+                                btn: $(`wrap-${part}-apply-${v}`),
+                                reset: $(`wrap-${part}-apply-${v}-reset`),
+                                line: $(`wrap-${part}-apply-${v}-status`),
+                            },
+                        ])
+                    ),
+                },
+            ])
+        ),
         aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
@@ -5409,6 +5698,29 @@ function main() {
     el.sellerSave.addEventListener("click", () => {
         saveSeller().catch(() => {});
     });
+    // the header and the footer: each row's tick, its box's counter, Save, Apply to:'s pills,
+    // and Apply to all existing listings with its reset
+    for (const [part, p] of Object.entries(el.wrapParts)) {
+        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
+        p.text.addEventListener("input", () => {
+            // "saved" no longer speaks for what is in the box
+            if (!wrap.busy[part]) wrap.status[part] = "";
+            renderWrap();
+        });
+        p.save.addEventListener("click", () => {
+            saveWrap(part).catch(() => {});
+        });
+        for (const [venue, pill] of Object.entries(p.venues)) pill.addEventListener("click", () => toggleWrapVenue(part, venue));
+        for (const [venue, { btn, reset }] of Object.entries(p.apply)) {
+            btn.addEventListener("click", () => {
+                startApply(venue).catch(() => {});
+            });
+            reset.addEventListener("click", () => {
+                resetTask(wrap.apply[venue], renderWrap).catch(() => {});
+            });
+        }
+    }
+    renderWrap();
     // a venue button refused for want of postings: its Buy postings opens the Account block
     for (const node of [el.ebayBuy, el.craigslistBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
     // See in inventory: Admin on the listing the item became, as its row's tap opens it
