@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.19.1";
+import { noteDirty, unsent } from "./queue.js?v=2.20.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.19.1";
+} from "./book.js?v=2.20.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -367,9 +367,11 @@ export function signinNote({ isIos, standalone }) {
  * credits, packs or eBay from an older server is no Account block to speak of. A sign-up
  * still under way (Michal, 2026-10-08) says `pending` (signed in by email, eBay not yet
  * connected: no user yet, only the email) or, connected, `registered` false until the
- * address is in; a server that says neither is an account as today, pending nothing.
+ * address is in; a server that says neither is an account as today, pending nothing. Since
+ * 2.20.0 `syncable` (syncableOf), the venues the account may sync to and from; null from a
+ * server that does not say, which syncs eBay alone (syncVenues).
  * @param {unknown} answer
- * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean} | null}
+ * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean, syncable:Syncable|null} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
@@ -385,7 +387,100 @@ export function meOf(answer) {
         ebay: ebayOf(a.ebay),
         pending: a.pending === true,
         registered: a.registered !== false,
+        syncable: syncableOf(a.syncable),
     };
+}
+
+/**
+ * The venues an account may push onto (`to`: customize's Sync to <venue>, the sync bar's) and
+ * pull from (`from`: the sync bar's Sync from <venue>), as /me names them.
+ * @typedef {{to:string[], from:string[]}} Syncable
+ */
+
+/**
+ * /me's "syncable" (Michal, 2026-10-17: "All venues need to be represented (if any new get
+ * added as well). We are aiming for venue symmetry."): each list's names, each once, as the
+ * server wrote them; a list it does not give is none. Null when the server does not say.
+ * @param {unknown} x
+ * @returns {Syncable|null}
+ */
+function syncableOf(x) {
+    if (!x || typeof x !== "object") return null;
+    const s = /** @type {Record<string, unknown>} */ (x);
+    /** @param {unknown} list */
+    const names = (list) => [...new Set((Array.isArray(list) ? list : []).filter((v) => typeof v === "string").map((v) => v.trim()).filter(Boolean))];
+    return { to: names(s.to), from: names(s.from) };
+}
+
+/** What a sync goes to and from when /me does not say (no /me yet, an older server): eBay, as before 2.20.0. */
+const SYNC_EBAY = ["ebay"];
+
+/**
+ * The venues the account may sync in `direction` ("to": push the rows onto, "from": pull them
+ * from), in /me's `venues` order (one `venues` leaves out after them, as `syncable` has it);
+ * eBay alone while /me does not say. Never a venue's name of its own: a venue the server adds
+ * shows up with its buttons by itself.
+ * @param {{venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @param {"to"|"from"} direction
+ * @returns {string[]}
+ */
+export function syncVenues(me, direction) {
+    if (!me || !me.syncable) return SYNC_EBAY;
+    const said = me.syncable[direction];
+    return [...new Set([...me.venues, ...said])].filter((v) => said.includes(v));
+}
+
+/**
+ * The sync bar's buttons, in their order (Michal, 2026-10-17: "add a button push to
+ * Craigslist next to it"): venue by venue as syncVenues orders them, its Sync from before its
+ * Sync to, so each from sits in the bar's left column and each to in its right.
+ * @param {{venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @returns {{direction:"from"|"to", venue:string}[]}
+ */
+export function syncButtons(me) {
+    const from = syncVenues(me, "from");
+    const to = syncVenues(me, "to");
+    const venues = [...new Set([...(me ? me.venues : []), ...from, ...to])];
+    return venues.flatMap((venue) => [
+        ...(from.includes(venue) ? [{ direction: /** @type {"from"} */ ("from"), venue }] : []),
+        ...(to.includes(venue) ? [{ direction: /** @type {"to"} */ ("to"), venue }] : []),
+    ]);
+}
+
+/**
+ * A sync bar button's word, after its icon: "Sync from eBay", "Sync to craigslist".
+ * @param {"from"|"to"} direction
+ * @param {string} venue
+ * @returns {string}
+ */
+export function syncWord(direction, venue) {
+    return `Sync ${direction} ${venueName(venue)}`;
+}
+
+/**
+ * The POST /jobs body of a sync bar button: {"action": "sync", "direction", "venue"}, the venue
+ * only to a server whose /me says `syncable` (an older one refuses any key but the two, and
+ * syncs eBay).
+ * @param {{syncable:Syncable|null} | null} me meOf's
+ * @param {"from"|"to"} direction
+ * @param {string} venue
+ * @returns {{action:string, direction:string, venue?:string}}
+ */
+export function syncJob(me, direction, venue) {
+    return actionJob("sync", { direction, venue: me && me.syncable ? venue : "" });
+}
+
+/**
+ * The sync bar's line for its job: the venue first when the bar holds more than one venue's
+ * buttons (`many`), "craigslist: 3 listings updated, 10 unchanged, 0 failed"; as it is
+ * otherwise, and for a line no press made (`venue` "").
+ * @param {{text:string, kind:string} | null} line busyLine's
+ * @param {string} venue the venue last pressed
+ * @param {boolean} many
+ * @returns {{text:string, kind:string} | null}
+ */
+export function syncBarLine(line, venue, many) {
+    return line && many && venue ? { ...line, text: `${venueName(venue)}: ${line.text}` } : line;
 }
 
 /** What a server answers every keyed route but /me, Connect eBay and Sign out while a sign-up waits for eBay (403). */
@@ -3813,7 +3908,8 @@ export function venueFacts(row, venue) {
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * eBay's sync stays customize's Sync to eBay.
+ * eBay's sync stays customize's Sync to eBay (customize has a Sync to <venue> for every venue
+ * listed since 2.20.0, craigslist's beside eBay's; this card's own stays).
  * @param {Record<string, any>} row
  * @param {string} venue
  * @param {Unsynced[]} [unsynced] unsyncedList's
@@ -3864,24 +3960,28 @@ export function endQuestion(venue) {
 /**
  * The body of POST /jobs for an action job (the PC's contract, 2026-10-06):
  *   {"action": "end" | "refresh", "sku", "venue"}  a card's End listing / Refresh status
- *   {"action": "sync", "direction": "from" | "to"}  the sync bar's two buttons
- *   {"action": "push", "sku", "venue"}               a listing's customize, Sync to eBay, a
+ *   {"action": "sync", "direction": "from" | "to", "venue"}
+ *                                                    the sync bar's buttons, one per venue
+ *                                                    (2.20.0, syncJob); without the venue to
+ *                                                    a server that does not say `syncable`
+ *   {"action": "push", "sku", "venue"}               a listing's customize, Sync to <venue>, a
  *                                                    sync badge, the craigslist card's Sync
  *                                                    to craigslist (eBay only until the
  *                                                    contract of 2026-10-08; a PC that still
  *                                                    refuses craigslist answers 400)
- * A card's Post stays jobRequest's {"sku", "venue"}.
+ * A card's Post stays jobRequest's {"sku", "venue"}. The venue is whatever /me named (a venue
+ * the server adds is pushed to as the others are), never checked against VENUES.
  * @param {"end"|"refresh"|"sync"|"push"} action
  * @param {{sku?:string, venue?:string, direction?:string}} what
- * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string}}
+ * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string, venue?:string}}
  */
 export function actionJob(action, { sku = "", venue = "", direction = "" } = {}) {
     if (action === "sync") {
         if (direction !== "from" && direction !== "to") throw new RangeError(`unknown sync direction ${direction}`);
-        return { action, direction };
+        return venue ? { action, direction, venue } : { action, direction };
     }
     if (action !== "end" && action !== "refresh" && action !== "push") throw new RangeError(`unknown action ${action}`);
-    if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
+    if (!sku || !venue) throw new RangeError(`${action} needs a sku and a venue`);
     return { action, sku, venue };
 }
 
@@ -4053,8 +4153,19 @@ export function patchBody(venue, before, after) {
 // PC sets the price to that grade's cached one. No model call, no job. Post without
 // asking is not shown any more.
 
-/** Said under Save and Sync while the listing is not up on eBay: there is nothing to push to. */
-export const PUSH_CLOSED = "Sync to eBay opens once the listing is up on eBay";
+/**
+ * Said under Save while the listing is up on none of the venues the account syncs to: there is
+ * nothing to push to ("Sync to eBay opens once the listing is up on eBay"; with more venues,
+ * "Sync opens once the listing is up on eBay or craigslist"); nothing when it syncs to none.
+ * @param {string[]} to syncVenues' "to"
+ * @returns {string}
+ */
+export function pushClosed(to) {
+    if (!to.length) return "";
+    const names = to.map(venueName);
+    if (names.length === 1) return `Sync to ${names[0]} opens once the listing is up on ${names[0]}`;
+    return `Sync opens once the listing is up on ${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
 
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
@@ -4175,47 +4286,74 @@ export function followRow(before, values, after) {
  * @returns {boolean}
  */
 export function canPush(row) {
-    return rowVenues(row).includes("ebay") && venueStatus(row, "ebay").status === "listed";
+    return listedOn(row, "ebay");
+}
+
+/** The row names `venue` and its listing there is up: a push has something to update. */
+function listedOn(row, venue) {
+    const named = row && Array.isArray(row.venues) ? row.venues.map(plain) : [];
+    return named.includes(venue) && venueStatus(row, venue).status === "listed";
+}
+
+/**
+ * The venues customize offers a Sync to <venue> for (Michal, 2026-10-17: "There is a button
+ * push to eBay, so add a button push to Craigslist next to it. All venues need to be
+ * represented"): each the account syncs to (syncVenues' "to", in its order) that the row is
+ * listed on. A venue it is not listed on has no listing to update, so no button.
+ * @param {Record<string, any>} row
+ * @param {string[]} to syncVenues' "to"
+ * @returns {string[]}
+ */
+export function customizeVenues(row, to) {
+    return to.filter((venue) => listedOn(row, venue));
 }
 
 /**
  * Which of the foldout's buttons can be pressed. Save: something to send, the box
- * a quantity. Sync to eBay: listed on eBay, the box a quantity (what is not yet
- * saved is saved first). Neither while the row is busy (one job per row at a time).
+ * a quantity. Each Sync to <venue> (customizeVenues draws one per venue listed): the box a
+ * quantity (what is not yet saved is saved first). Neither while the row is busy (one job
+ * per row at a time).
  * @param {Record<string, any>} row
  * @param {RowCustomize} values
  * @param {boolean} busy
+ * @param {string[]} to syncVenues' "to"
  * @returns {{save:boolean, sync:boolean}}
  */
-export function customizeButtons(row, values, busy) {
+export function customizeButtons(row, values, busy, to) {
     const ok = !busy && quantityValue(values.quantity) > 0;
-    return { save: ok && customizeChanges(row, values) !== null, sync: ok && canPush(row) };
+    return { save: ok && customizeChanges(row, values) !== null, sync: ok && customizeVenues(row, to).length > 0 };
 }
 
 /**
  * The foldout's status line: what is on its way, the push job (its step, then
  * "updated" or "unchanged", or its error), what the PC refused or said; then the
- * quantity box that holds no quantity, then why Sync to eBay is shut.
+ * quantity box that holds no quantity, then why there is no Sync to press (pushClosed).
  * @param {Record<string, any>} row
  * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, values:{quantity:string}}} card
+ * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeLine(row, card) {
+export function customizeLine(row, card, to) {
     const said = busyLine(card);
     if (said) return said;
     if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
-    if (!canPush(row)) return { text: PUSH_CLOSED, kind: "" };
+    if (!customizeVenues(row, to).length) return { text: pushClosed(to), kind: "" };
     return { text: "", kind: "" };
 }
 
 /**
- * Said once Save is through: the PC holds it, and on a listing up on eBay, Sync to
- * eBay is what puts it there.
+ * Said once Save is through: the PC holds it, and on a listing up on a venue it syncs to, the
+ * Sync that puts it there: the one by name ("saved; Sync to eBay puts it on the listing"),
+ * or, with more than one button, "saved; sync puts it on the listings".
  * @param {Record<string, any>} row the row the PC answered
+ * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeSaved(row) {
-    return { text: canPush(row) ? "saved; Sync to eBay puts it on the listing" : "saved", kind: "ok" };
+export function customizeSaved(row, to) {
+    const venues = customizeVenues(row, to);
+    if (!venues.length) return { text: "saved", kind: "ok" };
+    if (venues.length > 1) return { text: "saved; sync puts it on the listings", kind: "ok" };
+    return { text: `saved; ${actionWord("sync", venues[0])} puts it on the listing`, kind: "ok" };
 }
 
 // --- Admin: a list row's price, dialled on its tile -------------------------------------

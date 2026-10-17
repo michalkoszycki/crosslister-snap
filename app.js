@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.19.1";
+import { VERSION } from "./version.js?v=2.20.1";
 import {
     anyActive,
     bannerText,
@@ -96,6 +96,7 @@ import {
     customizeChanges,
     customizeLine,
     customizeSaved,
+    customizeVenues,
     DERIVED,
     derivedFields,
     EDIT_FIELDS,
@@ -118,7 +119,12 @@ import {
     rowVenues,
     sliderWords,
     busyLine,
+    syncBarLine,
+    syncButtons,
+    syncJob,
     syncLine,
+    syncVenues,
+    syncWord,
     unsyncedList,
     unsyncedWith,
     unsyncedWithout,
@@ -204,8 +210,8 @@ import {
     wrapCounter,
     wrapError,
     wrapOf,
-} from "./core.js?v=2.19.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.19.1";
+} from "./core.js?v=2.20.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.20.1";
 import {
     addVenue,
     applyWrap,
@@ -244,8 +250,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.19.1";
-import { shrinkPhoto } from "./shrink.js?v=2.19.1";
+} from "./pc.js?v=2.20.1";
+import { shrinkPhoto } from "./shrink.js?v=2.20.1";
 import {
     bookCard,
     bookPriceValue,
@@ -258,8 +264,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.19.1";
-import { canScan, readIsbn } from "./scan.js?v=2.19.1";
+} from "./book.js?v=2.20.1";
+import { canScan, readIsbn } from "./scan.js?v=2.20.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -482,10 +488,23 @@ let swipe = null;
 /** The row last swiped off the list, while the undo bar offers it back, and the bar's timer. */
 const undo = { entry: null, timer: null };
 
-/** The sync bar, an Admin job task as a card is (jobTask); its action the direction last pressed ("from" | "to"). */
-const sync = jobTask();
-/** The sync bar's two words, after their icons. */
-const SYNC_WORDS = { from: "Sync from eBay", to: "Sync to eBay" };
+/**
+ * The sync bar, an Admin job task as a card is (jobTask): one sync at a time (the server
+ * refuses a second, 409); its action the button last pressed ("<direction> <venue>",
+ * "to craigslist"), and `venue` that button's venue, kept past the press for its line.
+ */
+const sync = { ...jobTask(), venue: "" };
+/**
+ * The sync bar's buttons as drawn (syncButtons, from /me), by "<direction> <venue>": the
+ * button, its copy of index.html's half of the sync symbol, its reset; made the first time a
+ * /me names it. `shown`: which are in the bar now, so it is redrawn only when that changes.
+ */
+const syncDrawn = { nodes: new Map(), shown: "" };
+/**
+ * customize's Sync to <venue> buttons as drawn (customizeVenues), by venue: the button and
+ * its reset; `shown`, the venues in the row of buttons now.
+ */
+const customDrawn = { nodes: new Map(), shown: "" };
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -2591,9 +2610,12 @@ function syncBadge(sku, badge) {
     return [btn, reset];
 }
 
-/** The sync bar's to-eBay half of the sync symbol, copied for a sync badge (without its id: the bar keeps that). */
-function syncIcon() {
-    const icon = el.syncButtons.find((b) => b.direction === "to").icon.cloneNode(true);
+/**
+ * The sync symbol's half for `direction` ("to": the top arc, "from": the bottom), copied from
+ * index.html's for a sync bar button or a sync badge (without its id: index.html keeps that).
+ */
+function syncIcon(direction = "to") {
+    const icon = el.syncIcons[direction].cloneNode(true);
     icon.removeAttribute("id");
     return icon;
 }
@@ -2866,7 +2888,8 @@ function blankCard() {
 /**
  * The listing's customize, for the row on screen: open (each listing opens on it),
  * its two boxes and the slider as he left them (`values`, from the row until
- * changed), and, as a card's, its job task ("push" for Sync to eBay).
+ * changed), and, as a card's, its job task ("push <venue>" for Sync to <venue>: one push at a
+ * time, the row's other buttons waiting).
  */
 function blankCustomize() {
     return { open: true, values: rowCustomize({}), ...jobTask() };
@@ -2904,7 +2927,8 @@ function renderCards() {
  * The listing's customize, as the goods card: open or folded; the quantity box (not
  * rewritten while it holds what was typed), pickup only and the Price slider with
  * each grade's cached price beside its word (sliderWords), locked while the row is
- * busy; Save and Sync to eBay as customizeButtons says; its status line.
+ * busy; Save, and a Sync to <venue> per venue the row is listed on that /me syncs to
+ * (customizeVenues), as customizeButtons says; its status line.
  */
 function renderRowCustomize() {
     const c = admin.custom;
@@ -2927,24 +2951,64 @@ function renderRowCustomize() {
         el.detailPricingWords[i].classList.toggle("on", p.grade === slider.bold);
     });
     el.detailPricingNote.textContent = slider.note;
-    const can = customizeButtons(row, c.values, busy);
+    const to = syncVenues(me, "to");
+    const can = customizeButtons(row, c.values, busy, to);
     el.detailCustomizeSave.disabled = !can.save;
-    // Sync to eBay is a job button: pressed, its ring and "tap again to cancel", paused its continue and reset
-    const pushing = pressed(c, "push");
-    el.detailCustomizeSync.disabled = pushing ? !taskTap(c) : !can.sync;
-    paintJobButton(el.detailCustomizeSync, "Sync to eBay", {
-        busy: pushing,
-        cancel: pushing && taskCancel(c),
-        paused: pushing && c.paused,
-        reset: el.detailCustomizeReset,
+    // after Save, a Sync to <venue> per venue the row is listed on (Michal, 2026-10-17: "There is
+    // a button push to eBay, so add a button push to Craigslist next to it"), each a job button:
+    // pressed, its ring and "tap again to cancel", paused its continue and its own reset
+    const venues = customizeVenues(row, to);
+    const kids = venues.flatMap((venue) => {
+        const { btn, reset } = customSyncNodes(venue);
+        const pushing = pressed(c, `push ${venue}`);
+        btn.disabled = pushing ? !taskTap(c) : !can.sync;
+        paintJobButton(btn, actionWord("sync", venue), {
+            busy: pushing,
+            cancel: pushing && taskCancel(c),
+            paused: pushing && c.paused,
+            reset,
+        });
+        return [btn, reset];
     });
+    if (customDrawn.shown !== venues.join(" ")) {
+        customDrawn.shown = venues.join(" ");
+        el.detailCustomizeActions.replaceChildren(el.detailCustomizeSave, ...kids);
+    }
     paintCustomizeLine();
+}
+
+/** A venue's Sync to <venue> in customize and its reset, made the first time it is drawn. */
+function customSyncNodes(venue) {
+    if (!customDrawn.nodes.has(venue)) {
+        const word = actionWord("sync", venue);
+        const btn = actionButton(word, "pill", true, () => {
+            if (pressed(admin.custom, `push ${venue}`)) onTaskTap(admin.custom, customizePaint());
+            else pushRow(venue).catch(() => {});
+        });
+        btn.id = `detail-customize-sync-${venue}`;
+        const reset = actionButton(RESET, "reset-call", false, () => {
+            resetTask(admin.custom, customizePaint()).catch(() => {});
+        });
+        reset.id = `detail-customize-reset-${venue}`;
+        reset.hidden = true;
+        reset.setAttribute("aria-label", `${RESET} ${word}`);
+        customDrawn.nodes.set(venue, { btn, reset });
+    }
+    return customDrawn.nodes.get(venue);
+}
+
+/** customize's task on screen again, unless the listing has changed meanwhile. */
+function customizePaint() {
+    const mine = admin.shown;
+    return () => {
+        if (mine === admin.shown) renderCards();
+    };
 }
 
 /** customize's status line, rewritten in place: a poll changes it and nothing else. */
 function paintCustomizeLine() {
     if (!admin.row) return;
-    const line = customizeLine(admin.row, admin.custom);
+    const line = customizeLine(admin.row, admin.custom, syncVenues(me, "to"));
     el.detailCustomizeStatus.textContent = line.text;
     el.detailCustomizeStatus.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
 }
@@ -2969,7 +3033,7 @@ function onCustomizeInput(values) {
  * and the row it answers is shown, its new price in the heading and the eBay card.
  * A refusal (no cached price for that grade) is said in the status line, the
  * foldout as he left it. true once the row holds what the foldout says (nothing to
- * send counts), so Sync to eBay can follow.
+ * send counts), so a Sync to <venue> can follow.
  */
 async function saveRowCustomize() {
     const c = admin.custom;
@@ -2997,7 +3061,7 @@ async function saveRowCustomize() {
     if (mine !== admin.shown) return false;
     heard(200);
     c.wait = "";
-    c.note = customizeSaved(whole);
+    c.note = customizeSaved(whole, syncVenues(me, "to"));
     markBehind(row.sku, row, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
@@ -3005,18 +3069,21 @@ async function saveRowCustomize() {
 }
 
 /**
- * Sync to eBay (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
- * detail of that listing should update"): the second a job button waits, then a
- * change not yet saved is saved, then the push job puts the row as saved on its
- * eBay listing. Its line is customize's status line, polled every POLL_MS,
- * "updated" or "unchanged" once done, and the row is read again. A push the PC
- * refuses says why. A tap on it pauses it (onTaskTap), and its reset calls it off.
+ * Sync to <venue> (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
+ * detail of that listing should update"; 2026-10-17: "add a button push to Craigslist next
+ * to it"): the second a job button waits, then a change not yet saved is saved, then the
+ * push job puts the row as saved on its listing on `venue`. Its line is customize's status
+ * line, polled every POLL_MS, "updated" or "unchanged" once done (that venue's unsynced mark
+ * let go: askJob), and the row is read again. A push the PC refuses says why. A tap on it
+ * pauses it (onTaskTap), and its reset calls it off.
  */
-async function pushRow() {
+async function pushRow(venue) {
     const c = admin.custom;
-    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy()).sync) return;
+    const to = syncVenues(me, "to");
+    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy(), to).sync) return;
+    if (!customizeVenues(admin.row, to).includes(venue)) return;
     const mine = admin.shown;
-    c.action = "push";
+    c.action = `push ${venue}`;
     c.note = null;
     c.job = null;
     c.stopping = false;
@@ -3039,7 +3106,7 @@ async function pushRow() {
     renderCards();
     let answer;
     try {
-        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue: "ebay" }));
+        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue }));
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -3053,7 +3120,7 @@ async function pushRow() {
     heard(200);
     c.wait = "";
     c.note = null;
-    c.job = { action: "push", venue: "ebay", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.job = { action: "push", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     c.ask = () => {
         askJob(c, mine, renderRowCustomize).catch(() => {});
     };
@@ -3677,7 +3744,7 @@ async function askJob(c, mine, paint) {
         renderCards();
         return;
     }
-    // a push (customize's Sync to eBay, the card's Sync to craigslist): that venue has the row
+    // a push (customize's Sync to <venue>, the card's Sync to craigslist): that venue has the row
     // now, and its list badge is plain again
     if (c.job.action === "push") markUnsynced(admin.row.sku, c.job.venue, false);
     admin.changed = true;
@@ -4025,26 +4092,31 @@ function closePhoto() {
 }
 
 /**
- * The sync bar's two buttons: after the second a job button waits, the sync job
- * is sent, its line under them (queued, the PC's step, its summary or its error),
- * polled every POLL_MS; the other locks until it ends, the pressed one turns its
- * ring, a tap on it pauses the job (onTaskTap) and reset under them calls it off,
- * and once done the inventory list is asked for again. A refusal shows the PC's
- * words. The job is the PC's: closing Admin leaves it running and polled.
+ * A sync bar button (Michal, 2026-10-17: "All venues need to be represented (if any new get
+ * added as well)"): after the second a job button waits, the sync job of its direction and
+ * venue is sent (syncJob), its line under the buttons (queued, the PC's step, its summary or
+ * its error; the venue first when the bar holds more than one), polled every POLL_MS; the
+ * others lock until it ends (one sync at a time), the pressed one turns its ring, a tap on it
+ * pauses the job (onTaskTap) and its reset calls it off, and once done the inventory list is
+ * asked for again. A refusal shows the PC's words. The job is the PC's: closing Admin leaves
+ * it running and polled.
  */
-async function startSync(direction) {
+async function startSync(direction, venue) {
+    const action = `${direction} ${venue}`;
     if (sync.wait || jobRunning(sync.job)) {
-        if (pressed(sync, direction)) onTaskTap(sync, renderSync);
+        if (pressed(sync, action)) onTaskTap(sync, renderSync);
         return;
     }
     const pc = settings();
     sync.job = null;
     if (!pc) {
+        sync.venue = "";
         sync.note = { text: "Set the server address and key under Settings first.", kind: "bad" };
         renderSync();
         return;
     }
-    sync.action = direction;
+    sync.action = action;
+    sync.venue = venue;
     sync.note = null;
     sync.stopping = false;
     sync.wait = "sending";
@@ -4053,7 +4125,7 @@ async function startSync(direction) {
     if (!(await waited)) return;
     let answer;
     try {
-        answer = await sendJob(pc, actionJob("sync", { direction }));
+        answer = await sendJob(pc, syncJob(me, direction, venue));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         sync.action = "";
@@ -4064,7 +4136,7 @@ async function startSync(direction) {
     }
     heard(200);
     sync.wait = "";
-    sync.job = { action: "sync", direction, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    sync.job = { action: "sync", direction, venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     sync.ask = () => {
         askSync().catch(() => {});
     };
@@ -4075,10 +4147,10 @@ async function startSync(direction) {
 async function askSync() {
     if (!(await askTask(sync, renderSync))) return;
     renderSync();
-    // Sync to eBay put every row on its eBay listing: no eBay listing is behind its row any
-    // more (a craigslist one still is)
+    // Sync to <venue> put every row on its listing there: none of that venue's listings is
+    // behind its row any more (another venue's still are)
     if (sync.job.state === "done" && sync.job.direction === "to") {
-        writeJson("localStorage", UNSYNCED_KEY, unsyncedWithout(readUnsynced(), "ebay"));
+        writeJson("localStorage", UNSYNCED_KEY, unsyncedWithout(readUnsynced(), sync.venue));
     }
     if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
     // a listing open in place of the list: the list is asked for again on the way back
@@ -4087,25 +4159,59 @@ async function askSync() {
 }
 
 /**
- * The sync bar's line, and its two buttons: each its icon and word, the pressed one
- * its ring (continue while paused), and the one reset under them while it is paused.
+ * The sync bar's line, and its buttons, one per venue and direction /me syncs (syncButtons;
+ * eBay's two from a server that does not say): each its half of the sync symbol and word,
+ * the pressed one its ring (continue while paused) and, while it is paused, its reset.
  */
 function renderSync() {
-    const line = busyLine(sync);
+    const buttons = syncButtons(me);
+    const many = new Set(buttons.map((b) => b.venue)).size > 1;
+    const line = syncBarLine(busyLine(sync), sync.venue, many);
     el.syncStatus.textContent = line ? line.text : "";
     el.syncStatus.className = line && line.kind ? `sync-status ${line.kind}` : "sync-status";
     const locked = !!sync.wait || jobRunning(sync.job);
-    for (const { direction, btn, icon } of el.syncButtons) {
-        const busy = pressed(sync, direction);
-        btn.disabled = locked && !(busy && taskTap(sync));
-        paintJobButton(btn, SYNC_WORDS[direction], {
+    const drawn = buttons.map(({ direction, venue }) => {
+        const nodes = syncNodes(direction, venue);
+        const busy = pressed(sync, `${direction} ${venue}`);
+        nodes.btn.disabled = locked && !(busy && taskTap(sync));
+        paintJobButton(nodes.btn, syncWord(direction, venue), {
             busy,
             cancel: busy && taskCancel(sync),
             paused: busy && sync.paused,
-            lead: [icon],
+            lead: [nodes.icon],
+            reset: nodes.reset,
         });
+        return nodes;
+    });
+    const shown = buttons.map((b) => `${b.direction} ${b.venue}`).join(",");
+    if (syncDrawn.shown !== shown) {
+        // the resets after every button: the one showing sits under them all (styles.css)
+        syncDrawn.shown = shown;
+        el.syncButtons.replaceChildren(...drawn.map((n) => n.btn), ...drawn.map((n) => n.reset));
     }
-    el.syncReset.hidden = !sync.paused;
+}
+
+/**
+ * A sync bar button and its reset, made the first time /me names its venue and direction:
+ * `sync-<direction>-<venue>`, its half of the sync symbol (the from or the to column's) left
+ * of the word, and its reset `sync-<direction>-<venue>-reset` (drawn after every button).
+ */
+function syncNodes(direction, venue) {
+    const key = `${direction} ${venue}`;
+    if (!syncDrawn.nodes.has(key)) {
+        const btn = actionButton(syncWord(direction, venue), `sync-btn sync-${direction}`, false, () => {
+            startSync(direction, venue).catch(() => {});
+        });
+        btn.id = `sync-${direction}-${venue}`;
+        const reset = actionButton(RESET, "reset-call", false, () => {
+            resetTask(sync, renderSync).catch(() => {});
+        });
+        reset.id = `sync-${direction}-${venue}-reset`;
+        reset.hidden = true;
+        reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
+        syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
+    }
+    return syncDrawn.nodes.get(key);
 }
 
 // --- the server check ----------------------------------------------------------
@@ -4164,12 +4270,14 @@ async function loadMe() {
 
 /**
  * What /me changes on screen: the craigslist button, an empty craigslist card, Stats, the
- * Account block, and a sign-up's steps in place of the posting screens.
+ * Account block, a sign-up's steps in place of the posting screens, and the venues the sync
+ * bar and customize's Sync buttons go to and from (`syncable`).
  */
 function renderMe() {
     render();
     renderExtras();
     renderAccount();
+    renderSync();
     if (admin.row) renderCards();
 }
 
@@ -5487,20 +5595,15 @@ function main() {
         detailPricing: $("detail-pricing"),
         detailPricingWords: PRICING.map(({ grade }) => $(`detail-pricing-${grade}`)),
         detailPricingNote: $("detail-pricing-note"),
+        detailCustomizeActions: $("detail-customize-actions"),
         detailCustomizeSave: $("detail-customize-save"),
-        detailCustomizeSync: $("detail-customize-sync"),
-        detailCustomizeReset: $("detail-customize-reset"),
         detailCustomizeStatus: $("detail-customize-status"),
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
         syncBar: $("sync-bar"),
-        syncButtons: ["from", "to"].map((direction) => ({
-            direction,
-            btn: $(`sync-${direction}`),
-            icon: $(`sync-${direction}-icon`),
-        })),
-        syncReset: $("sync-reset"),
+        syncButtons: $("sync-buttons"),
+        syncIcons: { from: $("sync-from-icon"), to: $("sync-to-icon") },
         syncStatus: $("sync-status"),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
@@ -5827,34 +5930,12 @@ function main() {
     el.detailCustomizeSave.addEventListener("click", () => {
         saveRowCustomize().catch(() => {});
     });
-    // customize's task on screen again, unless the listing has changed meanwhile
-    const customizePaint = () => {
-        const mine = admin.shown;
-        return () => {
-            if (mine === admin.shown) renderCards();
-        };
-    };
-    el.detailCustomizeSync.addEventListener("click", () => {
-        if (pressed(admin.custom, "push")) onTaskTap(admin.custom, customizePaint());
-        else pushRow().catch(() => {});
-    });
-    el.detailCustomizeReset.addEventListener("click", () => {
-        resetTask(admin.custom, customizePaint()).catch(() => {});
-    });
     for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
         toggle.addEventListener("click", () => {
             admin.folds[venue] = card.hidden;
             renderFolds();
         });
     }
-    for (const { direction, btn } of el.syncButtons) {
-        btn.addEventListener("click", () => {
-            startSync(direction).catch(() => {});
-        });
-    }
-    el.syncReset.addEventListener("click", () => {
-        resetTask(sync, renderSync).catch(() => {});
-    });
     renderSync();
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);

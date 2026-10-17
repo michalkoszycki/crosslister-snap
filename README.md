@@ -499,6 +499,40 @@ between); the page only edits them. In Settings, under the Account block (`#wrap
 Sign out (and Save and check) lets the rows go, the boxes emptied and any press let go; closing
 Admin quiets their lines. `/me/wrap`'s answers are never stored on the phone.
 
+## Venue symmetry: a Sync per venue (2.20.0)
+
+Michal, 2026-10-17: "There is a button push to eBay, so add a button push to Craigslist next to
+it. All venues need to be represented (if any new get added as well). We are aiming for venue
+symmetry."
+
+`GET /me` says which venues the account may push to and pull from: `"syncable": {"to": ["ebay",
+"craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`). Every
+Sync button below is drawn from those lists, in the order of `/me`'s `venues` (`syncVenues`), so a
+venue the server adds gets its buttons with no change to the page. A server that does not say
+(and before `/me` answers) is eBay's alone, as before.
+
+- **A listing's customize**: after **Save**, one **Sync to <venue>** per venue the listing is up
+  on (`customizeVenues`): `Sync to eBay`, `Sync to craigslist` (`actionWord`'s words), each
+  `#detail-customize-sync-<venue>` with its reset `#detail-customize-reset-<venue>` beside it. A
+  venue the listing is not up on shows no button. Each is a job button with its own ring, pause,
+  continue and reset; one push at a time per listing, the other buttons waiting. A press saves
+  what is not yet saved, then sends `{"action": "push", "sku", "venue"}`; done, that venue's
+  unsynced mark goes (the others stay). Save's line names the one Sync (`saved; Sync to eBay puts
+  it on the listing`), or, with more than one showing, `saved; sync puts it on the listings`. Up
+  on none: `Sync to eBay opens once the listing is up on eBay` (more venues: `Sync opens once
+  the listing is up on eBay or craigslist`). The craigslist card's own **Sync to craigslist**
+  stays as it was (eBay's card has none).
+- **The sync bar**: one **Sync from <venue>** per venue in `syncable.from` and one **Sync to
+  <venue>** per venue in `syncable.to` (`syncButtons`), venue by venue, a from in the bar's left
+  column and a to in its right (`#sync-from-ebay`, `#sync-to-ebay`, `#sync-to-craigslist`), each
+  with its half of the sync symbol (copied from the hidden `#sync-from-icon` / `#sync-to-icon`)
+  and its reset (`#sync-to-craigslist-reset`, drawn after every button, so the one a pause shows
+  sits under them all). Each sends its own job, `{"action": "sync", "direction", "venue"}`
+  (`syncJob`; without `venue` to a server that does not say `syncable`, which refuses the key),
+  one sync at a time as the server allows. With more than one venue in the bar its line starts
+  with the venue (`craigslist: 3 listings updated, 10 unchanged, 0 failed`). A Sync to <venue>
+  done lets every mark of that venue go (`unsyncedWithout`).
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -989,10 +1023,10 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), either venue | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
-| `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
-| `POST <pc>/jobs`, a listing's customize **Sync to eBay** (one row, as saved, onto its eBay listing), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` / `{"action": "push", "sku", "venue": "craigslist"}` (the craigslist push is the server's from 2026-10-08) | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to craigslist yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
+| `POST <pc>/jobs`, the sync bar's **Sync from <venue>** / **Sync to <venue>**, one per venue in `/me`'s `syncable` (2.20.0) | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in the bar |
+| `POST <pc>/jobs`, a listing's customize **Sync to <venue>** (one row, as saved, onto its listing there; one button per venue in `syncable.to` the row is listed on, 2.20.0), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue"}`, the venue as `/me` names it: `"ebay"`, `"craigslist"` (the craigslist push is the server's from 2026-10-08), or one the server adds | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to that venue yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
-| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today. Since 2.20.0 also `"syncable": {"to": ["ebay", "craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`; `syncableOf`: names trimmed, each once, a list not given is none): the venues customize's Sync to <venue> and the sync bar's buttons go to and from, in `venues`' order; not said: eBay's alone, as before |
 | any keyed call of a sign-up waiting for eBay (`"pending": true`), but `/me`, `GET /ebay/connect` and `DELETE /auth/session` | as ever | 403 `{"detail": "Connect eBay to finish signing up."}`: the page's check asks `/me`, the header says server ok, and the words are said as they are wherever a refusal shows |
 | `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
 | `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
@@ -1164,28 +1198,32 @@ Empty. With capacity to generate that card from there."
   as everywhere. One job per row: the row's other badge and its + and − wait.
   Done, that venue is let go and its badge is the plain listed one again, a
   link; the inventory's line says how it ended (`G1: updated`, or the server's
-  words). A Sync to eBay from the sync bar that ends done lets every eBay mark
-  go (craigslist's stay), customize's Sync to eBay its own, and the craigslist
-  card's Sync to craigslist its own.
+  words). A Sync to <venue> from the sync bar that ends done lets every mark of
+  that venue go (the others stay), customize's Sync to <venue> its own, and the
+  craigslist card's Sync to craigslist its own.
 - **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
-  eBay** on a smoke sheet under a yellow rule, each with its half of the sync
+  eBay**, and since 2.20.0 a Sync to (and a Sync from) per venue `/me`'s
+  `syncable` names (see Venue symmetry: **Sync to craigslist** under Sync to
+  eBay), on a smoke sheet under a yellow rule, each with its half of the sync
   symbol left of the word (Michal, 2026-10-07; 20 px, in the word's colour, on
-  one 24-unit box so the two read as one circle): to eBay the top arc, left to
-  right, its arrow at the right; from eBay the bottom arc, right to left, its
-  arrow at the left. It sticks to the bottom of the screen while Admin is on it
+  one 24-unit box so the two read as one circle): a to the top arc, left to
+  right, its arrow at the right, in the right column; a from the bottom arc,
+  right to left, its arrow at the left, in the left column. It sticks to the bottom of the screen while Admin is on it
   (`position: sticky`, so at the end of the list it sits in its own place above
   Close and never covers the last row). A tap is a job button's, as a venue
   button's: the ring turns in it at once (in the icon's place) with **tap again
   to cancel** under the word, and the sync job leaves the phone a second later;
   its line under the buttons says `queued`, then the server's step, then its
   summary (`3 listings updated, 10 unchanged, 0 failed`) or its error, asked
-  every 3 s; the other button is locked until it ends, and the list is then
+  every 3 s (with more than one venue in the bar, the venue first:
+  `craigslist: queued`); the other buttons are locked until it ends (one sync at
+  a time), and the list is then
   asked for again (on the way back, when a listing is open). A tap on the
   pressed one pauses it as a venue button's tap does: it reads **continue**
-  (its icon back, the ring gone), the other stays locked, one red **reset**
-  sits under the two, and the line says `paused` (held in its second) or
+  (its icon back, the ring gone), the others stay locked, its red **reset**
+  sits under the buttons, and the line says `paused` (held in its second) or
   `paused: the server may still be working on it`. continue carries on; reset drops
-  a held press, or tells the server (`DELETE /jobs/<id>`), frees both buttons at once
+  a held press, or tells the server (`DELETE /jobs/<id>`), frees every button at once
   with `cancelled`, and shows the server's own words once it has stopped; from its
   `publishing ...` step on a tap only says `too late to cancel: it is
   publishing`. A sync the server refuses shows the server's words. Closing Admin leaves
@@ -1242,29 +1280,33 @@ Empty. With capacity to generate that card from there."
     $31.50`; `—` for one not cached), the chosen one bold, and the goods card's
     line for the grade under them. A row whose price follows no grade stands at
     1, nothing bold, the line `not priced by grade yet`. No post without asking
-    here. Under them **Save** and **Sync to eBay**, and a status line.
+    here. Under them **Save** and a **Sync to <venue>** per venue the listing is
+    up on that `/me` syncs to (**Sync to eBay**, and since 2.20.0 **Sync to
+    craigslist** beside it: see Venue symmetry), and a status line.
     - **Save** opens once a box or the slider differs from the row, and sends
       one PATCH with only what changed: the quantity, pickup only, and the
       slider's grade as `pricing`. The server sets the price to that grade's cached
       one: no model call, no job, and the row it answers puts the new price in
       the heading and the eBay card at once. A quantity that is not a whole
-      number, 1 or more, is said in the status line at once and shuts both
-      buttons, as the goods card does. Then `saved` (on a listing up on eBay,
-      `saved; Sync to eBay puts it on the listing`), or the server's refusal (`no
+      number, 1 or more, is said in the status line at once and shuts every
+      button, as the goods card does. Then `saved` (on a listing up on eBay,
+      `saved; Sync to eBay puts it on the listing`; with more than one Sync
+      showing, `saved; sync puts it on the listings`), or the server's refusal (`no
       cached fair price for this row: set the price by hand`) with the box and
       the slider as he left them. On a row with no cached prices at all, the
       slider moved says `no cached prices on this listing; set the price by
       hand` and is not sent; the boxes still are. The price itself is set by
       hand on the eBay card's Edit.
-    - **Sync to eBay** opens only on a listing up on eBay (otherwise the line
-      says `Sync to eBay opens once the listing is up on eBay`). It saves what
+    - **Sync to eBay** shows only on a listing up on eBay (with none up, the line
+      says `Sync to eBay opens once the listing is up on eBay`); **Sync to
+      craigslist**, and any venue's, likewise. It saves what
       is not yet saved first (a moved slider too, so the push carries the new
       price), so a tick and one tap is the whole of what Michal described, then
-      sends the push job: `queued`, the server's step, then `updated` or `unchanged`
+      sends the push job for its venue: `queued`, the server's step, then `updated` or `unchanged`
       or the error, asked every 3 s. Once done the listing is read again, so the
-      heading and the eBay card show what eBay now has; a Save or a push the server
+      heading and the cards show what the venue now has; a Save or a push the server
       refuses shows its words, and a refused Save sends no push.
-    - The boxes, the slider and both buttons wait while anything of the
+    - The boxes, the slider and every button wait while anything of the
       listing's is on its way or running, and the cards wait while customize's
       is (one job per listing). A listing read again moves the boxes and the
       slider with it, except one holding a change he has not saved. The eBay
@@ -1315,7 +1357,8 @@ Empty. With capacity to generate that card from there."
     sync badge): the push job `{"action": "push", "sku", "venue":
     "craigslist"}`, a job button as Refresh is; done, the mark is let go and the
     listing read again. A server that does not push to craigslist yet answers
-    400, and the card's line says its words. eBay's is customize's Sync to eBay.
+    400, and the card's line says its words. eBay's is customize's Sync to eBay
+    (customize has a Sync to craigslist too since 2.20.0; this one stays).
   - **Edit** turns the card's fields into the page's own inputs (eBay: the
     condition, title, price, description, User note, condition note, the
     quantity and pickup only being customize's; craigslist: its four overrides,
@@ -1341,7 +1384,7 @@ Empty. With capacity to generate that card from there."
     running, every action button but Open listing waits and the fields stay
     read-only: one job per listing at a time.
   - **Post**, **Sync to craigslist**, **Refresh status**, **End listing**
-    (pressed through **Yes, end it**) and customize's **Sync to eBay** are job
+    (pressed through **Yes, end it**) and customize's **Sync to <venue>** are job
     buttons, as a venue
     button is (Michal, 2026-10-07: "Anytime there is a load or sync or AI call
     command, anything that takes some [time] and we have a loading icon

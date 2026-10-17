@@ -84,15 +84,18 @@
 //                                      an empty card's Add -> the whole row, the venue in "venues"
 //   POST   <pc>/jobs                  a card's End listing / Refresh status: {"action": "end" |
 //                                      "refresh", "sku", "venue"}; the sync bar: {"action": "sync",
-//                                      "direction": "from" | "to"}; customize's Sync to eBay:
-//                                      {"action": "push", "sku", "venue": "ebay"} (actionJob in core.js)
+//                                      "direction": "from" | "to", "venue"} ("venue" only when /me
+//                                      says "syncable"; an older server refuses it); customize's
+//                                      Sync to <venue>: {"action": "push", "sku", "venue"} (actionJob,
+//                                      syncJob in core.js)
 //                                      -> {"job", "state": "queued", "ahead"}; 400 {"detail"} when
 //                                         refused (Craigslist cannot be ended from here). GET
 //                                         /jobs/<id> adds "action", "direction" and, once done,
 //                                         "summary" ("3 listings updated, 10 unchanged, 0 failed")
 // The account and Admin's last two foldouts (Michal, 2026-10-08):
-//   GET    <pc>/me                    -> {"user", "admin": bool, "craigslist": bool, "venues": [...]};
-//                                         404 from an older server: everything as before
+//   GET    <pc>/me                    -> {"user", "admin": bool, "craigslist": bool, "venues": [...],
+//                                         "syncable": {"to": [...], "from": [...]}}; 404 from an
+//                                         older server: everything as before
 //   POST   <pc>/feedback              {"text", "screen": "goods"|"book"|"admin"|"card", "version",
 //                                      "job" (only when ticked and known)} -> 201 {"id"}
 //   GET    <pc>/stats?since=7d|30d|all -> {"since", "jobs": {"total", "done", "failed", "cancelled",
@@ -159,7 +162,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.19.1";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.20.1";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
