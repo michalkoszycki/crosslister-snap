@@ -121,13 +121,19 @@ import {
     EDIT_QUANTITY_HINT,
     NOT_GRADED,
     NO_CACHED,
-    PUSH_CLOSED,
+    pushClosed,
     cachedPrices,
     canPush,
     customizeButtons,
     customizeChanges,
     customizeLine,
     customizeSaved,
+    customizeVenues,
+    syncBarLine,
+    syncButtons,
+    syncJob,
+    syncVenues,
+    syncWord,
     followRow,
     rowCustomize,
     sliderWords,
@@ -2936,14 +2942,18 @@ test("the action jobs' bodies: end and refresh carry the sku and venue, a sync i
     assert.deepEqual(actionJob("sync", { direction: "to", sku: "R5" }), { action: "sync", direction: "to" });
     assert.throws(() => actionJob("sync", { direction: "sideways" }), RangeError);
     assert.throws(() => actionJob("end", { venue: "ebay" }), RangeError);
-    assert.throws(() => actionJob("end", { sku: "R5", venue: "etsy" }), RangeError);
+    assert.throws(() => actionJob("end", { sku: "R5" }), RangeError);
     assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
+    // since 2.20.0 a sync names its venue (syncJob: only to a server whose /me says syncable)
+    assert.deepEqual(actionJob("sync", { direction: "to", venue: "craigslist" }), { action: "sync", direction: "to", venue: "craigslist" });
     // a listing's customize, Sync to eBay (the contract of 2026-10-07), and since 2026-10-08
     // the craigslist card's Sync to craigslist
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "ebay" }), { action: "push", sku: "R5", venue: "ebay" });
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "craigslist" }), { action: "push", sku: "R5", venue: "craigslist" });
     assert.deepEqual(actionJob("end", { sku: "R5", venue: "craigslist" }), { action: "end", sku: "R5", venue: "craigslist" });
-    assert.throws(() => actionJob("push", { sku: "R5", venue: "etsy" }), RangeError);
+    // whatever venue /me named, one the server adds too (Michal, 2026-10-17: "if any new get added as well")
+    assert.deepEqual(actionJob("push", { sku: "R5", venue: "poshmark" }), { action: "push", sku: "R5", venue: "poshmark" });
+    assert.throws(() => actionJob("push", { sku: "R5", venue: "" }), RangeError);
     assert.throws(() => actionJob("push", { venue: "ebay" }), RangeError);
 });
 
@@ -3104,35 +3114,134 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     const draft = { ...GRADED, statuses: { ...GRADED.statuses, ebay: { status: "draft" } } };
     assert.equal(canPush(draft), false);
     assert.equal(canPush({ ...GRADED, venues: ["craigslist"] }), false, "not on eBay");
-    assert.deepEqual(customizeButtons(GRADED, same, false), { save: false, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true), { save: false, sync: false }, "busy");
-    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false), { save: false, sync: false });
-    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false), { save: true, sync: false });
-    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false), { save: false, sync: true });
+    const ebay = ["ebay"];
+    assert.deepEqual(customizeButtons(GRADED, same, false, ebay), { save: false, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false, ebay), { save: true, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false, ebay), { save: true, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true, ebay), { save: false, sync: false }, "busy");
+    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false, ebay), { save: false, sync: false });
+    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false, ebay), { save: true, sync: false });
+    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false, ebay), { save: false, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, same, false, []), { save: false, sync: false }, "an account that syncs to none");
 
     // its status line: on its way, the push job, what the PC said; the quantity hint; why Sync is shut
     const idle = { wait: "", job: null, note: null, values: same };
-    assert.deepEqual(customizeLine(GRADED, idle), { text: "", kind: "" });
-    assert.deepEqual(customizeLine(draft, idle), { text: PUSH_CLOSED, kind: "" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }), {
+    assert.deepEqual(customizeLine(GRADED, idle, ebay), { text: "", kind: "" });
+    assert.deepEqual(customizeLine(draft, idle, ebay), { text: "Sync to eBay opens once the listing is up on eBay", kind: "" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }, ebay), {
         text: EDIT_QUANTITY_HINT,
         kind: "bad",
     });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, wait: "saving" }), { text: "saving", kind: "busy" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "running", step: "revising on eBay" } }), {
+    assert.deepEqual(customizeLine(GRADED, { ...idle, wait: "saving" }, ebay), { text: "saving", kind: "busy" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "running", step: "revising on eBay" } }, ebay), {
         text: "revising on eBay",
         kind: "busy",
     });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "done", summary: "updated" } }), {
+    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "done", summary: "updated" } }, ebay), {
         text: "updated",
         kind: "ok",
     });
     const refused = { text: "no cached fair price for this row: set the price by hand", kind: "bad" };
-    assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }), refused);
-    assert.deepEqual(customizeSaved(GRADED), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
-    assert.deepEqual(customizeSaved(draft), { text: "saved", kind: "ok" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }, ebay), refused);
+    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeSaved(draft, ebay), { text: "saved", kind: "ok" });
+});
+
+test("customize's Sync to <venue>: one per venue the account syncs to and the row is listed on, in /me's order", () => {
+    // Michal, 2026-10-17: "There is a button push to eBay, so add a button push to Craigslist
+    // next to it. All venues need to be represented (if any new get added as well). We are
+    // aiming for venue symmetry."
+    const up = { status: "listed", id: "1", url: "", listed_at: null };
+    const draft = { status: "draft", id: "", url: "", listed_at: null };
+    const both = { ...GRADED, statuses: { ebay: up, craigslist: up } };
+    const all = ["ebay", "craigslist"];
+    assert.deepEqual(customizeVenues(both, all), ["ebay", "craigslist"]);
+    assert.deepEqual(customizeVenues(both, ["craigslist", "ebay"]), ["craigslist", "ebay"], "in the order given");
+    assert.deepEqual(customizeVenues(both, ["ebay"]), ["ebay"], "a plain seller: eBay's alone");
+    assert.deepEqual(customizeVenues({ ...both, statuses: { ebay: draft, craigslist: up } }, all), ["craigslist"], "not listed: no button");
+    assert.deepEqual(customizeVenues({ ...both, venues: ["ebay"] }, all), ["ebay"], "not on the venue: no button");
+    // a venue the server adds is drawn as the others, no name of it in the code
+    const three = { ...both, venues: ["ebay", "craigslist", "poshmark"], statuses: { ...both.statuses, poshmark: up } };
+    assert.deepEqual(customizeVenues(three, ["ebay", "craigslist", "poshmark"]), ["ebay", "craigslist", "poshmark"]);
+    assert.deepEqual(customizeButtons(both, rowCustomize(both), false, ["craigslist"]), { save: false, sync: true });
+    assert.deepEqual(customizeButtons({ ...both, statuses: { ebay: up, craigslist: draft } }, rowCustomize(both), false, ["craigslist"]), {
+        save: false,
+        sync: false,
+    });
+
+    // saved: the one Sync by name, or "sync" for more than one
+    assert.deepEqual(customizeSaved(both, all), { text: "saved; sync puts it on the listings", kind: "ok" });
+    assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: up } }, all), {
+        text: "saved; Sync to craigslist puts it on the listing",
+        kind: "ok",
+    });
+    assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: draft } }, all), { text: "saved", kind: "ok" });
+
+    // nothing listed: what opens a Sync, every venue named
+    const none = { ...both, statuses: { ebay: draft, craigslist: draft } };
+    const idle = { wait: "", job: null, note: null, values: rowCustomize(both) };
+    assert.deepEqual(customizeLine(none, idle, all), { text: "Sync opens once the listing is up on eBay or craigslist", kind: "" });
+    assert.equal(pushClosed(["ebay"]), "Sync to eBay opens once the listing is up on eBay");
+    assert.equal(pushClosed(["ebay", "craigslist", "poshmark"]), "Sync opens once the listing is up on eBay, craigslist or poshmark");
+    assert.equal(pushClosed([]), "", "an account that syncs to none: nothing to open");
+    assert.deepEqual(customizeLine(none, idle, []), { text: "", kind: "" });
+});
+
+test("GET /me's syncable: the venues the sync bar and customize go to and from; eBay alone when it does not say", () => {
+    // an older server, or none yet: eBay's two, as before 2.20.0
+    assert.deepEqual(syncVenues(null, "to"), ["ebay"]);
+    assert.deepEqual(syncVenues(meOf({ venues: ["ebay", "craigslist"] }), "to"), ["ebay"]);
+    assert.deepEqual(syncButtons(null), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+    ]);
+    assert.equal(meOf({ venues: ["ebay"] }).syncable, null);
+
+    // Michal's: to eBay and craigslist, from eBay; in /me's venues order, whatever syncable's
+    const michal = meOf({ venues: ["ebay", "craigslist"], syncable: { to: ["craigslist", "ebay"], from: ["ebay"] } });
+    assert.deepEqual(michal.syncable, { to: ["craigslist", "ebay"], from: ["ebay"] });
+    assert.deepEqual(syncVenues(michal, "to"), ["ebay", "craigslist"]);
+    assert.deepEqual(syncVenues(michal, "from"), ["ebay"]);
+    assert.deepEqual(syncButtons(michal), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+        { direction: "to", venue: "craigslist" },
+    ]);
+    // a plain seller
+    const seller = meOf({ venues: ["ebay"], syncable: { to: ["ebay"], from: ["ebay"] } });
+    assert.deepEqual(syncButtons(seller), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+    ]);
+    // a venue the server adds: its buttons come by themselves, after /me's venues when it is not among them
+    const three = meOf({ venues: ["ebay", "craigslist"], syncable: { to: ["ebay", "poshmark", "craigslist"], from: ["poshmark", "ebay"] } });
+    assert.deepEqual(syncButtons(three), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+        { direction: "to", venue: "craigslist" },
+        { direction: "from", venue: "poshmark" },
+        { direction: "to", venue: "poshmark" },
+    ]);
+    // read leniently: names trimmed, each once; a list not given (or not a list) is none
+    assert.deepEqual(meOf({ syncable: { to: [" ebay", "ebay", 3, ""], from: "ebay" } }).syncable, { to: ["ebay"], from: [] });
+    assert.equal(meOf({ syncable: "ebay" }).syncable, null);
+    assert.deepEqual(syncButtons(meOf({ venues: ["ebay"], syncable: {} })), [], "a server that syncs none: no buttons");
+
+    // the words, the bodies, the bar's line
+    assert.equal(syncWord("to", "ebay"), "Sync to eBay");
+    assert.equal(syncWord("from", "ebay"), "Sync from eBay");
+    assert.equal(syncWord("to", "craigslist"), "Sync to craigslist");
+    assert.deepEqual(syncJob(michal, "to", "craigslist"), { action: "sync", direction: "to", venue: "craigslist" });
+    assert.deepEqual(syncJob(michal, "from", "ebay"), { action: "sync", direction: "from", venue: "ebay" });
+    assert.deepEqual(syncJob(three, "to", "poshmark"), { action: "sync", direction: "to", venue: "poshmark" });
+    assert.deepEqual(syncJob(null, "to", "ebay"), { action: "sync", direction: "to" }, "an older server refuses a venue");
+    assert.deepEqual(syncJob(meOf({}), "from", "ebay"), { action: "sync", direction: "from" });
+    const done = { text: "3 listings updated, 10 unchanged, 0 failed", kind: "ok" };
+    assert.deepEqual(syncBarLine(done, "craigslist", true), { text: "craigslist: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
+    assert.deepEqual(syncBarLine(done, "ebay", true), { text: "eBay: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
+    assert.deepEqual(syncBarLine(done, "ebay", false), done, "one venue: as it is");
+    assert.deepEqual(syncBarLine(done, "", true), done, "no press behind it");
+    assert.equal(syncBarLine(null, "ebay", true), null);
 });
 
 // --- Admin: a list row's price, dialled on its tile (Michal, 2026-10-07, 2026-10-08) -------
@@ -3317,10 +3426,11 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         ebay: null,
         pending: false,
         registered: true,
+        syncable: null,
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", email: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true },
+        { user: "", email: "", admin: false, craigslist: true, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true, syncable: null },
         "silent: as today, an account with nothing left to sign up for"
     );
     assert.equal(meOf(null), null);
