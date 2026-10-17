@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.19.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.20.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1009,6 +1009,12 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
     border-top: 4px solid var(--signal);
 }
 .sync-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* a venue's from in the left column, its to in the right, venue under venue (Michal,
+   2026-10-17: "We are aiming for venue symmetry"): a venue with only a to keeps to the right;
+   the resets come after every button, so a paused one's spans the bar under them all */
+.sync-buttons .sync-from { grid-column: 1; }
+.sync-buttons .sync-to { grid-column: 2; }
+.sync-buttons .reset-call { grid-column: 1 / -1; }
 .sync-btn {
     display: flex;
     align-items: center;

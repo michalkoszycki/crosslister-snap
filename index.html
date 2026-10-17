@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.19.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.19.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.20.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.20.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -437,7 +437,9 @@
              (Michal, 2026-10-07: "I want the menu in the inventory to look like the customize
              menu ... We will indeed be changing price with a slider here"): the quantity,
              pickup only and the price slider, each grade's cached price beside its word;
-             Save, then Sync to eBay -->
+             Save, then a Sync to <venue> per venue the listing is up on (Michal, 2026-10-17:
+             "There is a button push to eBay, so add a button push to Craigslist next to it"),
+             drawn by app.js after Save from GET /me's "syncable" -->
         <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
                 aria-controls="detail-customize">▾ customize</button>
         <div id="detail-customize" class="card customize fold">
@@ -461,10 +463,8 @@
             </div>
             <p id="detail-pricing-note" class="pricing-note"></p>
           </div>
-          <div class="venue-actions">
+          <div id="detail-customize-actions" class="venue-actions">
             <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
-            <button type="button" id="detail-customize-sync" class="pill">Sync to eBay</button>
-            <button type="button" id="detail-customize-reset" class="reset-call" aria-label="reset Sync to eBay" hidden>reset</button>
           </div>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
@@ -518,23 +518,28 @@
     <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
          They probably could be below the inventory list hovering fixed on the screen as I
          scroll down"): it sticks to the bottom of the screen while Admin is on it -->
-    <div id="sync-bar" class="sync-bar" role="group" aria-label="Sync with eBay">
-      <!-- each button carries one half of the sync symbol, on one 24-unit box so the two
-           read as one circle (Michal, 2026-10-07): to eBay the top arc, left to right, its
-           arrow pointing right; from eBay the bottom arc, right to left, its arrow pointing
-           left. app.js writes the word after the icon, and the job's ring and "tap again to
-           cancel" while it runs; paused, the pressed one says continue and reset shows under them -->
-      <div class="sync-buttons">
-        <button type="button" id="sync-from" class="sync-btn"><span id="sync-from-icon" class="btn-icon"><svg
+    <div id="sync-bar" class="sync-bar" role="group" aria-label="Sync with your venues">
+      <!-- one Sync from <venue> and one Sync to <venue> per venue GET /me says the account syncs
+           ("syncable"; eBay's two from a server that does not say), drawn by app.js venue by
+           venue, each from in the left column and each to in the right (Michal, 2026-10-17:
+           "All venues need to be represented (if any new get added as well)"): the icon, the
+           word, and the job's ring and "tap again to cancel" while it runs; paused, the pressed
+           one says continue and its reset shows under it -->
+      <div id="sync-buttons" class="sync-buttons"></div>
+      <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
+           (Michal, 2026-10-07), copied into each button by app.js: to the top arc, left to
+           right, its arrow pointing right; from the bottom arc, right to left, its arrow
+           pointing left -->
+      <div class="sync-icons" hidden>
+        <span id="sync-from-icon" class="btn-icon"><svg
             aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"></path><path
-            d="M6 22v-4.5h4.5"></path></svg></span>Sync from eBay</button>
-        <button type="button" id="sync-to" class="sync-btn"><span id="sync-to-icon" class="btn-icon"><svg
+            d="M6 22v-4.5h4.5"></path></svg></span>
+        <span id="sync-to-icon" class="btn-icon"><svg
             aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.5"></path><path
-            d="M18 2v4.5h-4.5"></path></svg></span>Sync to eBay</button>
+            d="M18 2v4.5h-4.5"></path></svg></span>
       </div>
-      <button type="button" id="sync-reset" class="reset-call" aria-label="reset the sync" hidden>reset</button>
       <p id="sync-status" class="sync-status" aria-live="polite"></p>
     </div>
 
@@ -839,6 +844,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.19.0"></script>
+<script type="module" src="app.js?v=2.20.0"></script>
 </body>
 </html>
