@@ -1803,6 +1803,37 @@ test("Admin has a Close button at its bottom", async (t) => {
     assert.equal(nodes.get("admin").hidden, true);
 });
 
+test("the header link says Snap while Admin is open, and its tap goes back to snapping", async (t) => {
+    // Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to
+    // Snap, so that it is more intuitive how to return to snapping a photo."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("B-0042")], { "B-0042": wholeRow("B-0042") });
+    // the listing left open there: Admin opens on its card
+    const { nodes } = await loadPage({ local: memoryStore({ ...NO_PHOTOS, "snap.admin.card": "B-0042" }), fetchImpl: pc.fetch });
+    const link = nodes.get("admin-toggle");
+    const says = () => [link.textContent, link.attrs["aria-label"] ?? null, link.attrs["aria-expanded"]];
+    link.fire("click");
+    await settle();
+    assert.equal(nodes.get("work").hidden, true);
+    assert.equal(nodes.get("inventory-detail").hidden, false);
+    assert.deepEqual(says(), ["Snap", "Snap: close Admin and go back to snapping", "true"]);
+    // in Settings it says the same
+    nodes.get("settings-toggle").fire("click");
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(link.textContent, "Snap");
+    // tapped: Admin closes and the posting screen is back, the link Admin again
+    link.fire("click");
+    assert.equal(nodes.get("admin").hidden, true);
+    assert.equal(nodes.get("work").hidden, false);
+    assert.deepEqual(says(), ["Admin", null, "false"]);
+    // Close says the same
+    link.fire("click");
+    await settle();
+    assert.equal(link.textContent, "Snap");
+    nodes.get("admin-close").fire("click");
+    assert.deepEqual(says(), ["Admin", null, "false"]);
+});
+
 // --- Admin: Settings and the inventory (Michal, 2026-10-06) ------------------------------
 
 /** Rows as GET /inventory gives them: a summary each, newest first. */
@@ -4568,6 +4599,8 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-details",
         "book-match",
         "book-snap-label",
+        // its word, Snap or, once the book is posted, Snap Next (Michal, 2026-10-17)
+        "book-snap-word",
         "book-snap-input",
         "book-gallery-label",
         "book-gallery-input",
@@ -6175,6 +6208,103 @@ test("after the first photo the button says Snap Again and scrolls to where the 
     nodes.get("next-item").fire("click");
     await settle();
     assert.equal(nodes.get("snap-word").textContent, "Snap", "a new item starts over");
+});
+
+test("once the item is posted the button says Snap Next, and its tap is NEXT and the camera", async (t) => {
+    // Michal, 2026-10-17: "After the item is posted the snap yellow button darkens; that is ok.
+    // But rather it should say Snap Next."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let ebayState = "running";
+    const local = memoryStore(GOOD);
+    const pc = fakePc({
+        jobs: {
+            j1: () => ({
+                state: ebayState,
+                step: ebayState === "running" ? "drafting the listing" : "",
+                sku: "B-0042",
+                price: "14.00",
+                links: ebayState === "done" ? { ebay: "https://www.ebay.com/itm/123" } : {},
+            }),
+        },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const item = `Lamp ${TODAY}`;
+    await typeName(nodes, "Lamp");
+    snap(nodes, 2);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    // posting: the photos locked and the button dark, as before
+    assert.equal(nodes.get("snap-word").textContent, "Snap Again");
+    assert.equal(nodes.get("snap-input").disabled, true);
+    assert.equal(nodes.get("snap-label").classList.contains("disabled"), true);
+
+    ebayState = "done";
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/123");
+    assert.equal(nodes.get("snap-word").textContent, "Snap Next");
+    assert.equal(nodes.get("snap-input").disabled, false);
+    assert.equal(nodes.get("snap-label").classList.contains("disabled"), false);
+    assert.equal(nodes.get("gallery-input").disabled, true, "the posted photos stay as they went");
+    assert.equal(nodes.get("hint").hidden, true);
+
+    // one tap: NEXT (the item kept for back), and the photo back from the camera starts the next item
+    const before = pc.calls.length;
+    snap(nodes, 1);
+    await settle();
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")).map((r) => r.itemId), [item]);
+    assert.equal(nodes.get("item-name").value, "");
+    assert.equal(nodes.get("see-inventory").hidden, true);
+    assert.equal(nodes.get("strip").children.length, 1);
+    assert.equal(pc.calls[before], "POST /items", "a new item on the server, with this photo");
+    assert.notEqual(JSON.parse(local.getItem("snap.item")).itemId, item);
+    assert.equal(nodes.get("snap-word").textContent, "Snap Again");
+    assert.equal(nodes.get("gallery-input").disabled, false);
+});
+
+test("a book with its listing up says Snap Next too, and its tap starts the next book", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const item = `Book ${ISBN} ${TODAY}`;
+    const local = memoryStore({
+        ...NO_PHOTOS,
+        "snap.mode": "book",
+        "snap.book": JSON.stringify({
+            mode: "book",
+            itemName: `Book ${ISBN}`,
+            itemId: item,
+            isbn: ISBN,
+            condition: "good",
+            price: "9",
+            main: 1,
+            lookup: { record: BOOK, price: "11", listings: BOOK.listings, route: "list" },
+        }),
+    });
+    const listedJob = { job: "j1", venue: "ebay", state: "done", step: "", sku: "BK-1", price: "9.00", links: { ebay: "https://www.ebay.com/itm/9" } };
+    const pc = fakePc({
+        books: { [ISBN]: BOOK },
+        items: { [item]: { photos: new Map([[1, "a"]]), note: "", sku: "BK-1", jobs: [listedJob] } },
+    });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nodes.get("book-ebay-link").href, "https://www.ebay.com/itm/9");
+    assert.equal(nodes.get("book-snap-word").textContent, "Snap Next");
+    assert.equal(nodes.get("book-snap-input").disabled, false);
+    assert.equal(nodes.get("book-gallery-input").disabled, true);
+    assert.equal(nodes.get("snap-word").textContent, "Snap", "the goods item has nothing up");
+
+    nodes.get("book-snap-label").fire("click");
+    fire(nodes, "book-snap-input");
+    await settle();
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")).map((r) => r.itemId), [item]);
+    assert.equal(nodes.get("book-see-inventory").hidden, true);
+    // the cover waits on the page for the next book's ISBN
+    assert.equal(nodes.get("book-strip").children.length, 1);
+    assert.equal(nodes.get("book-snap-word").textContent, "Snap");
 });
 
 test("NEXT keeps an item nothing was posted from, and back brings it up with its pictures", async (t) => {

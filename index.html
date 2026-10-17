@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.20.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.20.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.21.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.21.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -562,7 +562,7 @@
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
 
-    <!-- app.js writes the word (Snap / Snap Again) into #snap-word; the icon stays -->
+    <!-- app.js writes the word (Snap / Snap Again / Snap Next) into #snap-word; the icon stays -->
     <label id="snap-label" class="big snap" for="snap-input"><span class="btn-icon" aria-hidden="true"><svg
         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
         stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
@@ -733,10 +733,11 @@
       <p id="book-match" class="small"></p>
     </div>
 
+    <!-- app.js writes the word (Snap / Snap Next) into #book-snap-word -->
     <label id="book-snap-label" class="big" for="book-snap-input"><span class="btn-icon" aria-hidden="true"><svg
         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
         stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
-        cx="12" cy="13" r="3.5"></circle></svg></span><span>Snap</span></label>
+        cx="12" cy="13" r="3.5"></circle></svg></span><span id="book-snap-word">Snap</span></label>
     <input id="book-snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label id="book-gallery-label" class="secondary" for="book-gallery-input">Add from gallery</label>
@@ -844,6 +845,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.20.1"></script>
+<script type="module" src="app.js?v=2.21.0"></script>
 </body>
 </html>
