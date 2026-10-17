@@ -431,6 +431,27 @@ same button, lit in green."
 - **The ZIP**: a ZIP+4 is still taken in the box, and five digits are sent (see the address under
   "Many sellers").
 
+## A cancel stops it all (2.18.0)
+
+Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel, that
+means I want to absolutely stop it, even though we may be getting an answer from the server. Just
+dump that answer. In the little note say: credits will be lost." The reset had stopped the job,
+but the server saved the draft (the 2026-10-02 rule) and the page kept that row's sku, so the next
+press posted it with no model call. Now:
+
+- **The note** inside a busy venue button reads **tap again to cancel: credits will be lost** once
+  the press has left the phone, while it drafts or posts (until the publish begins); a press still
+  held in its first second, nothing sent, keeps **tap again to cancel**. Admin's job buttons keep
+  the short one.
+- **Reset dumps the draft**: the server throws away a draft cancelled while drafting, nothing saved;
+  the job ends `cancelled from the phone` with no sku, and the page forgets it too (a sku heard on
+  the way included), so the next press is a fresh draft (`{"item", "venue", "ai"}`), the item and
+  its photos as they were, and the history keeps the item with no sku. A saved row stopped before
+  its publish still reports its sku and is still posted by it on the next press.
+- **The line** under the button, once the server says the job stopped: `cancelled: the credit is
+  lost` when its view says `"charged": true` (it had started), `cancelled` when false (still
+  queued: the posting given back) or when an older server says nothing.
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -611,8 +632,10 @@ same button, lit in green."
   again to cancel' instead of an external cancel line. The writing should be
   within it, below, and should be small, and appear just when the button action
   is doing/loading"; this replaces the small red **cancel** under the button of
-  2026-10-02/03, on purpose). A pressed button is never disabled, so it takes
-  the tap; a screen reader hears `ebay, posting, tap again to cancel`.
+  2026-10-02/03, on purpose); once the press has left the phone it says **tap again
+  to cancel: credits will be lost** (Michal, 2026-10-17: "In the little note say:
+  credits will be lost"). A pressed button is never disabled, so it takes
+  the tap; a screen reader hears `ebay, posting, tap again to cancel: credits will be lost`.
   **A tap pauses; reset cancels** (Michal, 2026-10-07, after trying to cancel
   an eBay draft: "I was not able to cancel an ebay model call - I guess there is
   no way to cancel it, since the call is sent. Perhaps after pressing cancel it
@@ -634,13 +657,17 @@ same button, lit in green."
     again to cancel** come back.
   - **reset** is the real cancel: a held press is dropped, nothing sent,
     nothing paid; a job the server has is told (`DELETE /jobs/<id>`): one still
-    queued is dropped before it runs, the one in hand stops at its next step,
-    saving the draft instead of publishing it. Either way the button is its
+    queued is dropped before it runs, its posting given back; the one in hand
+    stops at its next step, and since 2026-10-17 (Michal: "If I cancel, that
+    means I want to absolutely stop it ... Just dump that answer") a draft is
+    dumped, nothing saved, and its posting is spent. Either way the button is its
     venue again at once, as if never pressed, waiting for a new press, and the
     line says `cancelled`; a job still stopping is asked about quietly until the
-    server says `cancelled from the phone`, and the row it saved is kept, so the
-    next press posts it without drafting again ("it will be a double charge but
-    oh well"; it is not).
+    server says `cancelled from the phone`, and the line then says `cancelled:
+    the credit is lost` when the job's view says `"charged": true`, else
+    `cancelled`. A dumped draft leaves no sku, and the next press drafts afresh;
+    only a row already saved before the stop (its sku reported) is kept and
+    posted by the next press without drafting again.
   - **Too late**: from the server's `publishing ...` step on there is nothing left
     to stop (Michal, 2026-10-03: "cancel only makes sense in mid-load"): the
     second line is gone, a tap changes nothing, and the line says `too late to
@@ -882,7 +909,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
 | customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
-| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the credit is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |

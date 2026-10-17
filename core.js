@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.17.1";
+import { noteDirty, unsent } from "./queue.js?v=2.18.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.17.1";
+} from "./book.js?v=2.18.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1038,9 +1038,34 @@ export const SEND_DELAY_MS = 1000;
  * to cancel' instead of an external cancel line. The writing should be within it,
  * below, and should be small, and appear just when the button action is
  * doing/loading"). It walks back 2026-10-02's "below in red there should be a
- * cancel button" on purpose: the red cancel under the button is gone.
+ * cancel button" on purpose: the red cancel under the button is gone. As it stands
+ * now it is said by a press still held on the phone, in its first second, nothing
+ * sent and nothing paid, and by Admin's job buttons; a venue button's job that has
+ * left the phone says TAP_TO_CANCEL (cancelNote).
  */
-export const TAP_TO_CANCEL = "tap again to cancel";
+export const TAP_AGAIN = "tap again to cancel";
+
+/**
+ * The second line inside a venue button whose job has left the phone, drafting or
+ * posting, from the press's second on until the publish begins (Michal, 2026-10-17:
+ * "When I cancel a run of an AI call the job still posted. If I cancel, that means I
+ * want to absolutely stop it, even though we may be getting an answer from the server.
+ * Just dump that answer. In the little note say: credits will be lost."). The server
+ * dumps a draft cancelled while drafting; the posting it reserved is kept once the job
+ * has started (cancelledLine).
+ */
+export const TAP_TO_CANCEL = `${TAP_AGAIN}: credits will be lost`;
+
+/**
+ * The second line inside a busy venue button: TAP_AGAIN while the press is still held
+ * on the phone (its second, or the user note on its way first: nothing sent), and
+ * TAP_TO_CANCEL once its POST has left the phone. Only while cancelButton says so.
+ * @param {VenueJob} job
+ * @returns {string}
+ */
+export function cancelNote(job) {
+    return job.phase === "sending" && !job.sent ? TAP_AGAIN : TAP_TO_CANCEL;
+}
 
 /**
  * The word of a paused job button. Its first tap while busy pauses it, shown at
@@ -1069,6 +1094,21 @@ export const PAUSED_ON_PC = "paused: the server may still be working on it";
 
 /** The line under a job button whose press was reset, or dropped by the PC before it ran. */
 export const CANCELLED = "cancelled";
+
+/** The error a job the PC stopped for a reset ends with (DELETE /jobs/<id>). */
+export const CANCELLED_ON_PC = "cancelled from the phone";
+
+/**
+ * The line under a venue button once the PC says its reset job stopped, from the job's
+ * view (GET /jobs/<id>): its `charged` is true when the posting it reserved was kept,
+ * the job having started (Michal, 2026-10-17: "credits will be lost"), false when it
+ * was given back, the job still queued. An older server says nothing: CANCELLED.
+ * @param {{charged?:unknown}} job
+ * @returns {string}
+ */
+export function cancelledLine(job) {
+    return job && job.charged === true ? `${CANCELLED}: the credit is lost` : CANCELLED;
+}
 
 /**
  * Said for a moment under a job button tapped from the PC's publishing step on
@@ -1564,6 +1604,10 @@ export function safeLink(url) {
  *                             job (by jobId) is asked about until the PC says it stopped
  * @property {boolean} credit  refused for want of postings (POST /jobs answered 402): the
  *                             line under the button offers Buy postings
+ * @property {boolean} sent    the press's second is over and its POST has left the phone: a
+ *                             reset from here on may cost the posting (cancelNote)
+ * @property {string} sku      the row this job reported; let go again if the job ends
+ *                             cancelled without it (the PC dumped the draft)
  */
 
 /**
@@ -1698,6 +1742,8 @@ export function idleJob() {
         paused: false,
         stopping: false,
         credit: false,
+        sent: false,
+        sku: "",
     };
 }
 
@@ -1771,6 +1817,7 @@ export function photosLocked(state) {
  *   {type:"recovered", itemName, itemId, ai, answer}  a reload, read back from GET /items/<id>
  *                                         (an unnamed item's unnamed, serverName and label too)
  *   {type:"jobSending", venue, step}
+ *   {type:"jobSent", venue}               the press's second is over: its POST leaves the phone
  *   {type:"jobAccepted", venue, job, ahead}
  *   {type:"jobRefused", venue, error, credit}  the POST did not become a job (credit: a 402,
  *                                         no postings left)
@@ -1924,6 +1971,8 @@ export function reduce(state, action) {
                 // paused while its POST was on its way: still paused, now the PC's
                 paused: job.paused,
             }));
+        case "jobSent":
+            return withJob(state, action.venue, (job) => (job.phase === "sending" ? { ...job, sent: true } : job));
         case "jobRefused":
             return withJob(state, action.venue, () => ({
                 ...idleJob(),
@@ -1954,17 +2003,27 @@ export function reduce(state, action) {
                 : "running";
             const running = phase === "queued" || phase === "running";
             const sku = typeof s.sku === "string" ? s.sku : "";
-            const withSku = (next) => (sku && !next.sku ? { ...next, sku } : next);
-            // reset, the PC still stopping: only the row it saved is taken (the next press posts it)
             const was = state.jobs[action.venue];
-            if (was && was.stopping && running) return withSku(state);
+            // Michal, 2026-10-17: "If I cancel, that means I want to absolutely stop it, even
+            // though we may be getting an answer from the server. Just dump that answer." A
+            // draft reset while drafting ends cancelled with no sku, nothing saved on the PC,
+            // and the page forgets it too, a sku it reported on the way included: the next
+            // press drafts afresh. A saved row stopped before its publish reports its sku: kept.
+            const dumped = phase === "failed" && s.error === CANCELLED_ON_PC && !sku;
+            const own = dumped ? "" : sku || (was ? was.sku : "");
+            const withSku = (next) => (sku && !next.sku ? { ...next, sku } : next);
+            // reset, the PC still stopping: only a row it saved is taken (the next press posts it)
+            if (was && was.stopping && running) {
+                return withSku(withJob(state, action.venue, (job) => ({ ...job, sku: own })));
+            }
             const next = withJob(state, action.venue, (job) => ({
                 ...job,
                 phase,
                 step: typeof s.step === "string" ? s.step : "",
                 ahead: toCount(s.ahead),
                 link: safeLink(s.links ? s.links[action.venue] : ""),
-                error: phase === "failed" ? String(s.error || "failed") : "",
+                // stopped for a reset: whether the credit is lost, rather than the PC's own words
+                error: phase !== "failed" ? "" : s.error === CANCELLED_ON_PC ? cancelledLine(s) : String(s.error || "failed"),
                 trouble: "",
                 // blank until the PC saved the row; once known, a later blank does not unsay it
                 price: priceText(s.price) || job.price,
@@ -1972,8 +2031,9 @@ export function reduce(state, action) {
                 // a job that ended is neither paused nor stopping any more
                 paused: job.paused && running,
                 stopping: false,
+                sku: own,
             }));
-            return withSku(next);
+            return dumped ? letGo(next, was && was.sku) : withSku(next);
         }
         case "pollTrouble":
             return withJob(state, action.venue, (job) => ({
@@ -2436,6 +2496,12 @@ function patchPhoto(state, id, fn) {
 function withJob(state, venue, fn) {
     if (!state.jobs[venue]) return state;
     return { ...state, jobs: { ...state.jobs, [venue]: fn(state.jobs[venue]) } };
+}
+
+/** The item without the row `sku` a dumped draft had reported, unless another venue's job reports it. */
+function letGo(state, sku) {
+    if (!sku || state.sku !== sku || VENUES.some((v) => state.jobs[v].sku === sku)) return state;
+    return { ...state, sku: "" };
 }
 
 function toCount(x) {

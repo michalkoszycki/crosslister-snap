@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.17.1";
+import { VERSION } from "./version.js?v=2.18.0";
 import {
     anyActive,
     bannerText,
@@ -55,12 +55,13 @@ import {
     walkNote,
     walkPosition,
     cancelButton,
+    cancelNote,
     CANCELLED,
     CONTINUE,
     PAUSED,
     RESET,
     SEND_DELAY_MS,
-    TAP_TO_CANCEL,
+    TAP_AGAIN,
     taskCancel,
     taskTap,
     TOO_LATE,
@@ -196,8 +197,8 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.17.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.17.1";
+} from "./core.js?v=2.18.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.18.0";
 import {
     addVenue,
     archiveRow,
@@ -233,8 +234,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.17.1";
-import { shrinkPhoto } from "./shrink.js?v=2.17.1";
+} from "./pc.js?v=2.18.0";
+import { shrinkPhoto } from "./shrink.js?v=2.18.0";
 import {
     bookCard,
     bookPriceValue,
@@ -247,8 +248,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.17.1";
-import { canScan, readIsbn } from "./scan.js?v=2.17.1";
+} from "./book.js?v=2.18.0";
+import { canScan, readIsbn } from "./scan.js?v=2.18.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -962,6 +963,8 @@ function renderVenue(m, venue, ok, nodes) {
     paintJobButton(nodes.btn, venue, {
         busy,
         cancel: cancelButton(state, venue),
+        // "credits will be lost" once the press has left the phone (Michal, 2026-10-17)
+        note: cancelNote(job),
         paused: job.paused,
         label: venueLabel(job, venue),
         reset: nodes.reset,
@@ -991,25 +994,25 @@ function renderVenue(m, venue, ok, nodes) {
  * takes some [time] and we have a loading icon running, these buttons should get
  * that. The button, within it, should just get 'tap again to cancel' instead of an
  * external cancel line"): `lead` (the sync buttons' icon) and the word; while
- * `busy`, the ring turning beside it (styles.css); while `cancel`, TAP_TO_CANCEL in
- * small type under the word, and said after `label` to a screen reader. `paused`
- * (Michal, 2026-10-07: "the button should change to 'continue'"), the word is
- * CONTINUE and the ring stops; its `reset`, the small red control beside it, shows
- * only then.
+ * `busy`, the ring turning beside it (styles.css); while `cancel`, its `note`
+ * (TAP_AGAIN; a venue button's cancelNote) in small type under the word, and said
+ * after `label` to a screen reader. `paused` (Michal, 2026-10-07: "the button should
+ * change to 'continue'"), the word is CONTINUE and the ring stops; its `reset`, the
+ * small red control beside it, shows only then.
  */
-function paintJobButton(btn, word, { busy, cancel, paused = false, label = word, lead = [], reset = null }) {
+function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = false, label = word, lead = [], reset = null }) {
     const kids = [...lead, paused ? CONTINUE : word];
     if (cancel) {
         const small = document.createElement("small");
         small.className = "tap-cancel";
-        small.textContent = TAP_TO_CANCEL;
+        small.textContent = note;
         kids.push(small);
     }
     btn.replaceChildren(...kids);
     const ring = busy && !paused;
     btn.classList.toggle("busy", ring);
     btn.setAttribute("aria-busy", ring ? "true" : "false");
-    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${TAP_TO_CANCEL}` : label;
+    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${note}` : label;
     btn.setAttribute("aria-label", said);
     if (reset) reset.hidden = !paused;
 }
@@ -1672,6 +1675,8 @@ async function send(m, venue) {
         if (!slots[m].jobs[venue].paused) press.timer = setTimeout(resolve, SEND_DELAY_MS);
     });
     if (taken()) return;
+    // the press leaves the phone: from here a reset may cost the posting ("credits will be lost")
+    setState(m, reduce(slots[m], { type: "jobSent", venue }));
     const s = slots[m];
     const body = jobRequest({
         venue,
@@ -1759,11 +1764,13 @@ function continuePress(m, venue) {
  * pressing it twice actually drops all the info and resets the operation as if nothing
  * happened, and waits for a new press of the button"). A press nothing has left the
  * phone for is dropped, nothing paid. A job the PC has is told (DELETE /jobs/<id>): one
- * still queued is dropped before it runs, the one in hand stops at its next step and
- * saves the draft instead of publishing. Either way the button is its venue again at
- * once, waiting for a new press, and the line says cancelled; a job stopping is still
- * asked about, quietly, until the PC says it stopped ("cancelled from the phone"), for
- * the row it saved, which the next press reuses.
+ * still queued is dropped before it runs, its posting given back; the one in hand stops
+ * at its next step, a draft dumped (Michal, 2026-10-17: "Just dump that answer"), a row
+ * already saved kept unpublished, and its posting is spent. Either way the button is its
+ * venue again at once, waiting for a new press, and the line says cancelled; a job
+ * stopping is still asked about, quietly, until the PC says it stopped ("cancelled from
+ * the phone"): the line then says whether the credit is lost (cancelledLine), and only a
+ * row it did save is reused by the next press; a dumped draft is drafted afresh.
  */
 async function resetPress(m, venue) {
     const job = slots[m].jobs[venue];
