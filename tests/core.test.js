@@ -239,6 +239,7 @@ import {
     swipeState,
     UNDO_MS,
 } from "../core.js";
+import { applyLabel, venueTickLabel, WRAP_MAX, WRAP_PARTS, wrapBody, wrapCounter, wrapError, wrapOf } from "../core.js";
 import {
     NAME_WAIT_HINT,
     photoStem,
@@ -3936,4 +3937,65 @@ test("landingHelp: what each of the landing's buttons does, under them (Michal, 
     assert.match(landingHelp("signin"), /^Sign in with your email/);
     assert.equal(landingHelp(""), "");
     assert.equal(landingHelp("nothing"), "");
+});
+
+// --- a header and a footer on every listing (Michal, 2026-10-17) ------------------------------
+
+test("wrapOf: GET /me/wrap's answer, leniently; not one is null", () => {
+    const answer = {
+        header: { on: true, text: "Free local pickup.", venues: ["ebay"] },
+        footer: { on: false, text: "Thanks!\n\nAnna", venues: [] },
+        available: ["ebay", "craigslist"],
+    };
+    assert.deepEqual(wrapOf(answer), answer);
+    assert.deepEqual(WRAP_PARTS, ["header", "footer"]);
+    assert.equal(WRAP_MAX, 2000);
+    // a part not given is off, empty, on no venue; on only when true; text kept as the server has it
+    assert.deepEqual(wrapOf({ header: { on: "yes", text: 5, venues: "ebay" } }), {
+        header: { on: false, text: "", venues: [] },
+        footer: { on: false, text: "", venues: [] },
+        available: ["ebay"],
+    });
+    assert.equal(wrapOf({ footer: { text: "  spaced  " } }).footer.text, "  spaced  ");
+    // venues: known ones, each once, in the page's order
+    assert.deepEqual(wrapOf({ header: { venues: ["craigslist", "etsy", "ebay", "ebay"] } }).header.venues, ["ebay", "craigslist"]);
+    // available naming none (or nothing known) is eBay, as every account posts there
+    assert.deepEqual(wrapOf({ header: {}, available: [] }).available, ["ebay"]);
+    assert.deepEqual(wrapOf({ header: {}, available: ["poshmark"] }).available, ["ebay"]);
+    assert.deepEqual(wrapOf({ header: {}, available: ["craigslist", "ebay"] }).available, ["ebay", "craigslist"]);
+    for (const not of [null, undefined, "x", 3, {}, { jobs: [] }, { header: "on" }, { available: ["ebay"] }]) {
+        assert.equal(wrapOf(not), null, JSON.stringify(not));
+    }
+});
+
+test("wrapBody: only what changed for one part; the text tidied and at most 2000 characters", () => {
+    assert.deepEqual(wrapBody("header", { on: true, venues: ["ebay"] }), { ok: true, body: { header: { on: true, venues: ["ebay"] } } });
+    assert.deepEqual(wrapBody("footer", { on: false }), { ok: true, body: { footer: { on: false } } });
+    assert.deepEqual(wrapBody("header", { venues: [] }), { ok: true, body: { header: { venues: [] } } });
+    assert.deepEqual(wrapBody("footer", { venues: ["craigslist", "ebay", "x", "ebay"] }).body, { footer: { venues: ["ebay", "craigslist"] } });
+    // the text: Windows line endings plain, the ends trimmed, the blank lines inside kept
+    assert.deepEqual(wrapBody("header", { text: "  Free pickup.\r\n\r\nChicago only.\r\n" }).body, { header: { text: "Free pickup.\n\nChicago only." } });
+    assert.deepEqual(wrapBody("header", { text: "   " }).body, { header: { text: "" } }, "cleared");
+    assert.deepEqual(wrapBody("header", { text: 12 }).body, { header: { text: "" } });
+    assert.equal(wrapBody("footer", { text: "x".repeat(2000) }).body.footer.text.length, 2000);
+    assert.equal(wrapBody("footer", { text: ` ${"x".repeat(2000)} ` }).ok, true, "the trimmed text is what counts");
+    assert.deepEqual(wrapBody("footer", { text: "x".repeat(2001) }), { ok: false, error: "At most 2000 characters; this is 2001." });
+    // on only as a boolean; nothing else goes
+    assert.deepEqual(wrapBody("header", { on: "true" }).body, { header: {} });
+    assert.throws(() => wrapBody("sidebar", { on: true }), RangeError);
+});
+
+test("the counter, the Apply to: pill's face, the apply button's word, a refusal's line", () => {
+    assert.equal(wrapCounter(""), "0 / 2000");
+    assert.equal(wrapCounter("Thanks!"), "7 / 2000");
+    assert.equal(wrapCounter(undefined), "0 / 2000");
+    // Michal: "once clicked the button changes to green with a check, our typical"
+    assert.deepEqual(venueTickLabel("ebay", true), { text: "ebay", tick: true });
+    assert.deepEqual(venueTickLabel("craigslist", false), { text: "craigslist", tick: false });
+    // "Finally a button 'Apply to all existing listings' (per the venue specified)"
+    assert.equal(applyLabel("ebay"), "Apply to all existing ebay listings");
+    assert.equal(applyLabel("craigslist"), "Apply to all existing craigslist listings");
+    assert.equal(wrapError(404, "Not Found"), "The header and footer are not available yet.");
+    assert.equal(wrapError(400, "header.text: at most 2000 characters"), "header.text: at most 2000 characters");
+    assert.equal(wrapError(0, "cannot reach the server"), "Could not save: cannot reach the server.");
 });

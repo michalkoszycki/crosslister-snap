@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.18.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.18.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.19.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.19.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -254,6 +254,65 @@
           <p id="seller-status" class="small account-status" aria-live="polite"></p>
         </div>
         <p id="account-status" class="small account-status" aria-live="polite"></p>
+      </div>
+      <!-- a header and a footer on every listing, under the Account block (Michal, 2026-10-17:
+           "In default settings add a checkbox for footnote/header for all posts ... once you
+           check header you get a header foldout with all these options"): each row its own
+           foldout, the box, Apply to: per venue, Save, then Apply to all existing listings per
+           venue ticked. From GET /me/wrap; an older server's 404: no rows (app.js) -->
+      <div id="wrap" class="wrap" hidden>
+        <label class="pickup">
+          <input id="wrap-header-on" type="checkbox">
+          <span>Header on every listing</span>
+        </label>
+        <div id="wrap-header" class="wrap-fold" hidden>
+          <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Header"
+                    placeholder="Text added above the description"></textarea>
+          <p id="wrap-header-count" class="small wrap-count">0 / 2000</p>
+          <p class="small wrap-note">Added with a blank line between it and the description.</p>
+          <p class="field-label wrap-to">Apply to:</p>
+          <div class="wrap-venues" role="group" aria-label="Header: apply to">
+            <button type="button" id="wrap-header-ebay" class="pill pill-small wrap-venue" aria-pressed="false" hidden>ebay</button>
+            <button type="button" id="wrap-header-craigslist" class="pill pill-small wrap-venue" aria-pressed="false" hidden>craigslist</button>
+          </div>
+          <button type="button" id="wrap-header-save" class="pill pill-ink pill-small wrap-save">Save</button>
+          <p id="wrap-header-status" class="small account-status" aria-live="polite"></p>
+          <div id="wrap-header-apply" class="wrap-apply" hidden>
+            <button type="button" id="wrap-header-apply-ebay" class="pill pill-small" hidden>Apply to all existing ebay listings</button>
+            <button type="button" id="wrap-header-apply-ebay-reset" class="reset-call" aria-label="reset Apply to all existing ebay listings" hidden>reset</button>
+            <p id="wrap-header-apply-ebay-status" class="venue-status" aria-live="polite"></p>
+            <button type="button" id="wrap-header-apply-craigslist" class="pill pill-small" hidden>Apply to all existing craigslist listings</button>
+            <button type="button" id="wrap-header-apply-craigslist-reset" class="reset-call" aria-label="reset Apply to all existing craigslist listings" hidden>reset</button>
+            <p id="wrap-header-apply-craigslist-status" class="venue-status" aria-live="polite"></p>
+            <p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue</p>
+          </div>
+        </div>
+        <label class="pickup">
+          <input id="wrap-footer-on" type="checkbox">
+          <span>Footer on every listing</span>
+        </label>
+        <div id="wrap-footer" class="wrap-fold" hidden>
+          <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Footer"
+                    placeholder="Text added below the description"></textarea>
+          <p id="wrap-footer-count" class="small wrap-count">0 / 2000</p>
+          <p class="small wrap-note">Added with a blank line between it and the description.</p>
+          <p class="field-label wrap-to">Apply to:</p>
+          <div class="wrap-venues" role="group" aria-label="Footer: apply to">
+            <button type="button" id="wrap-footer-ebay" class="pill pill-small wrap-venue" aria-pressed="false" hidden>ebay</button>
+            <button type="button" id="wrap-footer-craigslist" class="pill pill-small wrap-venue" aria-pressed="false" hidden>craigslist</button>
+          </div>
+          <button type="button" id="wrap-footer-save" class="pill pill-ink pill-small wrap-save">Save</button>
+          <p id="wrap-footer-status" class="small account-status" aria-live="polite"></p>
+          <div id="wrap-footer-apply" class="wrap-apply" hidden>
+            <button type="button" id="wrap-footer-apply-ebay" class="pill pill-small" hidden>Apply to all existing ebay listings</button>
+            <button type="button" id="wrap-footer-apply-ebay-reset" class="reset-call" aria-label="reset Apply to all existing ebay listings" hidden>reset</button>
+            <p id="wrap-footer-apply-ebay-status" class="venue-status" aria-live="polite"></p>
+            <button type="button" id="wrap-footer-apply-craigslist" class="pill pill-small" hidden>Apply to all existing craigslist listings</button>
+            <button type="button" id="wrap-footer-apply-craigslist-reset" class="reset-call" aria-label="reset Apply to all existing craigslist listings" hidden>reset</button>
+            <p id="wrap-footer-apply-craigslist-status" class="venue-status" aria-live="polite"></p>
+            <p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue</p>
+          </div>
+        </div>
       </div>
       <p id="settings-server" class="server server-line"></p>
       <label class="field">
@@ -780,6 +839,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.18.0"></script>
+<script type="module" src="app.js?v=2.19.0"></script>
 </body>
 </html>

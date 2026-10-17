@@ -70,9 +70,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
 | `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
-| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the header and footer on every listing, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
+| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup`, `/me/seller` and `/me/wrap` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept; Fix dark photos' measure, table and pass (`luminanceStats`, `levelsTable`, `applyTable`) |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -451,6 +451,53 @@ press posted it with no model call. Now:
 - **The line** under the button, once the server says the job stopped: `cancelled: the credit is
   lost` when its view says `"charged": true` (it had started), `cancelled` when false (still
   queued: the posting given back) or when an older server says nothing.
+
+## A header and a footer on every listing (2.19.0)
+
+Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts. When
+you check that, a text area appears; that text will be input by the user and appended to the
+posting (with two return lines separating it from the main text). Footnote and header are separate
+of course, with separate on/off. If you uncheck it, it should not lose what you had ... Below would
+be the venue buttons; 'Apply to:' above them; once clicked the button changes to green with a
+check, our typical. If there is only one venue available, as for a typical user, that can be
+checked right away. Finally a button 'Apply to all existing listings' (per the venue specified).
+Since this is many options it should be a foldout."
+
+The server keeps both and puts them round the description of every listing it posts (a blank line
+between); the page only edits them. In Settings, under the Account block (`#wrap`, from `GET
+/me/wrap`, asked each time Settings opens and after Save and check; an older server's 404: no rows):
+
+- **Header on every listing** and **Footer on every listing**, two of pickup only's pill rows
+  (`#wrap-header-on`, `#wrap-footer-on`), each with its own foldout (`#wrap-header`,
+  `#wrap-footer`), open while ticked. A tick sends `{"header": {"on": true}}` at once; an untick
+  `{"header": {"on": false}}`, the text kept on the server and in the box, and the next tick
+  reopens on the text the server has. The first tick of a row on no venue, for an account whose
+  `available` is one venue (eBay, for a typical seller), ticks that venue in the same PATCH:
+  `{"header": {"on": true, "venues": ["ebay"]}}`.
+- **The box** (`#wrap-header-text`, `Text added above the description`; the footer's `below`), at
+  most 2000 characters, its counter under it (`0 / 2000`, `wrapCounter`), and `Added with a blank
+  line between it and the description.`
+- **Apply to:**, one pill per venue in `available` (`#wrap-header-ebay`, `#wrap-header-craigslist`,
+  likewise the footer's): ticked, the venue and a tick in the posted green (as **eBay connected**
+  and a listed badge); not, outlined in ink. A tap sends the part's `venues` at once (`{"header":
+  {"venues": ["ebay", "craigslist"]}}`, in the page's venue order). The screen follows a tap at
+  once; a refusal puts it back and says why on the row's line.
+- **Save** (`#wrap-header-save`) sends the text (`wrapBody`: Windows line endings plain, the ends
+  trimmed, the blank lines inside kept; over 2000 characters it is named, `At most 2000
+  characters; this is 2001.`, and nothing is sent), its line (`#wrap-header-status`) saying
+  `Saving...`, then `saved` (gone once the box is typed in again); a 400 is the server's words, a
+  404 `The header and footer are not available yet.`, anything else `Could not save: <why>.`
+- **Apply to all existing ebay listings** (`#wrap-header-apply-ebay`, one per venue ticked in that
+  row, `applyLabel`): a job button as the sync bar's (the second's wait, the ring, tap again to
+  pause, continue, the red reset under it: `#wrap-header-apply-ebay-reset`), `POST /me/wrap/apply
+  {"venue": "ebay"}`, then `GET /jobs/<id>` every 3 s, its line under it
+  (`#wrap-header-apply-ebay-status`: queued, the server's step, its summary `3 listings updated,
+  10 unchanged, 0 failed`, or its error). One push carries the header and the footer as set now,
+  so the header row's button for a venue and the footer row's are one task, painted in both; under
+  them: `Pushes the header and footer as set now to every listing on that venue`.
+
+Sign out (and Save and check) lets the rows go, the boxes emptied and any press let go; closing
+Admin quiets their lines. `/me/wrap`'s answers are never stored on the phone.
 
 ## The screen, top to bottom
 
@@ -942,6 +989,9 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
 | `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
 | `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits, a ZIP+4 typed sent as its first five since 2.17.0); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
+| `GET <pc>/me/wrap`, Settings opened (and after Save and check) (2.19.0) | - | `{"header": {"on": true/false, "text": "...", "venues": ["ebay"]}, "footer": {...}, "available": ["ebay"] or ["ebay", "craigslist"]}` (`wrapOf`: a part not given is off and empty, `available` naming none is eBay): the two rows, their boxes and Apply to:'s pills; 404 (an older server): no rows |
+| `PATCH <pc>/me/wrap`, a row ticked or unticked, **Save**, an Apply to: pill (2.19.0) | one part, only what changed (`wrapBody`): `{"header": {"on": true, "venues": ["ebay"]}}` (the first tick, one venue available), `{"header": {"on": true}}`, `{"footer": {"on": false}}`, `{"header": {"text": "Free local pickup."}}` (trimmed, at most 2000 characters), `{"footer": {"venues": ["ebay", "craigslist"]}}` | the `GET` body; 400 `{"detail"}` for a bad value (a text over 2000 characters): its words on the row's line, the row as it was; 404: `The header and footer are not available yet.` |
+| `POST <pc>/me/wrap/apply`, **Apply to all existing <venue> listings** (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as the sync bar's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`); 400 `{"detail"}`: its words under the button |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -1328,6 +1378,10 @@ Empty. With capacity to generate that card from there."
   is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
   (**eBay connected: <user>** in green once it is, **Reconnect** under it) (see "The account: postings and eBay" above), and under it the **Seller address** (see
   "Many sellers" above).
+- **Header on every listing** and **Footer on every listing**, under the Account block, each
+  ticked opening its foldout: the box, **Apply to:**'s venue pills, **Save**, and **Apply to all
+  existing listings** per venue (see "A header and a footer on every listing" above); none from a
+  server without `/me/wrap`.
 - **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
   `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
   `http://127.0.0.1` and `http://localhost` for trying the page on the server
@@ -1354,7 +1408,7 @@ The address and key are stored in `localStorage` on the phone (`snap.pc`,
 none, or anything else, is `device`). Also kept: a sign-in's session
 (`snap.session`, in `localStorage` with Keep me signed in, else `sessionStorage`),
 customize's defaults (`snap.customize.defaults`) and the day the home-screen
-banner was put away (`snap.install.dismissed`); `/me`'s and `/me/seller`'s answers are never stored. Every storage read and write is wrapped,
+banner was put away (`snap.install.dismissed`); `/me`'s, `/me/seller`'s and `/me/wrap`'s answers are never stored. Every storage read and write is wrapped,
 so a private window or blocked site data only means Settings are not
 remembered.
 

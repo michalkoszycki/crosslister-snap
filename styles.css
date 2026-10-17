@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.18.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.19.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1151,6 +1151,24 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .seller-policies[hidden] { display: none; }
 .seller-policies-head { margin: 0 0 4px; font-weight: 800; }
 .seller-policy-list { margin: 0; padding-left: 1.2em; color: var(--muted); line-height: 1.45; }
+/* Header and footer on every listing, under the Account block (Michal, 2026-10-17): two of
+   pickup only's pill rows, each unfolding its box, its counter and line, Apply to:'s venue
+   pills (outlined off; on, the posted green with a tick, as eBay connected), Save, and the
+   job buttons that push them onto the listings already up; a thin line under, as the block's */
+.wrap { margin: 0 0 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.wrap > .pickup:first-child { margin-top: 0; }
+.wrap-fold { padding: 10px 2px 4px; }
+.wrap-count { margin: 4px 2px 0; text-align: right; }
+.wrap-note { margin: 4px 2px 0; }
+.wrap-to { margin: 12px 0 6px; }
+.wrap-venues { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill.wrap-venue { gap: 4px; background: none; border-color: var(--ink); color: var(--ink); }
+.pill.wrap-venue[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); }
+.wrap-venue .tick { flex: none; width: 14px; height: 14px; }
+.pill.wrap-save { margin-top: 12px; }
+.wrap-apply { margin-top: 12px; }
+.wrap-apply .pill { display: flex; width: 100%; margin-top: 8px; }
+.wrap-apply .venue-status:empty { display: none; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
 .landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */
