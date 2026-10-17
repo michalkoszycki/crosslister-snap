@@ -1000,7 +1000,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
     const pc = {
         items: new Map(Object.entries(items)),
         calls: [],
-        cancelled: new Set(), // jobs the cancel button told the server about
+        cancelled: new Map(), // jobs the cancel button told the server about -> charged
         posted: [],
         checks: 0,
         mes: 0,
@@ -1168,18 +1168,21 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json({ job: id, state: "queued", ahead: 1 });
         }
         if (parts[0] === "jobs" && parts[1] && method === "DELETE") {
-            // the cancel button: a job the test holds "queued" is dropped, a running one is told
+            // the cancel button: a job the test holds "queued" is dropped, a running one is told;
+            // one that had started keeps the posting it reserved (charged), a queued one gives it back
             const answer = jobs[parts[1]];
             if (!answer) return json({ detail: "no such job" }, 404);
             const state = answer().state;
             if (!["queued", "running"].includes(state)) return json({ detail: "finished" }, 409);
-            pc.cancelled.add(parts[1]);
+            pc.cancelled.set(parts[1], state === "running");
             return json({ job: parts[1], state: state === "queued" ? "cancelled" : "stopping" });
         }
         if (parts[0] === "jobs" && parts[1]) {
             const answer = jobs[parts[1]];
             if (answer && pc.cancelled.has(parts[1])) {
-                return json({ price: "", ...answer(), state: "failed", error: "cancelled from the phone", links: {} });
+                // a sku only when the test's job had one: a draft cancelled while drafting is dumped
+                const charged = pc.cancelled.get(parts[1]);
+                return json({ price: "", ...answer(), state: "failed", error: "cancelled from the phone", links: {}, charged });
             }
             // the row's price, "" until the PC has saved the row (the contract since 1.12.0)
             return answer ? json({ price: "", ...answer() }) : json({ detail: "no such job" }, 404);
@@ -1315,8 +1318,8 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("craigslist-btn").classList.contains("busy"), false);
     // no price until the PC has saved the row: the venue alone, and inside the button, small,
     // what a tap on it does (Michal, 2026-10-07)
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
-    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel: credits will be lost");
     assert.equal(nodes.get("ebay-btn").disabled, false, "it takes the tap that pauses it");
     assert.equal(buttonSays(nodes.get("craigslist-btn")), "craigslist", "the other has no second line");
     // NEXT does not wait for the listing: the PC has the job; the line under NEXT says so
@@ -1336,8 +1339,8 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     // the row is saved: its price above the buttons, the button's word unchanged, the ring still turning
     assert.equal(nodes.get("price-line").hidden, false);
     assert.equal(nodes.get("price-line").textContent, "$14");
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
-    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel: credits will be lost");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     // the sku is known: craigslist may go now, by sku alone
     assert.equal(nodes.get("craigslist-btn").disabled, false);
@@ -1368,7 +1371,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     await settle();
     assert.deepEqual(pc.posted[1], { sku: "B-0042", venue: "craigslist" });
     // the same row: the price line stands, the button's word is the venue
-    assert.equal(buttonSays(nodes.get("craigslist-btn")), "craigslist / tap again to cancel");
+    assert.equal(buttonSays(nodes.get("craigslist-btn")), "craigslist / tap again to cancel: credits will be lost");
     assert.equal(nodes.get("price-line").textContent, "$14");
     t.mock.timers.tick(3000);
     await settle();
@@ -1504,7 +1507,7 @@ test("NEXT while the listing still posts: the screen clears, the next item start
     t.mock.timers.tick(3000);
     await settle();
     assert.equal(nodes.get("price-line").textContent, "$14.50", "cents kept");
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     assert.equal(nodes.get("next-item").disabled, false);
     assert.equal(nodes.get("next-note").hidden, false);
@@ -6274,12 +6277,12 @@ test("a press waits a second with the ring turning; a tap within it holds it: re
     await settle();
     assert.equal(pc.posted.length, 1, "no second wait");
     assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel", "the ring and its line back");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost", "the ring and its line back");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     assert.equal(nodes.get("ebay-reset").hidden, true);
 });
 
-test("after the second a tap pauses the PC's job: continue asks again; reset tells the PC, keeps the draft's sku", async (t) => {
+test("after the second a tap pauses the PC's job: continue asks again; reset tells the PC, keeps a saved row's sku", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({
         jobs: { j1: () => ({ state: "running", step: "drafting the listing", sku: "B-0042" }) },
@@ -6315,7 +6318,7 @@ test("after the second a tap pauses the PC's job: continue asks again; reset tel
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/j1");
     assert.equal(nodes.get("ebay-status").textContent, "drafting the listing");
-    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost");
     assert.equal(nodes.get("ebay-btn").classList.contains("busy"), true);
     assert.equal(nodes.get("ebay-reset").hidden, true);
 
@@ -6332,22 +6335,72 @@ test("after the second a tap pauses the PC's job: continue asks again; reset tel
     assert.equal(nodes.get("ebay-btn").disabled, false, "waiting for a new press");
     assert.equal(nodes.get("ebay-reset").hidden, true);
     assert.equal(pc.posted.length, 1, "nor posts it again");
-    // the PC's own word once it has stopped, asked about quietly
+    // once it has stopped, asked about quietly: it had started, so its posting is spent
     t.mock.timers.tick(3000);
     await settle();
-    assert.equal(nodes.get("ebay-status").textContent, "cancelled from the phone");
+    assert.equal(nodes.get("ebay-status").textContent, "cancelled: the credit is lost");
     assert.equal(nodes.get("ebay-status").className, "venue-status bad");
     assert.equal(pc.calls.filter((c) => c === "DELETE /jobs/j1").length, 1);
     const ended = pc.calls.length;
     t.mock.timers.tick(3000 * 2);
     await settle();
     assert.equal(pc.calls.length, ended, "no more polls once it stopped");
-    // the next press goes by the saved row's sku: no second draft
+    // it reported the row it had saved: the next press goes by that sku, no second draft
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.deepEqual(pc.posted.at(-1), { sku: "B-0042", venue: "ebay" });
+});
+
+test("a draft reset while drafting is dumped: credits will be lost, and the next press drafts afresh", async (t) => {
+    // Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel,
+    // that means I want to absolutely stop it, even though we may be getting an answer from the
+    // server. Just dump that answer. In the little note say: credits will be lost."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({ jobs: { j1: () => ({ state: "running", step: "drafting the listing" }) } });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    // held on the phone for its second: nothing sent, nothing to lose
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    const item = pc.posted[0].item;
+    assert.deepEqual(pc.posted, [{ item, venue: "ebay", ai: [1] }]);
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost");
+    assert.equal(nodes.get("ebay-btn").attrs["aria-label"], "ebay, posting, tap again to cancel: credits will be lost");
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(buttonSays(nodes.get("ebay-btn")), "ebay / tap again to cancel: credits will be lost", "while drafting");
+
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    nodes.get("ebay-reset").fire("click");
+    await settle();
+    assert.equal(pc.calls.at(-1), "DELETE /jobs/j1");
+    t.mock.timers.tick(3000);
+    await settle();
+    // the PC dumped the draft: no sku, the posting spent
+    assert.equal(nodes.get("ebay-status").textContent, "cancelled: the credit is lost");
+    assert.equal(nodes.get("snap-input").disabled, false, "no row: the photos are his again");
+    // the next press is a fresh draft of the item, not a post of a row that is not there
+    nodes.get("ebay-btn").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { item, venue: "ebay", ai: [1] });
+    // NEXT: the history keeps the item, with no sku for it
+    nodes.get("next-item").fire("click");
+    await settle();
+    const history = JSON.parse(local.getItem("snap.history"));
+    assert.equal(history.at(-1).itemId, item);
+    assert.equal("sku" in history.at(-1), false);
 });
 
 test("too late: from the publishing step on a tap says so for a moment, and the button stays busy", async (t) => {

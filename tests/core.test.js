@@ -63,14 +63,18 @@ import {
     snapWord,
     SNAP_SPOT,
     cancelButton,
+    cancelledLine,
+    cancelNote,
     busyLine,
     CANCELLED,
+    CANCELLED_ON_PC,
     CONTINUE,
     NEXT_PAUSED,
     PAUSED,
     PAUSED_ON_PC,
     RESET,
     SEND_DELAY_MS,
+    TAP_AGAIN,
     TAP_TO_CANCEL,
     taskCancel,
     taskTap,
@@ -671,7 +675,7 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
     // cancel should change to 'reset call' (as in discard) and the button should change to
     // 'continue' ... Only pressing it twice actually drops all the info"
     assert.equal(SEND_DELAY_MS, 1000);
-    assert.equal(TAP_TO_CANCEL, "tap again to cancel");
+    assert.equal(TAP_AGAIN, "tap again to cancel");
     assert.equal(CONTINUE, "continue");
     assert.equal(RESET, "reset");
     let s = sent(1, [1]);
@@ -733,9 +737,9 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
         venue: "ebay",
         status: { state: "failed", error: "cancelled from the phone", sku: "B-1" },
     });
-    assert.equal(venueLine(s.jobs.ebay).text, "cancelled from the phone");
+    assert.equal(venueLine(s.jobs.ebay).text, CANCELLED, "an older server says nothing of the credit");
     assert.equal(s.jobs.ebay.stopping, false);
-    assert.equal(s.sku, "B-1");
+    assert.equal(s.sku, "B-1", "a saved row stopped before its publish: kept");
     assert.equal(cancelButton(s, "ebay"), false);
     // dropped by the PC before it ran (DELETE answered "cancelled"): nothing more to hear
     const gone = reduce(reduce(answered, { type: "jobCancelled", venue: "ebay", stopping: true }), {
@@ -745,6 +749,79 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
     assert.equal(gone.jobs.ebay.stopping, false);
     assert.equal(gone.jobs.ebay.jobId, "");
     assert.equal(venueLine(gone.jobs.ebay).text, CANCELLED);
+});
+
+test("credits will be lost once a press has left the phone; a draft the PC dumped is forgotten", () => {
+    // Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel,
+    // that means I want to absolutely stop it, even though we may be getting an answer from the
+    // server. Just dump that answer. In the little note say: credits will be lost."
+    assert.equal(TAP_TO_CANCEL, "tap again to cancel: credits will be lost");
+    assert.equal(CANCELLED_ON_PC, "cancelled from the phone");
+    let s = reduce(sent(1, [1]), { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_AGAIN, "held on the phone in its second: nothing to lose");
+    assert.equal(reduce(sent(1, [1]), { type: "jobSent", venue: "ebay" }).jobs.ebay.sent, false, "no press, nothing sent");
+    s = reduce(s, { type: "jobSent", venue: "ebay" });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "the POST on its way");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "queued");
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting the listing" } });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "drafting");
+    assert.equal(cancelButton(s, "ebay"), true);
+
+    // the line once the PC says it stopped: the posting kept (charged) or given back
+    assert.equal(cancelledLine({ charged: true }), "cancelled: the credit is lost");
+    assert.equal(cancelledLine({ charged: false }), CANCELLED);
+    assert.equal(cancelledLine({}), CANCELLED, "an older server says nothing");
+    assert.equal(cancelledLine({ charged: "true" }), CANCELLED, "only a real true");
+
+    // reset while drafting, the row saved on the way (its sku heard while stopping), then dumped
+    s = reduce(reduce(s, { type: "jobPaused", venue: "ebay" }), { type: "jobCancelled", venue: "ebay", stopping: true });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting", sku: "B-1" } });
+    assert.equal(s.sku, "B-1");
+    const dumped = reduce(s, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "failed", error: CANCELLED_ON_PC, charged: true },
+    });
+    assert.equal(venueLine(dumped.jobs.ebay).text, "cancelled: the credit is lost");
+    assert.equal(dumped.sku, "", "the draft is forgotten");
+    assert.equal(photosLocked(dumped), false, "the item and its photos stay his");
+    // the next press is a fresh draft: the item and its marks, no sku
+    assert.deepEqual(jobRequest({ venue: "ebay", sku: dumped.sku, item: ITEM, photos: dumped.photos }), {
+        item: ITEM,
+        venue: "ebay",
+        ai: [1],
+    });
+    // ... unless another venue's job reports that row: it exists
+    const both = reduce(s, { type: "jobStatus", venue: "craigslist", status: { state: "queued", sku: "B-1" } });
+    assert.equal(
+        reduce(both, { type: "jobStatus", venue: "ebay", status: { state: "failed", error: CANCELLED_ON_PC } }).sku,
+        "B-1"
+    );
+    // a job that fails for any other reason keeps what it reported, as before
+    assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "failed", error: "eBay said no" } }).sku, "B-1");
+
+    // an item read back whose only job was dumped: no sku, and its line says so
+    const back = reduce(initialState(), {
+        type: "recovered",
+        itemName: "Boots",
+        itemId: ITEM,
+        ai: [1],
+        answer: {
+            item: ITEM,
+            photos: [1],
+            note: "",
+            sku: null,
+            jobs: [{ job: "j1", venue: "ebay", state: "failed", error: CANCELLED_ON_PC, charged: false }],
+        },
+    });
+    assert.equal(back.sku, "");
+    assert.equal(venueLine(back.jobs.ebay).text, CANCELLED);
+    assert.deepEqual(jobRequest({ venue: "ebay", sku: back.sku, item: ITEM, photos: back.photos }), {
+        item: ITEM,
+        venue: "ebay",
+        ai: [1],
+    });
 });
 
 test("from the publishing step on a tap is too late; a job that ends is neither paused nor stopping", () => {
