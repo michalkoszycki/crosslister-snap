@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    adminLink,
     buildFileName,
     checkSettings,
     cleanItemName,
@@ -673,6 +674,36 @@ test("the Snap button says Snap Again once there is a photo, and lands three qua
     // (1150 from the page top) goes to 600, three quarters of an 800 viewport
     assert.equal(snapScrollTop({ scrollY: 100, innerHeight: 800 }, { top: 1000, height: 100 }), 550);
     assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
+});
+
+test("the Snap button says Snap Next once the item in hand has a posting up, goods and book alike", () => {
+    // Michal, 2026-10-17: "After the item is posted the snap yellow button darkens; that is ok.
+    // But rather it should say Snap Next."
+    const photos = sent(3, [1]);
+    const up = (s, venue, job) => ({ ...s, sku: "B-0042", jobs: { ...s.jobs, [venue]: { ...idleJob(), ...job } } });
+    const posted = up(photos, "ebay", { phase: "done", link: "https://www.ebay.com/itm/1" });
+    assert.equal(snapWord(posted), "Snap Next");
+    assert.equal(snapWord(up(photos, "craigslist", { phase: "done", link: "https://sfbay.craigslist.org/x/1.html" })), "Snap Next");
+    // not before the link: still posting, saved and not posted, or failed
+    assert.equal(snapWord(up(photos, "ebay", { phase: "running", step: "drafting the listing" })), "Snap Again");
+    assert.equal(snapWord(up(photos, "ebay", { phase: "done", link: "", held: true })), "Snap Again");
+    assert.equal(snapWord(up(photos, "ebay", { phase: "failed", error: "no" })), "Snap Again");
+    // an earlier item back brought up keeps its word: NEXT there starts nothing new
+    assert.equal(snapWord(posted, { earlier: true }), "Snap Again");
+    assert.equal(snapWord(photos, { earlier: true }), "Snap Again");
+    // a book says Snap, photos or not, and Snap Next once its listing is up
+    const book = foundBook(2);
+    assert.equal(snapWord(bookState()), "Snap");
+    assert.equal(snapWord(book), "Snap");
+    assert.equal(snapWord(up(book, "ebay", { phase: "done", link: "https://www.ebay.com/itm/9" })), "Snap Next");
+    assert.equal(snapWord(up(book, "ebay", { phase: "done", link: "https://www.ebay.com/itm/9" }), { earlier: true }), "Snap");
+});
+
+test("the header link says Admin on the posting screens and Snap while Admin is open", () => {
+    // Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to
+    // Snap, so that it is more intuitive how to return to snapping a photo."
+    assert.deepEqual(adminLink(false), { text: "Admin", label: "" });
+    assert.deepEqual(adminLink(true), { text: "Snap", label: "Snap: close Admin and go back to snapping" });
 });
 
 test("a tap on a busy venue button pauses it; continue carries on, reset drops the press as if never made", () => {

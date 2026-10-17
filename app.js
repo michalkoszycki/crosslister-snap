@@ -11,8 +11,9 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.20.1";
+import { VERSION } from "./version.js?v=2.21.0";
 import {
+    adminLink,
     anyActive,
     bannerText,
     bookForm,
@@ -210,8 +211,8 @@ import {
     wrapCounter,
     wrapError,
     wrapOf,
-} from "./core.js?v=2.20.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.20.1";
+} from "./core.js?v=2.21.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.21.0";
 import {
     addVenue,
     applyWrap,
@@ -250,8 +251,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.20.1";
-import { shrinkPhoto } from "./shrink.js?v=2.20.1";
+} from "./pc.js?v=2.21.0";
+import { shrinkPhoto } from "./shrink.js?v=2.21.0";
 import {
     bookCard,
     bookPriceValue,
@@ -264,8 +265,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.20.1";
-import { canScan, readIsbn } from "./scan.js?v=2.20.1";
+} from "./book.js?v=2.21.0";
+import { canScan, readIsbn } from "./scan.js?v=2.21.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -733,12 +734,14 @@ function renderGoods() {
     const named = !!state.itemName || !state.needsName;
     const ready = named && !locked && !restoring.goods && !taken;
     // the word only: the camera icon beside it in the label stays
-    el.snapText.textContent = snapWord(state);
-    el.snapLabel.classList.toggle("disabled", !ready);
+    const word = snapWord(state, { earlier: !!viewing.goods });
+    el.snapText.textContent = word;
+    const snapReady = word === "Snap Next" ? onwardReady("goods") : ready;
+    el.snapLabel.classList.toggle("disabled", !snapReady);
     el.galleryLabel.classList.toggle("disabled", !ready);
-    el.snapInput.disabled = !ready;
+    el.snapInput.disabled = !snapReady;
     el.galleryInput.disabled = !ready;
-    el.hint.hidden = ready;
+    el.hint.hidden = snapReady;
     if (restoring.goods) el.hint.textContent = "Reading this item back from the server...";
     else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
     else if (taken) el.hint.textContent = taken;
@@ -844,9 +847,12 @@ function renderBook() {
 
     // the cover and more: any time until the listing goes (they wait for the ISBN if need be)
     const ready = !locked && !busy;
-    el.bookSnapLabel.classList.toggle("disabled", !ready);
+    const word = snapWord(state, { earlier: !!viewing.book });
+    el.bookSnapText.textContent = word;
+    const snapReady = word === "Snap Next" ? onwardReady("book") : ready;
+    el.bookSnapLabel.classList.toggle("disabled", !snapReady);
     el.bookGalleryLabel.classList.toggle("disabled", !ready);
-    el.bookSnapInput.disabled = !ready;
+    el.bookSnapInput.disabled = !snapReady;
     el.bookGalleryInput.disabled = !ready;
     el.bookProgress.textContent = progressLine(state);
     renderStrip("book", el.bookStrip, locked);
@@ -1928,6 +1934,11 @@ function fold(toggle, word, open) {
 function adminShown(open) {
     el.admin.hidden = !open;
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    // Snap while Admin is open, the way back to snapping (Michal, 2026-10-17)
+    const link = adminLink(open);
+    el.adminToggle.textContent = link.text;
+    if (link.label) el.adminToggle.setAttribute("aria-label", link.label);
+    else el.adminToggle.removeAttribute("aria-label");
     render();
 }
 
@@ -5277,7 +5288,7 @@ async function fetchPictures(m, pc) {
  * upload. Photos and deletes not yet on the PC keep NEXT shut (doneButton), so
  * nothing the queue still owes the PC is dropped.
  */
-async function nextItem(m) {
+async function nextItem(m, { snapping = false } = {}) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
         say("The user note has not reached the server yet. NEXT again once it has.", "warn");
@@ -5307,8 +5318,43 @@ async function nextItem(m) {
     // the other kind's screen leaves an earlier item it was showing
     pushTo(readHistory().length + 1);
     for (const k of MODES) if (viewing[k]) bringUp(k, null).catch(() => {});
-    // a book starts with Scan, not the keyboard
-    if (m === "goods") el.itemInput.focus();
+    // a book starts with Scan, not the keyboard; Snap Next starts with the camera
+    if (m === "goods" && !snapping) el.itemInput.focus();
+}
+
+/**
+ * Snap Next (Michal, 2026-10-17: "After the item is posted the snap yellow button darkens;
+ * that is ok. But rather it should say Snap Next."): NEXT and Snap in one tap. The label
+ * still opens the camera itself, inside his tap as the phone requires; the tap starts NEXT,
+ * and a photo back from the camera waits for it (`snapped`), so it starts the next item.
+ */
+const onward = { goods: null, book: null };
+
+/** Snap Next opens while NEXT would. */
+function onwardReady(m) {
+    return doneButton(slots[m]).enabled && !restoring[m];
+}
+
+function onSnapTap(m) {
+    if (snapWord(slots[m], { earlier: !!viewing[m] }) !== "Snap Next" || !onwardReady(m)) return;
+    onward[m] = nextItem(m, { snapping: true }).catch(() => {});
+}
+
+/** Photos back from the camera: onto the item, once a Snap Next begun on the tap has started it. */
+function snapped(m, files) {
+    const take = (list) => {
+        acceptFiles(m, list);
+        if (m === "goods") snapUnderThumb();
+    };
+    const pending = onward[m];
+    onward[m] = null;
+    if (!pending) {
+        take(files);
+        return;
+    }
+    // the input is emptied as this returns: the files are kept for after the wait
+    const kept = [...files];
+    pending.then(() => take(kept));
 }
 
 /** Everything of the shown item that lives in this page's memory, let go. */
@@ -5673,6 +5719,7 @@ function main() {
         bookDetails: $("book-details"),
         bookMatch: $("book-match"),
         bookSnapLabel: $("book-snap-label"),
+        bookSnapText: $("book-snap-word"),
         bookSnapInput: $("book-snap-input"),
         bookGalleryLabel: $("book-gallery-label"),
         bookGalleryInput: $("book-gallery-input"),
@@ -5953,13 +6000,8 @@ function main() {
     });
     el.note.addEventListener("input", () => onNoteInput("goods"));
     el.note.addEventListener("blur", () => noteDue("goods"));
-    el.snapInput.addEventListener(
-        "change",
-        onFiles((files) => {
-            acceptFiles("goods", files);
-            snapUnderThumb();
-        })
-    );
+    el.snapLabel.addEventListener("click", () => onSnapTap("goods"));
+    el.snapInput.addEventListener("change", onFiles((files) => snapped("goods", files)));
     el.galleryInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
     for (const venue of VENUES) {
         el[`${venue}Btn`].addEventListener("click", () => onVenueTap("goods", venue));
@@ -5987,7 +6029,8 @@ function main() {
             setState("book", reduce(slots.book, { type: "bookFormat", format: value }))
         );
     }
-    el.bookSnapInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
+    el.bookSnapLabel.addEventListener("click", () => onSnapTap("book"));
+    el.bookSnapInput.addEventListener("change", onFiles((files) => snapped("book", files)));
     el.bookGalleryInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
     for (const { value, node } of el.chips) {
         node.addEventListener("click", () =>

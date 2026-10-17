@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.20.1";
+import { noteDirty, unsent } from "./queue.js?v=2.21.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.20.1";
+} from "./book.js?v=2.21.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1398,12 +1398,32 @@ export function taskTap(task) {
 /**
  * The word on the Snap button: "Snap", and "Snap Again" once the item has a
  * photo (Michal, 2026-09-30: "after the first snap it should say 'Snap Again'
- * on that button. That will be cute").
+ * on that button. That will be cute"); a book's button stays "Snap", as it
+ * always said. "Snap Next" once the item in hand has a posting up, a venue's
+ * job done with its link, goods and book alike (Michal, 2026-10-17: "After the
+ * item is posted the snap yellow button darkens; that is ok. But rather it
+ * should say Snap Next."): its tap is NEXT and then Snap. An earlier item back
+ * brought up (`earlier`) keeps its word: NEXT there returns to the items in
+ * hand, it starts nothing new.
  * @param {SnapState} state
- * @returns {string}
+ * @param {{earlier?: boolean}} [where]
+ * @returns {"Snap"|"Snap Again"|"Snap Next"}
  */
-export function snapWord(state) {
-    return state.photos.length > 0 ? "Snap Again" : "Snap";
+export function snapWord(state, { earlier = false } = {}) {
+    if (!earlier && postingUp(state)) return "Snap Next";
+    return state.mode !== "book" && state.photos.length > 0 ? "Snap Again" : "Snap";
+}
+
+/**
+ * The header link (Michal, 2026-10-17: "When I am on the Admin page, the Admin link up
+ * top should change to Snap, so that it is more intuitive how to return to snapping a
+ * photo."): Admin on the posting screens; Snap while Admin is open, its tap closing it,
+ * with a name that says so ("" for none but the word).
+ * @param {boolean} open
+ * @returns {{text: string, label: string}}
+ */
+export function adminLink(open) {
+    return open ? { text: "Snap", label: "Snap: close Admin and go back to snapping" } : { text: "Admin", label: "" };
 }
 
 /**
@@ -2894,8 +2914,16 @@ export function titleLine(state) {
  * @returns {string}
  */
 export function inventorySku(state) {
-    const up = VENUES.some((v) => state.jobs[v] && state.jobs[v].phase === "done" && !!state.jobs[v].link);
-    return up ? state.sku : "";
+    return postingUp(state) ? state.sku : "";
+}
+
+/**
+ * A posting is up: a venue's job done with its link (a row saved, not posted, is not).
+ * @param {SnapState} state
+ * @returns {boolean}
+ */
+function postingUp(state) {
+    return VENUES.some((v) => state.jobs[v] && state.jobs[v].phase === "done" && !!state.jobs[v].link);
 }
 
 /**

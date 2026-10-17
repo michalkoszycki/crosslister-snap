@@ -533,6 +533,25 @@ venue the server adds gets its buttons with no change to the page. A server that
   with the venue (`craigslist: 3 listings updated, 10 unchanged, 0 failed`). A Sync to <venue>
   done lets every mark of that venue go (`unsyncedWithout`).
 
+## Snap Next, and Snap back from Admin (2.21.0)
+
+Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to Snap, so
+that it is more intuitive how to return to snapping a photo." and "After the item is posted the snap
+yellow button darkens; that is ok. But rather it should say Snap Next."
+
+- **The header link** (`#admin-toggle`) says **Admin** on the posting screens and **Snap** while
+  Admin is open, on its list, a card, Settings or any of it (`adminLink`); its name is then `Snap:
+  close Admin and go back to snapping`, and its tap closes Admin as Close does.
+- **Snap Next**: once the item in hand has a posting up (a venue's job done with its link) the
+  Snap button says **Snap Next** (`snapWord`), on the goods screen and the book's
+  (`#book-snap-word`) alike, and is lit again while NEXT would be. Its tap is NEXT and then Snap:
+  the item is kept for back as NEXT keeps it, the screen is the next item's, and the camera opens
+  at once (the label opens it within the tap, as ever); the photo back from the camera waits for
+  NEXT to finish and starts the next item. **Add from gallery** stays shut on the posted item.
+  Until a posting is up the words are as before (goods: **Snap**, **Snap Again** with photos; a
+  book: **Snap**). An earlier item back brought up keeps its word: NEXT there returns to the items
+  in hand.
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -553,8 +572,8 @@ venue the server adds gets its buttons with no change to the page. A server that
   hidden too (Michal, 2026-10-08: "When I look at a card the posting screen is
   below. That should not be there"): their items carry on underneath, photos
   still uploading and jobs still asked about, nothing reset. **Close** at the
-  bottom of Admin, or the Admin link, hides it again and the screen comes back
-  as it now is.
+  bottom of Admin, or the header link, which says **Snap** while Admin is open
+  (2.21.0), hides it again and the screen comes back as it now is.
 - **The server word** (header, beside Admin, and at the top of Settings):
   the page asks the server by itself, on load, every 30 s while it is on screen,
   and when the phone is back online or back on screen, the same read as the
@@ -603,7 +622,8 @@ venue the server adds gets its buttons with no change to the page. A server that
   Snap scrolls the page so the button's middle sits three quarters down the
   screen, where the camera's shutter was; the browser stops short when the
   page is not long enough yet. After the first photo the button says **Snap
-  Again**.
+  Again**; once a posting is up, **Snap Next**, which is NEXT and Snap in one tap
+  (see "Snap Next" above).
 - **The photos.** Top left, each photo says where it is: `waiting` (on the
   page, on its way), `sent` (on the server), or `failed` (the server refused it; tap
   the word to send it again). The **x** at the top right takes a photo off the
@@ -826,7 +846,8 @@ venue the server adds gets its buttons with no change to the page. A server that
   (`fakeHistory`, `skipping`).
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
-toggles) because the server's saved row is what the second button uses. If the
+toggles; once a posting is up, Snap is **Snap Next**, the next item's) because the
+server's saved row is what the second button uses. If the
 first job fails before the server saved the row, they unlock and the next press is
 a fresh send.
 
@@ -893,7 +914,8 @@ title instead, and the server does the same work from that. Top to bottom:
   match that says hardcover or paperback sets the format chip, unless he
   tapped one.
 - **Snap** and **Add from gallery**: the front cover and anything else; the
-  first of them makes the book's folder on the server. The photos have the same
+  first of them makes the book's folder on the server. Snap says **Snap Next** once the
+  book's listing is up, and starts the next book (see "Snap Next" above). The photos have the same
   `waiting` / `sent` / `failed` word and the same **x**, and no AI mark. A
   cover snapped before there is an ISBN or a title waits on the page until one
   is scanned or typed (the progress line says `1 photo, waiting for the ISBN or
@@ -1095,7 +1117,8 @@ Empty. With capacity to generate that card from there."
 
 - **Admin**, the header link where Settings was, opens a section above the
   item (where Settings opened) with two foldouts in customize's shape (**▸**
-  folded, **▾** open), the sync bar and a **Close** at its bottom. The goods |
+  folded, **▾** open), the sync bar and a **Close** at its bottom; while it is
+  open the link says **Snap** and closes it (2.21.0). The goods |
   book switch is hidden while Admin is open, and back on Close. It opens on
   **Settings** while the address or key is missing or malformed, and otherwise
   on the **Inventory**, asked afresh each time. Should the server then refuse the
@@ -1235,7 +1258,7 @@ Empty. With capacity to generate that card from there."
   Admin's title, Settings and its line, the Inventory line, the search and
   Options, the sync bar and Close all step aside, the page scrolls
   to the top, and only **← Back to inventory** sits above the listing. The
-  header stays, its **Admin** link still closing Admin. Back is the list again
+  header stays, its link (**Snap** while Admin is open) still closing Admin. Back is the list again
   (on the same list, at the same row, nothing asked again, unless a card
   changed the listing: then the list is asked for again), with everything
   Admin had. The listing open is remembered on this phone (`snap.admin.card`,
