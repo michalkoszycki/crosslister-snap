@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.19.0";
+import { VERSION } from "./version.js?v=2.19.1";
 import {
     anyActive,
     bannerText,
@@ -204,8 +204,8 @@ import {
     wrapCounter,
     wrapError,
     wrapOf,
-} from "./core.js?v=2.19.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.19.0";
+} from "./core.js?v=2.19.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.19.1";
 import {
     addVenue,
     applyWrap,
@@ -244,8 +244,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.19.0";
-import { shrinkPhoto } from "./shrink.js?v=2.19.0";
+} from "./pc.js?v=2.19.1";
+import { shrinkPhoto } from "./shrink.js?v=2.19.1";
 import {
     bookCard,
     bookPriceValue,
@@ -258,8 +258,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.19.0";
-import { canScan, readIsbn } from "./scan.js?v=2.19.0";
+} from "./book.js?v=2.19.1";
+import { canScan, readIsbn } from "./scan.js?v=2.19.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -503,6 +503,8 @@ const viewing = { goods: "", book: "" };
 const HISTORY_KEY = "snap.history";
 /** Where the walk is, as walkPosition counts: the items in hand until back is pressed. */
 let cursor = 0;
+/** Whether the browser's entries mirror the walk yet: a reload's do; a fresh page's from his first tap (mirrorWalk). */
+let mirrored = false;
 
 const el = {};
 
@@ -5253,6 +5255,16 @@ function clearItem(m) {
 // in hand come back on the kind last chosen with the switch, which leaves the
 // entries alone. An entry names a place, not an item: when the oldest item falls
 // off the list, every entry names the next one along and the floor still ends it.
+//
+// Michal, 2026-10-17: "Swiping left on the app goes to the previous listing. But
+// swiping right should go to the one I just came from (forward on browser). I
+// thought this used to work. Seems now both direction swipes go backwards." Safari
+// (since iOS 17.5) has its back and forward, the buttons and the edge swipes, skip
+// an entry a page pushed with no tap or key in the ten seconds before, and the load
+// pushed the whole walk before any tap: back from the items in hand fell through to
+// the floor (the end said, the oldest item up) and forward found nothing to stop on.
+// Chrome's back skips the like. So a fresh page makes the walk's entries on his first
+// tap (mirrorWalk), NEXT's on its own tap, and a page never pushes one without a tap.
 
 /** Entries for the places after the current one up to `at`, which becomes current. */
 function pushTo(at) {
@@ -5260,18 +5272,23 @@ function pushTo(at) {
     cursor = at;
 }
 
-/** On load: the entries a reload left (their place), or the walk mirrored afresh with the items in hand current. */
+/** On load: the entries a reload left (their place); a fresh entry waits for his first tap (mirrorWalk). */
 function startWalk() {
     const list = readHistory();
     const at = walkPosition(globalThis.history.state, list.length);
-    if (at > 0) {
-        cursor = at;
-        return list[at - 1] || null;
-    }
+    if (at <= 0) return null;
+    cursor = at;
+    mirrored = true;
+    return list[at - 1] || null;
+}
+
+/** On his first tap of a fresh page: the walk mirrored into the browser's entries, the items in hand current. */
+function mirrorWalk() {
+    if (mirrored) return;
+    mirrored = true;
     globalThis.history.replaceState({ snap: 0 }, "");
     cursor = 0;
-    pushTo(list.length + 1);
-    return null;
+    pushTo(readHistory().length + 1);
 }
 
 function onPopState(e) {
@@ -5959,6 +5976,8 @@ function main() {
     });
 
     window.addEventListener("popstate", onPopState);
+    // ahead of the tap's own handler (NEXT pushes on from there); a key on a button clicks it too
+    window.addEventListener("click", mirrorWalk, { capture: true });
 
     if (walked) say(walkLine(walked, false));
     for (const m of MODES) {
