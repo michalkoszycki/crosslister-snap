@@ -550,7 +550,14 @@ function fakeElement(id = "", tag = "") {
         addEventListener(type, fn) {
             (this.listeners[type] ||= []).push(fn);
         },
+        // a tap (click) or a key is the page's user activation, and reaches the window first
+        // (its capture phase) as in a browser
         fire(type, event = {}) {
+            const win = globalThis.window;
+            if ((type === "click" || type === "keydown") && win && this !== win) {
+                if (globalThis.history) globalThis.history.tapped = Date.now();
+                win.fire(type, { target: this, ...event });
+            }
             for (const fn of this.listeners[type] || []) fn({ target: this, ...event });
         },
         append(...kids) {
@@ -623,39 +630,76 @@ function fakeBarcodes(values) {
 }
 
 /**
- * The browser's history for one tab: its entries, the current one, and
- * popstate on the page's window (a moment later, as a browser fires it).
- * Back from the first entry, or forward from the last, leaves the page or does
- * nothing: `left` counts the times the page was left. Kept across loadPage
- * calls with the same object, as a reload keeps a tab's entries.
+ * The browser's history for one tab, as Safari on an iPhone keeps it: its entries, the
+ * current one, and popstate on the page's window (a moment later, as a browser fires it).
+ * `go` is the page's own history.go, one entry a step. `back` and `forward` are his: the
+ * buttons and the edge swipes, which skip what Safari skips (since iOS 17.5; Chrome's
+ * back skips the like): an entry pushState made with no tap or key on the page in the
+ * ten seconds before (`flagged`; WebKit's Document::hasRecentUserInteractionForNavigationFromJS
+ * and WebBackForwardList::itemStartingAtIndexSkippingItemsAddedByJSWithoutUserGesture,
+ * mirrored in `skipping`). `tapped` is when the page last had a tap or key (fakeElement's
+ * fire sets it); a page just loaded has had none. Back from the first entry leaves the
+ * page (`left` counts the times); with nowhere to go, back or forward does nothing. Kept
+ * across loadPage calls with the same object, as a reload keeps a tab's entries.
  */
 function fakeHistory() {
     const nav = {
-        entries: [{ state: null }],
+        entries: [{ state: null, flagged: false }],
         index: 0,
         left: 0,
+        tapped: -Infinity,
         get state() {
             return nav.entries[nav.index].state;
         },
         pushState(state) {
-            nav.entries.splice(nav.index + 1, Infinity, { state: structuredClone(state) });
+            const flagged = Date.now() - nav.tapped > 10_000;
+            nav.entries.splice(nav.index + 1, Infinity, { state: structuredClone(state), flagged });
             nav.index += 1;
         },
+        // a replaced entry keeps how it was made
         replaceState(state) {
-            nav.entries[nav.index] = { state: structuredClone(state) };
+            nav.entries[nav.index] = { ...nav.entries[nav.index], state: structuredClone(state) };
         },
         go(n) {
             assert.notEqual(n, 0, "go(0) would reload the page");
             const to = nav.index + n;
             if (to < 0) nav.left += 1;
             if (to < 0 || to >= nav.entries.length) return;
+            nav.moveTo(to);
+        },
+        back() {
+            if (nav.index === 0) nav.left += 1;
+            else nav.moveTo(skipping(nav.entries, nav.index, -1));
+        },
+        forward: () => nav.moveTo(skipping(nav.entries, nav.index, 1)),
+        moveTo(to) {
+            if (to < 0) return;
             nav.index = to;
             setImmediate(() => globalThis.window.fire("popstate", { state: nav.state }));
         },
-        back: () => nav.go(-1),
-        forward: () => nav.go(1),
     };
     return nav;
+}
+
+/**
+ * Where Safari's back (`step` -1) or forward (1) goes from entry `at`, as WebKit
+ * works it out; -1 for nowhere. Back from an entry he made goes one back. Back from
+ * a flagged one passes the flagged ones and the first he made too ("the one the user
+ * thinks they're on"), unless that is the first entry. Forward passes the flagged ones
+ * to the next he made, then on to the last of the flagged run after it.
+ */
+function skipping(entries, at, step) {
+    const flagged = (i) => entries[i].flagged;
+    let i = at + step;
+    if (i >= entries.length) return -1;
+    if (step < 0 && !flagged(at)) return i;
+    while (flagged(i)) {
+        i += step;
+        if (i < 0 || i >= entries.length) return -1;
+    }
+    if (step < 0) return i === 0 ? 0 : i - 1;
+    while (i + 1 < entries.length && flagged(i + 1)) i += 1;
+    return i;
 }
 
 /**
@@ -718,6 +762,7 @@ function installDom({
     };
     Object.defineProperty(globalThis, "location", { value: place, configurable: true, writable: true });
     // the hash goes as a browser clears it: by replaceState with a URL that has none
+    nav.tapped = -Infinity; // a page just loaded has had no tap
     const replace = nav.replaceState;
     nav.replaceState = (state, title, url) => {
         if (url !== undefined) place.hash = "";
@@ -963,7 +1008,9 @@ test("Appearance: a look saved wrong (or by an older page) is the device's", asy
     assert.deepEqual(pressed(nodes), ["device"]);
 });
 
+/** A tap on Snap (its label opens the camera), then the photos the camera hands the input. */
 function snap(nodes, count = 1) {
+    nodes.get("snap-label").fire("click");
     const files = Array.from({ length: count }, (_, i) => new Blob([`raw ${i}`], { type: "image/jpeg" }));
     nodes.get("snap-input").fire("change", { target: { files, value: "" } });
 }
@@ -6331,7 +6378,7 @@ test("the history keeps 10 items: the oldest falls off, and back stops at the te
     const items = Object.fromEntries(ids.map((id) => [id, { photos: new Map(), note: "", sku: null, jobs: [] }]));
     const pc = fakePc({ items });
     const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
-    assert.equal(nav.entries.length, 12, "the floor, ten items, the screen in hand");
+    assert.equal(nav.entries.length, 1, "none until his first tap");
     await leaveItem(nodes, "Lamp", 1); // the eleventh: Item 1 falls off
     const kept = JSON.parse(local.getItem("snap.history")).map((r) => r.itemName);
     assert.deepEqual(kept, [...ids.slice(1).map((_, i) => `Item ${i + 2}`), "Lamp"]);
@@ -6407,6 +6454,122 @@ test("one walk for both kinds: an item of the other kind shows its kind; the ite
     assert.equal(nodes.get("item-name").value, "Vase");
     assert.equal(nodes.get("message").textContent, 'Back on "Vase", the item you were on.');
     assert.equal(nav.index, 3);
+});
+
+// Michal, 2026-10-17: "Swiping left on the app goes to the previous listing. But swiping right
+// should go to the one I just came from (forward on browser). I thought this used to work.
+// Seems now both direction swipes go backwards." The walk's entries were pushed by the load
+// itself, before any tap, and Safari's back and forward (buttons and edge swipes) skip such
+// entries: back from the items in hand fell to the floor (the end said, the OLDEST item up),
+// and forward from there found nothing it would stop on. Since 2.19.1 the entries are made on
+// his first tap. The fake history skips as Safari does (fakeHistory).
+
+/** The walk lands on `name` (an item left with leaveItem, or "" for the fresh screen in hand), saying `line`. */
+async function walked(nodes, move, name, line) {
+    move();
+    await settle();
+    assert.equal(nodes.get("item-name").value, name);
+    if (line !== undefined) assert.equal(nodes.get("message").textContent, line);
+}
+
+const backTo = (name) => `Back to "${name}", as it was left. NEXT starts a new item.`;
+const forwardTo = (name) => `Forward to "${name}", as it was left. NEXT starts a new item.`;
+
+/** Items left before this page was opened: the history, and the PC that holds them. */
+function leftBefore(names, extra = {}) {
+    const ids = names.map((name) => `${name} ${TODAY}`);
+    const local = memoryStore({ ...GOOD, "snap.history": JSON.stringify(names.map((itemName, i) => ({ itemName, itemId: ids[i], ai: [] }))) });
+    const items = Object.fromEntries(ids.map((id, i) => [id, { photos: new Map([[1, "a"]]), note: "", sku: `B-${i}`, jobs: [postedJob(names[i], i)] }]));
+    return { local, pc: fakePc({ items, ...extra }) };
+}
+
+test("Safari's back and forward: NEXT after three items, back, back, forward, forward", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc();
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(nav.entries.length, 1, "no entry before his first tap");
+    for (const [i, name] of ["A", "B", "C"].entries()) {
+        await leaveItem(nodes, name);
+        pc.items.get(`${name} ${TODAY}`).jobs = [postedJob(name, i)];
+    }
+    assert.deepEqual(nav.entries.map((e) => e.flagged), [false, false, false, false, false], "every entry made on a tap");
+    await walked(nodes, nav.back, "C", backTo("C"));
+    await walked(nodes, nav.back, "B", backTo("B"));
+    await walked(nodes, nav.forward, "C", forwardTo("C"));
+    await walked(nodes, nav.forward, "");
+    assert.equal(nav.index, nav.entries.length - 1);
+});
+
+test("Safari's back and forward past the 10 kept: every place names its item, forward goes forward, NEXT returns to the newest", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc();
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    const names = Array.from({ length: 12 }, (_, i) => `Item ${i + 1}`);
+    for (const name of names) await leaveItem(nodes, name, 1);
+    const kept = names.slice(-10);
+    assert.deepEqual(JSON.parse(local.getItem("snap.history")).map((r) => r.itemName), kept);
+    assert.equal(nav.entries.length, 12, "the floor, ten places, the screen in hand");
+    assert.equal(nav.index, 11);
+
+    // back all the way, newest first, each by its own name; then the end, and the oldest kept stays
+    for (const name of [...kept].reverse()) await walked(nodes, nav.back, name, backTo(name));
+    await walked(nodes, nav.back, "Item 3", END);
+    assert.equal(nav.left, 0);
+    // and forward all the way: the next newer each time
+    await walked(nodes, nav.forward, "Item 4", forwardTo("Item 4"));
+    for (const name of kept.slice(2)) await walked(nodes, nav.forward, name, forwardTo(name));
+    await walked(nodes, nav.forward, "");
+
+    // back twice, NEXT: the screen in hand again, nothing forward of it
+    await walked(nodes, nav.back, "Item 12", backTo("Item 12"));
+    await walked(nodes, nav.back, "Item 11", backTo("Item 11"));
+    await walked(nodes, () => nodes.get("next-item").fire("click"), "");
+    assert.equal(nav.index, nav.entries.length - 1);
+    await walked(nodes, nav.back, "Item 12", backTo("Item 12"));
+});
+
+test("Safari's back and forward on a page opened afresh with items in the history: the newest first, forward newer", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { local, pc } = leftBefore(["A", "B", "C"]);
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch });
+    // the load makes no entry Safari would skip: they wait for his first tap
+    assert.deepEqual(nav.entries, [{ state: null, flagged: false }]);
+    nodes.get("item-name").fire("click");
+    assert.deepEqual(nav.entries.map((e) => e.state), [0, 1, 2, 3, 4].map((snap) => ({ snap })));
+    assert.equal(nav.index, 4);
+    await walked(nodes, nav.back, "C", backTo("C"));
+    await walked(nodes, nav.back, "B", backTo("B"));
+    await walked(nodes, nav.forward, "C", forwardTo("C"));
+    await walked(nodes, nav.forward, "");
+    // a tap made the entries once: more taps add none
+    nodes.get("item-name").fire("click");
+    assert.equal(nav.entries.length, 5);
+
+    // a reload while an earlier item is up: its place kept, and forward goes on from it
+    await walked(nodes, nav.back, "C", backTo("C"));
+    await walked(nodes, nav.back, "B", backTo("B"));
+    const again = await loadPage({ local, fetchImpl: pc.fetch, nav });
+    assert.equal(again.nodes.get("item-name").value, "B");
+    assert.equal(nav.entries.length, 5);
+    await walked(again.nodes, nav.forward, "C", forwardTo("C"));
+    await walked(again.nodes, nav.forward, "");
+    await walked(again.nodes, nav.back, "C", backTo("C"));
+});
+
+test("Safari's back and forward after the return from eBay's consent (#ebay=connected): the newest first, forward newer", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { local, pc } = leftBefore(["A", "B", "C"], { me: structuredClone(ACCOUNT_ME) });
+    const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    assert.equal(globalThis.location.hash, "");
+    assert.deepEqual(nav.entries, [{ state: null, flagged: false }], "the cleared address, no entry made yet");
+    nodes.get("admin-close").fire("click");
+    await walked(nodes, nav.back, "C", backTo("C"));
+    await walked(nodes, nav.back, "B", backTo("B"));
+    await walked(nodes, nav.forward, "C", forwardTo("C"));
+    await walked(nodes, nav.forward, "");
+    assert.equal(nav.left, 0);
 });
 
 test("a picture the PC cannot give stays on the PC; a PC that does not answer stops the fetching", async (t) => {
@@ -7702,7 +7865,9 @@ test("back from Stripe or eBay: the hash gone, Admin on Settings at the Account 
     };
     const paid = await back("#paid=10");
     assert.equal(globalThis.location.hash, "", "a reload never says it again");
-    assert.deepEqual(paid.nav.entries.map((e) => e.state), [{ snap: 0 }, { snap: 1 }], "the walk on the cleared address, as on any load");
+    assert.deepEqual(paid.nav.entries.map((e) => e.state), [null], "the cleared address; the walk's entries wait for his first tap, as on any load");
+    paid.nodes.get("account-status").fire("click"); // a tap anywhere
+    assert.deepEqual(paid.nav.entries.map((e) => e.state), [{ snap: 0 }, { snap: 1 }], "the walk on the cleared address");
     assert.deepEqual(["admin", "settings", "work", "modes"].map((id) => paid.nodes.get(id).hidden), [false, false, true, true]);
     assert.equal(paid.pc.mes, 1, "asked once, for the postings now there");
     assert.equal(paid.pc.auth.filter((a) => a !== "key test-key-0123456789").length, 0);

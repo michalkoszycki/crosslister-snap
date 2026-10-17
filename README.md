@@ -805,6 +805,25 @@ venue the server adds gets its buttons with no change to the page. A server that
   one for the items in hand, so a reload keeps the place: on an earlier item
   it comes back on that item, and the walk goes on from there. When an 11th
   item is left the oldest falls off, and back stops one item sooner.
+  **The entries are made on a tap** (2026-10-17, 2.19.1; Michal: "Swiping left on
+  the app goes to the previous listing. But swiping right should go to the one I
+  just came from (forward on browser). I thought this used to work. Seems now both
+  direction swipes go backwards."). Safari's back and forward, its buttons and its
+  edge swipes (since iOS 17.5; Chrome's back the like), skip an entry a page pushed
+  with no tap or key in the ten seconds before, and the page used to push the
+  whole walk as it loaded. On a page opened afresh with items in the history (the
+  app opened from the home screen, or back from Stripe or eBay), back from the
+  items in hand fell through to the floor (the end said, the oldest item up) and
+  forward found nothing to stop on. Now a fresh page makes the walk's entries on
+  his first tap anywhere (`mirrorWalk`, a click caught ahead of the tap's own
+  handler) and NEXT its one entry on its own tap, so no entry is ever skipped.
+  Before that first tap there is no entry to go back to: back leaves the page as
+  on any site (from the home screen there is nothing to leave to). An entry still
+  names a place, not an item: the list only grows at its newest end or shifts by
+  one when it is full, `walkPosition` clamps an entry beyond it, and `remembered`
+  keeps one record per item, so a place always names one item and the walk's order
+  is the list's. The page tests' fake history skips entries as WebKit does
+  (`fakeHistory`, `skipping`).
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
 toggles) because the server's saved row is what the second button uses. If the
@@ -1043,7 +1062,7 @@ known, `"label"` and `"title"`). What NEXT left is in `snap.history`, the same r
 at most 10; the walk's place is not in `localStorage` but in the browser's own
 history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
 the last the items in hand), which a reload keeps and a new tab starts afresh
-on the items in hand. (`snap.forward.<kind>`, the one item back parked, is gone.)
+on the items in hand, from his first tap. (`snap.forward.<kind>`, the one item back parked, is gone.)
 A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
 
