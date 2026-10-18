@@ -1,4 +1,5 @@
-// tools/make-icons.mjs -- writes icon-192.png and icon-512.png.
+// tools/make-icons.mjs -- writes icon-192.png, icon-512.png,
+// icon-maskable-192.png and icon-maskable-512.png.
 // Run with: node tools/make-icons.mjs
 // No dependencies: it rasterises the same shapes as icon.svg by hand (4 x 4
 // samples a pixel, so the edges are smooth) and deflates them with Node's
@@ -6,10 +7,22 @@
 // alongside the SVG.
 //
 // The drawing is the A2 mark (Michal, 2026-10-05: "A2 implement"): the camera
-// of the header's logo, light variant, on a yellow rounded square. The mark is
-// authored on its own 132 grid (as in index.html) and sits centred on the
-// 512 tile at about 80% of its width. The $ in the lens is drawn as two arcs
-// and a bar here, since there is no font to set it in.
+// of the header's logo, light variant, on yellow. The mark is authored on its
+// own 132 grid (as in index.html). The $ in the lens is drawn as two arcs and
+// a bar here, since there is no font to set it in.
+//
+// The ground is a whole yellow circle, the camera as large as the circle
+// allows (Michal, 2026-10-18: "the entire circle should be yellow ... the
+// circle that is the shape of the icon will just be a crop round the camera";
+// the old rounded square sat inside the launcher's own white circle). Two
+// shapes of it:
+// - icon-<size>.png ("any"): the circle, transparent around it.
+// - icon-maskable-<size>.png ("maskable", and the iPhone's apple-touch-icon):
+//   the yellow fills the square edge to edge; the launcher crops it to its own
+//   circle or squircle, and iOS paints a transparent pixel black.
+// The camera stays inside the maskable safe zone, the centred circle of radius
+// 40% of the width: its farthest points (the body's bottom corners) are 74.8
+// grid units from (66, 72), and 74.8 x 2.67 = 200 px of the 205 px allowed.
 
 import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
@@ -20,9 +33,10 @@ const YELLOW = [0xff, 0xfc, 0x00];
 const INK = [0x0b, 0x0b, 0x0b];
 const WHITE = [0xff, 0xff, 0xff];
 
-// the mark's 132 grid onto the 512 tile: 132 x 3.1 = 409, about 80% of 512
-const K = 3.1;
-const SHIFT = 256 - 66 * K;
+// the mark's 132 grid onto the 512 tile, (66, 72) on the tile's centre
+const K = 2.67;
+const SHIFT_X = 256 - 66 * K;
+const SHIFT_Y = 256 - 72 * K;
 
 // the $: the same numbers as the path in icon.svg
 const S_TOP = { cx: 66, cy: 70.5, from: 90, to: 340 }; // round the left, over the top
@@ -31,11 +45,11 @@ const S_R = 5.5;
 const S_W = 4.6;
 const BAR = { x: 66, y0: 60.5, y1: 91.5, w: 3.2 };
 
-/** The colour at a point of the 512 tile, or null outside it. */
-function colourAt(X, Y) {
-    if (!insideRoundRect(X, Y, 0, 0, 512, 512, 112)) return null; // transparent
-    const x = (X - SHIFT) / K;
-    const y = (Y - SHIFT) / K;
+/** The colour at a point of the 512 tile, or null outside the ground (transparent). */
+function colourAt(X, Y, maskable) {
+    if (!maskable && (X - 256) ** 2 + (Y - 256) ** 2 > 256 * 256) return null;
+    const x = (X - SHIFT_X) / K;
+    const y = (Y - SHIFT_Y) / K;
     let c = YELLOW;
     // the viewfinder bump, then the body over it: white with an 8-wide ink outline
     if (insideRoundRect(x, y, 36, 2, 60, 38, 14)) c = INK;
@@ -64,7 +78,7 @@ function onArc(x, y, { cx, cy, from, to }) {
     });
 }
 
-function render(size) {
+function render(size, maskable) {
     const s = size / 512;
     const N = 4; // samples per side of a pixel
     const raw = Buffer.alloc((size * 4 + 1) * size);
@@ -79,7 +93,7 @@ function render(size) {
             let hits = 0;
             for (let j = 0; j < N; j += 1) {
                 for (let i = 0; i < N; i += 1) {
-                    const c = colourAt((px + (i + 0.5) / N) / s, (py + (j + 0.5) / N) / s);
+                    const c = colourAt((px + (i + 0.5) / N) / s, (py + (j + 0.5) / N) / s, maskable);
                     if (c === null) continue;
                     r += c[0];
                     g += c[1];
@@ -148,7 +162,9 @@ function crc32(buf) {
 
 const here = dirname(fileURLToPath(import.meta.url));
 for (const size of [192, 512]) {
-    const file = join(here, "..", `icon-${size}.png`);
-    writeFileSync(file, render(size));
-    console.log(`wrote ${file}`);
+    for (const [name, maskable] of [[`icon-${size}.png`, false], [`icon-maskable-${size}.png`, true]]) {
+        const file = join(here, "..", name);
+        writeFileSync(file, render(size, maskable));
+        console.log(`wrote ${file}`);
+    }
 }
