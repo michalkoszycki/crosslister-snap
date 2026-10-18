@@ -70,9 +70,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
 | `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
-| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the venue buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the header and footer on every listing, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the venue buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup` and `/me/seller` |
+| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup`, `/me/seller` and `/me/wrap` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept; Fix dark photos' measure, table and pass (`luminanceStats`, `levelsTable`, `applyTable`) |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -125,8 +125,14 @@ and every behaviour are the live app's.
   AI (or a book's main); "sent" is a green pill, "waiting" a black one,
   "failed" stays the red tap target; the AI / main marks are yellow chips when
   on, faint outlines when off.
-- **The icon** is the mark on a yellow rounded square
-  (`node tools/make-icons.mjs` draws the PNGs, the $ as two arcs and a bar).
+- **The icon** has two looks. The "any" icons, which the splash screen shows,
+  are the mark on a yellow rounded square, unchanged (Michal, 2026-10-18:
+  "splash screen was ok. i wanted no changes to splash screen"). The maskable
+  ones, the launcher's icon and the iPhone's apple-touch-icon, fill the square
+  with yellow so the launcher's own circle crop is all yellow, the camera as
+  large as the 40% safe-zone radius allows (Michal, 2026-10-18: "the entire
+  circle should be yellow"). `node tools/make-icons.mjs` draws the PNGs, the $
+  as two arcs and a bar.
 
 ## The way in: the landing, the home screen, sign-in
 
@@ -431,7 +437,128 @@ same button, lit in green."
 - **The ZIP**: a ZIP+4 is still taken in the box, and five digits are sent (see the address under
   "Many sellers").
 
-## Poshmark, the admin's (2.18.0)
+## A cancel stops it all (2.18.0)
+
+Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel, that
+means I want to absolutely stop it, even though we may be getting an answer from the server. Just
+dump that answer. In the little note say: credits will be lost." The reset had stopped the job,
+but the server saved the draft (the 2026-10-02 rule) and the page kept that row's sku, so the next
+press posted it with no model call. Now:
+
+- **The note** inside a busy venue button reads **tap again to cancel: credits will be lost** once
+  the press has left the phone, while it drafts or posts (until the publish begins); a press still
+  held in its first second, nothing sent, keeps **tap again to cancel**. Admin's job buttons keep
+  the short one.
+- **Reset dumps the draft**: the server throws away a draft cancelled while drafting, nothing saved;
+  the job ends `cancelled from the phone` with no sku, and the page forgets it too (a sku heard on
+  the way included), so the next press is a fresh draft (`{"item", "venue", "ai"}`), the item and
+  its photos as they were, and the history keeps the item with no sku. A saved row stopped before
+  its publish still reports its sku and is still posted by it on the next press.
+- **The line** under the button, once the server says the job stopped: `cancelled: the credit is
+  lost` when its view says `"charged": true` (it had started), `cancelled` when false (still
+  queued: the posting given back) or when an older server says nothing.
+
+## A header and a footer on every listing (2.19.0)
+
+Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts. When
+you check that, a text area appears; that text will be input by the user and appended to the
+posting (with two return lines separating it from the main text). Footnote and header are separate
+of course, with separate on/off. If you uncheck it, it should not lose what you had ... Below would
+be the venue buttons; 'Apply to:' above them; once clicked the button changes to green with a
+check, our typical. If there is only one venue available, as for a typical user, that can be
+checked right away. Finally a button 'Apply to all existing listings' (per the venue specified).
+Since this is many options it should be a foldout."
+
+The server keeps both and puts them round the description of every listing it posts (a blank line
+between); the page only edits them. In Settings, under the Account block (`#wrap`, from `GET
+/me/wrap`, asked each time Settings opens and after Save and check; an older server's 404: no rows):
+
+- **Header on every listing** and **Footer on every listing**, two of pickup only's pill rows
+  (`#wrap-header-on`, `#wrap-footer-on`), each with its own foldout (`#wrap-header`,
+  `#wrap-footer`), open while ticked. A tick sends `{"header": {"on": true}}` at once; an untick
+  `{"header": {"on": false}}`, the text kept on the server and in the box, and the next tick
+  reopens on the text the server has. The first tick of a row on no venue, for an account whose
+  `available` is one venue (eBay, for a typical seller), ticks that venue in the same PATCH:
+  `{"header": {"on": true, "venues": ["ebay"]}}`.
+- **The box** (`#wrap-header-text`, `Text added above the description`; the footer's `below`), at
+  most 2000 characters, its counter under it (`0 / 2000`, `wrapCounter`), and `Added with a blank
+  line between it and the description.`
+- **Apply to:**, one pill per venue in `available` (`#wrap-header-ebay`, `#wrap-header-craigslist`,
+  likewise the footer's): ticked, the venue and a tick in the posted green (as **eBay connected**
+  and a listed badge); not, outlined in ink. A tap sends the part's `venues` at once (`{"header":
+  {"venues": ["ebay", "craigslist"]}}`, in the page's venue order). The screen follows a tap at
+  once; a refusal puts it back and says why on the row's line.
+- **Save** (`#wrap-header-save`) sends the text (`wrapBody`: Windows line endings plain, the ends
+  trimmed, the blank lines inside kept; over 2000 characters it is named, `At most 2000
+  characters; this is 2001.`, and nothing is sent), its line (`#wrap-header-status`) saying
+  `Saving...`, then `saved` (gone once the box is typed in again); a 400 is the server's words, a
+  404 `The header and footer are not available yet.`, anything else `Could not save: <why>.`
+- **Apply to all existing ebay listings** (`#wrap-header-apply-ebay`, one per venue ticked in that
+  row, `applyLabel`): a job button as the sync bar's (the second's wait, the ring, tap again to
+  pause, continue, the red reset under it: `#wrap-header-apply-ebay-reset`), `POST /me/wrap/apply
+  {"venue": "ebay"}`, then `GET /jobs/<id>` every 3 s, its line under it
+  (`#wrap-header-apply-ebay-status`: queued, the server's step, its summary `3 listings updated,
+  10 unchanged, 0 failed`, or its error). One push carries the header and the footer as set now,
+  so the header row's button for a venue and the footer row's are one task, painted in both; under
+  them: `Pushes the header and footer as set now to every listing on that venue`.
+
+Sign out (and Save and check) lets the rows go, the boxes emptied and any press let go; closing
+Admin quiets their lines. `/me/wrap`'s answers are never stored on the phone.
+
+## Venue symmetry: a Sync per venue (2.20.0)
+
+Michal, 2026-10-17: "There is a button push to eBay, so add a button push to Craigslist next to
+it. All venues need to be represented (if any new get added as well). We are aiming for venue
+symmetry."
+
+`GET /me` says which venues the account may push to and pull from: `"syncable": {"to": ["ebay",
+"craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`). Every
+Sync button below is drawn from those lists, in the order of `/me`'s `venues` (`syncVenues`), so a
+venue the server adds gets its buttons with no change to the page. A server that does not say
+(and before `/me` answers) is eBay's alone, as before.
+
+- **A listing's customize**: after **Save**, one **Sync to <venue>** per venue the listing is up
+  on (`customizeVenues`): `Sync to eBay`, `Sync to craigslist` (`actionWord`'s words), each
+  `#detail-customize-sync-<venue>` with its reset `#detail-customize-reset-<venue>` beside it. A
+  venue the listing is not up on shows no button. Each is a job button with its own ring, pause,
+  continue and reset; one push at a time per listing, the other buttons waiting. A press saves
+  what is not yet saved, then sends `{"action": "push", "sku", "venue"}`; done, that venue's
+  unsynced mark goes (the others stay). Save's line names the one Sync (`saved; Sync to eBay puts
+  it on the listing`), or, with more than one showing, `saved; sync puts it on the listings`. Up
+  on none: `Sync to eBay opens once the listing is up on eBay` (more venues: `Sync opens once
+  the listing is up on eBay or craigslist`). The craigslist card's own **Sync to craigslist**
+  stays as it was (eBay's card has none).
+- **The sync bar**: one **Sync from <venue>** per venue in `syncable.from` and one **Sync to
+  <venue>** per venue in `syncable.to` (`syncButtons`), venue by venue, a from in the bar's left
+  column and a to in its right (`#sync-from-ebay`, `#sync-to-ebay`, `#sync-to-craigslist`), each
+  with its half of the sync symbol (copied from the hidden `#sync-from-icon` / `#sync-to-icon`)
+  and its reset (`#sync-to-craigslist-reset`, drawn after every button, so the one a pause shows
+  sits under them all). Each sends its own job, `{"action": "sync", "direction", "venue"}`
+  (`syncJob`; without `venue` to a server that does not say `syncable`, which refuses the key),
+  one sync at a time as the server allows. With more than one venue in the bar its line starts
+  with the venue (`craigslist: 3 listings updated, 10 unchanged, 0 failed`). A Sync to <venue>
+  done lets every mark of that venue go (`unsyncedWithout`).
+
+## Snap Next, and Snap back from Admin (2.21.0)
+
+Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to Snap, so
+that it is more intuitive how to return to snapping a photo." and "After the item is posted the snap
+yellow button darkens; that is ok. But rather it should say Snap Next."
+
+- **The header link** (`#admin-toggle`) says **Admin** on the posting screens and **Snap** while
+  Admin is open, on its list, a card, Settings or any of it (`adminLink`); its name is then `Snap:
+  close Admin and go back to snapping`, and its tap closes Admin as Close does.
+- **Snap Next**: once the item in hand has a posting up (a venue's job done with its link) the
+  Snap button says **Snap Next** (`snapWord`), on the goods screen and the book's
+  (`#book-snap-word`) alike, and is lit again while NEXT would be. Its tap is NEXT and then Snap:
+  the item is kept for back as NEXT keeps it, the screen is the next item's, and the camera opens
+  at once (the label opens it within the tap, as ever); the photo back from the camera waits for
+  NEXT to finish and starts the next item. **Add from gallery** stays shut on the posted item.
+  Until a posting is up the words are as before (goods: **Snap**, **Snap Again** with photos; a
+  book: **Snap**). An earlier item back brought up keeps its word: NEXT there returns to the items
+  in hand.
+
+## Poshmark, the admin's (2.22.0)
 
 Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it available only
 to me; when other people press it, it should tell them the same message as it does when they press
@@ -476,8 +603,8 @@ Craigslist."
   hidden too (Michal, 2026-10-08: "When I look at a card the posting screen is
   below. That should not be there"): their items carry on underneath, photos
   still uploading and jobs still asked about, nothing reset. **Close** at the
-  bottom of Admin, or the Admin link, hides it again and the screen comes back
-  as it now is.
+  bottom of Admin, or the header link, which says **Snap** while Admin is open
+  (2.21.0), hides it again and the screen comes back as it now is.
 - **The server word** (header, beside Admin, and at the top of Settings):
   the page asks the server by itself, on load, every 30 s while it is on screen,
   and when the phone is back online or back on screen, the same read as the
@@ -526,7 +653,8 @@ Craigslist."
   Snap scrolls the page so the button's middle sits three quarters down the
   screen, where the camera's shutter was; the browser stops short when the
   page is not long enough yet. After the first photo the button says **Snap
-  Again**.
+  Again**; once a posting is up, **Snap Next**, which is NEXT and Snap in one tap
+  (see "Snap Next" above).
 - **The photos.** Top left, each photo says where it is: `waiting` (on the
   page, on its way), `sent` (on the server), or `failed` (the server refused it; tap
   the word to send it again). The **x** at the top right takes a photo off the
@@ -636,8 +764,10 @@ Craigslist."
   again to cancel' instead of an external cancel line. The writing should be
   within it, below, and should be small, and appear just when the button action
   is doing/loading"; this replaces the small red **cancel** under the button of
-  2026-10-02/03, on purpose). A pressed button is never disabled, so it takes
-  the tap; a screen reader hears `ebay, posting, tap again to cancel`.
+  2026-10-02/03, on purpose); once the press has left the phone it says **tap again
+  to cancel: credits will be lost** (Michal, 2026-10-17: "In the little note say:
+  credits will be lost"). A pressed button is never disabled, so it takes
+  the tap; a screen reader hears `ebay, posting, tap again to cancel: credits will be lost`.
   **A tap pauses; reset cancels** (Michal, 2026-10-07, after trying to cancel
   an eBay draft: "I was not able to cancel an ebay model call - I guess there is
   no way to cancel it, since the call is sent. Perhaps after pressing cancel it
@@ -659,13 +789,17 @@ Craigslist."
     again to cancel** come back.
   - **reset** is the real cancel: a held press is dropped, nothing sent,
     nothing paid; a job the server has is told (`DELETE /jobs/<id>`): one still
-    queued is dropped before it runs, the one in hand stops at its next step,
-    saving the draft instead of publishing it. Either way the button is its
+    queued is dropped before it runs, its posting given back; the one in hand
+    stops at its next step, and since 2026-10-17 (Michal: "If I cancel, that
+    means I want to absolutely stop it ... Just dump that answer") a draft is
+    dumped, nothing saved, and its posting is spent. Either way the button is its
     venue again at once, as if never pressed, waiting for a new press, and the
     line says `cancelled`; a job still stopping is asked about quietly until the
-    server says `cancelled from the phone`, and the row it saved is kept, so the
-    next press posts it without drafting again ("it will be a double charge but
-    oh well"; it is not).
+    server says `cancelled from the phone`, and the line then says `cancelled:
+    the credit is lost` when the job's view says `"charged": true`, else
+    `cancelled`. A dumped draft leaves no sku, and the next press drafts afresh;
+    only a row already saved before the stop (its sku reported) is kept and
+    posted by the next press without drafting again.
   - **Too late**: from the server's `publishing ...` step on there is nothing left
     to stop (Michal, 2026-10-03: "cancel only makes sense in mid-load"): the
     second line is gone, a tap changes nothing, and the line says `too late to
@@ -722,9 +856,29 @@ Craigslist."
   one for the items in hand, so a reload keeps the place: on an earlier item
   it comes back on that item, and the walk goes on from there. When an 11th
   item is left the oldest falls off, and back stops one item sooner.
+  **The entries are made on a tap** (2026-10-17, 2.19.1; Michal: "Swiping left on
+  the app goes to the previous listing. But swiping right should go to the one I
+  just came from (forward on browser). I thought this used to work. Seems now both
+  direction swipes go backwards."). Safari's back and forward, its buttons and its
+  edge swipes (since iOS 17.5; Chrome's back the like), skip an entry a page pushed
+  with no tap or key in the ten seconds before, and the page used to push the
+  whole walk as it loaded. On a page opened afresh with items in the history (the
+  app opened from the home screen, or back from Stripe or eBay), back from the
+  items in hand fell through to the floor (the end said, the oldest item up) and
+  forward found nothing to stop on. Now a fresh page makes the walk's entries on
+  his first tap anywhere (`mirrorWalk`, a click caught ahead of the tap's own
+  handler) and NEXT its one entry on its own tap, so no entry is ever skipped.
+  Before that first tap there is no entry to go back to: back leaves the page as
+  on any site (from the home screen there is nothing to leave to). An entry still
+  names a place, not an item: the list only grows at its newest end or shifts by
+  one when it is full, `walkPosition` clamps an entry beyond it, and `remembered`
+  keeps one record per item, so a place always names one item and the walk's order
+  is the list's. The page tests' fake history skips entries as WebKit does
+  (`fakeHistory`, `skipping`).
 
 Once a button has sent the item, the photos are locked (no Snap, no x, no AI
-toggles) because the server's saved row is what the second button uses. If the
+toggles; once a posting is up, Snap is **Snap Next**, the next item's) because the
+server's saved row is what the second button uses. If the
 first job fails before the server saved the row, they unlock and the next press is
 a fresh send.
 
@@ -791,7 +945,8 @@ title instead, and the server does the same work from that. Top to bottom:
   match that says hardcover or paperback sets the format chip, unless he
   tapped one.
 - **Snap** and **Add from gallery**: the front cover and anything else; the
-  first of them makes the book's folder on the server. The photos have the same
+  first of them makes the book's folder on the server. Snap says **Snap Next** once the
+  book's listing is up, and starts the next book (see "Snap Next" above). The photos have the same
   `waiting` / `sent` / `failed` word and the same **x**, and no AI mark. A
   cover snapped before there is an ISBN or a title waits on the page until one
   is scanned or typed (the progress line says `1 photo, waiting for the ISBN or
@@ -907,7 +1062,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
 | customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
-| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url, "poshmark": url}, "error", "ahead"}`; `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url, "poshmark": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the credit is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` / `poshmark` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
@@ -921,10 +1076,10 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** (`poshmark` too) | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), ebay or craigslist (never poshmark: the server only posts there) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
-| `POST <pc>/jobs`, the sync bar's **Sync from eBay** / **Sync to eBay** | `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}` | the same; 400 `{"detail"}` when refused, shown in the bar |
-| `POST <pc>/jobs`, a listing's customize **Sync to eBay** (one row, as saved, onto its eBay listing), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue": "ebay"}` / `{"action": "push", "sku", "venue": "craigslist"}` (the craigslist push is the server's from 2026-10-08) | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to craigslist yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
+| `POST <pc>/jobs`, the sync bar's **Sync from <venue>** / **Sync to <venue>**, one per venue in `/me`'s `syncable` (2.20.0) | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in the bar |
+| `POST <pc>/jobs`, a listing's customize **Sync to <venue>** (one row, as saved, onto its listing there; one button per venue in `syncable.to` the row is listed on, 2.20.0), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue"}`, the venue as `/me` names it: `"ebay"`, `"craigslist"` (the craigslist push is the server's from 2026-10-08), or one the server adds | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to that venue yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
-| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "poshmark": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `poshmark` anything but `true` (not said included) greys the poshmark button (2.18.0: the admin's alone), `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off; poshmark off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today. Since 2.20.0 also `"syncable": {"to": ["ebay", "craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`; `syncableOf`: names trimmed, each once, a list not given is none): the venues customize's Sync to <venue> and the sync bar's buttons go to and from, in `venues`' order; not said: eBay's alone, as before |
 | any keyed call of a sign-up waiting for eBay (`"pending": true`), but `/me`, `GET /ebay/connect` and `DELETE /auth/session` | as ever | 403 `{"detail": "Connect eBay to finish signing up."}`: the page's check asks `/me`, the header says server ok, and the words are said as they are wherever a refusal shows |
 | `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
 | `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
@@ -940,6 +1095,9 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
 | `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
 | `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits, a ZIP+4 typed sent as its first five since 2.17.0); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
+| `GET <pc>/me/wrap`, Settings opened (and after Save and check) (2.19.0) | - | `{"header": {"on": true/false, "text": "...", "venues": ["ebay"]}, "footer": {...}, "available": ["ebay"] or ["ebay", "craigslist"]}` (`wrapOf`: a part not given is off and empty, `available` naming none is eBay): the two rows, their boxes and Apply to:'s pills; 404 (an older server): no rows |
+| `PATCH <pc>/me/wrap`, a row ticked or unticked, **Save**, an Apply to: pill (2.19.0) | one part, only what changed (`wrapBody`): `{"header": {"on": true, "venues": ["ebay"]}}` (the first tick, one venue available), `{"header": {"on": true}}`, `{"footer": {"on": false}}`, `{"header": {"text": "Free local pickup."}}` (trimmed, at most 2000 characters), `{"footer": {"venues": ["ebay", "craigslist"]}}` | the `GET` body; 400 `{"detail"}` for a bad value (a text over 2000 characters): its words on the row's line, the row as it was; 404: `The header and footer are not available yet.` |
+| `POST <pc>/me/wrap/apply`, **Apply to all existing <venue> listings** (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as the sync bar's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`); 400 `{"detail"}`: its words under the button |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -957,7 +1115,7 @@ known, `"label"` and `"title"`). What NEXT left is in `snap.history`, the same r
 at most 10; the walk's place is not in `localStorage` but in the browser's own
 history entries (`history.state`, `{"snap": n}`: 0 the floor, 1 to 10 the items,
 the last the items in hand), which a reload keeps and a new tab starts afresh
-on the items in hand. (`snap.forward.<kind>`, the one item back parked, is gone.)
+on the items in hand, from his first tap. (`snap.forward.<kind>`, the one item back parked, is gone.)
 A book's barcode picture (the ISBN button) is
 never uploaded: only its barcode is read, on the phone.
 
@@ -990,7 +1148,8 @@ Empty. With capacity to generate that card from there."
 
 - **Admin**, the header link where Settings was, opens a section above the
   item (where Settings opened) with two foldouts in customize's shape (**▸**
-  folded, **▾** open), the sync bar and a **Close** at its bottom. The goods |
+  folded, **▾** open), the sync bar and a **Close** at its bottom; while it is
+  open the link says **Snap** and closes it (2.21.0). The goods |
   book switch is hidden while Admin is open, and back on Close. It opens on
   **Settings** while the address or key is missing or malformed, and otherwise
   on the **Inventory**, asked afresh each time. Should the server then refuse the
@@ -1093,28 +1252,32 @@ Empty. With capacity to generate that card from there."
   as everywhere. One job per row: the row's other badge and its + and − wait.
   Done, that venue is let go and its badge is the plain listed one again, a
   link; the inventory's line says how it ended (`G1: updated`, or the server's
-  words). A Sync to eBay from the sync bar that ends done lets every eBay mark
-  go (craigslist's stay), customize's Sync to eBay its own, and the craigslist
-  card's Sync to craigslist its own.
+  words). A Sync to <venue> from the sync bar that ends done lets every mark of
+  that venue go (the others stay), customize's Sync to <venue> its own, and the
+  craigslist card's Sync to craigslist its own.
 - **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
-  eBay** on a smoke sheet under a yellow rule, each with its half of the sync
+  eBay**, and since 2.20.0 a Sync to (and a Sync from) per venue `/me`'s
+  `syncable` names (see Venue symmetry: **Sync to craigslist** under Sync to
+  eBay), on a smoke sheet under a yellow rule, each with its half of the sync
   symbol left of the word (Michal, 2026-10-07; 20 px, in the word's colour, on
-  one 24-unit box so the two read as one circle): to eBay the top arc, left to
-  right, its arrow at the right; from eBay the bottom arc, right to left, its
-  arrow at the left. It sticks to the bottom of the screen while Admin is on it
+  one 24-unit box so the two read as one circle): a to the top arc, left to
+  right, its arrow at the right, in the right column; a from the bottom arc,
+  right to left, its arrow at the left, in the left column. It sticks to the bottom of the screen while Admin is on it
   (`position: sticky`, so at the end of the list it sits in its own place above
   Close and never covers the last row). A tap is a job button's, as a venue
   button's: the ring turns in it at once (in the icon's place) with **tap again
   to cancel** under the word, and the sync job leaves the phone a second later;
   its line under the buttons says `queued`, then the server's step, then its
   summary (`3 listings updated, 10 unchanged, 0 failed`) or its error, asked
-  every 3 s; the other button is locked until it ends, and the list is then
+  every 3 s (with more than one venue in the bar, the venue first:
+  `craigslist: queued`); the other buttons are locked until it ends (one sync at
+  a time), and the list is then
   asked for again (on the way back, when a listing is open). A tap on the
   pressed one pauses it as a venue button's tap does: it reads **continue**
-  (its icon back, the ring gone), the other stays locked, one red **reset**
-  sits under the two, and the line says `paused` (held in its second) or
+  (its icon back, the ring gone), the others stay locked, its red **reset**
+  sits under the buttons, and the line says `paused` (held in its second) or
   `paused: the server may still be working on it`. continue carries on; reset drops
-  a held press, or tells the server (`DELETE /jobs/<id>`), frees both buttons at once
+  a held press, or tells the server (`DELETE /jobs/<id>`), frees every button at once
   with `cancelled`, and shows the server's own words once it has stopped; from its
   `publishing ...` step on a tap only says `too late to cancel: it is
   publishing`. A sync the server refuses shows the server's words. Closing Admin leaves
@@ -1126,7 +1289,7 @@ Empty. With capacity to generate that card from there."
   Admin's title, Settings and its line, the Inventory line, the search and
   Options, the sync bar and Close all step aside, the page scrolls
   to the top, and only **← Back to inventory** sits above the listing. The
-  header stays, its **Admin** link still closing Admin. Back is the list again
+  header stays, its link (**Snap** while Admin is open) still closing Admin. Back is the list again
   (on the same list, at the same row, nothing asked again, unless a card
   changed the listing: then the list is asked for again), with everything
   Admin had. The listing open is remembered on this phone (`snap.admin.card`,
@@ -1171,29 +1334,33 @@ Empty. With capacity to generate that card from there."
     $31.50`; `—` for one not cached), the chosen one bold, and the goods card's
     line for the grade under them. A row whose price follows no grade stands at
     1, nothing bold, the line `not priced by grade yet`. No post without asking
-    here. Under them **Save** and **Sync to eBay**, and a status line.
+    here. Under them **Save** and a **Sync to <venue>** per venue the listing is
+    up on that `/me` syncs to (**Sync to eBay**, and since 2.20.0 **Sync to
+    craigslist** beside it: see Venue symmetry), and a status line.
     - **Save** opens once a box or the slider differs from the row, and sends
       one PATCH with only what changed: the quantity, pickup only, and the
       slider's grade as `pricing`. The server sets the price to that grade's cached
       one: no model call, no job, and the row it answers puts the new price in
       the heading and the eBay card at once. A quantity that is not a whole
-      number, 1 or more, is said in the status line at once and shuts both
-      buttons, as the goods card does. Then `saved` (on a listing up on eBay,
-      `saved; Sync to eBay puts it on the listing`), or the server's refusal (`no
+      number, 1 or more, is said in the status line at once and shuts every
+      button, as the goods card does. Then `saved` (on a listing up on eBay,
+      `saved; Sync to eBay puts it on the listing`; with more than one Sync
+      showing, `saved; sync puts it on the listings`), or the server's refusal (`no
       cached fair price for this row: set the price by hand`) with the box and
       the slider as he left them. On a row with no cached prices at all, the
       slider moved says `no cached prices on this listing; set the price by
       hand` and is not sent; the boxes still are. The price itself is set by
       hand on the eBay card's Edit.
-    - **Sync to eBay** opens only on a listing up on eBay (otherwise the line
-      says `Sync to eBay opens once the listing is up on eBay`). It saves what
+    - **Sync to eBay** shows only on a listing up on eBay (with none up, the line
+      says `Sync to eBay opens once the listing is up on eBay`); **Sync to
+      craigslist**, and any venue's, likewise. It saves what
       is not yet saved first (a moved slider too, so the push carries the new
       price), so a tick and one tap is the whole of what Michal described, then
-      sends the push job: `queued`, the server's step, then `updated` or `unchanged`
+      sends the push job for its venue: `queued`, the server's step, then `updated` or `unchanged`
       or the error, asked every 3 s. Once done the listing is read again, so the
-      heading and the eBay card show what eBay now has; a Save or a push the server
+      heading and the cards show what the venue now has; a Save or a push the server
       refuses shows its words, and a refused Save sends no push.
-    - The boxes, the slider and both buttons wait while anything of the
+    - The boxes, the slider and every button wait while anything of the
       listing's is on its way or running, and the cards wait while customize's
       is (one job per listing). A listing read again moves the boxes and the
       slider with it, except one holding a change he has not saved. The eBay
@@ -1244,7 +1411,8 @@ Empty. With capacity to generate that card from there."
     sync badge): the push job `{"action": "push", "sku", "venue":
     "craigslist"}`, a job button as Refresh is; done, the mark is let go and the
     listing read again. A server that does not push to craigslist yet answers
-    400, and the card's line says its words. eBay's is customize's Sync to eBay.
+    400, and the card's line says its words. eBay's is customize's Sync to eBay
+    (customize has a Sync to craigslist too since 2.20.0; this one stays).
   - **Edit** turns the card's fields into the page's own inputs (eBay: the
     condition, title, price, description, User note, condition note, the
     quantity and pickup only being customize's; craigslist: its four overrides,
@@ -1270,7 +1438,7 @@ Empty. With capacity to generate that card from there."
     running, every action button but Open listing waits and the fields stay
     read-only: one job per listing at a time.
   - **Post**, **Sync to craigslist**, **Refresh status**, **End listing**
-    (pressed through **Yes, end it**) and customize's **Sync to eBay** are job
+    (pressed through **Yes, end it**) and customize's **Sync to <venue>** are job
     buttons, as a venue
     button is (Michal, 2026-10-07: "Anytime there is a load or sync or AI call
     command, anything that takes some [time] and we have a loading icon
@@ -1326,6 +1494,10 @@ Empty. With capacity to generate that card from there."
   is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
   (**eBay connected: <user>** in green once it is, **Reconnect** under it) (see "The account: postings and eBay" above), and under it the **Seller address** (see
   "Many sellers" above).
+- **Header on every listing** and **Footer on every listing**, under the Account block, each
+  ticked opening its foldout: the box, **Apply to:**'s venue pills, **Save**, and **Apply to all
+  existing listings** per venue (see "A header and a footer on every listing" above); none from a
+  server without `/me/wrap`.
 - **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
   `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
   `http://127.0.0.1` and `http://localhost` for trying the page on the server
@@ -1352,7 +1524,7 @@ The address and key are stored in `localStorage` on the phone (`snap.pc`,
 none, or anything else, is `device`). Also kept: a sign-in's session
 (`snap.session`, in `localStorage` with Keep me signed in, else `sessionStorage`),
 customize's defaults (`snap.customize.defaults`) and the day the home-screen
-banner was put away (`snap.install.dismissed`); `/me`'s and `/me/seller`'s answers are never stored. Every storage read and write is wrapped,
+banner was put away (`snap.install.dismissed`); `/me`'s, `/me/seller`'s and `/me/wrap`'s answers are never stored. Every storage read and write is wrapped,
 so a private window or blocked site data only means Settings are not
 remembered.
 

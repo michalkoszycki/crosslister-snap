@@ -84,15 +84,18 @@
 //                                      an empty card's Add -> the whole row, the venue in "venues"
 //   POST   <pc>/jobs                  a card's End listing / Refresh status: {"action": "end" |
 //                                      "refresh", "sku", "venue"}; the sync bar: {"action": "sync",
-//                                      "direction": "from" | "to"}; customize's Sync to eBay:
-//                                      {"action": "push", "sku", "venue": "ebay"} (actionJob in core.js)
+//                                      "direction": "from" | "to", "venue"} ("venue" only when /me
+//                                      says "syncable"; an older server refuses it); customize's
+//                                      Sync to <venue>: {"action": "push", "sku", "venue"} (actionJob,
+//                                      syncJob in core.js)
 //                                      -> {"job", "state": "queued", "ahead"}; 400 {"detail"} when
 //                                         refused (Craigslist cannot be ended from here). GET
 //                                         /jobs/<id> adds "action", "direction" and, once done,
 //                                         "summary" ("3 listings updated, 10 unchanged, 0 failed")
 // The account and Admin's last two foldouts (Michal, 2026-10-08):
-//   GET    <pc>/me                    -> {"user", "admin": bool, "craigslist": bool, "venues": [...]};
-//                                         404 from an older server: everything as before
+//   GET    <pc>/me                    -> {"user", "admin": bool, "craigslist": bool, "venues": [...],
+//                                         "syncable": {"to": [...], "from": [...]}}; 404 from an
+//                                         older server: everything as before
 //   POST   <pc>/feedback              {"text", "screen": "goods"|"book"|"admin"|"card", "version",
 //                                      "job" (only when ticked and known)} -> 201 {"id"}
 //   GET    <pc>/stats?since=7d|30d|all -> {"since", "jobs": {"total", "done", "failed", "cancelled",
@@ -128,6 +131,16 @@
 //                                      "postal_code"}} -> the same body; 400 names a bad field,
 //                                      409 for the admin (his address is in the server's .env)
 //   (404 from a server without them: no change to the words, no Seller address foldout)
+// A header and a footer on every listing (Michal, 2026-10-17):
+//   GET    <pc>/me/wrap               Settings opened -> {"header": {"on", "text", "venues": [...]},
+//                                      "footer": {...}, "available": ["ebay"] | ["ebay", "craigslist"]}
+//   PATCH  <pc>/me/wrap               a row ticked or unticked, Save, a venue toggled: any subset
+//                                      {"header": {"on"?, "text"?, "venues"?}, "footer": {...}}
+//                                      -> the GET body; 400 {"detail"} for a bad value (a text over
+//                                      2000 characters)
+//   POST   <pc>/me/wrap/apply         Apply to all existing listings: {"venue"} -> {"job"}, polled at
+//                                      GET /jobs/<id> as the sync bar's, its "summary" once done
+//   (404 from a server without them: no header and footer rows)
 // Archive, the Feedback inbox, sign-up's two steps (Michal, 2026-10-08):
 //   PATCH  <pc>/inventory/<sku>       a list row swiped off (or Undo, or Unarchive): {"archived":
 //                                      true | false} -> the whole row; rows carry "archived", and
@@ -149,7 +162,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.18.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.22.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -560,4 +573,34 @@ export function getSeller({ pc, ...auth }) {
  */
 export function patchSeller({ pc, ...auth }, body) {
     return call(`${pc}/me/seller`, auth, { method: "PATCH", json: body });
+}
+
+/**
+ * The header and footer on every listing, and the venues they may go on, for Settings.
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function getWrap({ pc, ...auth }) {
+    return call(`${pc}/me/wrap`, auth);
+}
+
+/**
+ * A part ticked or unticked, its text saved, a venue toggled (wrapBody in core.js), answered as getWrap.
+ * @param {Settings} settings
+ * @param {Record<string, {on?:boolean, text?:string, venues?:string[]}>} body
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function patchWrap({ pc, ...auth }, body) {
+    return call(`${pc}/me/wrap`, auth, { method: "PATCH", json: body });
+}
+
+/**
+ * Apply to all existing listings: the header and footer as set now pushed onto every listing
+ * on one venue, a job polled as the sync bar's.
+ * @param {Settings} settings
+ * @param {string} venue
+ * @returns {Promise<{job:string, state?:string, ahead?:number}>}
+ */
+export function applyWrap({ pc, ...auth }, venue) {
+    return call(`${pc}/me/wrap/apply`, auth, { method: "POST", json: { venue } });
 }

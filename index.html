@@ -35,11 +35,12 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.18.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.18.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.22.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.22.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon-192.png">
+<!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
+<link rel="apple-touch-icon" href="icon-maskable-192.png">
 </head>
 <body>
 <header>
@@ -255,6 +256,65 @@
         </div>
         <p id="account-status" class="small account-status" aria-live="polite"></p>
       </div>
+      <!-- a header and a footer on every listing, under the Account block (Michal, 2026-10-17:
+           "In default settings add a checkbox for footnote/header for all posts ... once you
+           check header you get a header foldout with all these options"): each row its own
+           foldout, the box, Apply to: per venue, Save, then Apply to all existing listings per
+           venue ticked. From GET /me/wrap; an older server's 404: no rows (app.js) -->
+      <div id="wrap" class="wrap" hidden>
+        <label class="pickup">
+          <input id="wrap-header-on" type="checkbox">
+          <span>Header on every listing</span>
+        </label>
+        <div id="wrap-header" class="wrap-fold" hidden>
+          <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Header"
+                    placeholder="Text added above the description"></textarea>
+          <p id="wrap-header-count" class="small wrap-count">0 / 2000</p>
+          <p class="small wrap-note">Added with a blank line between it and the description.</p>
+          <p class="field-label wrap-to">Apply to:</p>
+          <div class="wrap-venues" role="group" aria-label="Header: apply to">
+            <button type="button" id="wrap-header-ebay" class="pill pill-small wrap-venue" aria-pressed="false" hidden>ebay</button>
+            <button type="button" id="wrap-header-craigslist" class="pill pill-small wrap-venue" aria-pressed="false" hidden>craigslist</button>
+          </div>
+          <button type="button" id="wrap-header-save" class="pill pill-ink pill-small wrap-save">Save</button>
+          <p id="wrap-header-status" class="small account-status" aria-live="polite"></p>
+          <div id="wrap-header-apply" class="wrap-apply" hidden>
+            <button type="button" id="wrap-header-apply-ebay" class="pill pill-small" hidden>Apply to all existing ebay listings</button>
+            <button type="button" id="wrap-header-apply-ebay-reset" class="reset-call" aria-label="reset Apply to all existing ebay listings" hidden>reset</button>
+            <p id="wrap-header-apply-ebay-status" class="venue-status" aria-live="polite"></p>
+            <button type="button" id="wrap-header-apply-craigslist" class="pill pill-small" hidden>Apply to all existing craigslist listings</button>
+            <button type="button" id="wrap-header-apply-craigslist-reset" class="reset-call" aria-label="reset Apply to all existing craigslist listings" hidden>reset</button>
+            <p id="wrap-header-apply-craigslist-status" class="venue-status" aria-live="polite"></p>
+            <p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue</p>
+          </div>
+        </div>
+        <label class="pickup">
+          <input id="wrap-footer-on" type="checkbox">
+          <span>Footer on every listing</span>
+        </label>
+        <div id="wrap-footer" class="wrap-fold" hidden>
+          <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Footer"
+                    placeholder="Text added below the description"></textarea>
+          <p id="wrap-footer-count" class="small wrap-count">0 / 2000</p>
+          <p class="small wrap-note">Added with a blank line between it and the description.</p>
+          <p class="field-label wrap-to">Apply to:</p>
+          <div class="wrap-venues" role="group" aria-label="Footer: apply to">
+            <button type="button" id="wrap-footer-ebay" class="pill pill-small wrap-venue" aria-pressed="false" hidden>ebay</button>
+            <button type="button" id="wrap-footer-craigslist" class="pill pill-small wrap-venue" aria-pressed="false" hidden>craigslist</button>
+          </div>
+          <button type="button" id="wrap-footer-save" class="pill pill-ink pill-small wrap-save">Save</button>
+          <p id="wrap-footer-status" class="small account-status" aria-live="polite"></p>
+          <div id="wrap-footer-apply" class="wrap-apply" hidden>
+            <button type="button" id="wrap-footer-apply-ebay" class="pill pill-small" hidden>Apply to all existing ebay listings</button>
+            <button type="button" id="wrap-footer-apply-ebay-reset" class="reset-call" aria-label="reset Apply to all existing ebay listings" hidden>reset</button>
+            <p id="wrap-footer-apply-ebay-status" class="venue-status" aria-live="polite"></p>
+            <button type="button" id="wrap-footer-apply-craigslist" class="pill pill-small" hidden>Apply to all existing craigslist listings</button>
+            <button type="button" id="wrap-footer-apply-craigslist-reset" class="reset-call" aria-label="reset Apply to all existing craigslist listings" hidden>reset</button>
+            <p id="wrap-footer-apply-craigslist-status" class="venue-status" aria-live="polite"></p>
+            <p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue</p>
+          </div>
+        </div>
+      </div>
       <p id="settings-server" class="server server-line"></p>
       <label class="field">
         <span class="field-label">Server address</span>
@@ -380,7 +440,9 @@
              (Michal, 2026-10-07: "I want the menu in the inventory to look like the customize
              menu ... We will indeed be changing price with a slider here"): the quantity,
              pickup only and the price slider, each grade's cached price beside its word;
-             Save, then Sync to eBay -->
+             Save, then a Sync to <venue> per venue the listing is up on (Michal, 2026-10-17:
+             "There is a button push to eBay, so add a button push to Craigslist next to it"),
+             drawn by app.js after Save from GET /me's "syncable" -->
         <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
                 aria-controls="detail-customize">▾ customize</button>
         <div id="detail-customize" class="card customize fold">
@@ -404,10 +466,8 @@
             </div>
             <p id="detail-pricing-note" class="pricing-note"></p>
           </div>
-          <div class="venue-actions">
+          <div id="detail-customize-actions" class="venue-actions">
             <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
-            <button type="button" id="detail-customize-sync" class="pill">Sync to eBay</button>
-            <button type="button" id="detail-customize-reset" class="reset-call" aria-label="reset Sync to eBay" hidden>reset</button>
           </div>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
@@ -464,23 +524,28 @@
     <!-- the sync bar (Michal, 2026-10-06: "a clear sync to and sync from for overall syncing.
          They probably could be below the inventory list hovering fixed on the screen as I
          scroll down"): it sticks to the bottom of the screen while Admin is on it -->
-    <div id="sync-bar" class="sync-bar" role="group" aria-label="Sync with eBay">
-      <!-- each button carries one half of the sync symbol, on one 24-unit box so the two
-           read as one circle (Michal, 2026-10-07): to eBay the top arc, left to right, its
-           arrow pointing right; from eBay the bottom arc, right to left, its arrow pointing
-           left. app.js writes the word after the icon, and the job's ring and "tap again to
-           cancel" while it runs; paused, the pressed one says continue and reset shows under them -->
-      <div class="sync-buttons">
-        <button type="button" id="sync-from" class="sync-btn"><span id="sync-from-icon" class="btn-icon"><svg
+    <div id="sync-bar" class="sync-bar" role="group" aria-label="Sync with your venues">
+      <!-- one Sync from <venue> and one Sync to <venue> per venue GET /me says the account syncs
+           ("syncable"; eBay's two from a server that does not say), drawn by app.js venue by
+           venue, each from in the left column and each to in the right (Michal, 2026-10-17:
+           "All venues need to be represented (if any new get added as well)"): the icon, the
+           word, and the job's ring and "tap again to cancel" while it runs; paused, the pressed
+           one says continue and its reset shows under it -->
+      <div id="sync-buttons" class="sync-buttons"></div>
+      <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
+           (Michal, 2026-10-07), copied into each button by app.js: to the top arc, left to
+           right, its arrow pointing right; from the bottom arc, right to left, its arrow
+           pointing left -->
+      <div class="sync-icons" hidden>
+        <span id="sync-from-icon" class="btn-icon"><svg
             aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"></path><path
-            d="M6 22v-4.5h4.5"></path></svg></span>Sync from eBay</button>
-        <button type="button" id="sync-to" class="sync-btn"><span id="sync-to-icon" class="btn-icon"><svg
+            d="M6 22v-4.5h4.5"></path></svg></span>
+        <span id="sync-to-icon" class="btn-icon"><svg
             aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.5"></path><path
-            d="M18 2v4.5h-4.5"></path></svg></span>Sync to eBay</button>
+            d="M18 2v4.5h-4.5"></path></svg></span>
       </div>
-      <button type="button" id="sync-reset" class="reset-call" aria-label="reset the sync" hidden>reset</button>
       <p id="sync-status" class="sync-status" aria-live="polite"></p>
     </div>
 
@@ -503,7 +568,7 @@
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
 
-    <!-- app.js writes the word (Snap / Snap Again) into #snap-word; the icon stays -->
+    <!-- app.js writes the word (Snap / Snap Again / Snap Next) into #snap-word; the icon stays -->
     <label id="snap-label" class="big snap" for="snap-input"><span class="btn-icon" aria-hidden="true"><svg
         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
         stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
@@ -683,10 +748,11 @@
       <p id="book-match" class="small"></p>
     </div>
 
+    <!-- app.js writes the word (Snap / Snap Next) into #book-snap-word -->
     <label id="book-snap-label" class="big" for="book-snap-input"><span class="btn-icon" aria-hidden="true"><svg
         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
         stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.5-2h4l1.5 2h2A2.5 2.5 0 0 1 20 8.5V17a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17z"></path><circle
-        cx="12" cy="13" r="3.5"></circle></svg></span><span>Snap</span></label>
+        cx="12" cy="13" r="3.5"></circle></svg></span><span id="book-snap-word">Snap</span></label>
     <input id="book-snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label id="book-gallery-label" class="secondary" for="book-gallery-input">Add from gallery</label>
@@ -794,6 +860,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.18.0"></script>
+<script type="module" src="app.js?v=2.22.0"></script>
 </body>
 </html>

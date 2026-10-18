@@ -11,8 +11,9 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.18.0";
+import { VERSION } from "./version.js?v=2.22.0";
 import {
+    adminLink,
     anyActive,
     bannerText,
     bookForm,
@@ -55,12 +56,13 @@ import {
     walkNote,
     walkPosition,
     cancelButton,
+    cancelNote,
     CANCELLED,
     CONTINUE,
     PAUSED,
     RESET,
     SEND_DELAY_MS,
-    TAP_TO_CANCEL,
+    TAP_AGAIN,
     taskCancel,
     taskTap,
     TOO_LATE,
@@ -83,6 +85,7 @@ import {
     venueIdleNote,
     venueLabel,
     venueLine,
+    POST_ONLY,
     VENUES,
     INVENTORY_DEBOUNCE_MS,
     INVENTORY_SORTS,
@@ -95,6 +98,7 @@ import {
     customizeChanges,
     customizeLine,
     customizeSaved,
+    customizeVenues,
     DERIVED,
     derivedFields,
     EDIT_FIELDS,
@@ -117,7 +121,12 @@ import {
     rowVenues,
     sliderWords,
     busyLine,
+    syncBarLine,
+    syncButtons,
+    syncJob,
     syncLine,
+    syncVenues,
+    syncWord,
     unsyncedList,
     unsyncedWith,
     unsyncedWithout,
@@ -196,10 +205,22 @@ import {
     pendingLine,
     refusalLine,
     signupStep,
-} from "./core.js?v=2.18.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.18.0";
+    applyLabel,
+    venueTickLabel,
+    WRAP_PARTS,
+    wrapBody,
+    wrapCounter,
+    wrapError,
+    wrapOf,
+} from "./core.js?v=2.22.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.22.0";
+
+// The venues the header and footer go out on, as the server's GET /me/wrap offers them
+// (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
+const WRAP_VENUES = VENUES.filter((v) => !POST_ONLY.includes(v));
 import {
     addVenue,
+    applyWrap,
     archiveRow,
     askLink,
     cancelJob,
@@ -223,8 +244,10 @@ import {
     getSeller,
     getSignup,
     getStats,
+    getWrap,
     patchRow,
     patchSeller,
+    patchWrap,
     PcError,
     postFeedback,
     postJob,
@@ -233,8 +256,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.18.0";
-import { shrinkPhoto } from "./shrink.js?v=2.18.0";
+} from "./pc.js?v=2.22.0";
+import { shrinkPhoto } from "./shrink.js?v=2.22.0";
 import {
     bookCard,
     bookPriceValue,
@@ -247,8 +270,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.18.0";
-import { canScan, readIsbn } from "./scan.js?v=2.18.0";
+} from "./book.js?v=2.22.0";
+import { canScan, readIsbn } from "./scan.js?v=2.22.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -360,6 +383,20 @@ const account = { packs: false, busy: false, status: "" };
  * `asked`, bumped per ask so a late answer for an older one is dropped.
  */
 const seller = { info: null, open: false, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0 };
+/**
+ * Settings' header and footer on every listing (GET /me/wrap), as the screen has them: the
+ * server's answer (wrapOf; null until asked, and from an older server's 404, which is no rows),
+ * each part's line and its Save on its way, `asked`, bumped per ask so a late answer for an
+ * older one is dropped, and per venue the job task (jobTask) of Apply to all existing
+ * listings: one push carries both parts, so the header's button and the footer's are one task.
+ */
+const wrap = {
+    info: null,
+    status: { header: "", footer: "" },
+    busy: { header: false, footer: false },
+    asked: 0,
+    apply: Object.fromEntries(WRAP_VENUES.map((v) => [v, jobTask()])),
+};
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -457,10 +494,23 @@ let swipe = null;
 /** The row last swiped off the list, while the undo bar offers it back, and the bar's timer. */
 const undo = { entry: null, timer: null };
 
-/** The sync bar, an Admin job task as a card is (jobTask); its action the direction last pressed ("from" | "to"). */
-const sync = jobTask();
-/** The sync bar's two words, after their icons. */
-const SYNC_WORDS = { from: "Sync from eBay", to: "Sync to eBay" };
+/**
+ * The sync bar, an Admin job task as a card is (jobTask): one sync at a time (the server
+ * refuses a second, 409); its action the button last pressed ("<direction> <venue>",
+ * "to craigslist"), and `venue` that button's venue, kept past the press for its line.
+ */
+const sync = { ...jobTask(), venue: "" };
+/**
+ * The sync bar's buttons as drawn (syncButtons, from /me), by "<direction> <venue>": the
+ * button, its copy of index.html's half of the sync symbol, its reset; made the first time a
+ * /me names it. `shown`: which are in the bar now, so it is redrawn only when that changes.
+ */
+const syncDrawn = { nodes: new Map(), shown: "" };
+/**
+ * customize's Sync to <venue> buttons as drawn (customizeVenues), by venue: the button and
+ * its reset; `shown`, the venues in the row of buttons now.
+ */
+const customDrawn = { nodes: new Map(), shown: "" };
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -478,6 +528,8 @@ const viewing = { goods: "", book: "" };
 const HISTORY_KEY = "snap.history";
 /** Where the walk is, as walkPosition counts: the items in hand until back is pressed. */
 let cursor = 0;
+/** Whether the browser's entries mirror the walk yet: a reload's do; a fresh page's from his first tap (mirrorWalk). */
+let mirrored = false;
 
 const el = {};
 
@@ -687,12 +739,14 @@ function renderGoods() {
     const named = !!state.itemName || !state.needsName;
     const ready = named && !locked && !restoring.goods && !taken;
     // the word only: the camera icon beside it in the label stays
-    el.snapText.textContent = snapWord(state);
-    el.snapLabel.classList.toggle("disabled", !ready);
+    const word = snapWord(state, { earlier: !!viewing.goods });
+    el.snapText.textContent = word;
+    const snapReady = word === "Snap Next" ? onwardReady("goods") : ready;
+    el.snapLabel.classList.toggle("disabled", !snapReady);
     el.galleryLabel.classList.toggle("disabled", !ready);
-    el.snapInput.disabled = !ready;
+    el.snapInput.disabled = !snapReady;
     el.galleryInput.disabled = !ready;
-    el.hint.hidden = ready;
+    el.hint.hidden = snapReady;
     if (restoring.goods) el.hint.textContent = "Reading this item back from the server...";
     else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
     else if (taken) el.hint.textContent = taken;
@@ -798,9 +852,12 @@ function renderBook() {
 
     // the cover and more: any time until the listing goes (they wait for the ISBN if need be)
     const ready = !locked && !busy;
-    el.bookSnapLabel.classList.toggle("disabled", !ready);
+    const word = snapWord(state, { earlier: !!viewing.book });
+    el.bookSnapText.textContent = word;
+    const snapReady = word === "Snap Next" ? onwardReady("book") : ready;
+    el.bookSnapLabel.classList.toggle("disabled", !snapReady);
     el.bookGalleryLabel.classList.toggle("disabled", !ready);
-    el.bookSnapInput.disabled = !ready;
+    el.bookSnapInput.disabled = !snapReady;
     el.bookGalleryInput.disabled = !ready;
     el.bookProgress.textContent = progressLine(state);
     renderStrip("book", el.bookStrip, locked);
@@ -962,6 +1019,8 @@ function renderVenue(m, venue, ok, nodes) {
     paintJobButton(nodes.btn, venue, {
         busy,
         cancel: cancelButton(state, venue),
+        // "credits will be lost" once the press has left the phone (Michal, 2026-10-17)
+        note: cancelNote(job),
         paused: job.paused,
         label: venueLabel(job, venue),
         reset: nodes.reset,
@@ -991,25 +1050,25 @@ function renderVenue(m, venue, ok, nodes) {
  * takes some [time] and we have a loading icon running, these buttons should get
  * that. The button, within it, should just get 'tap again to cancel' instead of an
  * external cancel line"): `lead` (the sync buttons' icon) and the word; while
- * `busy`, the ring turning beside it (styles.css); while `cancel`, TAP_TO_CANCEL in
- * small type under the word, and said after `label` to a screen reader. `paused`
- * (Michal, 2026-10-07: "the button should change to 'continue'"), the word is
- * CONTINUE and the ring stops; its `reset`, the small red control beside it, shows
- * only then.
+ * `busy`, the ring turning beside it (styles.css); while `cancel`, its `note`
+ * (TAP_AGAIN; a venue button's cancelNote) in small type under the word, and said
+ * after `label` to a screen reader. `paused` (Michal, 2026-10-07: "the button should
+ * change to 'continue'"), the word is CONTINUE and the ring stops; its `reset`, the
+ * small red control beside it, shows only then.
  */
-function paintJobButton(btn, word, { busy, cancel, paused = false, label = word, lead = [], reset = null }) {
+function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = false, label = word, lead = [], reset = null }) {
     const kids = [...lead, paused ? CONTINUE : word];
     if (cancel) {
         const small = document.createElement("small");
         small.className = "tap-cancel";
-        small.textContent = TAP_TO_CANCEL;
+        small.textContent = note;
         kids.push(small);
     }
     btn.replaceChildren(...kids);
     const ring = busy && !paused;
     btn.classList.toggle("busy", ring);
     btn.setAttribute("aria-busy", ring ? "true" : "false");
-    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${TAP_TO_CANCEL}` : label;
+    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${note}` : label;
     btn.setAttribute("aria-label", said);
     if (reset) reset.hidden = !paused;
 }
@@ -1672,6 +1731,8 @@ async function send(m, venue) {
         if (!slots[m].jobs[venue].paused) press.timer = setTimeout(resolve, SEND_DELAY_MS);
     });
     if (taken()) return;
+    // the press leaves the phone: from here a reset may cost the posting ("credits will be lost")
+    setState(m, reduce(slots[m], { type: "jobSent", venue }));
     const s = slots[m];
     const body = jobRequest({
         venue,
@@ -1759,11 +1820,13 @@ function continuePress(m, venue) {
  * pressing it twice actually drops all the info and resets the operation as if nothing
  * happened, and waits for a new press of the button"). A press nothing has left the
  * phone for is dropped, nothing paid. A job the PC has is told (DELETE /jobs/<id>): one
- * still queued is dropped before it runs, the one in hand stops at its next step and
- * saves the draft instead of publishing. Either way the button is its venue again at
- * once, waiting for a new press, and the line says cancelled; a job stopping is still
- * asked about, quietly, until the PC says it stopped ("cancelled from the phone"), for
- * the row it saved, which the next press reuses.
+ * still queued is dropped before it runs, its posting given back; the one in hand stops
+ * at its next step, a draft dumped (Michal, 2026-10-17: "Just dump that answer"), a row
+ * already saved kept unpublished, and its posting is spent. Either way the button is its
+ * venue again at once, waiting for a new press, and the line says cancelled; a job
+ * stopping is still asked about, quietly, until the PC says it stopped ("cancelled from
+ * the phone"): the line then says whether the credit is lost (cancelledLine), and only a
+ * row it did save is reused by the next press; a dumped draft is drafted afresh.
  */
 async function resetPress(m, venue) {
     const job = slots[m].jobs[venue];
@@ -1876,6 +1939,11 @@ function fold(toggle, word, open) {
 function adminShown(open) {
     el.admin.hidden = !open;
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    // Snap while Admin is open, the way back to snapping (Michal, 2026-10-17)
+    const link = adminLink(open);
+    el.adminToggle.textContent = link.text;
+    if (link.label) el.adminToggle.setAttribute("aria-label", link.label);
+    else el.adminToggle.removeAttribute("aria-label");
     render();
 }
 
@@ -1898,6 +1966,8 @@ function showAdmin(open, card = "") {
         Object.assign(account, { packs: false, status: "" });
         quietSeller();
         renderAccount();
+        Object.assign(wrap.status, { header: "", footer: "" });
+        renderWrap();
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
         searchTimer = null;
@@ -1937,6 +2007,7 @@ function showSettings(open) {
         el.pcKey.value = readText("localStorage", KEY_KEY);
         el.settingsStatus.textContent = "";
         loadSeller().catch(() => {});
+        loadWrap().catch(() => {});
     }
 }
 
@@ -2555,9 +2626,12 @@ function syncBadge(sku, badge) {
     return [btn, reset];
 }
 
-/** The sync bar's to-eBay half of the sync symbol, copied for a sync badge (without its id: the bar keeps that). */
-function syncIcon() {
-    const icon = el.syncButtons.find((b) => b.direction === "to").icon.cloneNode(true);
+/**
+ * The sync symbol's half for `direction` ("to": the top arc, "from": the bottom), copied from
+ * index.html's for a sync bar button or a sync badge (without its id: index.html keeps that).
+ */
+function syncIcon(direction = "to") {
+    const icon = el.syncIcons[direction].cloneNode(true);
     icon.removeAttribute("id");
     return icon;
 }
@@ -2830,7 +2904,8 @@ function blankCard() {
 /**
  * The listing's customize, for the row on screen: open (each listing opens on it),
  * its two boxes and the slider as he left them (`values`, from the row until
- * changed), and, as a card's, its job task ("push" for Sync to eBay).
+ * changed), and, as a card's, its job task ("push <venue>" for Sync to <venue>: one push at a
+ * time, the row's other buttons waiting).
  */
 function blankCustomize() {
     return { open: true, values: rowCustomize({}), ...jobTask() };
@@ -2868,7 +2943,8 @@ function renderCards() {
  * The listing's customize, as the goods card: open or folded; the quantity box (not
  * rewritten while it holds what was typed), pickup only and the Price slider with
  * each grade's cached price beside its word (sliderWords), locked while the row is
- * busy; Save and Sync to eBay as customizeButtons says; its status line.
+ * busy; Save, and a Sync to <venue> per venue the row is listed on that /me syncs to
+ * (customizeVenues), as customizeButtons says; its status line.
  */
 function renderRowCustomize() {
     const c = admin.custom;
@@ -2891,24 +2967,64 @@ function renderRowCustomize() {
         el.detailPricingWords[i].classList.toggle("on", p.grade === slider.bold);
     });
     el.detailPricingNote.textContent = slider.note;
-    const can = customizeButtons(row, c.values, busy);
+    const to = syncVenues(me, "to");
+    const can = customizeButtons(row, c.values, busy, to);
     el.detailCustomizeSave.disabled = !can.save;
-    // Sync to eBay is a job button: pressed, its ring and "tap again to cancel", paused its continue and reset
-    const pushing = pressed(c, "push");
-    el.detailCustomizeSync.disabled = pushing ? !taskTap(c) : !can.sync;
-    paintJobButton(el.detailCustomizeSync, "Sync to eBay", {
-        busy: pushing,
-        cancel: pushing && taskCancel(c),
-        paused: pushing && c.paused,
-        reset: el.detailCustomizeReset,
+    // after Save, a Sync to <venue> per venue the row is listed on (Michal, 2026-10-17: "There is
+    // a button push to eBay, so add a button push to Craigslist next to it"), each a job button:
+    // pressed, its ring and "tap again to cancel", paused its continue and its own reset
+    const venues = customizeVenues(row, to);
+    const kids = venues.flatMap((venue) => {
+        const { btn, reset } = customSyncNodes(venue);
+        const pushing = pressed(c, `push ${venue}`);
+        btn.disabled = pushing ? !taskTap(c) : !can.sync;
+        paintJobButton(btn, actionWord("sync", venue), {
+            busy: pushing,
+            cancel: pushing && taskCancel(c),
+            paused: pushing && c.paused,
+            reset,
+        });
+        return [btn, reset];
     });
+    if (customDrawn.shown !== venues.join(" ")) {
+        customDrawn.shown = venues.join(" ");
+        el.detailCustomizeActions.replaceChildren(el.detailCustomizeSave, ...kids);
+    }
     paintCustomizeLine();
+}
+
+/** A venue's Sync to <venue> in customize and its reset, made the first time it is drawn. */
+function customSyncNodes(venue) {
+    if (!customDrawn.nodes.has(venue)) {
+        const word = actionWord("sync", venue);
+        const btn = actionButton(word, "pill", true, () => {
+            if (pressed(admin.custom, `push ${venue}`)) onTaskTap(admin.custom, customizePaint());
+            else pushRow(venue).catch(() => {});
+        });
+        btn.id = `detail-customize-sync-${venue}`;
+        const reset = actionButton(RESET, "reset-call", false, () => {
+            resetTask(admin.custom, customizePaint()).catch(() => {});
+        });
+        reset.id = `detail-customize-reset-${venue}`;
+        reset.hidden = true;
+        reset.setAttribute("aria-label", `${RESET} ${word}`);
+        customDrawn.nodes.set(venue, { btn, reset });
+    }
+    return customDrawn.nodes.get(venue);
+}
+
+/** customize's task on screen again, unless the listing has changed meanwhile. */
+function customizePaint() {
+    const mine = admin.shown;
+    return () => {
+        if (mine === admin.shown) renderCards();
+    };
 }
 
 /** customize's status line, rewritten in place: a poll changes it and nothing else. */
 function paintCustomizeLine() {
     if (!admin.row) return;
-    const line = customizeLine(admin.row, admin.custom);
+    const line = customizeLine(admin.row, admin.custom, syncVenues(me, "to"));
     el.detailCustomizeStatus.textContent = line.text;
     el.detailCustomizeStatus.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
 }
@@ -2933,7 +3049,7 @@ function onCustomizeInput(values) {
  * and the row it answers is shown, its new price in the heading and the eBay card.
  * A refusal (no cached price for that grade) is said in the status line, the
  * foldout as he left it. true once the row holds what the foldout says (nothing to
- * send counts), so Sync to eBay can follow.
+ * send counts), so a Sync to <venue> can follow.
  */
 async function saveRowCustomize() {
     const c = admin.custom;
@@ -2961,7 +3077,7 @@ async function saveRowCustomize() {
     if (mine !== admin.shown) return false;
     heard(200);
     c.wait = "";
-    c.note = customizeSaved(whole);
+    c.note = customizeSaved(whole, syncVenues(me, "to"));
     markBehind(row.sku, row, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
@@ -2969,18 +3085,21 @@ async function saveRowCustomize() {
 }
 
 /**
- * Sync to eBay (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
- * detail of that listing should update"): the second a job button waits, then a
- * change not yet saved is saved, then the push job puts the row as saved on its
- * eBay listing. Its line is customize's status line, polled every POLL_MS,
- * "updated" or "unchanged" once done, and the row is read again. A push the PC
- * refuses says why. A tap on it pauses it (onTaskTap), and its reset calls it off.
+ * Sync to <venue> (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
+ * detail of that listing should update"; 2026-10-17: "add a button push to Craigslist next
+ * to it"): the second a job button waits, then a change not yet saved is saved, then the
+ * push job puts the row as saved on its listing on `venue`. Its line is customize's status
+ * line, polled every POLL_MS, "updated" or "unchanged" once done (that venue's unsynced mark
+ * let go: askJob), and the row is read again. A push the PC refuses says why. A tap on it
+ * pauses it (onTaskTap), and its reset calls it off.
  */
-async function pushRow() {
+async function pushRow(venue) {
     const c = admin.custom;
-    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy()).sync) return;
+    const to = syncVenues(me, "to");
+    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy(), to).sync) return;
+    if (!customizeVenues(admin.row, to).includes(venue)) return;
     const mine = admin.shown;
-    c.action = "push";
+    c.action = `push ${venue}`;
     c.note = null;
     c.job = null;
     c.stopping = false;
@@ -3003,7 +3122,7 @@ async function pushRow() {
     renderCards();
     let answer;
     try {
-        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue: "ebay" }));
+        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue }));
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -3017,7 +3136,7 @@ async function pushRow() {
     heard(200);
     c.wait = "";
     c.note = null;
-    c.job = { action: "push", venue: "ebay", job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    c.job = { action: "push", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     c.ask = () => {
         askJob(c, mine, renderRowCustomize).catch(() => {});
     };
@@ -3641,7 +3760,7 @@ async function askJob(c, mine, paint) {
         renderCards();
         return;
     }
-    // a push (customize's Sync to eBay, the card's Sync to craigslist): that venue has the row
+    // a push (customize's Sync to <venue>, the card's Sync to craigslist): that venue has the row
     // now, and its list badge is plain again
     if (c.job.action === "push") markUnsynced(admin.row.sku, c.job.venue, false);
     admin.changed = true;
@@ -3989,26 +4108,31 @@ function closePhoto() {
 }
 
 /**
- * The sync bar's two buttons: after the second a job button waits, the sync job
- * is sent, its line under them (queued, the PC's step, its summary or its error),
- * polled every POLL_MS; the other locks until it ends, the pressed one turns its
- * ring, a tap on it pauses the job (onTaskTap) and reset under them calls it off,
- * and once done the inventory list is asked for again. A refusal shows the PC's
- * words. The job is the PC's: closing Admin leaves it running and polled.
+ * A sync bar button (Michal, 2026-10-17: "All venues need to be represented (if any new get
+ * added as well)"): after the second a job button waits, the sync job of its direction and
+ * venue is sent (syncJob), its line under the buttons (queued, the PC's step, its summary or
+ * its error; the venue first when the bar holds more than one), polled every POLL_MS; the
+ * others lock until it ends (one sync at a time), the pressed one turns its ring, a tap on it
+ * pauses the job (onTaskTap) and its reset calls it off, and once done the inventory list is
+ * asked for again. A refusal shows the PC's words. The job is the PC's: closing Admin leaves
+ * it running and polled.
  */
-async function startSync(direction) {
+async function startSync(direction, venue) {
+    const action = `${direction} ${venue}`;
     if (sync.wait || jobRunning(sync.job)) {
-        if (pressed(sync, direction)) onTaskTap(sync, renderSync);
+        if (pressed(sync, action)) onTaskTap(sync, renderSync);
         return;
     }
     const pc = settings();
     sync.job = null;
     if (!pc) {
+        sync.venue = "";
         sync.note = { text: "Set the server address and key under Settings first.", kind: "bad" };
         renderSync();
         return;
     }
-    sync.action = direction;
+    sync.action = action;
+    sync.venue = venue;
     sync.note = null;
     sync.stopping = false;
     sync.wait = "sending";
@@ -4017,7 +4141,7 @@ async function startSync(direction) {
     if (!(await waited)) return;
     let answer;
     try {
-        answer = await sendJob(pc, actionJob("sync", { direction }));
+        answer = await sendJob(pc, syncJob(me, direction, venue));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         sync.action = "";
@@ -4028,7 +4152,7 @@ async function startSync(direction) {
     }
     heard(200);
     sync.wait = "";
-    sync.job = { action: "sync", direction, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    sync.job = { action: "sync", direction, venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
     sync.ask = () => {
         askSync().catch(() => {});
     };
@@ -4039,10 +4163,10 @@ async function startSync(direction) {
 async function askSync() {
     if (!(await askTask(sync, renderSync))) return;
     renderSync();
-    // Sync to eBay put every row on its eBay listing: no eBay listing is behind its row any
-    // more (a craigslist one still is)
+    // Sync to <venue> put every row on its listing there: none of that venue's listings is
+    // behind its row any more (another venue's still are)
     if (sync.job.state === "done" && sync.job.direction === "to") {
-        writeJson("localStorage", UNSYNCED_KEY, unsyncedWithout(readUnsynced(), "ebay"));
+        writeJson("localStorage", UNSYNCED_KEY, unsyncedWithout(readUnsynced(), sync.venue));
     }
     if (sync.job.state !== "done" || el.admin.hidden || !admin.inventoryOpen) return;
     // a listing open in place of the list: the list is asked for again on the way back
@@ -4051,25 +4175,59 @@ async function askSync() {
 }
 
 /**
- * The sync bar's line, and its two buttons: each its icon and word, the pressed one
- * its ring (continue while paused), and the one reset under them while it is paused.
+ * The sync bar's line, and its buttons, one per venue and direction /me syncs (syncButtons;
+ * eBay's two from a server that does not say): each its half of the sync symbol and word,
+ * the pressed one its ring (continue while paused) and, while it is paused, its reset.
  */
 function renderSync() {
-    const line = busyLine(sync);
+    const buttons = syncButtons(me);
+    const many = new Set(buttons.map((b) => b.venue)).size > 1;
+    const line = syncBarLine(busyLine(sync), sync.venue, many);
     el.syncStatus.textContent = line ? line.text : "";
     el.syncStatus.className = line && line.kind ? `sync-status ${line.kind}` : "sync-status";
     const locked = !!sync.wait || jobRunning(sync.job);
-    for (const { direction, btn, icon } of el.syncButtons) {
-        const busy = pressed(sync, direction);
-        btn.disabled = locked && !(busy && taskTap(sync));
-        paintJobButton(btn, SYNC_WORDS[direction], {
+    const drawn = buttons.map(({ direction, venue }) => {
+        const nodes = syncNodes(direction, venue);
+        const busy = pressed(sync, `${direction} ${venue}`);
+        nodes.btn.disabled = locked && !(busy && taskTap(sync));
+        paintJobButton(nodes.btn, syncWord(direction, venue), {
             busy,
             cancel: busy && taskCancel(sync),
             paused: busy && sync.paused,
-            lead: [icon],
+            lead: [nodes.icon],
+            reset: nodes.reset,
         });
+        return nodes;
+    });
+    const shown = buttons.map((b) => `${b.direction} ${b.venue}`).join(",");
+    if (syncDrawn.shown !== shown) {
+        // the resets after every button: the one showing sits under them all (styles.css)
+        syncDrawn.shown = shown;
+        el.syncButtons.replaceChildren(...drawn.map((n) => n.btn), ...drawn.map((n) => n.reset));
     }
-    el.syncReset.hidden = !sync.paused;
+}
+
+/**
+ * A sync bar button and its reset, made the first time /me names its venue and direction:
+ * `sync-<direction>-<venue>`, its half of the sync symbol (the from or the to column's) left
+ * of the word, and its reset `sync-<direction>-<venue>-reset` (drawn after every button).
+ */
+function syncNodes(direction, venue) {
+    const key = `${direction} ${venue}`;
+    if (!syncDrawn.nodes.has(key)) {
+        const btn = actionButton(syncWord(direction, venue), `sync-btn sync-${direction}`, false, () => {
+            startSync(direction, venue).catch(() => {});
+        });
+        btn.id = `sync-${direction}-${venue}`;
+        const reset = actionButton(RESET, "reset-call", false, () => {
+            resetTask(sync, renderSync).catch(() => {});
+        });
+        reset.id = `sync-${direction}-${venue}-reset`;
+        reset.hidden = true;
+        reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
+        syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
+    }
+    return syncDrawn.nodes.get(key);
 }
 
 // --- the server check ----------------------------------------------------------
@@ -4127,13 +4285,15 @@ async function loadMe() {
 }
 
 /**
- * What /me changes on screen: the craigslist and poshmark buttons, their empty cards, Stats, the
- * Account block, and a sign-up's steps in place of the posting screens.
+ * What /me changes on screen: the craigslist and poshmark buttons, their empty cards, Stats,
+ * the Account block, a sign-up's steps in place of the posting screens, and the venues the
+ * sync bar and customize's Sync buttons go to and from (`syncable`).
  */
 function renderMe() {
     render();
     renderExtras();
     renderAccount();
+    renderSync();
     if (admin.row) renderCards();
 }
 
@@ -4393,6 +4553,238 @@ function pollSeller(fresh) {
     }, SELLER_POLL_MS);
 }
 
+// --- a header and a footer on every listing, under the Account block ----------------------
+// Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts.
+// When you check that, a text area appears ... If you uncheck it, it should not lose what you
+// had ... Below would be the venue buttons; 'Apply to:' above them ... Finally a button 'Apply
+// to all existing listings' (per the venue specified)." The server keeps both (GET/PATCH
+// /me/wrap) and puts them round every description it posts.
+
+/**
+ * The two rows: each ticked as the server has it, its foldout open while it is; the box's
+ * counter; Apply to:'s pill per venue the account posts to, ticked in the posted green; Save
+ * and its line; and per venue ticked (or still pushing) Apply to all existing listings, a job
+ * button as the sync bar's, its line under it. No rows until the server answered.
+ */
+function renderWrap() {
+    const info = wrap.info;
+    el.wrap.hidden = !info;
+    for (const part of WRAP_PARTS) {
+        const p = el.wrapParts[part];
+        const now = info ? info[part] : null;
+        p.on.checked = !!now && now.on;
+        p.fold.hidden = !now || !now.on;
+        p.count.textContent = wrapCounter(p.text.value);
+        p.save.disabled = wrap.busy[part];
+        p.status.textContent = wrap.status[part];
+        let applies = false;
+        for (const venue of WRAP_VENUES) {
+            const offered = !!info && info.available.includes(venue);
+            const ticked = !!now && now.venues.includes(venue);
+            const pill = p.venues[venue];
+            const face = venueTickLabel(venue, ticked);
+            pill.hidden = !offered;
+            pill.replaceChildren(...(face.tick ? [face.text, tickIcon()] : [face.text]));
+            pill.setAttribute("aria-pressed", ticked ? "true" : "false");
+            // one task per venue, painted under both rows: the push carries the header and the footer
+            const task = wrap.apply[venue];
+            const busy = pressed(task, "apply");
+            const { btn, reset, line } = p.apply[venue];
+            const shown = offered && (ticked || busy);
+            applies ||= shown;
+            btn.hidden = !shown;
+            btn.disabled = busy && !taskTap(task);
+            paintJobButton(btn, applyLabel(venue), {
+                busy,
+                cancel: busy && taskCancel(task),
+                paused: busy && task.paused,
+                reset,
+            });
+            const said = shown ? busyLine(task) : null;
+            line.textContent = said ? said.text : "";
+            line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
+        }
+        p.applies.hidden = !applies;
+    }
+}
+
+/** Each part's box as the server has its text (Settings opened, a row ticked again, a Save answered). */
+function fillWrap(info, parts) {
+    for (const part of parts) el.wrapParts[part].text.value = info[part].text;
+}
+
+/**
+ * GET /me/wrap, as Settings opens: the two rows, the boxes filled. An older server's 404: no
+ * rows. No answer keeps what the last one said.
+ */
+async function loadWrap() {
+    const pc = settings();
+    if (!pc) return;
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    try {
+        const info = wrapOf(await getWrap(pc));
+        if (mine !== wrap.asked) return;
+        wrap.info = info;
+        if (info) fillWrap(info, WRAP_PARTS);
+    } catch (e) {
+        if (mine !== wrap.asked) return;
+        if (e.status === 404) wrap.info = null;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    }
+    renderWrap();
+}
+
+/**
+ * One PATCH /me/wrap for a part (wrapBody): the screen follows the tap at once, and the
+ * server's answer then has the last word; a refusal puts the part back as it was (unless a
+ * newer change is on its way) and says why on the part's line. True once the server took it.
+ * @param {"header"|"footer"} part
+ * @param {{on?:boolean, text?:string, venues?:string[]}} changes
+ * @returns {Promise<boolean>}
+ */
+async function changeWrap(part, changes) {
+    const pc = settings();
+    if (!pc || !wrap.info) return false;
+    const made = wrapBody(part, changes);
+    if (!made.ok) {
+        wrap.status[part] = made.error;
+        renderWrap();
+        return false;
+    }
+    const before = wrap.info;
+    wrap.info = { ...before, [part]: { ...before[part], ...made.body[part] } };
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    renderWrap();
+    try {
+        const info = wrapOf(await patchWrap(pc, made.body));
+        if (mine === wrap.asked && info) wrap.info = info;
+        return true;
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === wrap.asked) wrap.info = before;
+        wrap.status[part] = wrapError(e.status, e.message);
+        return false;
+    } finally {
+        renderWrap();
+    }
+}
+
+/**
+ * A row ticked or unticked: {"on"} at once. Unticked, the text stays the server's and the
+ * box's; ticked again, the foldout opens on the text the server has. The first tick of a row
+ * on no venue, for an account that posts to one (Michal: "If there is only one venue
+ * available, as for a typical user, that can be checked right away"), ticks that one too, in
+ * the same PATCH.
+ * @param {"header"|"footer"} part
+ * @param {boolean} on
+ */
+function tickWrap(part, on) {
+    const info = wrap.info;
+    if (!info) return;
+    wrap.status[part] = "";
+    /** @type {{on:boolean, venues?:string[]}} */
+    const changes = { on };
+    if (on && info.available.length === 1 && info[part].venues.length === 0) changes.venues = info.available;
+    if (on) fillWrap(info, [part]);
+    changeWrap(part, changes).catch(() => {});
+}
+
+/** An Apply to: pill: that venue in or out of the part's venues, sent at once. */
+function toggleWrapVenue(part, venue) {
+    const info = wrap.info;
+    if (!info) return;
+    wrap.status[part] = "";
+    const now = info[part].venues;
+    const venues = now.includes(venue) ? now.filter((v) => v !== venue) : [...now, venue];
+    changeWrap(part, { venues }).catch(() => {});
+}
+
+/** Save: the part's text, its line saying so; the box as the server keeps it, unless typed in meanwhile. */
+async function saveWrap(part) {
+    if (wrap.busy[part] || !wrap.info || !settings()) return;
+    const box = el.wrapParts[part].text;
+    const sent = box.value;
+    wrap.busy[part] = true;
+    wrap.status[part] = "Saving...";
+    let saved = false;
+    try {
+        saved = await changeWrap(part, { text: sent });
+    } finally {
+        wrap.busy[part] = false;
+    }
+    if (saved) {
+        wrap.status[part] = "saved";
+        if (box.value === sent && wrap.info) fillWrap(wrap.info, [part]);
+    }
+    renderWrap();
+}
+
+/**
+ * Apply to all existing listings, either row's, for a venue: after the second a job button
+ * waits, POST /me/wrap/apply {"venue"}, then the job polled every POLL_MS as the sync bar's,
+ * its line under the button (queued, the server's step, its summary or its error); a tap on
+ * it pauses, reset calls it off. A refusal shows the server's words.
+ * @param {string} venue
+ */
+async function startApply(venue) {
+    const task = wrap.apply[venue];
+    if (task.wait || jobRunning(task.job)) {
+        if (pressed(task, "apply")) onTaskTap(task, renderWrap);
+        return;
+    }
+    const pc = settings();
+    if (!pc) return;
+    Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: "sending" });
+    const waited = pressWait(task);
+    renderWrap();
+    if (!(await waited)) return;
+    let answer;
+    try {
+        answer = await applyWrap(pc, venue);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        Object.assign(task, { action: "", wait: "", note: { text: e.message, kind: "bad" } });
+        renderWrap();
+        return;
+    }
+    // signed out meanwhile: the task is no longer the screen's
+    if (wrap.apply[venue] !== task) return;
+    heard(200);
+    task.wait = "";
+    task.job = { action: "wrap", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    task.ask = () => {
+        askTask(task, renderWrap)
+            .then(renderWrap)
+            .catch(() => {});
+    };
+    renderWrap();
+    later(task);
+}
+
+/**
+ * Signed out, or other settings saved: the rows and their answers go, any push's press is
+ * let go and no longer asked about (the job itself is the server's).
+ */
+function dropWrap() {
+    wrap.asked += 1;
+    wrap.info = null;
+    for (const part of WRAP_PARTS) {
+        wrap.status[part] = "";
+        wrap.busy[part] = false;
+        el.wrapParts[part].text.value = "";
+    }
+    for (const venue of WRAP_VENUES) {
+        const task = wrap.apply[venue];
+        takeBack(task);
+        clearTimeout(task.timer);
+        clearTimeout(task.lateTimer);
+        wrap.apply[venue] = jobTask();
+    }
+    renderWrap();
+}
+
 /**
  * Admin open on Settings, at the Account block: where a venue button's Buy postings leads
  * (`packs`: its pack choice unfolded), and the way back from Stripe or eBay.
@@ -4477,6 +4869,7 @@ function toLanding(message) {
     meAsked = false;
     seller.info = null;
     quietSeller();
+    dropWrap();
     serverStatus = null;
     clearTimeout(healthTimer);
     healthTimer = null;
@@ -4771,17 +5164,20 @@ async function saveSettings() {
         return;
     }
     el.settingsStatus.textContent = "Saved. Checking the server...";
-    // new settings, maybe another account: /me and the seller's address are asked afresh
+    // new settings, maybe another account: /me, the seller's address and the header and
+    // footer are asked afresh
     me = null;
     meAsked = false;
     seller.info = null;
     quietSeller();
+    dropWrap();
     try {
         await checkPc(s);
         heard(200);
         el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
         loadMe().catch(() => {});
         loadSeller().catch(() => {});
+        loadWrap().catch(() => {});
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = refusalLine("Saved, but", e.status, e.message);
@@ -4897,7 +5293,7 @@ async function fetchPictures(m, pc) {
  * upload. Photos and deletes not yet on the PC keep NEXT shut (doneButton), so
  * nothing the queue still owes the PC is dropped.
  */
-async function nextItem(m) {
+async function nextItem(m, { snapping = false } = {}) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
         say("The user note has not reached the server yet. NEXT again once it has.", "warn");
@@ -4927,8 +5323,43 @@ async function nextItem(m) {
     // the other kind's screen leaves an earlier item it was showing
     pushTo(readHistory().length + 1);
     for (const k of MODES) if (viewing[k]) bringUp(k, null).catch(() => {});
-    // a book starts with Scan, not the keyboard
-    if (m === "goods") el.itemInput.focus();
+    // a book starts with Scan, not the keyboard; Snap Next starts with the camera
+    if (m === "goods" && !snapping) el.itemInput.focus();
+}
+
+/**
+ * Snap Next (Michal, 2026-10-17: "After the item is posted the snap yellow button darkens;
+ * that is ok. But rather it should say Snap Next."): NEXT and Snap in one tap. The label
+ * still opens the camera itself, inside his tap as the phone requires; the tap starts NEXT,
+ * and a photo back from the camera waits for it (`snapped`), so it starts the next item.
+ */
+const onward = { goods: null, book: null };
+
+/** Snap Next opens while NEXT would. */
+function onwardReady(m) {
+    return doneButton(slots[m]).enabled && !restoring[m];
+}
+
+function onSnapTap(m) {
+    if (snapWord(slots[m], { earlier: !!viewing[m] }) !== "Snap Next" || !onwardReady(m)) return;
+    onward[m] = nextItem(m, { snapping: true }).catch(() => {});
+}
+
+/** Photos back from the camera: onto the item, once a Snap Next begun on the tap has started it. */
+function snapped(m, files) {
+    const take = (list) => {
+        acceptFiles(m, list);
+        if (m === "goods") snapUnderThumb();
+    };
+    const pending = onward[m];
+    onward[m] = null;
+    if (!pending) {
+        take(files);
+        return;
+    }
+    // the input is emptied as this returns: the files are kept for after the wait
+    const kept = [...files];
+    pending.then(() => take(kept));
 }
 
 /** Everything of the shown item that lives in this page's memory, let go. */
@@ -4983,6 +5414,16 @@ function clearItem(m) {
 // in hand come back on the kind last chosen with the switch, which leaves the
 // entries alone. An entry names a place, not an item: when the oldest item falls
 // off the list, every entry names the next one along and the floor still ends it.
+//
+// Michal, 2026-10-17: "Swiping left on the app goes to the previous listing. But
+// swiping right should go to the one I just came from (forward on browser). I
+// thought this used to work. Seems now both direction swipes go backwards." Safari
+// (since iOS 17.5) has its back and forward, the buttons and the edge swipes, skip
+// an entry a page pushed with no tap or key in the ten seconds before, and the load
+// pushed the whole walk before any tap: back from the items in hand fell through to
+// the floor (the end said, the oldest item up) and forward found nothing to stop on.
+// Chrome's back skips the like. So a fresh page makes the walk's entries on his first
+// tap (mirrorWalk), NEXT's on its own tap, and a page never pushes one without a tap.
 
 /** Entries for the places after the current one up to `at`, which becomes current. */
 function pushTo(at) {
@@ -4990,18 +5431,23 @@ function pushTo(at) {
     cursor = at;
 }
 
-/** On load: the entries a reload left (their place), or the walk mirrored afresh with the items in hand current. */
+/** On load: the entries a reload left (their place); a fresh entry waits for his first tap (mirrorWalk). */
 function startWalk() {
     const list = readHistory();
     const at = walkPosition(globalThis.history.state, list.length);
-    if (at > 0) {
-        cursor = at;
-        return list[at - 1] || null;
-    }
+    if (at <= 0) return null;
+    cursor = at;
+    mirrored = true;
+    return list[at - 1] || null;
+}
+
+/** On his first tap of a fresh page: the walk mirrored into the browser's entries, the items in hand current. */
+function mirrorWalk() {
+    if (mirrored) return;
+    mirrored = true;
     globalThis.history.replaceState({ snap: 0 }, "");
     cursor = 0;
-    pushTo(list.length + 1);
-    return null;
+    pushTo(readHistory().length + 1);
 }
 
 function onPopState(e) {
@@ -5126,6 +5572,32 @@ function main() {
         sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),
         sellerStatus: $("seller-status"),
+        wrap: $("wrap"),
+        wrapParts: Object.fromEntries(
+            WRAP_PARTS.map((part) => [
+                part,
+                {
+                    on: $(`wrap-${part}-on`),
+                    fold: $(`wrap-${part}`),
+                    text: $(`wrap-${part}-text`),
+                    count: $(`wrap-${part}-count`),
+                    venues: Object.fromEntries(WRAP_VENUES.map((v) => [v, $(`wrap-${part}-${v}`)])),
+                    save: $(`wrap-${part}-save`),
+                    status: $(`wrap-${part}-status`),
+                    applies: $(`wrap-${part}-apply`),
+                    apply: Object.fromEntries(
+                        WRAP_VENUES.map((v) => [
+                            v,
+                            {
+                                btn: $(`wrap-${part}-apply-${v}`),
+                                reset: $(`wrap-${part}-apply-${v}-reset`),
+                                line: $(`wrap-${part}-apply-${v}-status`),
+                            },
+                        ])
+                    ),
+                },
+            ])
+        ),
         aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
@@ -5174,20 +5646,15 @@ function main() {
         detailPricing: $("detail-pricing"),
         detailPricingWords: PRICING.map(({ grade }) => $(`detail-pricing-${grade}`)),
         detailPricingNote: $("detail-pricing-note"),
+        detailCustomizeActions: $("detail-customize-actions"),
         detailCustomizeSave: $("detail-customize-save"),
-        detailCustomizeSync: $("detail-customize-sync"),
-        detailCustomizeReset: $("detail-customize-reset"),
         detailCustomizeStatus: $("detail-customize-status"),
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
         syncBar: $("sync-bar"),
-        syncButtons: ["from", "to"].map((direction) => ({
-            direction,
-            btn: $(`sync-${direction}`),
-            icon: $(`sync-${direction}-icon`),
-        })),
-        syncReset: $("sync-reset"),
+        syncButtons: $("sync-buttons"),
+        syncIcons: { from: $("sync-from-icon"), to: $("sync-to-icon") },
         syncStatus: $("sync-status"),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
@@ -5262,6 +5729,7 @@ function main() {
         bookDetails: $("book-details"),
         bookMatch: $("book-match"),
         bookSnapLabel: $("book-snap-label"),
+        bookSnapText: $("book-snap-word"),
         bookSnapInput: $("book-snap-input"),
         bookGalleryLabel: $("book-gallery-label"),
         bookGalleryInput: $("book-gallery-input"),
@@ -5407,6 +5875,29 @@ function main() {
     el.sellerSave.addEventListener("click", () => {
         saveSeller().catch(() => {});
     });
+    // the header and the footer: each row's tick, its box's counter, Save, Apply to:'s pills,
+    // and Apply to all existing listings with its reset
+    for (const [part, p] of Object.entries(el.wrapParts)) {
+        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
+        p.text.addEventListener("input", () => {
+            // "saved" no longer speaks for what is in the box
+            if (!wrap.busy[part]) wrap.status[part] = "";
+            renderWrap();
+        });
+        p.save.addEventListener("click", () => {
+            saveWrap(part).catch(() => {});
+        });
+        for (const [venue, pill] of Object.entries(p.venues)) pill.addEventListener("click", () => toggleWrapVenue(part, venue));
+        for (const [venue, { btn, reset }] of Object.entries(p.apply)) {
+            btn.addEventListener("click", () => {
+                startApply(venue).catch(() => {});
+            });
+            reset.addEventListener("click", () => {
+                resetTask(wrap.apply[venue], renderWrap).catch(() => {});
+            });
+        }
+    }
+    renderWrap();
     // a venue button refused for want of postings: its Buy postings opens the Account block
     for (const node of [el.ebayBuy, el.craigslistBuy, el.poshmarkBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
     // See in inventory: Admin on the listing the item became, as its row's tap opens it
@@ -5496,34 +5987,12 @@ function main() {
     el.detailCustomizeSave.addEventListener("click", () => {
         saveRowCustomize().catch(() => {});
     });
-    // customize's task on screen again, unless the listing has changed meanwhile
-    const customizePaint = () => {
-        const mine = admin.shown;
-        return () => {
-            if (mine === admin.shown) renderCards();
-        };
-    };
-    el.detailCustomizeSync.addEventListener("click", () => {
-        if (pressed(admin.custom, "push")) onTaskTap(admin.custom, customizePaint());
-        else pushRow().catch(() => {});
-    });
-    el.detailCustomizeReset.addEventListener("click", () => {
-        resetTask(admin.custom, customizePaint()).catch(() => {});
-    });
     for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
         toggle.addEventListener("click", () => {
             admin.folds[venue] = card.hidden;
             renderFolds();
         });
     }
-    for (const { direction, btn } of el.syncButtons) {
-        btn.addEventListener("click", () => {
-            startSync(direction).catch(() => {});
-        });
-    }
-    el.syncReset.addEventListener("click", () => {
-        resetTask(sync, renderSync).catch(() => {});
-    });
     renderSync();
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
@@ -5541,13 +6010,8 @@ function main() {
     });
     el.note.addEventListener("input", () => onNoteInput("goods"));
     el.note.addEventListener("blur", () => noteDue("goods"));
-    el.snapInput.addEventListener(
-        "change",
-        onFiles((files) => {
-            acceptFiles("goods", files);
-            snapUnderThumb();
-        })
-    );
+    el.snapLabel.addEventListener("click", () => onSnapTap("goods"));
+    el.snapInput.addEventListener("change", onFiles((files) => snapped("goods", files)));
     el.galleryInput.addEventListener("change", onFiles((files) => acceptFiles("goods", files)));
     for (const venue of VENUES) {
         el[`${venue}Btn`].addEventListener("click", () => onVenueTap("goods", venue));
@@ -5575,7 +6039,8 @@ function main() {
             setState("book", reduce(slots.book, { type: "bookFormat", format: value }))
         );
     }
-    el.bookSnapInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
+    el.bookSnapLabel.addEventListener("click", () => onSnapTap("book"));
+    el.bookSnapInput.addEventListener("change", onFiles((files) => snapped("book", files)));
     el.bookGalleryInput.addEventListener("change", onFiles((files) => acceptFiles("book", files)));
     for (const { value, node } of el.chips) {
         node.addEventListener("click", () =>
@@ -5645,6 +6110,8 @@ function main() {
     });
 
     window.addEventListener("popstate", onPopState);
+    // ahead of the tap's own handler (NEXT pushes on from there); a key on a button clicks it too
+    window.addEventListener("click", mirrorWalk, { capture: true });
 
     if (walked) say(walkLine(walked, false));
     for (const m of MODES) {

@@ -187,6 +187,9 @@ test("Admin's cards: Save is one PATCH of the fields, Add a POST to the venue, t
     assert.equal(end.init.body, '{"action":"end","sku":"R5GM4XZN","venue":"ebay"}');
     const sync = await wire(() => postJob(PC, actionJob("sync", { direction: "from" })));
     assert.equal(sync.init.body, '{"action":"sync","direction":"from"}');
+    // 2.20.0: a sync names its venue to a server that says syncable
+    const toCl = await wire(() => postJob(PC, actionJob("sync", { direction: "to", venue: "craigslist" })));
+    assert.equal(toCl.init.body, '{"action":"sync","direction":"to","venue":"craigslist"}');
 });
 
 test("the contract constants: the key header and a 3 s poll", () => {

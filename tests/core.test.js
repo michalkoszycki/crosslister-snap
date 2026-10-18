@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    adminLink,
     buildFileName,
     checkSettings,
     cleanItemName,
@@ -63,14 +64,18 @@ import {
     snapWord,
     SNAP_SPOT,
     cancelButton,
+    cancelledLine,
+    cancelNote,
     busyLine,
     CANCELLED,
+    CANCELLED_ON_PC,
     CONTINUE,
     NEXT_PAUSED,
     PAUSED,
     PAUSED_ON_PC,
     RESET,
     SEND_DELAY_MS,
+    TAP_AGAIN,
     TAP_TO_CANCEL,
     taskCancel,
     taskTap,
@@ -117,13 +122,19 @@ import {
     EDIT_QUANTITY_HINT,
     NOT_GRADED,
     NO_CACHED,
-    PUSH_CLOSED,
+    pushClosed,
     cachedPrices,
     canPush,
     customizeButtons,
     customizeChanges,
     customizeLine,
     customizeSaved,
+    customizeVenues,
+    syncBarLine,
+    syncButtons,
+    syncJob,
+    syncVenues,
+    syncWord,
     followRow,
     rowCustomize,
     sliderWords,
@@ -238,6 +249,7 @@ import {
     swipeState,
     UNDO_MS,
 } from "../core.js";
+import { applyLabel, venueTickLabel, WRAP_MAX, WRAP_PARTS, wrapBody, wrapCounter, wrapError, wrapOf } from "../core.js";
 import {
     NAME_WAIT_HINT,
     photoStem,
@@ -667,6 +679,36 @@ test("the Snap button says Snap Again once there is a photo, and lands three qua
     assert.equal(snapScrollTop({ scrollY: 0, innerHeight: 800 }, { top: 300, height: 100 }), 0, "never above the top");
 });
 
+test("the Snap button says Snap Next once the item in hand has a posting up, goods and book alike", () => {
+    // Michal, 2026-10-17: "After the item is posted the snap yellow button darkens; that is ok.
+    // But rather it should say Snap Next."
+    const photos = sent(3, [1]);
+    const up = (s, venue, job) => ({ ...s, sku: "B-0042", jobs: { ...s.jobs, [venue]: { ...idleJob(), ...job } } });
+    const posted = up(photos, "ebay", { phase: "done", link: "https://www.ebay.com/itm/1" });
+    assert.equal(snapWord(posted), "Snap Next");
+    assert.equal(snapWord(up(photos, "craigslist", { phase: "done", link: "https://sfbay.craigslist.org/x/1.html" })), "Snap Next");
+    // not before the link: still posting, saved and not posted, or failed
+    assert.equal(snapWord(up(photos, "ebay", { phase: "running", step: "drafting the listing" })), "Snap Again");
+    assert.equal(snapWord(up(photos, "ebay", { phase: "done", link: "", held: true })), "Snap Again");
+    assert.equal(snapWord(up(photos, "ebay", { phase: "failed", error: "no" })), "Snap Again");
+    // an earlier item back brought up keeps its word: NEXT there starts nothing new
+    assert.equal(snapWord(posted, { earlier: true }), "Snap Again");
+    assert.equal(snapWord(photos, { earlier: true }), "Snap Again");
+    // a book says Snap, photos or not, and Snap Next once its listing is up
+    const book = foundBook(2);
+    assert.equal(snapWord(bookState()), "Snap");
+    assert.equal(snapWord(book), "Snap");
+    assert.equal(snapWord(up(book, "ebay", { phase: "done", link: "https://www.ebay.com/itm/9" })), "Snap Next");
+    assert.equal(snapWord(up(book, "ebay", { phase: "done", link: "https://www.ebay.com/itm/9" }), { earlier: true }), "Snap");
+});
+
+test("the header link says Admin on the posting screens and Snap while Admin is open", () => {
+    // Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to
+    // Snap, so that it is more intuitive how to return to snapping a photo."
+    assert.deepEqual(adminLink(false), { text: "Admin", label: "" });
+    assert.deepEqual(adminLink(true), { text: "Snap", label: "Snap: close Admin and go back to snapping" });
+});
+
 test("a tap on a busy venue button pauses it; continue carries on, reset drops the press as if never made", () => {
     // Michal, 2026-10-02: "delay sending by 1 second (but show loading) so that if one cancels
     // within 1 sec there is no call money spent"; 2026-10-07, after a model call he could not
@@ -674,7 +716,7 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
     // cancel should change to 'reset call' (as in discard) and the button should change to
     // 'continue' ... Only pressing it twice actually drops all the info"
     assert.equal(SEND_DELAY_MS, 1000);
-    assert.equal(TAP_TO_CANCEL, "tap again to cancel");
+    assert.equal(TAP_AGAIN, "tap again to cancel");
     assert.equal(CONTINUE, "continue");
     assert.equal(RESET, "reset");
     let s = sent(1, [1]);
@@ -736,9 +778,9 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
         venue: "ebay",
         status: { state: "failed", error: "cancelled from the phone", sku: "B-1" },
     });
-    assert.equal(venueLine(s.jobs.ebay).text, "cancelled from the phone");
+    assert.equal(venueLine(s.jobs.ebay).text, CANCELLED, "an older server says nothing of the credit");
     assert.equal(s.jobs.ebay.stopping, false);
-    assert.equal(s.sku, "B-1");
+    assert.equal(s.sku, "B-1", "a saved row stopped before its publish: kept");
     assert.equal(cancelButton(s, "ebay"), false);
     // dropped by the PC before it ran (DELETE answered "cancelled"): nothing more to hear
     const gone = reduce(reduce(answered, { type: "jobCancelled", venue: "ebay", stopping: true }), {
@@ -748,6 +790,79 @@ test("a tap on a busy venue button pauses it; continue carries on, reset drops t
     assert.equal(gone.jobs.ebay.stopping, false);
     assert.equal(gone.jobs.ebay.jobId, "");
     assert.equal(venueLine(gone.jobs.ebay).text, CANCELLED);
+});
+
+test("credits will be lost once a press has left the phone; a draft the PC dumped is forgotten", () => {
+    // Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel,
+    // that means I want to absolutely stop it, even though we may be getting an answer from the
+    // server. Just dump that answer. In the little note say: credits will be lost."
+    assert.equal(TAP_TO_CANCEL, "tap again to cancel: credits will be lost");
+    assert.equal(CANCELLED_ON_PC, "cancelled from the phone");
+    let s = reduce(sent(1, [1]), { type: "jobSending", venue: "ebay", step: "sending" });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_AGAIN, "held on the phone in its second: nothing to lose");
+    assert.equal(reduce(sent(1, [1]), { type: "jobSent", venue: "ebay" }).jobs.ebay.sent, false, "no press, nothing sent");
+    s = reduce(s, { type: "jobSent", venue: "ebay" });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "the POST on its way");
+    s = reduce(s, { type: "jobAccepted", venue: "ebay", job: "j1", ahead: 0 });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "queued");
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting the listing" } });
+    assert.equal(cancelNote(s.jobs.ebay), TAP_TO_CANCEL, "drafting");
+    assert.equal(cancelButton(s, "ebay"), true);
+
+    // the line once the PC says it stopped: the posting kept (charged) or given back
+    assert.equal(cancelledLine({ charged: true }), "cancelled: the credit is lost");
+    assert.equal(cancelledLine({ charged: false }), CANCELLED);
+    assert.equal(cancelledLine({}), CANCELLED, "an older server says nothing");
+    assert.equal(cancelledLine({ charged: "true" }), CANCELLED, "only a real true");
+
+    // reset while drafting, the row saved on the way (its sku heard while stopping), then dumped
+    s = reduce(reduce(s, { type: "jobPaused", venue: "ebay" }), { type: "jobCancelled", venue: "ebay", stopping: true });
+    s = reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "running", step: "drafting", sku: "B-1" } });
+    assert.equal(s.sku, "B-1");
+    const dumped = reduce(s, {
+        type: "jobStatus",
+        venue: "ebay",
+        status: { state: "failed", error: CANCELLED_ON_PC, charged: true },
+    });
+    assert.equal(venueLine(dumped.jobs.ebay).text, "cancelled: the credit is lost");
+    assert.equal(dumped.sku, "", "the draft is forgotten");
+    assert.equal(photosLocked(dumped), false, "the item and its photos stay his");
+    // the next press is a fresh draft: the item and its marks, no sku
+    assert.deepEqual(jobRequest({ venue: "ebay", sku: dumped.sku, item: ITEM, photos: dumped.photos }), {
+        item: ITEM,
+        venue: "ebay",
+        ai: [1],
+    });
+    // ... unless another venue's job reports that row: it exists
+    const both = reduce(s, { type: "jobStatus", venue: "craigslist", status: { state: "queued", sku: "B-1" } });
+    assert.equal(
+        reduce(both, { type: "jobStatus", venue: "ebay", status: { state: "failed", error: CANCELLED_ON_PC } }).sku,
+        "B-1"
+    );
+    // a job that fails for any other reason keeps what it reported, as before
+    assert.equal(reduce(s, { type: "jobStatus", venue: "ebay", status: { state: "failed", error: "eBay said no" } }).sku, "B-1");
+
+    // an item read back whose only job was dumped: no sku, and its line says so
+    const back = reduce(initialState(), {
+        type: "recovered",
+        itemName: "Boots",
+        itemId: ITEM,
+        ai: [1],
+        answer: {
+            item: ITEM,
+            photos: [1],
+            note: "",
+            sku: null,
+            jobs: [{ job: "j1", venue: "ebay", state: "failed", error: CANCELLED_ON_PC, charged: false }],
+        },
+    });
+    assert.equal(back.sku, "");
+    assert.equal(venueLine(back.jobs.ebay).text, CANCELLED);
+    assert.deepEqual(jobRequest({ venue: "ebay", sku: back.sku, item: ITEM, photos: back.photos }), {
+        item: ITEM,
+        venue: "ebay",
+        ai: [1],
+    });
 });
 
 test("from the publishing step on a tap is too late; a job that ends is neither paused nor stopping", () => {
@@ -2863,14 +2978,18 @@ test("the action jobs' bodies: end and refresh carry the sku and venue, a sync i
     assert.deepEqual(actionJob("sync", { direction: "to", sku: "R5" }), { action: "sync", direction: "to" });
     assert.throws(() => actionJob("sync", { direction: "sideways" }), RangeError);
     assert.throws(() => actionJob("end", { venue: "ebay" }), RangeError);
-    assert.throws(() => actionJob("end", { sku: "R5", venue: "etsy" }), RangeError);
+    assert.throws(() => actionJob("end", { sku: "R5" }), RangeError);
     assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
+    // since 2.20.0 a sync names its venue (syncJob: only to a server whose /me says syncable)
+    assert.deepEqual(actionJob("sync", { direction: "to", venue: "craigslist" }), { action: "sync", direction: "to", venue: "craigslist" });
     // a listing's customize, Sync to eBay (the contract of 2026-10-07), and since 2026-10-08
     // the craigslist card's Sync to craigslist
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "ebay" }), { action: "push", sku: "R5", venue: "ebay" });
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "craigslist" }), { action: "push", sku: "R5", venue: "craigslist" });
     assert.deepEqual(actionJob("end", { sku: "R5", venue: "craigslist" }), { action: "end", sku: "R5", venue: "craigslist" });
-    assert.throws(() => actionJob("push", { sku: "R5", venue: "etsy" }), RangeError);
+    // whatever venue /me named, one the server adds too (Michal, 2026-10-17: "if any new get added as well")
+    assert.deepEqual(actionJob("push", { sku: "R5", venue: "poshmark" }), { action: "push", sku: "R5", venue: "poshmark" });
+    assert.throws(() => actionJob("push", { sku: "R5", venue: "" }), RangeError);
     assert.throws(() => actionJob("push", { venue: "ebay" }), RangeError);
 });
 
@@ -3031,35 +3150,134 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     const draft = { ...GRADED, statuses: { ...GRADED.statuses, ebay: { status: "draft" } } };
     assert.equal(canPush(draft), false);
     assert.equal(canPush({ ...GRADED, venues: ["craigslist"] }), false, "not on eBay");
-    assert.deepEqual(customizeButtons(GRADED, same, false), { save: false, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true), { save: false, sync: false }, "busy");
-    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false), { save: false, sync: false });
-    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false), { save: true, sync: false });
-    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false), { save: false, sync: true });
+    const ebay = ["ebay"];
+    assert.deepEqual(customizeButtons(GRADED, same, false, ebay), { save: false, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false, ebay), { save: true, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false, ebay), { save: true, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true, ebay), { save: false, sync: false }, "busy");
+    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false, ebay), { save: false, sync: false });
+    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false, ebay), { save: true, sync: false });
+    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false, ebay), { save: false, sync: true });
+    assert.deepEqual(customizeButtons(GRADED, same, false, []), { save: false, sync: false }, "an account that syncs to none");
 
     // its status line: on its way, the push job, what the PC said; the quantity hint; why Sync is shut
     const idle = { wait: "", job: null, note: null, values: same };
-    assert.deepEqual(customizeLine(GRADED, idle), { text: "", kind: "" });
-    assert.deepEqual(customizeLine(draft, idle), { text: PUSH_CLOSED, kind: "" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }), {
+    assert.deepEqual(customizeLine(GRADED, idle, ebay), { text: "", kind: "" });
+    assert.deepEqual(customizeLine(draft, idle, ebay), { text: "Sync to eBay opens once the listing is up on eBay", kind: "" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }, ebay), {
         text: EDIT_QUANTITY_HINT,
         kind: "bad",
     });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, wait: "saving" }), { text: "saving", kind: "busy" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "running", step: "revising on eBay" } }), {
+    assert.deepEqual(customizeLine(GRADED, { ...idle, wait: "saving" }, ebay), { text: "saving", kind: "busy" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "running", step: "revising on eBay" } }, ebay), {
         text: "revising on eBay",
         kind: "busy",
     });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "done", summary: "updated" } }), {
+    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "done", summary: "updated" } }, ebay), {
         text: "updated",
         kind: "ok",
     });
     const refused = { text: "no cached fair price for this row: set the price by hand", kind: "bad" };
-    assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }), refused);
-    assert.deepEqual(customizeSaved(GRADED), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
-    assert.deepEqual(customizeSaved(draft), { text: "saved", kind: "ok" });
+    assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }, ebay), refused);
+    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeSaved(draft, ebay), { text: "saved", kind: "ok" });
+});
+
+test("customize's Sync to <venue>: one per venue the account syncs to and the row is listed on, in /me's order", () => {
+    // Michal, 2026-10-17: "There is a button push to eBay, so add a button push to Craigslist
+    // next to it. All venues need to be represented (if any new get added as well). We are
+    // aiming for venue symmetry."
+    const up = { status: "listed", id: "1", url: "", listed_at: null };
+    const draft = { status: "draft", id: "", url: "", listed_at: null };
+    const both = { ...GRADED, statuses: { ebay: up, craigslist: up } };
+    const all = ["ebay", "craigslist"];
+    assert.deepEqual(customizeVenues(both, all), ["ebay", "craigslist"]);
+    assert.deepEqual(customizeVenues(both, ["craigslist", "ebay"]), ["craigslist", "ebay"], "in the order given");
+    assert.deepEqual(customizeVenues(both, ["ebay"]), ["ebay"], "a plain seller: eBay's alone");
+    assert.deepEqual(customizeVenues({ ...both, statuses: { ebay: draft, craigslist: up } }, all), ["craigslist"], "not listed: no button");
+    assert.deepEqual(customizeVenues({ ...both, venues: ["ebay"] }, all), ["ebay"], "not on the venue: no button");
+    // a venue the server adds is drawn as the others, no name of it in the code
+    const three = { ...both, venues: ["ebay", "craigslist", "poshmark"], statuses: { ...both.statuses, poshmark: up } };
+    assert.deepEqual(customizeVenues(three, ["ebay", "craigslist", "poshmark"]), ["ebay", "craigslist", "poshmark"]);
+    assert.deepEqual(customizeButtons(both, rowCustomize(both), false, ["craigslist"]), { save: false, sync: true });
+    assert.deepEqual(customizeButtons({ ...both, statuses: { ebay: up, craigslist: draft } }, rowCustomize(both), false, ["craigslist"]), {
+        save: false,
+        sync: false,
+    });
+
+    // saved: the one Sync by name, or "sync" for more than one
+    assert.deepEqual(customizeSaved(both, all), { text: "saved; sync puts it on the listings", kind: "ok" });
+    assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: up } }, all), {
+        text: "saved; Sync to craigslist puts it on the listing",
+        kind: "ok",
+    });
+    assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: draft } }, all), { text: "saved", kind: "ok" });
+
+    // nothing listed: what opens a Sync, every venue named
+    const none = { ...both, statuses: { ebay: draft, craigslist: draft } };
+    const idle = { wait: "", job: null, note: null, values: rowCustomize(both) };
+    assert.deepEqual(customizeLine(none, idle, all), { text: "Sync opens once the listing is up on eBay or craigslist", kind: "" });
+    assert.equal(pushClosed(["ebay"]), "Sync to eBay opens once the listing is up on eBay");
+    assert.equal(pushClosed(["ebay", "craigslist", "poshmark"]), "Sync opens once the listing is up on eBay, craigslist or poshmark");
+    assert.equal(pushClosed([]), "", "an account that syncs to none: nothing to open");
+    assert.deepEqual(customizeLine(none, idle, []), { text: "", kind: "" });
+});
+
+test("GET /me's syncable: the venues the sync bar and customize go to and from; eBay alone when it does not say", () => {
+    // an older server, or none yet: eBay's two, as before 2.20.0
+    assert.deepEqual(syncVenues(null, "to"), ["ebay"]);
+    assert.deepEqual(syncVenues(meOf({ venues: ["ebay", "craigslist"] }), "to"), ["ebay"]);
+    assert.deepEqual(syncButtons(null), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+    ]);
+    assert.equal(meOf({ venues: ["ebay"] }).syncable, null);
+
+    // Michal's: to eBay and craigslist, from eBay; in /me's venues order, whatever syncable's
+    const michal = meOf({ venues: ["ebay", "craigslist"], syncable: { to: ["craigslist", "ebay"], from: ["ebay"] } });
+    assert.deepEqual(michal.syncable, { to: ["craigslist", "ebay"], from: ["ebay"] });
+    assert.deepEqual(syncVenues(michal, "to"), ["ebay", "craigslist"]);
+    assert.deepEqual(syncVenues(michal, "from"), ["ebay"]);
+    assert.deepEqual(syncButtons(michal), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+        { direction: "to", venue: "craigslist" },
+    ]);
+    // a plain seller
+    const seller = meOf({ venues: ["ebay"], syncable: { to: ["ebay"], from: ["ebay"] } });
+    assert.deepEqual(syncButtons(seller), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+    ]);
+    // a venue the server adds: its buttons come by themselves, after /me's venues when it is not among them
+    const three = meOf({ venues: ["ebay", "craigslist"], syncable: { to: ["ebay", "poshmark", "craigslist"], from: ["poshmark", "ebay"] } });
+    assert.deepEqual(syncButtons(three), [
+        { direction: "from", venue: "ebay" },
+        { direction: "to", venue: "ebay" },
+        { direction: "to", venue: "craigslist" },
+        { direction: "from", venue: "poshmark" },
+        { direction: "to", venue: "poshmark" },
+    ]);
+    // read leniently: names trimmed, each once; a list not given (or not a list) is none
+    assert.deepEqual(meOf({ syncable: { to: [" ebay", "ebay", 3, ""], from: "ebay" } }).syncable, { to: ["ebay"], from: [] });
+    assert.equal(meOf({ syncable: "ebay" }).syncable, null);
+    assert.deepEqual(syncButtons(meOf({ venues: ["ebay"], syncable: {} })), [], "a server that syncs none: no buttons");
+
+    // the words, the bodies, the bar's line
+    assert.equal(syncWord("to", "ebay"), "Sync to eBay");
+    assert.equal(syncWord("from", "ebay"), "Sync from eBay");
+    assert.equal(syncWord("to", "craigslist"), "Sync to craigslist");
+    assert.deepEqual(syncJob(michal, "to", "craigslist"), { action: "sync", direction: "to", venue: "craigslist" });
+    assert.deepEqual(syncJob(michal, "from", "ebay"), { action: "sync", direction: "from", venue: "ebay" });
+    assert.deepEqual(syncJob(three, "to", "poshmark"), { action: "sync", direction: "to", venue: "poshmark" });
+    assert.deepEqual(syncJob(null, "to", "ebay"), { action: "sync", direction: "to" }, "an older server refuses a venue");
+    assert.deepEqual(syncJob(meOf({}), "from", "ebay"), { action: "sync", direction: "from" });
+    const done = { text: "3 listings updated, 10 unchanged, 0 failed", kind: "ok" };
+    assert.deepEqual(syncBarLine(done, "craigslist", true), { text: "craigslist: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
+    assert.deepEqual(syncBarLine(done, "ebay", true), { text: "eBay: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
+    assert.deepEqual(syncBarLine(done, "ebay", false), done, "one venue: as it is");
+    assert.deepEqual(syncBarLine(done, "", true), done, "no press behind it");
+    assert.equal(syncBarLine(null, "ebay", true), null);
 });
 
 // --- Admin: a list row's price, dialled on its tile (Michal, 2026-10-07, 2026-10-08) -------
@@ -3245,10 +3463,11 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         ebay: null,
         pending: false,
         registered: true,
+        syncable: null,
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", email: "", admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true },
+        { user: "", email: "", admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true, syncable: null },
         "silent: as today, an account with nothing left to sign up for"
     );
     assert.equal(meOf(null), null);
@@ -3278,10 +3497,10 @@ test("GET /me: poshmark on only when it says true; off says the craigslist line 
     assert.equal(venueAllowed(meOf({ poshmark: false, craigslist: false }), "ebay"), true, "eBay is never off");
     assert.equal(venueAllowed(meOf({ poshmark: true, craigslist: false }), "craigslist"), false, "each on its own flag");
     assert.equal(venueOff("poshmark"), "Poshmark is not available for your account yet. Ask for it in Admin, Feedback.");
-    assert.equal(venueName("poshmark"), "Poshmark");
+    assert.equal(venueName("poshmark"), "poshmark", "its key, as craigslist's is");
 });
 
-test("poshmark is a third venue the server only posts to: add, post, open; no refresh, end, sync or edit", () => {
+test("poshmark is a third venue the server only posts to: add, post, open on its card; no edit", () => {
     assert.deepEqual(VENUES, ["ebay", "craigslist", "poshmark"]);
     assert.deepEqual(POST_ONLY, ["poshmark"]);
     assert.deepEqual(jobRequest({ venue: "poshmark", item: "Boots 2026-10-11", photos: [{ n: 1, ai: true }, { n: 2, ai: false }] }), {
@@ -3303,9 +3522,6 @@ test("poshmark is a third venue the server only posts to: add, post, open; no re
     assert.deepEqual(venueActions({ ...listed, statuses: { ...base.statuses, poshmark: { status: "ended" } } }, "poshmark"), ["post"]);
     assert.equal(actionWord("add", "poshmark"), "Add poshmark to this item");
     assert.equal(actionWord("post", "poshmark"), "Post on poshmark");
-    for (const action of ["end", "refresh", "push"]) {
-        assert.throws(() => actionJob(action, { sku: "P1", venue: "poshmark" }), RangeError, action);
-    }
     assert.equal(EDIT_FIELDS.poshmark, undefined, "never edited from the page");
     assert.deepEqual(venueFacts(listed, "poshmark"), []);
     assert.deepEqual(derivedFields(listed, "poshmark"), {});
@@ -3922,4 +4138,65 @@ test("landingHelp: what each of the landing's buttons does, under them (Michal, 
     assert.match(landingHelp("signin"), /^Sign in with your email/);
     assert.equal(landingHelp(""), "");
     assert.equal(landingHelp("nothing"), "");
+});
+
+// --- a header and a footer on every listing (Michal, 2026-10-17) ------------------------------
+
+test("wrapOf: GET /me/wrap's answer, leniently; not one is null", () => {
+    const answer = {
+        header: { on: true, text: "Free local pickup.", venues: ["ebay"] },
+        footer: { on: false, text: "Thanks!\n\nAnna", venues: [] },
+        available: ["ebay", "craigslist"],
+    };
+    assert.deepEqual(wrapOf(answer), answer);
+    assert.deepEqual(WRAP_PARTS, ["header", "footer"]);
+    assert.equal(WRAP_MAX, 2000);
+    // a part not given is off, empty, on no venue; on only when true; text kept as the server has it
+    assert.deepEqual(wrapOf({ header: { on: "yes", text: 5, venues: "ebay" } }), {
+        header: { on: false, text: "", venues: [] },
+        footer: { on: false, text: "", venues: [] },
+        available: ["ebay"],
+    });
+    assert.equal(wrapOf({ footer: { text: "  spaced  " } }).footer.text, "  spaced  ");
+    // venues: known ones, each once, in the page's order
+    assert.deepEqual(wrapOf({ header: { venues: ["craigslist", "etsy", "ebay", "ebay"] } }).header.venues, ["ebay", "craigslist"]);
+    // available naming none (or nothing known) is eBay, as every account posts there
+    assert.deepEqual(wrapOf({ header: {}, available: [] }).available, ["ebay"]);
+    assert.deepEqual(wrapOf({ header: {}, available: ["etsy"] }).available, ["ebay"]);
+    assert.deepEqual(wrapOf({ header: {}, available: ["craigslist", "ebay"] }).available, ["ebay", "craigslist"]);
+    for (const not of [null, undefined, "x", 3, {}, { jobs: [] }, { header: "on" }, { available: ["ebay"] }]) {
+        assert.equal(wrapOf(not), null, JSON.stringify(not));
+    }
+});
+
+test("wrapBody: only what changed for one part; the text tidied and at most 2000 characters", () => {
+    assert.deepEqual(wrapBody("header", { on: true, venues: ["ebay"] }), { ok: true, body: { header: { on: true, venues: ["ebay"] } } });
+    assert.deepEqual(wrapBody("footer", { on: false }), { ok: true, body: { footer: { on: false } } });
+    assert.deepEqual(wrapBody("header", { venues: [] }), { ok: true, body: { header: { venues: [] } } });
+    assert.deepEqual(wrapBody("footer", { venues: ["craigslist", "ebay", "x", "ebay"] }).body, { footer: { venues: ["ebay", "craigslist"] } });
+    // the text: Windows line endings plain, the ends trimmed, the blank lines inside kept
+    assert.deepEqual(wrapBody("header", { text: "  Free pickup.\r\n\r\nChicago only.\r\n" }).body, { header: { text: "Free pickup.\n\nChicago only." } });
+    assert.deepEqual(wrapBody("header", { text: "   " }).body, { header: { text: "" } }, "cleared");
+    assert.deepEqual(wrapBody("header", { text: 12 }).body, { header: { text: "" } });
+    assert.equal(wrapBody("footer", { text: "x".repeat(2000) }).body.footer.text.length, 2000);
+    assert.equal(wrapBody("footer", { text: ` ${"x".repeat(2000)} ` }).ok, true, "the trimmed text is what counts");
+    assert.deepEqual(wrapBody("footer", { text: "x".repeat(2001) }), { ok: false, error: "At most 2000 characters; this is 2001." });
+    // on only as a boolean; nothing else goes
+    assert.deepEqual(wrapBody("header", { on: "true" }).body, { header: {} });
+    assert.throws(() => wrapBody("sidebar", { on: true }), RangeError);
+});
+
+test("the counter, the Apply to: pill's face, the apply button's word, a refusal's line", () => {
+    assert.equal(wrapCounter(""), "0 / 2000");
+    assert.equal(wrapCounter("Thanks!"), "7 / 2000");
+    assert.equal(wrapCounter(undefined), "0 / 2000");
+    // Michal: "once clicked the button changes to green with a check, our typical"
+    assert.deepEqual(venueTickLabel("ebay", true), { text: "ebay", tick: true });
+    assert.deepEqual(venueTickLabel("craigslist", false), { text: "craigslist", tick: false });
+    // "Finally a button 'Apply to all existing listings' (per the venue specified)"
+    assert.equal(applyLabel("ebay"), "Apply to all existing ebay listings");
+    assert.equal(applyLabel("craigslist"), "Apply to all existing craigslist listings");
+    assert.equal(wrapError(404, "Not Found"), "The header and footer are not available yet.");
+    assert.equal(wrapError(400, "header.text: at most 2000 characters"), "header.text: at most 2000 characters");
+    assert.equal(wrapError(0, "cannot reach the server"), "Could not save: cannot reach the server.");
 });

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.18.0";
+import { noteDirty, unsent } from "./queue.js?v=2.22.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.18.0";
+} from "./book.js?v=2.22.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -369,9 +369,11 @@ export function signinNote({ isIos, standalone }) {
  * server says `"poshmark": true`, since a server that does not say it cannot post there. A sign-up
  * still under way (Michal, 2026-10-08) says `pending` (signed in by email, eBay not yet
  * connected: no user yet, only the email) or, connected, `registered` false until the
- * address is in; a server that says neither is an account as today, pending nothing.
+ * address is in; a server that says neither is an account as today, pending nothing. Since
+ * 2.20.0 `syncable` (syncableOf), the venues the account may sync to and from; null from a
+ * server that does not say, which syncs eBay alone (syncVenues).
  * @param {unknown} answer
- * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, poshmark:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean} | null}
+ * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, poshmark:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean, syncable:Syncable|null} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
@@ -388,7 +390,100 @@ export function meOf(answer) {
         ebay: ebayOf(a.ebay),
         pending: a.pending === true,
         registered: a.registered !== false,
+        syncable: syncableOf(a.syncable),
     };
+}
+
+/**
+ * The venues an account may push onto (`to`: customize's Sync to <venue>, the sync bar's) and
+ * pull from (`from`: the sync bar's Sync from <venue>), as /me names them.
+ * @typedef {{to:string[], from:string[]}} Syncable
+ */
+
+/**
+ * /me's "syncable" (Michal, 2026-10-17: "All venues need to be represented (if any new get
+ * added as well). We are aiming for venue symmetry."): each list's names, each once, as the
+ * server wrote them; a list it does not give is none. Null when the server does not say.
+ * @param {unknown} x
+ * @returns {Syncable|null}
+ */
+function syncableOf(x) {
+    if (!x || typeof x !== "object") return null;
+    const s = /** @type {Record<string, unknown>} */ (x);
+    /** @param {unknown} list */
+    const names = (list) => [...new Set((Array.isArray(list) ? list : []).filter((v) => typeof v === "string").map((v) => v.trim()).filter(Boolean))];
+    return { to: names(s.to), from: names(s.from) };
+}
+
+/** What a sync goes to and from when /me does not say (no /me yet, an older server): eBay, as before 2.20.0. */
+const SYNC_EBAY = ["ebay"];
+
+/**
+ * The venues the account may sync in `direction` ("to": push the rows onto, "from": pull them
+ * from), in /me's `venues` order (one `venues` leaves out after them, as `syncable` has it);
+ * eBay alone while /me does not say. Never a venue's name of its own: a venue the server adds
+ * shows up with its buttons by itself.
+ * @param {{venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @param {"to"|"from"} direction
+ * @returns {string[]}
+ */
+export function syncVenues(me, direction) {
+    if (!me || !me.syncable) return SYNC_EBAY;
+    const said = me.syncable[direction];
+    return [...new Set([...me.venues, ...said])].filter((v) => said.includes(v));
+}
+
+/**
+ * The sync bar's buttons, in their order (Michal, 2026-10-17: "add a button push to
+ * Craigslist next to it"): venue by venue as syncVenues orders them, its Sync from before its
+ * Sync to, so each from sits in the bar's left column and each to in its right.
+ * @param {{venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @returns {{direction:"from"|"to", venue:string}[]}
+ */
+export function syncButtons(me) {
+    const from = syncVenues(me, "from");
+    const to = syncVenues(me, "to");
+    const venues = [...new Set([...(me ? me.venues : []), ...from, ...to])];
+    return venues.flatMap((venue) => [
+        ...(from.includes(venue) ? [{ direction: /** @type {"from"} */ ("from"), venue }] : []),
+        ...(to.includes(venue) ? [{ direction: /** @type {"to"} */ ("to"), venue }] : []),
+    ]);
+}
+
+/**
+ * A sync bar button's word, after its icon: "Sync from eBay", "Sync to craigslist".
+ * @param {"from"|"to"} direction
+ * @param {string} venue
+ * @returns {string}
+ */
+export function syncWord(direction, venue) {
+    return `Sync ${direction} ${venueName(venue)}`;
+}
+
+/**
+ * The POST /jobs body of a sync bar button: {"action": "sync", "direction", "venue"}, the venue
+ * only to a server whose /me says `syncable` (an older one refuses any key but the two, and
+ * syncs eBay).
+ * @param {{syncable:Syncable|null} | null} me meOf's
+ * @param {"from"|"to"} direction
+ * @param {string} venue
+ * @returns {{action:string, direction:string, venue?:string}}
+ */
+export function syncJob(me, direction, venue) {
+    return actionJob("sync", { direction, venue: me && me.syncable ? venue : "" });
+}
+
+/**
+ * The sync bar's line for its job: the venue first when the bar holds more than one venue's
+ * buttons (`many`), "craigslist: 3 listings updated, 10 unchanged, 0 failed"; as it is
+ * otherwise, and for a line no press made (`venue` "").
+ * @param {{text:string, kind:string} | null} line busyLine's
+ * @param {string} venue the venue last pressed
+ * @param {boolean} many
+ * @returns {{text:string, kind:string} | null}
+ */
+export function syncBarLine(line, venue, many) {
+    return line && many && venue ? { ...line, text: `${venueName(venue)}: ${line.text}` } : line;
 }
 
 /** What a server answers every keyed route but /me, Connect eBay and Sign out while a sign-up waits for eBay (403). */
@@ -676,6 +771,119 @@ export function sellerError(status, message) {
     return `Could not save the address: ${message}.`;
 }
 
+// --- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
+// checkbox for footnote/header for all posts. When you check that, a text area appears; that
+// text will be input by the user and appended to the posting (with two return lines separating
+// it from the main text)."): the server keeps them (GET/PATCH /me/wrap), puts them round the
+// description of every listing it posts on the venues ticked, and POST /me/wrap/apply pushes
+// both onto the listings already up on one venue.
+
+/** The two parts, in their order in Settings. */
+export const WRAP_PARTS = ["header", "footer"];
+
+/** The most one part may hold, as the server takes it. */
+export const WRAP_MAX = 2000;
+
+/**
+ * A header or a footer as the server keeps it: on or off (off keeps the text: Michal, "If you
+ * uncheck it, it should not lose what you had"), its words, and the venues it goes on.
+ * @typedef {{on:boolean, text:string, venues:string[]}} WrapPart
+ * @typedef {{header:WrapPart, footer:WrapPart, available:string[]}} Wrap
+ */
+
+/** The venues a list names, each once, in VENUES' order; anything else dropped. */
+function venueList(x) {
+    const named = Array.isArray(x) ? x : [];
+    return VENUES.filter((v) => named.includes(v));
+}
+
+/**
+ * GET (or PATCH) /me/wrap's answer, leniently: a part not given is off, empty, on no venue;
+ * `available` (the venues this account posts to) is eBay when it names none. Null for an
+ * answer that is not one (neither part in it).
+ * @param {unknown} answer
+ * @returns {Wrap|null}
+ */
+export function wrapOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    const given = (k) => !!a[k] && typeof a[k] === "object";
+    if (!WRAP_PARTS.some(given)) return null;
+    const part = (k) => {
+        const p = given(k) ? /** @type {Record<string, unknown>} */ (a[k]) : {};
+        return { on: p.on === true, text: typeof p.text === "string" ? p.text : "", venues: venueList(p.venues) };
+    };
+    const available = venueList(a.available);
+    return { header: part("header"), footer: part("footer"), available: available.length ? available : ["ebay"] };
+}
+
+/**
+ * PATCH /me/wrap's body for one part: only what changed, any of `on`, `text` (its line
+ * endings plain, trimmed; at most WRAP_MAX characters, else named and nothing sent) and
+ * `venues` (known ones, each once).
+ * @param {"header"|"footer"} part
+ * @param {{on?:boolean, text?:unknown, venues?:unknown}} changes
+ * @returns {{ok:true, body:Record<string, Partial<WrapPart>>} | {ok:false, error:string}}
+ */
+export function wrapBody(part, { on, text, venues } = {}) {
+    if (!WRAP_PARTS.includes(part)) throw new RangeError(`unknown part ${part}`);
+    /** @type {Partial<WrapPart>} */
+    const body = {};
+    if (typeof on === "boolean") body.on = on;
+    if (text !== undefined) {
+        const words = typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
+        if (words.length > WRAP_MAX) return { ok: false, error: `At most ${WRAP_MAX} characters; this is ${words.length}.` };
+        body.text = words;
+    }
+    if (venues !== undefined) body.venues = venueList(venues);
+    return { ok: true, body: { [part]: body } };
+}
+
+/**
+ * The counter under a part's box: "120 / 2000".
+ * @param {string} text
+ * @returns {string}
+ */
+export function wrapCounter(text) {
+    return `${typeof text === "string" ? text.length : 0} / ${WRAP_MAX}`;
+}
+
+/**
+ * An Apply to: button's face: the venue as the venue buttons say it, and, ticked, the tick
+ * after it in the posted green (Michal, 2026-10-17: "once clicked the button changes to green
+ * with a check, our typical"), drawn by app.js as a listed badge's.
+ * @param {string} venue
+ * @param {boolean} on
+ * @returns {{text:string, tick:boolean}}
+ */
+export function venueTickLabel(venue, on) {
+    return { text: venue, tick: !!on };
+}
+
+/**
+ * The job button under a part, per venue ticked (Michal, 2026-10-17: "Finally a button 'Apply
+ * to all existing listings' (per the venue specified)").
+ * @param {string} venue
+ * @returns {string}
+ */
+export function applyLabel(venue) {
+    return `Apply to all existing ${venue} listings`;
+}
+
+/**
+ * A part's line when its change did not go: a server without the route (404) has it not
+ * available yet; a refusal (400: a bad value, a text too long) is the server's own words;
+ * anything else says what went wrong.
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function wrapError(status, message) {
+    if (status === 404) return "The header and footer are not available yet.";
+    if (status === 400) return message;
+    return `Could not save: ${message}.`;
+}
+
 /**
  * Where the page came back from, by its hash: Stripe's checkout (`#paid=<postings>` or
  * `#paid=cancelled`) or eBay's consent through the server (`#ebay=connected`, or
@@ -740,7 +948,7 @@ export const CRAIGSLIST_OFF = "Craigslist is not available for your account yet.
  * @returns {string}
  */
 export function venueOff(venue) {
-    const name = venue === "craigslist" ? "Craigslist" : venueName(venue);
+    const name = venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
     return `${name} is not available for your account yet. Ask for it in Admin, Feedback.`;
 }
 
@@ -1066,9 +1274,34 @@ export const SEND_DELAY_MS = 1000;
  * to cancel' instead of an external cancel line. The writing should be within it,
  * below, and should be small, and appear just when the button action is
  * doing/loading"). It walks back 2026-10-02's "below in red there should be a
- * cancel button" on purpose: the red cancel under the button is gone.
+ * cancel button" on purpose: the red cancel under the button is gone. As it stands
+ * now it is said by a press still held on the phone, in its first second, nothing
+ * sent and nothing paid, and by Admin's job buttons; a venue button's job that has
+ * left the phone says TAP_TO_CANCEL (cancelNote).
  */
-export const TAP_TO_CANCEL = "tap again to cancel";
+export const TAP_AGAIN = "tap again to cancel";
+
+/**
+ * The second line inside a venue button whose job has left the phone, drafting or
+ * posting, from the press's second on until the publish begins (Michal, 2026-10-17:
+ * "When I cancel a run of an AI call the job still posted. If I cancel, that means I
+ * want to absolutely stop it, even though we may be getting an answer from the server.
+ * Just dump that answer. In the little note say: credits will be lost."). The server
+ * dumps a draft cancelled while drafting; the posting it reserved is kept once the job
+ * has started (cancelledLine).
+ */
+export const TAP_TO_CANCEL = `${TAP_AGAIN}: credits will be lost`;
+
+/**
+ * The second line inside a busy venue button: TAP_AGAIN while the press is still held
+ * on the phone (its second, or the user note on its way first: nothing sent), and
+ * TAP_TO_CANCEL once its POST has left the phone. Only while cancelButton says so.
+ * @param {VenueJob} job
+ * @returns {string}
+ */
+export function cancelNote(job) {
+    return job.phase === "sending" && !job.sent ? TAP_AGAIN : TAP_TO_CANCEL;
+}
 
 /**
  * The word of a paused job button. Its first tap while busy pauses it, shown at
@@ -1097,6 +1330,21 @@ export const PAUSED_ON_PC = "paused: the server may still be working on it";
 
 /** The line under a job button whose press was reset, or dropped by the PC before it ran. */
 export const CANCELLED = "cancelled";
+
+/** The error a job the PC stopped for a reset ends with (DELETE /jobs/<id>). */
+export const CANCELLED_ON_PC = "cancelled from the phone";
+
+/**
+ * The line under a venue button once the PC says its reset job stopped, from the job's
+ * view (GET /jobs/<id>): its `charged` is true when the posting it reserved was kept,
+ * the job having started (Michal, 2026-10-17: "credits will be lost"), false when it
+ * was given back, the job still queued. An older server says nothing: CANCELLED.
+ * @param {{charged?:unknown}} job
+ * @returns {string}
+ */
+export function cancelledLine(job) {
+    return job && job.charged === true ? `${CANCELLED}: the credit is lost` : CANCELLED;
+}
 
 /**
  * Said for a moment under a job button tapped from the PC's publishing step on
@@ -1178,12 +1426,32 @@ export function taskTap(task) {
 /**
  * The word on the Snap button: "Snap", and "Snap Again" once the item has a
  * photo (Michal, 2026-09-30: "after the first snap it should say 'Snap Again'
- * on that button. That will be cute").
+ * on that button. That will be cute"); a book's button stays "Snap", as it
+ * always said. "Snap Next" once the item in hand has a posting up, a venue's
+ * job done with its link, goods and book alike (Michal, 2026-10-17: "After the
+ * item is posted the snap yellow button darkens; that is ok. But rather it
+ * should say Snap Next."): its tap is NEXT and then Snap. An earlier item back
+ * brought up (`earlier`) keeps its word: NEXT there returns to the items in
+ * hand, it starts nothing new.
  * @param {SnapState} state
- * @returns {string}
+ * @param {{earlier?: boolean}} [where]
+ * @returns {"Snap"|"Snap Again"|"Snap Next"}
  */
-export function snapWord(state) {
-    return state.photos.length > 0 ? "Snap Again" : "Snap";
+export function snapWord(state, { earlier = false } = {}) {
+    if (!earlier && postingUp(state)) return "Snap Next";
+    return state.mode !== "book" && state.photos.length > 0 ? "Snap Again" : "Snap";
+}
+
+/**
+ * The header link (Michal, 2026-10-17: "When I am on the Admin page, the Admin link up
+ * top should change to Snap, so that it is more intuitive how to return to snapping a
+ * photo."): Admin on the posting screens; Snap while Admin is open, its tap closing it,
+ * with a name that says so ("" for none but the word).
+ * @param {boolean} open
+ * @returns {{text: string, label: string}}
+ */
+export function adminLink(open) {
+    return open ? { text: "Snap", label: "Snap: close Admin and go back to snapping" } : { text: "Admin", label: "" };
 }
 
 /**
@@ -1592,6 +1860,10 @@ export function safeLink(url) {
  *                             job (by jobId) is asked about until the PC says it stopped
  * @property {boolean} credit  refused for want of postings (POST /jobs answered 402): the
  *                             line under the button offers Buy postings
+ * @property {boolean} sent    the press's second is over and its POST has left the phone: a
+ *                             reset from here on may cost the posting (cancelNote)
+ * @property {string} sku      the row this job reported; let go again if the job ends
+ *                             cancelled without it (the PC dumped the draft)
  */
 
 /**
@@ -1726,6 +1998,8 @@ export function idleJob() {
         paused: false,
         stopping: false,
         credit: false,
+        sent: false,
+        sku: "",
     };
 }
 
@@ -1799,6 +2073,7 @@ export function photosLocked(state) {
  *   {type:"recovered", itemName, itemId, ai, answer}  a reload, read back from GET /items/<id>
  *                                         (an unnamed item's unnamed, serverName and label too)
  *   {type:"jobSending", venue, step}
+ *   {type:"jobSent", venue}               the press's second is over: its POST leaves the phone
  *   {type:"jobAccepted", venue, job, ahead}
  *   {type:"jobRefused", venue, error, credit}  the POST did not become a job (credit: a 402,
  *                                         no postings left)
@@ -1952,6 +2227,8 @@ export function reduce(state, action) {
                 // paused while its POST was on its way: still paused, now the PC's
                 paused: job.paused,
             }));
+        case "jobSent":
+            return withJob(state, action.venue, (job) => (job.phase === "sending" ? { ...job, sent: true } : job));
         case "jobRefused":
             return withJob(state, action.venue, () => ({
                 ...idleJob(),
@@ -1982,17 +2259,27 @@ export function reduce(state, action) {
                 : "running";
             const running = phase === "queued" || phase === "running";
             const sku = typeof s.sku === "string" ? s.sku : "";
-            const withSku = (next) => (sku && !next.sku ? { ...next, sku } : next);
-            // reset, the PC still stopping: only the row it saved is taken (the next press posts it)
             const was = state.jobs[action.venue];
-            if (was && was.stopping && running) return withSku(state);
+            // Michal, 2026-10-17: "If I cancel, that means I want to absolutely stop it, even
+            // though we may be getting an answer from the server. Just dump that answer." A
+            // draft reset while drafting ends cancelled with no sku, nothing saved on the PC,
+            // and the page forgets it too, a sku it reported on the way included: the next
+            // press drafts afresh. A saved row stopped before its publish reports its sku: kept.
+            const dumped = phase === "failed" && s.error === CANCELLED_ON_PC && !sku;
+            const own = dumped ? "" : sku || (was ? was.sku : "");
+            const withSku = (next) => (sku && !next.sku ? { ...next, sku } : next);
+            // reset, the PC still stopping: only a row it saved is taken (the next press posts it)
+            if (was && was.stopping && running) {
+                return withSku(withJob(state, action.venue, (job) => ({ ...job, sku: own })));
+            }
             const next = withJob(state, action.venue, (job) => ({
                 ...job,
                 phase,
                 step: typeof s.step === "string" ? s.step : "",
                 ahead: toCount(s.ahead),
                 link: safeLink(s.links ? s.links[action.venue] : ""),
-                error: phase === "failed" ? String(s.error || "failed") : "",
+                // stopped for a reset: whether the credit is lost, rather than the PC's own words
+                error: phase !== "failed" ? "" : s.error === CANCELLED_ON_PC ? cancelledLine(s) : String(s.error || "failed"),
                 trouble: "",
                 // blank until the PC saved the row; once known, a later blank does not unsay it
                 price: priceText(s.price) || job.price,
@@ -2000,8 +2287,9 @@ export function reduce(state, action) {
                 // a job that ended is neither paused nor stopping any more
                 paused: job.paused && running,
                 stopping: false,
+                sku: own,
             }));
-            return withSku(next);
+            return dumped ? letGo(next, was && was.sku) : withSku(next);
         }
         case "pollTrouble":
             return withJob(state, action.venue, (job) => ({
@@ -2466,6 +2754,12 @@ function withJob(state, venue, fn) {
     return { ...state, jobs: { ...state.jobs, [venue]: fn(state.jobs[venue]) } };
 }
 
+/** The item without the row `sku` a dumped draft had reported, unless another venue's job reports it. */
+function letGo(state, sku) {
+    if (!sku || state.sku !== sku || VENUES.some((v) => state.jobs[v].sku === sku)) return state;
+    return { ...state, sku: "" };
+}
+
 function toCount(x) {
     return Number.isInteger(x) && x > 0 ? x : 0;
 }
@@ -2648,8 +2942,16 @@ export function titleLine(state) {
  * @returns {string}
  */
 export function inventorySku(state) {
-    const up = VENUES.some((v) => state.jobs[v] && state.jobs[v].phase === "done" && !!state.jobs[v].link);
-    return up ? state.sku : "";
+    return postingUp(state) ? state.sku : "";
+}
+
+/**
+ * A posting is up: a venue's job done with its link (a row saved, not posted, is not).
+ * @param {SnapState} state
+ * @returns {boolean}
+ */
+function postingUp(state) {
+    return VENUES.some((v) => state.jobs[v] && state.jobs[v].phase === "done" && !!state.jobs[v].link);
 }
 
 /**
@@ -3247,7 +3549,6 @@ export function venueStatus(row, venue) {
  */
 export function venueName(venue) {
     if (venue === "ebay") return "eBay";
-    if (venue === "poshmark") return "Poshmark";
     return venue;
 }
 
@@ -3664,8 +3965,10 @@ export function venueFacts(row, venue) {
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * eBay's sync stays customize's Sync to eBay. Poshmark (2026-10-11) is add, post and open
- * alone: the server only posts there, it cannot yet refresh, end, push or edit a listing.
+ * eBay's sync stays customize's Sync to eBay (customize has a Sync to <venue> for every venue
+ * listed since 2.20.0, craigslist's beside eBay's; this card's own stays). Poshmark
+ * (2026-10-11) is add, post and open alone: the server only posts there, it cannot yet
+ * refresh, end, push or edit a listing.
  * @param {Record<string, any>} row
  * @param {string} venue
  * @param {Unsynced[]} [unsynced] unsyncedList's
@@ -3717,25 +4020,28 @@ export function endQuestion(venue) {
 /**
  * The body of POST /jobs for an action job (the PC's contract, 2026-10-06):
  *   {"action": "end" | "refresh", "sku", "venue"}  a card's End listing / Refresh status
- *   {"action": "sync", "direction": "from" | "to"}  the sync bar's two buttons
- *   {"action": "push", "sku", "venue"}               a listing's customize, Sync to eBay, a
+ *   {"action": "sync", "direction": "from" | "to", "venue"}
+ *                                                    the sync bar's buttons, one per venue
+ *                                                    (2.20.0, syncJob); without the venue to
+ *                                                    a server that does not say `syncable`
+ *   {"action": "push", "sku", "venue"}               a listing's customize, Sync to <venue>, a
  *                                                    sync badge, the craigslist card's Sync
  *                                                    to craigslist (eBay only until the
  *                                                    contract of 2026-10-08; a PC that still
  *                                                    refuses craigslist answers 400)
- * A card's Post stays jobRequest's {"sku", "venue"}.
+ * A card's Post stays jobRequest's {"sku", "venue"}. The venue is whatever /me named (a venue
+ * the server adds is pushed to as the others are), never checked against VENUES.
  * @param {"end"|"refresh"|"sync"|"push"} action
  * @param {{sku?:string, venue?:string, direction?:string}} what
- * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string}}
+ * @returns {{action:string, sku:string, venue:string} | {action:string, direction:string, venue?:string}}
  */
 export function actionJob(action, { sku = "", venue = "", direction = "" } = {}) {
     if (action === "sync") {
         if (direction !== "from" && direction !== "to") throw new RangeError(`unknown sync direction ${direction}`);
-        return { action, direction };
+        return venue ? { action, direction, venue } : { action, direction };
     }
     if (action !== "end" && action !== "refresh" && action !== "push") throw new RangeError(`unknown action ${action}`);
-    if (!sku || !VENUES.includes(venue)) throw new RangeError(`${action} needs a sku and a venue`);
-    if (POST_ONLY.includes(venue)) throw new RangeError(`${action} is not available on ${venue}`);
+    if (!sku || !venue) throw new RangeError(`${action} needs a sku and a venue`);
     return { action, sku, venue };
 }
 
@@ -3907,8 +4213,19 @@ export function patchBody(venue, before, after) {
 // PC sets the price to that grade's cached one. No model call, no job. Post without
 // asking is not shown any more.
 
-/** Said under Save and Sync while the listing is not up on eBay: there is nothing to push to. */
-export const PUSH_CLOSED = "Sync to eBay opens once the listing is up on eBay";
+/**
+ * Said under Save while the listing is up on none of the venues the account syncs to: there is
+ * nothing to push to ("Sync to eBay opens once the listing is up on eBay"; with more venues,
+ * "Sync opens once the listing is up on eBay or craigslist"); nothing when it syncs to none.
+ * @param {string[]} to syncVenues' "to"
+ * @returns {string}
+ */
+export function pushClosed(to) {
+    if (!to.length) return "";
+    const names = to.map(venueName);
+    if (names.length === 1) return `Sync to ${names[0]} opens once the listing is up on ${names[0]}`;
+    return `Sync opens once the listing is up on ${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
+}
 
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
@@ -4029,47 +4346,74 @@ export function followRow(before, values, after) {
  * @returns {boolean}
  */
 export function canPush(row) {
-    return rowVenues(row).includes("ebay") && venueStatus(row, "ebay").status === "listed";
+    return listedOn(row, "ebay");
+}
+
+/** The row names `venue` and its listing there is up: a push has something to update. */
+function listedOn(row, venue) {
+    const named = row && Array.isArray(row.venues) ? row.venues.map(plain) : [];
+    return named.includes(venue) && venueStatus(row, venue).status === "listed";
+}
+
+/**
+ * The venues customize offers a Sync to <venue> for (Michal, 2026-10-17: "There is a button
+ * push to eBay, so add a button push to Craigslist next to it. All venues need to be
+ * represented"): each the account syncs to (syncVenues' "to", in its order) that the row is
+ * listed on. A venue it is not listed on has no listing to update, so no button.
+ * @param {Record<string, any>} row
+ * @param {string[]} to syncVenues' "to"
+ * @returns {string[]}
+ */
+export function customizeVenues(row, to) {
+    return to.filter((venue) => listedOn(row, venue));
 }
 
 /**
  * Which of the foldout's buttons can be pressed. Save: something to send, the box
- * a quantity. Sync to eBay: listed on eBay, the box a quantity (what is not yet
- * saved is saved first). Neither while the row is busy (one job per row at a time).
+ * a quantity. Each Sync to <venue> (customizeVenues draws one per venue listed): the box a
+ * quantity (what is not yet saved is saved first). Neither while the row is busy (one job
+ * per row at a time).
  * @param {Record<string, any>} row
  * @param {RowCustomize} values
  * @param {boolean} busy
+ * @param {string[]} to syncVenues' "to"
  * @returns {{save:boolean, sync:boolean}}
  */
-export function customizeButtons(row, values, busy) {
+export function customizeButtons(row, values, busy, to) {
     const ok = !busy && quantityValue(values.quantity) > 0;
-    return { save: ok && customizeChanges(row, values) !== null, sync: ok && canPush(row) };
+    return { save: ok && customizeChanges(row, values) !== null, sync: ok && customizeVenues(row, to).length > 0 };
 }
 
 /**
  * The foldout's status line: what is on its way, the push job (its step, then
  * "updated" or "unchanged", or its error), what the PC refused or said; then the
- * quantity box that holds no quantity, then why Sync to eBay is shut.
+ * quantity box that holds no quantity, then why there is no Sync to press (pushClosed).
  * @param {Record<string, any>} row
  * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, values:{quantity:string}}} card
+ * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeLine(row, card) {
+export function customizeLine(row, card, to) {
     const said = busyLine(card);
     if (said) return said;
     if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
-    if (!canPush(row)) return { text: PUSH_CLOSED, kind: "" };
+    if (!customizeVenues(row, to).length) return { text: pushClosed(to), kind: "" };
     return { text: "", kind: "" };
 }
 
 /**
- * Said once Save is through: the PC holds it, and on a listing up on eBay, Sync to
- * eBay is what puts it there.
+ * Said once Save is through: the PC holds it, and on a listing up on a venue it syncs to, the
+ * Sync that puts it there: the one by name ("saved; Sync to eBay puts it on the listing"),
+ * or, with more than one button, "saved; sync puts it on the listings".
  * @param {Record<string, any>} row the row the PC answered
+ * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeSaved(row) {
-    return { text: canPush(row) ? "saved; Sync to eBay puts it on the listing" : "saved", kind: "ok" };
+export function customizeSaved(row, to) {
+    const venues = customizeVenues(row, to);
+    if (!venues.length) return { text: "saved", kind: "ok" };
+    if (venues.length > 1) return { text: "saved; sync puts it on the listings", kind: "ok" };
+    return { text: `saved; ${actionWord("sync", venues[0])} puts it on the listing`, kind: "ok" };
 }
 
 // --- Admin: a list row's price, dialled on its tile -------------------------------------
