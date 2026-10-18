@@ -467,6 +467,16 @@ test("the manifest points at icons that exist", () => {
     }
 });
 
+test("the splash stays yellow; the installed app's theme colour is ink, never the yellow", () => {
+    // Chrome on Android paints an installed app's gesture strip with the manifest's
+    // theme_color (WebappIntentDataProvider.getNavigationBarColor), whatever the page's
+    // theme-color meta says; the yellow there was a stripe under the page (Michal,
+    // 2026-10-18: "NOT NEEDED.. eliminate"). background_color is the splash's ground.
+    const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
+    assert.equal(manifest.background_color, "#FFFC00");
+    assert.equal(manifest.theme_color, "#0B0B0B");
+});
+
 test("the launcher gets a full-bleed maskable icon, never a square inside its own white circle", () => {
     // Michal, 2026-10-18: "the entire circle should be yellow ... I don't like that I am seeing
     // white color inside the circle"
