@@ -467,13 +467,15 @@ test("the manifest points at icons that exist", () => {
     }
 });
 
-test("the splash stays yellow; the installed app's theme colour is ink, never the yellow", () => {
-    // Chrome on Android paints an installed app's gesture strip with the manifest's
-    // theme_color (WebappIntentDataProvider.getNavigationBarColor), whatever the page's
-    // theme-color meta says; the yellow there was a stripe under the page (Michal,
-    // 2026-10-18: "NOT NEEDED.. eliminate"). background_color is the splash's ground.
+test("the installed app's colours are ink, never the yellow: no yellow strip under the page", () => {
+    // An installed app's window is filled with the manifest's background_color
+    // (WebappActivity.getBackgroundDrawable) and shows through the gesture strip under the
+    // page, which the page cannot draw over; newer Chrome may paint that strip with
+    // theme_color instead (WebappIntentDataProvider.getNavigationBarColor). Yellow in either
+    // was a stripe under the page (Michal, 2026-10-18: "NOT NEEDED.. eliminate", then "do 2":
+    // the splash goes ink too, the yellow camera tile on it).
     const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
-    assert.equal(manifest.background_color, "#FFFC00");
+    assert.equal(manifest.background_color, "#0B0B0B");
     assert.equal(manifest.theme_color, "#0B0B0B");
 });
 
