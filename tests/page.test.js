@@ -7092,12 +7092,15 @@ const SERVER = "https://michal-pc.mulley-themis.ts.net";
  * a status, refused with `pc.detail`), each body in `pc.sessions`. A session in `pc.revoked` is a 401, as the server
  * answers one it no longer knows. `pc.origins` is every call's origin. DELETE /auth/session
  * (Sign out) keeps each call's auth in `pc.signouts` and answers 204, or `pc.signout` (a status;
- * 0: the server cannot be reached).
+ * 0: the server cannot be reached). DELETE /me (Delete my account, 2026-10-18) keeps each
+ * call's auth in `pc.deletes` and answers `pc.deleted`: 204, a status with `pc.deleteDetail`
+ * (and `pc.deleteCode`), or 0. `pc.meBy`, auth -> a /me answer, lets each account be itself.
  */
 function signinPc({ link = 202, made = { session: "sess-1", user: "wife", remember: true }, ...rest } = {}) {
     const pc = fakePc(rest);
     const base = pc.fetch;
     Object.assign(pc, { link, made, detail: "bad token", links: [], sessions: [], origins: [], revoked: new Set(), signouts: [], signout: 204 });
+    Object.assign(pc, { deletes: [], deleted: 204, deleteDetail: "", deleteCode: "", meBy: {} });
     const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
     pc.fetch = async (url, init = {}) => {
         const u = new URL(url);
@@ -7109,6 +7112,15 @@ function signinPc({ link = 202, made = { session: "sess-1", user: "wife", rememb
             if (pc.signout === 0) throw new TypeError("Failed to fetch");
             return pc.signout === 204 ? new Response(null, { status: 204 }) : json({ detail: "no such session" }, pc.signout);
         }
+        if (u.pathname === "/me" && init.method === "DELETE") {
+            pc.deletes.push({ auth, key: headers["X-Crosslister-Key"], session: headers["X-Crosslister-Session"], body: init.body });
+            if (pc.deleted === 0) throw new TypeError("Failed to fetch");
+            if (pc.deleted === 204) return new Response(null, { status: 204 });
+            const refusal = { detail: pc.deleteDetail };
+            if (pc.deleteCode) refusal.code = pc.deleteCode;
+            return json(refusal, pc.deleted);
+        }
+        if (auth in pc.meBy) pc.me = pc.meBy[auth];
         if (u.pathname === "/auth/link") {
             assert.equal(init.method, "POST");
             pc.links.push({ body: JSON.parse(init.body), auth });
@@ -9814,4 +9826,427 @@ test("header and footer: an older server (404) has no rows; signing out takes th
     nodes.get("settings-signout").fire("click");
     assert.equal(nodes.get("wrap").hidden, true);
     assert.equal(nodes.get("wrap-header-text").value, "", "nothing of hers left on the phone's screen");
+});
+
+// --- several accounts on one phone (Michal, 2026-10-18: "mostly i want to make sure there is a
+// logout somewhere. and switch accounts somewhere so i can navigate easy between two logins to
+// this app ... there should be a way to REMOVE account from phone [which is different than
+// deleting an account] - in settings there also needs to be an option to delete your account.") ---
+
+/** Who the two accounts are, by their key or session, as GET /me answers each. */
+const MICHAL_ME = { user: "michal", admin: false, craigslist: true, venues: ["ebay", "craigslist"] };
+const WIFE_ME = { user: "wife", admin: false, craigslist: true, venues: ["ebay"] };
+const ADMIN_ME = { ...MICHAL_ME, admin: true };
+
+/** The accounts kept on the phone, as stored (snap.accounts): their servers and sign-ins, nothing else. */
+function kept(store) {
+    const raw = store.getItem("snap.accounts");
+    return raw ? JSON.parse(raw).map((a) => ({ pc: a.pc, key: a.key, session: a.session, user: a.user, expired: a.expired })) : null;
+}
+
+/** Settings' list as the screen shows it: each row's name (the current one ticked), its state and its actions. */
+function accountRows(nodes) {
+    return nodes.get("accounts-list").children.map((li) => {
+        const kids = li.children;
+        return {
+            name: kids[0].textContent,
+            current: kids[0].attrs["aria-current"] === "true",
+            state: kids.filter((k) => k.className === "account-state").map((k) => k.textContent).join(""),
+            actions: kids.filter((k) => k.className === "link account-action").map((k) => k.textContent),
+        };
+    });
+}
+
+/** One row's action by its word. */
+function rowAction(nodes, i, word) {
+    return nodes.get("accounts-list").children[i].children.find((k) => k.textContent === word);
+}
+
+/** A sign-in by the mail's code, from the landing: the way Add account signs in by email. */
+async function signInByCode(nodes, email, code) {
+    nodes.get("landing-signin").fire("click");
+    nodes.get("signin-have-code").fire("click");
+    nodes.get("signin-email").value = email;
+    nodes.get("signin-code").value = code;
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+}
+
+test("accounts: a phone from before carries its one key or session into the list on the first load, nothing changing", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // a key, as snap.pc and snap.key alone
+    const keyed = signinPc({ me: structuredClone(MICHAL_ME) });
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: keyed.fetch });
+    assert.equal(nodes.get("work").hidden, false, "the goods screen, as before");
+    assert.deepEqual(kept(local), [{ pc: GOOD["snap.pc"], key: GOOD["snap.key"], session: "", user: "michal", expired: false }]);
+    assert.equal(local.getItem("snap.accounts.current"), JSON.parse(local.getItem("snap.accounts"))[0].id);
+    assert.equal(local.getItem("snap.pc"), GOOD["snap.pc"], "the old keys stay, a mirror of the current account");
+    assert.equal(local.getItem("snap.key"), GOOD["snap.key"]);
+    assert.ok(keyed.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `every call with the key: ${keyed.auth}`);
+    await openSettings(nodes);
+    assert.equal(nodes.get("accounts").hidden, false);
+    assert.deepEqual(accountRows(nodes), [{ name: "✓ michal", current: true, state: "", actions: ["Remove from this phone"] }]);
+    assert.equal(nodes.get("settings-signout").textContent, "Sign out");
+    assert.equal(nodes.get("settings-delete").hidden, false);
+    assert.equal(nodes.get("delete-confirm").hidden, true, "nothing asked until the link is tapped");
+
+    // a session kept on the phone (snap.session in localStorage)
+    const bySession = signinPc({ me: structuredClone(WIFE_ME) });
+    const remembered = memoryStore({ "snap.session": "sess-1" });
+    const again = await loadPage({ local: remembered, fetchImpl: bySession.fetch });
+    assert.equal(again.nodes.get("work").hidden, false);
+    assert.deepEqual(kept(remembered), [{ pc: SERVER, key: "", session: "sess-1", user: "wife", expired: false }]);
+    assert.equal(remembered.getItem("snap.session"), "sess-1", "mirrored");
+    assert.ok(bySession.auth.every((a) => a === "session sess-1"), `every call with the session: ${bySession.auth}`);
+    await openSettings(again.nodes);
+    assert.deepEqual(accountRows(again.nodes).map((r) => r.name), ["✓ wife"]);
+
+    // a session for this tab (snap.session in sessionStorage): kept for this tab still
+    const tab = memoryStore();
+    const session = memoryStore({ "snap.session": "sess-2" });
+    const tabbed = signinPc({ me: structuredClone(WIFE_ME) });
+    const third = await loadPage({ local: tab, session, fetchImpl: tabbed.fetch });
+    assert.equal(third.nodes.get("work").hidden, false);
+    assert.deepEqual(kept(tab), [], "nothing kept on the phone");
+    assert.deepEqual(kept(session), [{ pc: SERVER, key: "", session: "sess-2", user: "wife", expired: false }]);
+    assert.equal(session.getItem("snap.session"), "sess-2");
+    assert.equal(tab.getItem("snap.session"), null);
+
+    // an older server (no /me): the key account named by its server until the server says
+    const old = signinPc();
+    const quiet = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
+    await openSettings(quiet.nodes);
+    assert.deepEqual(accountRows(quiet.nodes).map((r) => r.name), ["✓ Key for 127.0.0.1:8765"]);
+});
+
+test("accounts: Add account signs in beside the one in hand; a tap switches; the calls are the chosen one's; Remove drops one; Sign out the current", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
+    pc.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME) };
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    const screens = ["landing", "signin", "modes", "work", "admin"];
+    const shown = () => screens.filter((id) => !nodes.get(id).hidden);
+    await openSettings(nodes);
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal"]);
+    assert.equal(nodes.get("landing-back").hidden, true);
+
+    // Add account: the landing's two ways in, with Back; Back keeps everything as it was
+    nodes.get("accounts-add").fire("click");
+    assert.deepEqual(shown(), ["landing"]);
+    assert.equal(nodes.get("landing-back").hidden, false);
+    assert.equal(nodes.get("landing-accounts").hidden, true, "no account to switch to while adding");
+    assert.equal(local.getItem("snap.key"), GOOD["snap.key"], "the account in hand stays");
+    nodes.get("landing-back").fire("click");
+    assert.deepEqual(shown(), ["modes", "work"], "back where he was");
+    assert.equal(nodes.get("landing-back").hidden, true);
+
+    // Add account, then Sign in by the code: the new account joins the list and is current
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    nodes.get("accounts-add").fire("click");
+    pc.auth.length = 0;
+    await signInByCode(nodes, "wife@example.com", "123456");
+    assert.deepEqual(pc.sessions.at(-1), { body: { email: "wife@example.com", code: "123456" }, auth: "none" });
+    assert.deepEqual(shown(), ["modes", "work"]);
+    assert.deepEqual(kept(local), [
+        { pc: GOOD["snap.pc"], key: GOOD["snap.key"], session: "", user: "michal", expired: false },
+        { pc: SERVER, key: "", session: "sess-w", user: "wife", expired: false },
+    ]);
+    assert.equal(local.getItem("snap.session"), "sess-w", "the mirror follows the current account");
+    assert.equal(local.getItem("snap.key"), null);
+    // the check and /me with the session, nothing with the key
+    const keyed = pc.auth.filter((a) => a !== "none");
+    assert.ok(keyed.length >= 2 && keyed.every((a) => a === "session sess-w"), `the new account's calls: ${pc.auth}`);
+    await typeName(nodes, "Vase");
+    snap(nodes, 1);
+    await settle();
+    assert.ok(pc.calls.includes(`PUT /items/Vase ${TODAY}/photos/1`));
+    assert.equal(pc.auth.at(-1), "session sess-w", "a photo goes with the current account's session");
+
+    // Settings: both by name, the new one ticked; a tap on the other makes it current
+    await openSettings(nodes);
+    assert.deepEqual(accountRows(nodes), [
+        { name: "michal", current: false, state: "", actions: ["Remove from this phone"] },
+        { name: "✓ wife", current: true, state: "", actions: ["Remove from this phone"] },
+    ]);
+    assert.equal(accountOf(nodes).user, "Signed in as wife");
+    pc.auth.length = 0;
+    const mes = pc.mes;
+    nodes.get("accounts-list").children[0].children[0].fire("click");
+    await settle();
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal", "wife"]);
+    assert.equal(local.getItem("snap.key"), GOOD["snap.key"], "the mirror follows");
+    assert.equal(local.getItem("snap.session"), null);
+    assert.ok(pc.auth.length >= 2 && pc.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `the key account's calls: ${pc.auth}`);
+    assert.ok(pc.mes > mes, "/me asked again, for this account");
+    assert.equal(accountOf(nodes).user, "Key: michal", "the Account block is the account's now");
+    assert.equal(nodes.get("settings").hidden, false, "Settings stay open");
+    assert.equal(nodes.get("pc-address").value, GOOD["snap.pc"], "its address and key in the boxes");
+    assert.equal(nodes.get("pc-key").value, GOOD["snap.key"]);
+    // the current one tapped again: nothing happens
+    pc.auth.length = 0;
+    nodes.get("accounts-list").children[0].children[0].fire("click");
+    await settle();
+    assert.deepEqual(pc.auth, []);
+
+    // Remove from this phone on the other: its session told to the server, with its own
+    // session; the account in hand untouched
+    rowAction(nodes, 1, "Remove from this phone").fire("click");
+    await settle();
+    assert.deepEqual(pc.signouts, [{ auth: "sess-w", key: undefined, body: undefined }]);
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal"]);
+    assert.deepEqual(kept(local).map((a) => a.user), ["michal"]);
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("work").hidden, true, "still in Admin");
+
+    // Sign out: the current (a key) off the phone, the server told nothing; the landing, no list
+    nodes.get("settings-signout").fire("click");
+    await settle();
+    assert.deepEqual(pc.signouts.length, 1);
+    assert.deepEqual(shown(), ["landing"]);
+    assert.deepEqual(kept(local), []);
+    assert.equal(local.getItem("snap.key"), null);
+    assert.equal(nodes.get("landing-accounts").hidden, true);
+});
+
+test("accounts: the current one removed, the next takes over; the last one removed, the landing; the same person signed in again is one entry", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
+    pc.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME), "sess-w2": structuredClone(WIFE_ME) };
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    nodes.get("accounts-add").fire("click");
+    await signInByCode(nodes, "wife@example.com", "123456");
+    await openSettings(nodes);
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal", "✓ wife"]);
+
+    // wife again (a second code): the one entry, its session the new one
+    nodes.get("accounts-add").fire("click");
+    pc.made = { session: "sess-w2", user: "wife", remember: true };
+    await signInByCode(nodes, "wife@example.com", "654321");
+    await openSettings(nodes);
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal", "✓ wife"]);
+    assert.deepEqual(kept(local).map((a) => a.session), ["", "sess-w2"]);
+
+    // Remove the current: the server told, the next account taken up, checked with its key
+    pc.auth.length = 0;
+    rowAction(nodes, 1, "Remove from this phone").fire("click");
+    await settle();
+    assert.deepEqual(pc.signouts, [{ auth: "sess-w2", key: undefined, body: undefined }]);
+    assert.deepEqual(accountRows(nodes), [{ name: "✓ michal", current: true, state: "", actions: ["Remove from this phone"] }]);
+    assert.ok(pc.auth.filter((a) => a !== "sess-w2").every((a) => a === `key ${GOOD["snap.key"]}`), `the next one's calls: ${pc.auth}`);
+    assert.equal(accountOf(nodes).user, "Key: michal");
+    assert.equal(nodes.get("landing").hidden, true);
+
+    // the last one removed: the landing, nothing said
+    rowAction(nodes, 0, "Remove from this phone").fire("click");
+    await settle();
+    assert.equal(pc.signouts.length, 1, "a key is told to no one");
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("landing-status").textContent, "");
+    assert.deepEqual(kept(local), []);
+});
+
+test("accounts: a session the server forgot is shown signed out, with Sign in again; the landing offers Switch account", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
+    pc.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME), "sess-w9": structuredClone(WIFE_ME) };
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    nodes.get("accounts-add").fire("click");
+    await signInByCode(nodes, "wife@example.com", "123456");
+    assert.equal(nodes.get("work").hidden, false);
+
+    // the next check is refused: the landing says so, and offers the other account
+    pc.revoked.add("sess-w");
+    t.mock.timers.tick(30000);
+    await settle();
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("landing-status").textContent, "Your sign-in expired; send yourself a new link");
+    assert.equal(nodes.get("landing-accounts").hidden, false, "michal is still here");
+    assert.deepEqual(kept(local).map((a) => [a.user, a.expired]), [["michal", false], ["wife", true]], "kept, marked");
+    assert.equal(local.getItem("snap.session"), null, "nothing mirrored for it");
+    nodes.get("landing-accounts").fire("mouseenter");
+    assert.equal(nodes.get("landing-help").textContent, "Switch account: carry on as another account kept on this phone.");
+
+    // Switch account: Settings' list, wife signed out with her way back in, michal a tap away
+    nodes.get("landing-accounts").fire("click");
+    await settle();
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.deepEqual(accountRows(nodes), [
+        { name: "michal", current: false, state: "", actions: ["Remove from this phone"] },
+        { name: "✓ wife", current: true, state: "signed out", actions: ["Sign in again", "Remove from this phone"] },
+    ]);
+    assert.equal(nodes.get("settings-signout").hidden, false, "Sign out removes the signed-out one too");
+    assert.equal(nodes.get("settings-delete").hidden, true, "nothing to delete with the server not knowing her");
+    pc.auth.length = 0;
+    nodes.get("accounts-list").children[0].children[0].fire("click");
+    await settle();
+    assert.deepEqual(accountRows(nodes).map((r) => [r.name, r.state]), [["✓ michal", ""], ["wife", "signed out"]]);
+    assert.ok(pc.auth.length >= 2 && pc.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `michal's calls: ${pc.auth}`);
+    assert.equal(nodes.get("landing").hidden, true);
+    // a tap on the signed-out one does nothing: Sign in again is the way
+    pc.auth.length = 0;
+    nodes.get("accounts-list").children[1].children[0].fire("click");
+    await settle();
+    assert.deepEqual(pc.auth, []);
+    assert.deepEqual(accountRows(nodes).map((r) => r.current), [true, false]);
+
+    // Sign in again: the sign-in screen, the account in hand kept; the new session takes
+    // the old entry's place and is current
+    rowAction(nodes, 1, "Sign in again").fire("click");
+    assert.equal(nodes.get("signin").hidden, false);
+    assert.equal(nodes.get("admin").hidden, true);
+    nodes.get("signin-have-code").fire("click");
+    nodes.get("signin-email").value = "wife@example.com";
+    nodes.get("signin-code").value = "999999";
+    pc.made = { session: "sess-w9", user: "wife", remember: true };
+    nodes.get("signin-code-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("work").hidden, false);
+    assert.deepEqual(kept(local).map((a) => [a.user, a.session, a.expired]), [["michal", "", false], ["wife", "sess-w9", false]]);
+    await openSettings(nodes);
+    assert.deepEqual(accountRows(nodes).map((r) => [r.name, r.state]), [["michal", ""], ["✓ wife", ""]]);
+
+    // the only account forgotten: the landing as before, no Switch account
+    const alone = signinPc({ me: structuredClone(WIFE_ME) });
+    const one = memoryStore({ "snap.session": "sess-1" });
+    const single = await loadPage({ local: one, fetchImpl: alone.fetch });
+    alone.revoked.add("sess-1");
+    t.mock.timers.tick(30000);
+    await settle();
+    assert.equal(single.nodes.get("landing").hidden, false);
+    assert.equal(single.nodes.get("landing-accounts").hidden, true);
+    assert.deepEqual(kept(one).map((a) => a.expired), [true], "kept, signed out, for Sign in again or Remove");
+});
+
+test("Delete my account: the confirmation view's words; Keep my account sends nothing; the admin is told the server refuses", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // the last thing in Settings, the red link, then its view, never a browser dialog
+    const settingsCard = /<div id="settings" class="card" hidden>([\s\S]*?)<\/div>\s*<button type="button" id="inventory-toggle"/.exec(html)[1];
+    assert.match(settingsCard, /<button type="button" id="settings-delete" class="link sign-out delete-link"[^>]*hidden>Delete my account<\/button>\s*<div id="delete-confirm" class="delete-confirm" hidden>/);
+    assert.match(settingsCard, /<p class="delete-words">Your account will be deleted from the server, with its inventory, photos, jobs and settings\.<\/p>/);
+    assert.match(settingsCard, /<p class="delete-words">Listings already on eBay stay there: they are yours on eBay\. Postings you bought and did not use are lost\.<\/p>/);
+    assert.match(settingsCard, /<p class="delete-words">This cannot be undone\.<\/p>/);
+    assert.match(settingsCard, /<p id="delete-admin-note" class="delete-words delete-admin-note" hidden>The admin's account cannot be deleted from the app\.<\/p>/);
+    assert.match(settingsCard, /<button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad">Delete my account<\/button>\s*<button type="button" id="delete-keep" class="link delete-keep">Keep my account<\/button>/);
+    assert.match(settingsCard, /<p id="delete-status" class="small account-status" aria-live="polite"><\/p>\s*$/);
+    assert.ok(!/confirm\(/.test(readFileSync(join(root, "app.js"), "utf8")), "no browser dialog");
+    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.link\.delete-link \{[^}]*font-size: 13px;/, "quiet");
+
+    const pc = signinPc({ me: structuredClone(MICHAL_ME) });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    assert.equal(nodes.get("settings-delete").hidden, false);
+    assert.equal(nodes.get("delete-confirm").hidden, true);
+    nodes.get("settings-delete").fire("click");
+    assert.equal(nodes.get("delete-confirm").hidden, false);
+    assert.equal(nodes.get("settings-delete").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("delete-admin-note").hidden, true, "not the admin");
+    nodes.get("delete-keep").fire("click");
+    assert.equal(nodes.get("delete-confirm").hidden, true);
+    assert.deepEqual(pc.deletes, [], "nothing sent");
+    assert.equal(nodes.get("delete-status").textContent, "");
+    // the link again folds it too; closing Admin folds it for the next visit
+    nodes.get("settings-delete").fire("click");
+    nodes.get("settings-delete").fire("click");
+    assert.equal(nodes.get("delete-confirm").hidden, true);
+    nodes.get("settings-delete").fire("click");
+    nodes.get("admin-close").fire("click");
+    await openSettings(nodes);
+    assert.equal(nodes.get("delete-confirm").hidden, true);
+
+    // the admin: the view says the server will refuse, the button still there
+    const admin = signinPc({ me: structuredClone(ADMIN_ME) });
+    const his = await loadPage({ local: memoryStore(GOOD), fetchImpl: admin.fetch });
+    await openSettings(his.nodes);
+    assert.equal(his.nodes.get("settings-delete").hidden, false);
+    his.nodes.get("settings-delete").fire("click");
+    assert.equal(his.nodes.get("delete-admin-note").hidden, false);
+    assert.equal(his.nodes.get("delete-confirm-btn").disabled, false);
+});
+
+test("Delete my account: a 204 drops the account from the phone and says so, on the landing or under the next account", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // one account, a session: DELETE /me with it, the server told nothing more, the landing
+    const pc = signinPc({ me: structuredClone(WIFE_ME) });
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    nodes.get("settings-delete").fire("click");
+    nodes.get("delete-confirm-btn").fire("click");
+    assert.equal(nodes.get("delete-status").textContent, "Deleting your account...");
+    assert.equal(nodes.get("delete-confirm-btn").disabled, true);
+    assert.equal(nodes.get("delete-keep").disabled, true);
+    await settle();
+    assert.deepEqual(pc.deletes, [{ auth: "sess-1", key: undefined, session: "sess-1", body: undefined }]);
+    assert.deepEqual(pc.signouts, [], "its sessions went with the account");
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("landing-status").textContent, "Your account was deleted.");
+    assert.deepEqual(kept(local), []);
+    assert.equal(local.getItem("snap.session"), null);
+    assert.equal(nodes.get("account").hidden, true);
+
+    // two accounts, the current a key: deleted with the key; the other takes over, told under it
+    const two = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
+    two.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME) };
+    const both = memoryStore(GOOD);
+    const page = await loadPage({ local: both, fetchImpl: two.fetch });
+    await openSettings(page.nodes);
+    page.nodes.get("accounts-add").fire("click");
+    await signInByCode(page.nodes, "wife@example.com", "123456");
+    await openSettings(page.nodes);
+    page.nodes.get("accounts-list").children[0].children[0].fire("click"); // michal
+    await settle();
+    assert.deepEqual(accountRows(page.nodes).map((r) => r.name), ["✓ michal", "wife"]);
+    page.nodes.get("settings-delete").fire("click");
+    two.auth.length = 0;
+    page.nodes.get("delete-confirm-btn").fire("click");
+    await settle();
+    assert.deepEqual(two.deletes, [{ auth: GOOD["snap.key"], key: GOOD["snap.key"], session: undefined, body: undefined }]);
+    assert.deepEqual(two.signouts, []);
+    assert.equal(page.nodes.get("landing").hidden, true);
+    assert.equal(page.nodes.get("settings").hidden, false);
+    assert.deepEqual(accountRows(page.nodes).map((r) => r.name), ["✓ wife"]);
+    assert.equal(page.nodes.get("delete-status").textContent, "Your account was deleted.");
+    assert.equal(page.nodes.get("delete-confirm").hidden, true);
+    assert.equal(accountOf(page.nodes).user, "Signed in as wife");
+    assert.ok(two.auth.filter((a) => a !== `key ${GOOD["snap.key"]}`).every((a) => a === "session sess-w"), `wife's calls: ${two.auth}`);
+    assert.deepEqual(kept(both).map((a) => a.user), ["wife"]);
+    assert.equal(both.getItem("snap.key"), null);
+    assert.equal(both.getItem("snap.session"), "sess-w");
+});
+
+test("Delete my account: refused (the admin's, a job of theirs running), a 401 or no answer is said and the account stays", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const cases = [
+        [409, "the admin's account cannot be deleted from the app", "ADMIN_ACCOUNT", "The admin's account cannot be deleted from the app."],
+        [409, "", "ADMIN_ACCOUNT", "The admin's account cannot be deleted from the app."],
+        [409, "a job of yours is queued or running (job j1); wait for it, or reset it first", "", "A job of yours is queued or running (job j1); wait for it, or reset it first."],
+        [401, "a valid X-Crosslister-Key header is needed", "", "Could not delete the account: wrong key - check Settings."],
+        [0, "", "", "Could not delete the account: cannot reach the server."],
+    ];
+    for (const [status, detail, code, said] of cases) {
+        const pc = signinPc({ me: structuredClone(status === 409 && code ? ADMIN_ME : WIFE_ME) });
+        Object.assign(pc, { deleted: status, deleteDetail: detail, deleteCode: code });
+        const local = memoryStore({ "snap.session": "sess-1" });
+        const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+        await openSettings(nodes);
+        nodes.get("settings-delete").fire("click");
+        nodes.get("delete-confirm-btn").fire("click");
+        await settle();
+        assert.equal(pc.deletes.length, 1, `answered ${status}`);
+        assert.equal(nodes.get("delete-status").textContent, said, `answered ${status} ${detail}`);
+        assert.equal(nodes.get("delete-confirm").hidden, false, "the view stays, for another try or Keep my account");
+        assert.equal(nodes.get("delete-confirm-btn").disabled, false);
+        assert.equal(nodes.get("landing").hidden, true, "the account stays");
+        assert.deepEqual(kept(local).map((a) => [a.session, a.expired]), [["sess-1", false]]);
+        assert.equal(local.getItem("snap.session"), "sess-1");
+        assert.deepEqual(pc.signouts, []);
+        if (status === 0) assert.equal(server(nodes), "server off (bad)");
+    }
 });
