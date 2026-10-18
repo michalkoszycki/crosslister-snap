@@ -133,6 +133,12 @@ and every behaviour are the live app's.
   large as the 40% safe-zone radius allows (Michal, 2026-10-18: "the entire
   circle should be yellow"). `node tools/make-icons.mjs` draws the PNGs, the $
   as two arcs and a bar.
+- **The manifest's colours:** `background_color` is the splash's yellow;
+  `theme_color` is ink (#0B0B0B), since Chrome on Android paints an installed
+  app's gesture strip at the bottom with it, whatever the page's theme-color meta
+  says (a yellow stripe under the page, 2026-10-18). The status bar at the top
+  follows the page's own theme-color metas. Android reads both colours only when
+  the app is installed (or when Chrome updates the installed app).
 
 ## The way in: the landing, the home screen, sign-in
 
