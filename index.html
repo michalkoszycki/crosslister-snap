@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.21.2">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.21.2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.22.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.22.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -365,13 +365,15 @@
         <div id="options" class="options" hidden>
           <div class="field">
             <span class="field-label">Venue</span>
-            <div id="inventory-venue" class="chips chips-three" role="group" aria-label="Venue">
+            <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue">
               <button type="button" id="inventory-venue-all" class="chip" data-value=""
                       aria-pressed="true">All</button>
               <button type="button" id="inventory-venue-ebay" class="chip" data-value="ebay"
                       aria-pressed="false">ebay</button>
               <button type="button" id="inventory-venue-craigslist" class="chip" data-value="craigslist"
                       aria-pressed="false">craigslist</button>
+              <button type="button" id="inventory-venue-poshmark" class="chip" data-value="poshmark"
+                      aria-pressed="false">poshmark</button>
             </div>
           </div>
           <div class="field">
@@ -478,6 +480,9 @@
         <button type="button" id="detail-craigslist-toggle" class="link customize-toggle" aria-expanded="false"
                 aria-controls="detail-craigslist">▸ craigslist</button>
         <div id="detail-craigslist" class="card fold" hidden></div>
+        <button type="button" id="detail-poshmark-toggle" class="link customize-toggle" aria-expanded="false"
+                aria-controls="detail-poshmark">▸ poshmark</button>
+        <div id="detail-poshmark" class="card fold" hidden></div>
       </div>
     </div>
 
@@ -663,6 +668,15 @@
         <button type="button" id="craigslist-buy" class="link buy-link" hidden>Buy postings</button>
         <a id="craigslist-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
+      <!-- Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it
+           available only to me": grey for everyone else, a tap saying why, as craigslist's -->
+      <div class="venue">
+        <button type="button" id="poshmark-btn" class="big venue-btn">poshmark</button>
+        <button type="button" id="poshmark-reset" class="reset-call" aria-label="reset poshmark" hidden>reset</button>
+        <p id="poshmark-status" class="venue-status" aria-live="polite"></p>
+        <button type="button" id="poshmark-buy" class="link buy-link" hidden>Buy postings</button>
+        <a id="poshmark-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
+      </div>
     </div>
     <p id="venue-hint" class="small hint-line"></p>
 
@@ -846,6 +860,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.21.2"></script>
+<script type="module" src="app.js?v=2.22.0"></script>
 </body>
 </html>

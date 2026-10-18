@@ -94,7 +94,7 @@ between them.
   stick (the price grade, Post without asking, Compare with eBay listings, Pickup
   only; never the quantity), tap **Save as default** at the end of customize:
   every new item starts from it, on this phone.
-- Tap **ebay** or **craigslist** (they open once every photo says `sent`). The
+- Tap **ebay**, **craigslist** or (the admin's) **poshmark** (they open once every photo says `sent`). The
   line under it goes `sending`, `queued`, then the server's steps, then the link.
   The button itself turns a ring and, once the server has saved the listing, shows
   its price (`ebay · $14`); when it is posted the button reads just `$14`.
@@ -164,6 +164,11 @@ remembered; use a normal tab or the home-screen icon.
 
 **The craigslist button is grey and says "Craigslist is not available for your account yet. Ask for it in Admin, Feedback."**
 The server says this key's account has no Craigslist. Ask for it in Admin > **Feedback**.
+
+**The poshmark button is grey and says "Poshmark is not available for your account yet. Ask for it in Admin, Feedback."**
+Poshmark is the admin's alone for now: the server lists there only for the account its `/me`
+says `"poshmark": true` for (a server from before Poshmark says nothing of it, and then the
+button is grey for everyone). Ask for it in Admin > **Feedback**.
 
 **Something odd happened**
 Admin > **Feedback**: write what happened and tap **Send**. It goes to the server
@@ -238,5 +243,5 @@ and a key from `.env`. The service must allow this page's origin: put
 `CROSSLISTER_SERVE_ORIGINS=https://*.github.io,http://localhost:8080` in
 `.env` and restart `crosslister serve`. Settings, the disabled states, the
 "knows this key" check, taking photos (they land in the inbox folder) and the
-note cost nothing; a press of ebay or craigslist pays for a model call and
+note cost nothing; a press of ebay, craigslist or poshmark pays for a model call and
 publishes.

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.21.2";
+import { VERSION } from "./version.js?v=2.22.0";
 import {
     adminLink,
     anyActive,
@@ -85,6 +85,7 @@ import {
     venueIdleNote,
     venueLabel,
     venueLine,
+    POST_ONLY,
     VENUES,
     INVENTORY_DEBOUNCE_MS,
     INVENTORY_SORTS,
@@ -154,7 +155,7 @@ import {
     codeError,
     signinNote,
     meOf,
-    CRAIGSLIST_OFF,
+    venueOff,
     venueAllowed,
     accountError,
     creditsLine,
@@ -211,8 +212,12 @@ import {
     wrapCounter,
     wrapError,
     wrapOf,
-} from "./core.js?v=2.21.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.21.2";
+} from "./core.js?v=2.22.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.22.0";
+
+// The venues the header and footer go out on, as the server's GET /me/wrap offers them
+// (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
+const WRAP_VENUES = VENUES.filter((v) => !POST_ONLY.includes(v));
 import {
     addVenue,
     applyWrap,
@@ -251,8 +256,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.21.2";
-import { shrinkPhoto } from "./shrink.js?v=2.21.2";
+} from "./pc.js?v=2.22.0";
+import { shrinkPhoto } from "./shrink.js?v=2.22.0";
 import {
     bookCard,
     bookPriceValue,
@@ -265,8 +270,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.21.2";
-import { canScan, readIsbn } from "./scan.js?v=2.21.2";
+} from "./book.js?v=2.22.0";
+import { canScan, readIsbn } from "./scan.js?v=2.22.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -390,7 +395,7 @@ const wrap = {
     status: { header: "", footer: "" },
     busy: { header: false, footer: false },
     asked: 0,
-    apply: Object.fromEntries(VENUES.map((v) => [v, jobTask()])),
+    apply: Object.fromEntries(WRAP_VENUES.map((v) => [v, jobTask()])),
 };
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
@@ -996,7 +1001,7 @@ function renderVenue(m, venue, ok, nodes) {
         nodes.btn.disabled = false;
         nodes.btn.setAttribute("aria-disabled", "true");
         paintJobButton(nodes.btn, venue, { busy: false, cancel: false, reset: nodes.reset });
-        const said = offTaps.has(`${m}:${venue}`) ? CRAIGSLIST_OFF : "";
+        const said = offTaps.has(`${m}:${venue}`) ? venueOff(venue) : "";
         nodes.status.textContent = said;
         nodes.status.className = "venue-status";
         nodes.status.hidden = !said;
@@ -3171,7 +3176,7 @@ function cardNodes(venue) {
         if (venueAllowed(me, venue)) return [c.line, actionsNode(venue, busy)];
         const off = document.createElement("p");
         off.className = "venue-status venue-off-note";
-        off.textContent = CRAIGSLIST_OFF;
+        off.textContent = venueOff(venue);
         return [c.line, off];
     }
     const nodes = [c.line];
@@ -3343,7 +3348,7 @@ function editNode(venue, busy) {
     const form = document.createElement("div");
     form.className = "edit-form";
     const from = venue === "craigslist" ? derivedFields({ ...admin.row, craigslist: {} }, venue) : {};
-    for (const f of EDIT_FIELDS[venue]) {
+    for (const f of EDIT_FIELDS[venue] || []) {
         form.append(f.kind === "choice" ? choiceNode(venue, f) : fieldNode(venue, f, from[f.key], busy));
     }
     return form;
@@ -4280,9 +4285,9 @@ async function loadMe() {
 }
 
 /**
- * What /me changes on screen: the craigslist button, an empty craigslist card, Stats, the
- * Account block, a sign-up's steps in place of the posting screens, and the venues the sync
- * bar and customize's Sync buttons go to and from (`syncable`).
+ * What /me changes on screen: the craigslist and poshmark buttons, their empty cards, Stats,
+ * the Account block, a sign-up's steps in place of the posting screens, and the venues the
+ * sync bar and customize's Sync buttons go to and from (`syncable`).
  */
 function renderMe() {
     render();
@@ -4573,7 +4578,7 @@ function renderWrap() {
         p.save.disabled = wrap.busy[part];
         p.status.textContent = wrap.status[part];
         let applies = false;
-        for (const venue of VENUES) {
+        for (const venue of WRAP_VENUES) {
             const offered = !!info && info.available.includes(venue);
             const ticked = !!now && now.venues.includes(venue);
             const pill = p.venues[venue];
@@ -4770,7 +4775,7 @@ function dropWrap() {
         wrap.busy[part] = false;
         el.wrapParts[part].text.value = "";
     }
-    for (const venue of VENUES) {
+    for (const venue of WRAP_VENUES) {
         const task = wrap.apply[venue];
         takeBack(task);
         clearTimeout(task.timer);
@@ -5576,12 +5581,12 @@ function main() {
                     fold: $(`wrap-${part}`),
                     text: $(`wrap-${part}-text`),
                     count: $(`wrap-${part}-count`),
-                    venues: Object.fromEntries(VENUES.map((v) => [v, $(`wrap-${part}-${v}`)])),
+                    venues: Object.fromEntries(WRAP_VENUES.map((v) => [v, $(`wrap-${part}-${v}`)])),
                     save: $(`wrap-${part}-save`),
                     status: $(`wrap-${part}-status`),
                     applies: $(`wrap-${part}-apply`),
                     apply: Object.fromEntries(
-                        VENUES.map((v) => [
+                        WRAP_VENUES.map((v) => [
                             v,
                             {
                                 btn: $(`wrap-${part}-apply-${v}`),
@@ -5684,6 +5689,11 @@ function main() {
         craigslistStatus: $("craigslist-status"),
         craigslistBuy: $("craigslist-buy"),
         craigslistLink: $("craigslist-link"),
+        poshmarkBtn: $("poshmark-btn"),
+        poshmarkReset: $("poshmark-reset"),
+        poshmarkStatus: $("poshmark-status"),
+        poshmarkBuy: $("poshmark-buy"),
+        poshmarkLink: $("poshmark-link"),
         customizeToggle: $("customize-toggle"),
         customize: $("customize"),
         quantity: $("quantity"),
@@ -5889,7 +5899,7 @@ function main() {
     }
     renderWrap();
     // a venue button refused for want of postings: its Buy postings opens the Account block
-    for (const node of [el.ebayBuy, el.craigslistBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
+    for (const node of [el.ebayBuy, el.craigslistBuy, el.poshmarkBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
     // See in inventory: Admin on the listing the item became, as its row's tap opens it
     for (const [m, node] of [["goods", el.seeInventory], ["book", el.bookSeeInventory]]) {
         node.addEventListener("click", () => {

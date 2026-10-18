@@ -154,6 +154,12 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "craigslist-status",
         "craigslist-buy",
         "craigslist-link",
+        // Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button"
+        "poshmark-btn",
+        "poshmark-reset",
+        "poshmark-status",
+        "poshmark-buy",
+        "poshmark-link",
         "venue-hint",
         "done-hint",
         "next-item",
@@ -171,8 +177,9 @@ test("the work section reads top to bottom the way Michal asked", () => {
     // the two buttons say exactly what he said
     assert.match(html, /id="ebay-btn"[^>]*>ebay</);
     assert.match(html, /id="craigslist-btn"[^>]*>craigslist</);
+    assert.match(html, /id="poshmark-btn"[^>]*>poshmark</);
     // links open in a new tab and hand nothing back to this page
-    for (const v of ["ebay", "craigslist"]) {
+    for (const v of ["ebay", "craigslist", "poshmark"]) {
         assert.match(html, new RegExp(`id="${v}-link"[^>]*target="_blank" rel="noopener noreferrer"`));
     }
 });
@@ -267,6 +274,7 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "inventory-venue-all",
         "inventory-venue-ebay",
         "inventory-venue-craigslist",
+        "inventory-venue-poshmark",
         "inventory-state",
         "inventory-state-all",
         "inventory-state-draft",
@@ -318,6 +326,8 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "detail-ebay",
         "detail-craigslist-toggle",
         "detail-craigslist",
+        "detail-poshmark-toggle",
+        "detail-poshmark",
         // after the inventory (Michal, 2026-10-08): Feedback, then Stats, an admin's only
         "feedback-toggle",
         "feedback",
@@ -1291,7 +1301,11 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             const broken = jobContract(body);
             if (broken) return json({ detail: `contract: ${broken}` }, 422);
             if (refuseJob) return json({ detail: refuseJob }, 400);
-            const id = body.venue === "ebay" ? "j1" : "j2";
+            // Poshmark is the admin's alone (2026-10-11): anyone else is refused, as the server does
+            if (body.venue === "poshmark" && !(pc.me && pc.me.poshmark === true)) {
+                return json({ detail: `poshmark is not available for ${(pc.me && pc.me.user) || "you"}: contact the developer` }, 403);
+            }
+            const id ={ ebay: "j1", craigslist: "j2", poshmark: "j3" }[body.venue] || "j2";
             // the item remembers its jobs, as the PC's GET /items/<id> lists them
             const owner = pc.items.get(body.item) || [...pc.items.values()].find((it) => it.sku && it.sku === body.sku);
             if (owner) owner.jobs.push({ job: id, venue: body.venue });
@@ -7574,6 +7588,133 @@ test("an account without craigslist: its button grey yet tappable, saying why; i
     assert.equal(today.nodes.get("craigslist-btn").classList.contains("venue-off"), false);
     assert.equal(today.nodes.get("craigslist-btn").disabled, true, "shut only for the usual reason");
     assert.equal(today.nodes.get("craigslist-btn").attrs["aria-disabled"], undefined);
+});
+
+test("poshmark for anyone but the admin: grey yet tappable, saying the craigslist line in its name; its empty card too", async (t) => {
+    // Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it available only
+    // to me; when other people press it, it should tell them the same message as it does when they
+    // press Craigslist."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const OFF = "Poshmark is not available for your account yet. Ask for it in Admin, Feedback.";
+    const listedEbay = { ebay: summary("E1").statuses.ebay };
+    const only = summary("E1", { venues: ["ebay"], statuses: listedEbay });
+    const pc = inventoryPc([only], { E1: wholeRow("E1", { venues: ["ebay"], statuses: listedEbay, photos: [] }) });
+    pc.me = { user: "wife", admin: false, craigslist: true, poshmark: false, venues: ["ebay", "craigslist"] };
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    assert.equal(pc.mes, 1);
+    const pm = nodes.get("poshmark-btn");
+    assert.equal(pm.classList.contains("venue-off"), true);
+    assert.equal(pm.disabled, false, "it takes the tap");
+    assert.equal(pm.attrs["aria-disabled"], "true");
+    assert.equal(wordOf(pm), "poshmark");
+    assert.equal(nodes.get("poshmark-status").hidden, true, "nothing said before the tap");
+    assert.equal(nodes.get("craigslist-btn").classList.contains("venue-off"), false, "her craigslist is on");
+    assert.equal(nodes.get("ebay-btn").classList.contains("venue-off"), false);
+
+    pm.fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.equal(nodes.get("poshmark-status").textContent, OFF);
+    assert.equal(nodes.get("poshmark-status").hidden, false);
+    assert.equal(nodes.get("craigslist-status").textContent, "", "only the one tapped says it");
+    assert.deepEqual(pc.posted, [], "nothing sent");
+    assert.equal(pm.classList.contains("busy"), false);
+
+    // the inventory: the empty poshmark foldout says it instead of Add
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    assert.equal(foldOf(nodes, "poshmark"), "poshmark not added (vbadge absent span) ▸");
+    nodes.get("detail-poshmark-toggle").fire("click");
+    const kids = nodes.get("detail-poshmark").children;
+    assert.equal(kids.at(-1).textContent, OFF);
+    assert.ok(!kids.some((k) => k.className === "venue-actions"), "no Add");
+
+    // a server that says nothing of poshmark (or has no /me at all) cannot post there: off too,
+    // while its craigslist is as today
+    for (const me of [{ user: "michal", admin: true }, null]) {
+        const old = fakePc({ me });
+        const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
+        assert.equal(old.mes, 1);
+        assert.equal(before.nodes.get("poshmark-btn").classList.contains("venue-off"), true, JSON.stringify(me));
+        assert.equal(before.nodes.get("poshmark-btn").attrs["aria-disabled"], "true");
+        assert.equal(before.nodes.get("craigslist-btn").classList.contains("venue-off"), false);
+    }
+});
+
+test("poshmark for the admin: the button posts the item, its link comes from links.poshmark; a listing's card adds and posts", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let posted = false;
+    const listedEbay = { ebay: summary("E1").statuses.ebay };
+    const whole = wholeRow("E1", { venues: ["ebay"], statuses: listedEbay, photos: [] });
+    const pc = inventoryPc([summary("E1", { venues: ["ebay"], statuses: listedEbay })], { E1: whole }, {
+        jobs: {
+            j3: () =>
+                posted
+                    ? { state: "done", step: "posted", sku: "B-0070", price: "30.00", title: "Leather Tote", links: { poshmark: "https://poshmark.com/listing/abc123" } }
+                    : { state: "running", step: "publishing on poshmark", sku: "B-0070", price: "30.00", links: {} },
+        },
+    });
+    pc.me = { user: "michal", admin: true, craigslist: true, poshmark: true, venues: ["ebay", "craigslist", "poshmark"] };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    const pm = nodes.get("poshmark-btn");
+    assert.equal(pm.classList.contains("venue-off"), false);
+    assert.equal(pm.attrs["aria-disabled"], undefined);
+    assert.equal(pm.disabled, true, "shut only for the usual reason: no photo yet");
+
+    await typeName(nodes, "Tote");
+    snap(nodes, 2);
+    await settle();
+    card(nodes, 1).ai.fire("click");
+    assert.equal(pm.disabled, false);
+    pm.fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, [], "the second a press waits");
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted, [{ item: `Tote ${TODAY}`, venue: "poshmark", ai: [2] }]);
+    assert.equal(buttonSays(pm), "poshmark / tap again to cancel: credits will be lost");
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("poshmark-status").textContent, "publishing on poshmark");
+    assert.equal(nodes.get("price-line").textContent, "$30");
+    posted = true;
+    t.mock.timers.tick(3000);
+    await settle();
+    assert.equal(nodes.get("poshmark-link").hidden, false);
+    assert.equal(nodes.get("poshmark-link").href, "https://poshmark.com/listing/abc123");
+    assert.equal(pm.attrs["aria-label"], "poshmark, posted");
+    assert.equal(pm.classList.contains("posted"), true);
+    assert.equal(nodes.get("ebay-btn").disabled, false, "the other venues may go by the sku");
+
+    // a listing not on poshmark: its empty card's Add, then Post alone (no Edit: the server only posts there)
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    nodes.get("detail-poshmark-toggle").fire("click");
+    assert.deepEqual(cardOf(nodes, "poshmark").actions, ["Add poshmark to this item"]);
+    cardOf(nodes, "poshmark").button("Add poshmark to this item").fire("click");
+    await settle();
+    assert.ok(pc.calls.includes("POST /inventory/E1/venues/poshmark"));
+    assert.deepEqual(cardOf(nodes, "poshmark").actions, ["Post on poshmark"]);
+    assert.deepEqual(cardOf(nodes, "poshmark").facts, []);
+    cardOf(nodes, "poshmark").button("Post on poshmark").fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { sku: "E1", venue: "poshmark" });
+    whole.statuses = {
+        ...whole.statuses,
+        poshmark: { status: "listed", id: "abc123", url: "https://poshmark.com/listing/abc123", listed_at: "2026-10-11T10:00:00-05:00" },
+    };
+    t.mock.timers.tick(3000);
+    await settle();
+    // listed: its link alone; no Refresh, End, Sync or Edit
+    assert.deepEqual(cardOf(nodes, "poshmark").actions, ["Open listing (link)"]);
+    assert.ok(!pc.posted.some((b) => b.action), "no action job ever goes to poshmark");
 });
 
 // --- Save as default (Michal, 2026-10-08) ------------------------------------------------------

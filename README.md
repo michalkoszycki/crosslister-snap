@@ -70,7 +70,7 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
 | `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
-| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the header and footer on every listing, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the two buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the header and footer on every listing, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the venue buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
 | `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup`, `/me/seller` and `/me/wrap` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept; Fix dark photos' measure, table and pass (`luminanceStats`, `levelsTable`, `applyTable`) |
@@ -118,7 +118,7 @@ and every behaviour are the live app's.
 - **Snap** (and the book's **ISBN**) is a 92 px black pill with yellow words
   and a camera (a barcode) icon left of the word; **NEXT** is a 92 px yellow
   pill with black words, smoke until there is something to finish. **Add from
-  gallery** is a 48 px smoke pill. **ebay** and **craigslist** are 64 px
+  gallery** is a 48 px smoke pill. **ebay**, **craigslist** and **poshmark** are 64 px
   outlined pills in ink, green once posted; the link under them is ink. The
   price above them is 34 px at 800, the title over it 13 px muted.
 - **Photos** are 108 x 128 tiles with a 3 px border, yellow when marked for the
@@ -274,7 +274,7 @@ nothing of them (and answers the new routes with a 404, taken as "not available"
   (`EBAY_TAKEN`); any other reason, the generic line.
 - **No postings left.** A posting's `POST /jobs` answered 402 shows the server's words
   under the venue button (`You have used your 3 free postings. Buy postings in
-  Settings.`), and under them a small **Buy postings** (`#ebay-buy`, `#craigslist-buy`,
+  Settings.`), and under them a small **Buy postings** (`#ebay-buy`, `#craigslist-buy`, `#poshmark-buy`,
   `#book-ebay-buy`) that opens Admin on Settings at the Account block, its packs
   unfolded. The next press of the button takes the link away. A card's post refused the
   same way says the server's words on the card's line.
@@ -558,6 +558,31 @@ yellow button darkens; that is ok. But rather it should say Snap Next."
   book: **Snap**). An earlier item back brought up keeps its word: NEXT there returns to the items
   in hand.
 
+## Poshmark, the admin's (2.22.0)
+
+Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it available only
+to me; when other people press it, it should tell them the same message as it does when they press
+Craigslist."
+
+- **A third venue button**, **poshmark**, right of **craigslist** (`#poshmark-btn`, with its
+  `-reset`, `-status`, `-buy` and `-link` as the others have them; `VENUES` in core.js). The three
+  sit in one row on any phone: the word scales with the screen (`clamp(14px, 4vw, 20px)`), a pill grown taller than 64 px is a rounded box, the
+  lines under them are 13 px. It sends what the others send (`{"item", "venue": "poshmark", "ai"}`,
+  or `{"sku", "venue": "poshmark"}` once the row is saved, customize's keys with either) and shows
+  `links.poshmark` when the job is done.
+- **Only for the admin.** `GET /me` says `"poshmark": true` for him alone (`meOf`'s `poshmark`).
+  Unlike craigslist, a server that does not say it (an older one, or no `/me` at all) is off: such
+  a server cannot post there. Off, the button is grey and takes the tap, as craigslist's does, and
+  says `Poshmark is not available for your account yet. Ask for it in Admin, Feedback.`
+  (`venueOff`, the craigslist line in Poshmark's name); nothing is sent. A listing's empty poshmark
+  foldout says the same in place of its Add. The server refuses anyone else's poshmark job (403).
+- **In Admin**: a **poshmark** chip in Options' Venue row (four in a row now), and a **poshmark**
+  foldout after craigslist on a listing. The server only posts there: the card offers **Add poshmark
+  to this item**, **Post on poshmark** and, listed, **Open listing**, and nothing else (no Refresh
+  status, End listing, Sync or Edit, `POST_ONLY` in core.js); its fields are not shown. A listing is
+  never marked behind on poshmark.
+- **Books** stay eBay only.
+
 ## The screen, top to bottom
 
 - **goods | book**, under the header: which kind of item is on screen. The
@@ -710,7 +735,7 @@ yellow button darkens; that is ok. But rather it should say Snap Next."
   book's customize has its own Save as default and its own defaults. The goods' Save as
   default also keeps Fix dark photos as it stands, in `snap.photos.fixdark` (`"off"` or
   `"on"`; on until saved off).
-- **ebay | craigslist**, side by side, each with its status line and link:
+- **ebay | craigslist | poshmark**, side by side, each with its status line and link (poshmark the admin's alone: see "Poshmark, the admin's" above):
   `sending`, `queued, 1 ahead`, the server's step (`drafting the listing`...), then
   the link (opens in a new tab), or the server's error in its own words. The pressed
   button shows a turning ring beside its word until the link or the error comes;
@@ -1030,16 +1055,16 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <pc>/items/<id>`, after a reload | - | `{"item", "photos", "note", "sku", "jobs"}` |
 | `GET <pc>/books/<isbn13>`, a book's ISBN known | - | `{"isbn", "title", "subtitle", "authors": [...], "publisher", "year", "format", "pages", "price": "11" or null, "listings": {"count", "low", "high"} or null, "route": "list" / "lot or buyback" / "unknown"}`; 404 not in the catalogues (its `detail` is shown under the card as the reason, e.g. no Google Books key; No ISBN is then the next step and keeps the ISBN), 400 not an ISBN, 502 the catalogues could not be reached |
 | `GET <pc>/books/search?title=<t>&author=<a>&year=<y>`, No ISBN, 0.6 s after the last keystroke | each URL-encoded (`%20` for a space); author and year `""` when not typed, year only once it has four digits | the same as `/books/<isbn13>`, plus `"found": true` (a catalogue matched it) or `false` (none did: it is listed as typed; `price` and `listings` still from eBay); 400 and 502 show the server's words and keep the fields |
-| `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay" or "craigslist", "ai": [photo numbers]}` | `{"job": id, "state": "queued", "ahead": n}` |
+| `POST <pc>/jobs`, a new item | `{"item": id, "venue": "ebay", "craigslist" or "poshmark", "ai": [photo numbers]}`; a poshmark job from anyone but the admin is refused, 403 `{"detail": "poshmark is not available for <name>: contact the developer"}` | `{"job": id, "state": "queued", "ahead": n}` |
 | `POST <pc>/jobs`, a book | `{"item": id, "venue": "ebay", "book": {"isbn": "9780306406157", "title": "", "author": "", "year": "", "format": "", "condition": "good", "price": "11", "main": 1}}`, no `ai`; `main` (always sent) is the number of the photo marked main, the first unless moved. With no ISBN: `"isbn": ""`, `"title"` (never blank), `"author"`, `"year"` as typed (tidied; `""` when not given) and `"format": "paperback"` or `"hardcover"`; with an ISBN those four are `""`. After an ISBN no catalogue knows (the 404 above) and No ISBN: both, `"isbn": "9781926856155"` and the typed `"title"`, `"author"`, `"year"`, `"format"`; the server keeps the ISBN on the listing and takes the rest from the typed fields | the same |
 | `POST <pc>/jobs`, the other button, or the press after `saved, not posted` (a book's too) | `{"sku": sku, "venue": ...}` only, never a `book` (plus customize's keys, below); the server updates the saved row with them before it posts | the same |
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
 | customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
-| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the credit is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url, "poshmark": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the credit is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
-| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
+| `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` / `poshmark` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
 | `GET <pc>/inventory/<sku>/conditions`, the eBay card's **Edit** (Michal, 2026-10-08) | - | `{"current": "NEW_OTHER", "allowed": ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING"], "labels": {enum: words}, "error": "<why, only when allowed is empty>"}`; `allowed` is what eBay allows the row's category, the chips in that order and in `labels`' words. `allowed` empty: every condition the page knows (`CONDITION_LABELS`), `eBay's list for this category could not be read: showing all (<error>)` under them; an older server's 404: every condition, nothing said |
@@ -1048,9 +1073,9 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <pc>/inventory?...&status=archived&...`, the **Archived** chip | the list's query, `status=archived` | only the archived rows; every other listing (All included) leaves them out |
 | `PATCH <pc>/inventory/<sku>`, a list row's **+** or **−**, one per press (a tap, or a press held: sent once the finger lifts or leaves the button) | `{"price": "150.00"}`, the whole dollars the dial stopped at, never below `"1.00"`; never a grade (`pricing` is customize's slider's); a dial back where it started sends nothing | the same; 400 `{"detail"}` on the inventory's line as `<sku>: <detail>`, the price as it was |
 | `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The server sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
-| `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** | no body | the whole row, the venue now in its `venues` |
+| `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** (`poshmark` too) | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
-| `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), either venue | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
+| `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), ebay or craigslist (never poshmark: the server only posts there) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
 | `POST <pc>/jobs`, the sync bar's **Sync from <venue>** / **Sync to <venue>**, one per venue in `/me`'s `syncable` (2.20.0) | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in the bar |
 | `POST <pc>/jobs`, a listing's customize **Sync to <venue>** (one row, as saved, onto its listing there; one button per venue in `syncable.to` the row is listed on, 2.20.0), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue"}`, the venue as `/me` names it: `"ebay"`, `"craigslist"` (the craigslist push is the server's from 2026-10-08), or one the server adds | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to that venue yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
@@ -1147,7 +1172,7 @@ Empty. With capacity to generate that card from there."
   options need to be all small, and also locked away inside a foldout tab
   'Options'"; open or folded is remembered on this phone, `snap.inventory.options`
   `open` or `closed`). In it, all small (13 px chips, 36 px tall): two rows of
-  chips, **Venue** (All | ebay | craigslist) and **Status** (All | draft |
+  chips, **Venue** (All | ebay | craigslist | poshmark) and **Status** (All | draft |
   listed | sold | ended | **Archived**, three to a row; see the swipe below), a row of **Sort** chips (**Newest** | Oldest | Price ↓
   | Price ↑; a row with no price comes last either way), and last, on its own
   line, **Show photos**, ticked by default (Michal, 2026-10-07: "in inventory,
@@ -1281,7 +1306,7 @@ Empty. With capacity to generate that card from there."
   time; a tap shows one full size on black, the whole picture, with **Close**
   at the top right; a tap anywhere on it, or Escape, closes it too), then its
   **customize** (below), then one foldout per venue and nothing else, **ebay**
-  then **craigslist**, both folded each time a listing opens (Michal,
+  then **craigslist**, then **poshmark** (2.18.0), all folded each time a listing opens (Michal,
   2026-10-07: "When I look at a card of a listing I want the eBay and
   Craigslist section be folded in at first"). Each foldout's line is the
   list's own badge for that venue, then the arrow (Michal, 2026-10-07: "I want
@@ -1532,7 +1557,7 @@ To point the local page at a local `crosslister serve`
 `http://localhost:8080` to `CROSSLISTER_SERVE_ORIGINS` in the server's `.env`
 (e.g. `CROSSLISTER_SERVE_ORIGINS=https://*.github.io,http://localhost:8080`).
 Taking photos and typing the user note cost nothing (they only land in the inbox
-folder). **A real press of ebay or craigslist pays for a model call and
+folder). **A real press of ebay, craigslist or poshmark pays for a model call and
 publishes.**
 
 ## Security and privacy
