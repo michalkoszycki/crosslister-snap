@@ -73,6 +73,9 @@
        first (Michal, 2026-10-08: Install below sign-in, smaller), then a key (Admin's Settings,
        as ever), then Install, small. -->
   <section id="landing" class="landing" hidden>
+    <!-- Add account (Settings, 2026-10-18): the landing's two ways in again, for one more
+         account beside those kept; Back keeps the account in hand (app.js) -->
+    <button type="button" id="landing-back" class="link back-link landing-back" hidden>← Back</button>
     <svg class="mark landing-mark" viewBox="0 0 132 132" width="96" height="96" aria-hidden="true">
       <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
       <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
@@ -94,6 +97,9 @@
     <button type="button" id="landing-install" class="secondary landing-small" aria-expanded="false"
             aria-controls="landing-install-steps">Install</button>
     <p id="landing-install-steps" class="install-steps" hidden></p>
+    <!-- another account kept on this phone, while the one in hand is signed out or gone
+         (Michal, 2026-10-18): Settings' list, where it is switched to (app.js) -->
+    <button type="button" id="landing-accounts" class="secondary landing-small" hidden>Switch account</button>
     <!-- Michal, 2026-10-08: "when you hover on I have a key, give a tooltip at the bottom below
          the buttons: key allows you to join a family account; in a similar way explain install".
          One line under the buttons that says what the button under the finger (or pointer) does -->
@@ -341,9 +347,33 @@
       </div>
       <button type="button" id="settings-save" class="secondary">Save and check</button>
       <p id="settings-status" class="small"></p>
-      <!-- the way back to the landing: the address, the key and a session forgotten on this
-           phone (app.js words it Sign out for a session, Forget this server for a key) -->
-      <button type="button" id="settings-signout" class="link sign-out" hidden>Forget this server</button>
+      <!-- Sign out: the account in hand off this phone (a session told to the server first);
+           the next account kept here takes over, or the landing is back (app.js) -->
+      <button type="button" id="settings-signout" class="link sign-out" hidden>Sign out</button>
+      <!-- several accounts on one phone (Michal, 2026-10-18: "switch accounts somewhere so i
+           can navigate easy between two logins to this app ... there should be a way to REMOVE
+           account from phone"): each by name, the current one ticked, one the server forgot
+           shown signed out with Sign in again; Remove from this phone on each; Add account
+           the landing's two ways in, the others kept (app.js) -->
+      <div id="accounts" class="accounts" hidden>
+        <p class="field-label">Accounts on this phone</p>
+        <ul id="accounts-list" class="accounts-list"></ul>
+        <button type="button" id="accounts-add" class="pill pill-small">Add account</button>
+      </div>
+      <!-- the last thing in Settings (Michal, 2026-10-18: "in settings there also needs to be
+           an option to delete your account"): quiet, and its own confirmation view in plain
+           words, never a browser dialog. DELETE /me with the account's key or session (app.js) -->
+      <button type="button" id="settings-delete" class="link sign-out delete-link" aria-expanded="false"
+              aria-controls="delete-confirm" hidden>Delete my account</button>
+      <div id="delete-confirm" class="delete-confirm" hidden>
+        <p class="delete-words">Your account will be deleted from the server, with its inventory, photos, jobs and settings.</p>
+        <p class="delete-words">Listings already on eBay stay there: they are yours on eBay. Postings you bought and did not use are lost.</p>
+        <p class="delete-words">This cannot be undone.</p>
+        <p id="delete-admin-note" class="delete-words delete-admin-note" hidden>The admin's account cannot be deleted from the app.</p>
+        <button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad">Delete my account</button>
+        <button type="button" id="delete-keep" class="link delete-keep">Keep my account</button>
+      </div>
+      <p id="delete-status" class="small account-status" aria-live="polite"></p>
     </div>
 
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"

@@ -258,8 +258,20 @@ test("Admin reads top to bottom: Settings, the inventory and a listing's foldout
         "theme-device",
         "settings-save",
         "settings-status",
-        // the way back to the landing (Michal, 2026-10-08): Sign out, or Forget this server
+        // the way back to the landing (Michal, 2026-10-08): Sign out, of the current account
         "settings-signout",
+        // the accounts on this phone (Michal, 2026-10-18: "switch accounts somewhere so i can
+        // navigate easy between two logins to this app"): the list, Add account; then, last
+        // and quiet, Delete my account with its confirmation view and its line
+        "accounts",
+        "accounts-list",
+        "accounts-add",
+        "settings-delete",
+        "delete-confirm",
+        "delete-admin-note",
+        "delete-confirm-btn",
+        "delete-keep",
+        "delete-status",
         "inventory-toggle",
         "inventory",
         "inventory-browse",
@@ -7123,11 +7135,15 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         // Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app. Snap is simple.
         // Note that for the first landing page."
         "landing",
+        // Add account's Back (Michal, 2026-10-18), the account in hand kept
+        "landing-back",
         // Michal, 2026-10-08: Sign in first, then a key, then Install below them, smaller
         "landing-signin",
         "landing-key",
         "landing-install",
         "landing-install-steps",
+        // another account kept on this phone, while the one in hand is signed out or gone
+        "landing-accounts",
         "landing-help",
         "landing-status",
         "signin",
@@ -7180,10 +7196,11 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     assert.match(html, /id="signin-code-send"[^>]*>Sign in with the code</);
     assert.match(html, /<p id="signin-note" class="signin-note" hidden><\/p>/);
     assert.match(html, /<p class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
-    assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Forget this server</);
+    // Sign out of the current account, whichever way it came in (2.23.0; "Forget this server" before)
+    assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Sign out</);
 });
 
-test("a first open is the landing: Install, then a key; saved, the goods screen; Forget this server, the landing again", async (t) => {
+test("a first open is the landing: Install, then a key; saved, the goods screen; Sign out, the landing again", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const local = memoryStore();
     const pc = fakePc();
@@ -7237,11 +7254,11 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     assert.match(nodes.get("settings-status").textContent, /knows this key/);
     assert.equal(pc.mes, 1, "who this key is, asked once it checked");
     assert.equal(nodes.get("settings-signout").hidden, false);
-    assert.equal(nodes.get("settings-signout").textContent, "Forget this server");
+    assert.equal(nodes.get("settings-signout").textContent, "Sign out", "of a key too, since 2.23.0");
     nodes.get("admin-close").fire("click");
     assert.deepEqual(shown(screens), ["install-banner", "modes", "work"], "the goods screen, as today");
 
-    // Forget this server: the address and key gone, the landing back, the server word unset
+    // Sign out: the address and key gone, the landing back, the server word unset
     nodes.get("admin-toggle").fire("click");
     await settle();
     nodes.get("settings-toggle").fire("click");

@@ -1143,6 +1143,22 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 
 /* Sign out / Forget this server, under Save and check: quiet, it is rarely wanted */
 .link.sign-out { display: block; min-height: 44px; padding: 10px 0; color: var(--bad); }
+/* Accounts on this phone (Michal, 2026-10-18), under Sign out: one row per account, its name
+   a quiet button (the current one ticked and bold), its state and its actions small after it */
+.accounts { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.accounts-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.account-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
+.link.account-name { padding-left: 0; font-size: 15px; overflow-wrap: anywhere; }
+.link.account-name[aria-current="true"] { font-weight: 800; }
+.account-state { font-size: 13px; color: var(--muted); }
+.link.account-action { padding-left: 0; font-size: 13px; color: var(--muted); text-decoration: underline; }
+/* Delete my account, the last thing in Settings: the red link, small; its confirmation under it */
+.link.delete-link { margin-top: 10px; font-size: 13px; }
+.delete-words { margin: 0 0 10px; font-size: 14px; }
+.delete-admin-note { font-weight: 700; }
+.link.delete-keep { display: block; min-height: 44px; padding: 10px 0; }
+/* the landing's Back while an account is being added, and Switch account under Install */
+.link.landing-back { display: block; text-align: left; }
 
 /* The Account block, first in Settings: whose it is, the postings left and Buy postings,
    the eBay it posts to and Connect eBay; under a thin line from the address and key */

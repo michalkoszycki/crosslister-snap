@@ -251,6 +251,8 @@ export function landingHelp(which) {
             return "A key lets you join a family account: the person who runs the server gives it to you.";
         case "install":
             return "Install puts Snap on your home screen as an app: full screen, its own icon, no browser bar.";
+        case "accounts":
+            return "Switch account: carry on as another account kept on this phone.";
         default:
             return "";
     }
@@ -567,6 +569,110 @@ function ebayOf(x) {
 export function userLine(user, bySession) {
     if (!user) return "";
     return bySession ? `Signed in as ${user}` : `Key: ${user}`;
+}
+
+// --- several accounts on one phone (Michal, 2026-10-18) -----------------------------------
+// "mostly i want to make sure there is a logout somewhere. and switch accounts somewhere so
+// i can navigate easy between two logins to this app ... there should be a way to REMOVE
+// account from phone [which is different than deleting an account] - in settings there also
+// needs to be an option to delete your account." The phone keeps a list of the accounts it
+// signed in to, one of them current; every call goes with the current one's key or session.
+
+/**
+ * One account kept on the phone: where its calls go (`pc`), its key or its session (one of
+ * the two), whose it is (`user`: /me's name, or the sign-in's; "" until the server said),
+ * whether it is kept on the phone (`remember`; a key always is, a session as Keep me signed
+ * in was ticked) or for this tab only, whether /me said admin, and `expired`: the server no
+ * longer knows the session (a 401), so it is shown signed out until he signs in again.
+ * @typedef {{id:string, pc:string, key:string, session:string, user:string, remember:boolean, admin:boolean, expired:boolean}} Account
+ */
+
+/**
+ * An account to keep, from its parts: an id of its own, and the rest as given or empty.
+ * @param {{pc:string, key?:string, session?:string, user?:string, remember?:boolean, admin?:boolean, expired?:boolean}} parts
+ * @returns {Account}
+ */
+export function newAccount({ pc, key = "", session = "", user = "", remember = true, admin = false, expired = false }) {
+    return {
+        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+        pc,
+        key,
+        session,
+        user,
+        remember: !!key || remember,
+        admin,
+        expired,
+    };
+}
+
+/**
+ * The accounts as stored (a JSON list), leniently: one with no id, no server, or neither a
+ * key nor a session is dropped, and anything that is not a list is none.
+ * @param {unknown} raw
+ * @param {boolean} remember the store they were read from: kept on the phone, or for this tab
+ * @returns {Account[]}
+ */
+export function accountsOf(raw, remember) {
+    if (!Array.isArray(raw)) return [];
+    /** @type {Account[]} */
+    const out = [];
+    for (const x of raw) {
+        if (!x || typeof x !== "object") continue;
+        const a = /** @type {Record<string, unknown>} */ (x);
+        const id = plain(a.id);
+        const pc = plain(a.pc);
+        const key = plain(a.key);
+        const session = plain(a.session);
+        if (!id || !pc || (!key && !session)) continue;
+        out.push({ id, pc, key, session: key ? "" : session, user: plain(a.user), remember, admin: a.admin === true, expired: a.expired === true });
+    }
+    return out;
+}
+
+/**
+ * An account's name in Settings' list: whose it is, else, while the server has not said,
+ * what it is ("Key for pc.tail1234.ts.net", "Signed in by email").
+ * @param {{pc:string, key:string, user:string}} a
+ * @returns {string}
+ */
+export function accountName(a) {
+    if (a.user) return a.user;
+    if (!a.key) return "Signed in by email";
+    let host = a.pc;
+    try {
+        host = new URL(a.pc).host;
+    } catch {
+        /* said as stored */
+    }
+    return `Key for ${host}`;
+}
+
+/** Under an account the server forgot (a 401 on its session), in Settings' list. */
+export const SIGNED_OUT = "signed out";
+
+/** Said in Delete my account's confirmation for the admin, whose account the server refuses to delete. */
+export const ADMIN_NO_DELETE = "The admin's account cannot be deleted from the app.";
+
+/** Said once the server answered Delete my account with a 204: on the landing, or in Settings under the next account. */
+export const ACCOUNT_DELETED = "Your account was deleted.";
+
+/**
+ * Delete my account's line when the server refused or did not answer; the account stays
+ * either way. A 409 in the server's own words (the admin's account, which cannot be deleted
+ * from the app; a job of theirs still queued or running), said as a sentence; else "Could
+ * not delete the account: <why>." (a 401's and no answer's usual words).
+ * @param {number} status the PcError's
+ * @param {string} detail the server's own words ("" when none)
+ * @param {string} message errorText's words
+ * @param {string} [code] the server's "code" beside the detail ("ADMIN_ACCOUNT")
+ * @returns {string}
+ */
+export function deleteError(status, detail, message, code = "") {
+    if (status === 409) {
+        const said = (detail || (code === "ADMIN_ACCOUNT" ? ADMIN_NO_DELETE : message)).trim();
+        return `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
+    }
+    return `Could not delete the account: ${message}.`;
 }
 
 /** "1 posting", "3 postings". */

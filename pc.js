@@ -109,6 +109,11 @@
 //   POST   <pc>/auth/session          {"token"} -> {"session", "user", "remember"}
 //   (a server without the sign-in lane answers both with a 404)
 //   DELETE <pc>/auth/session          Sign out, with the session header -> 204: the server forgets it
+// Delete my account (Michal, 2026-10-18), with the account's key or session:
+//   DELETE <pc>/me                    -> 204: the account, its inventory, photos, jobs, settings and
+//                                      sessions are gone for good; 409 {"detail", "code": "ADMIN_ACCOUNT"}
+//                                      for the admin's; 409 {"detail"} while a job of theirs is queued
+//                                      or running
 // The Account block in Settings (Michal, 2026-10-08: three free postings per person, then
 // prepaid postings bought through Stripe; Connect eBay from the phone for another seller):
 //   GET /me adds "credits": {"unlimited": true} | {"free_left", "bought_left"}, "packs":
@@ -175,11 +180,13 @@ import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=
  * where errorText would say a key was wrong.
  */
 export class PcError extends Error {
-    constructor(status, detail) {
+    constructor(status, detail, code = "") {
         super(errorText(status, detail));
         this.name = "PcError";
         this.status = status;
         this.detail = typeof detail === "string" ? detail : "";
+        /** The server's "code" beside its detail, when it gives one ("ADMIN_ACCOUNT"); "" otherwise. */
+        this.code = typeof code === "string" ? code : "";
     }
 }
 
@@ -210,7 +217,7 @@ async function parsed(res) {
 /** The error a refused response is: its status and its {"detail"} when it has one. */
 async function refused(res) {
     const answer = await parsed(res);
-    return new PcError(res.status, answer && answer.detail);
+    return new PcError(res.status, answer && answer.detail, answer && answer.code);
 }
 
 async function call(url, auth, { method = "GET", json, body, type } = {}) {
@@ -524,6 +531,18 @@ export function codeSession(pc, body) {
  */
 export async function endSession({ pc, ...auth }) {
     const res = await request(`${pc}/auth/session`, auth, { method: "DELETE" });
+    if (!res.ok) throw await refused(res);
+}
+
+/**
+ * Delete my account (Michal, 2026-10-18): the account and all of its on the server, gone for
+ * good (204, no body); its sessions go with it. 409 {"detail", "code": "ADMIN_ACCOUNT"} for
+ * the admin's, 409 with the server's busy words while a job of theirs is queued or running.
+ * @param {Settings} settings the account's own key or session
+ * @returns {Promise<void>}
+ */
+export async function deleteMe({ pc, ...auth }) {
+    const res = await request(`${pc}/me`, auth, { method: "DELETE" });
     if (!res.ok) throw await refused(res);
 }
 
