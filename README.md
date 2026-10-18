@@ -126,19 +126,21 @@ and every behaviour are the live app's.
   "failed" stays the red tap target; the AI / main marks are yellow chips when
   on, faint outlines when off.
 - **The icon** has two looks. The "any" icons, which the splash screen shows,
-  are the mark on a yellow rounded square, unchanged (Michal, 2026-10-18:
-  "splash screen was ok. i wanted no changes to splash screen"). The maskable
+  are the mark on a yellow rounded square. The maskable
   ones, the launcher's icon and the iPhone's apple-touch-icon, fill the square
   with yellow so the launcher's own circle crop is all yellow, the camera as
   large as the 40% safe-zone radius allows (Michal, 2026-10-18: "the entire
   circle should be yellow"). `node tools/make-icons.mjs` draws the PNGs, the $
   as two arcs and a bar.
-- **The manifest's colours:** `background_color` is the splash's yellow;
-  `theme_color` is ink (#0B0B0B), since Chrome on Android paints an installed
-  app's gesture strip at the bottom with it, whatever the page's theme-color meta
-  says (a yellow stripe under the page, 2026-10-18). The status bar at the top
-  follows the page's own theme-color metas. Android reads both colours only when
-  the app is installed (or when Chrome updates the installed app).
+- **The manifest's colours** are both ink (#0B0B0B). In the installed app Chrome
+  stops the page above Android's gesture strip and fills the strip with the
+  window's background, which is `background_color` (the same colour as the
+  splash); newer Chrome may paint it with `theme_color` instead. Either in
+  yellow was a yellow stripe under the page (2026-10-18), and a page cannot draw
+  under the strip yet, so the splash is ink with the yellow camera tile on it
+  (Michal chose that over a fullscreen app). The status bar at the top follows
+  the page's own theme-color metas. Android reads both colours only when the app
+  is installed (or when Chrome updates the installed app).
 
 ## The way in: the landing, the home screen, sign-in
 
