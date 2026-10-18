@@ -457,6 +457,16 @@ test("the manifest points at icons that exist", () => {
     }
 });
 
+test("the launcher gets a full-bleed maskable icon, never a square inside its own white circle", () => {
+    // Michal, 2026-10-18: "the entire circle should be yellow ... I don't like that I am seeing
+    // white color inside the circle"
+    const manifest = JSON.parse(readFileSync(join(root, "manifest.webmanifest"), "utf8"));
+    const maskable = manifest.icons.filter((icon) => icon.purpose === "maskable").map((icon) => icon.sizes);
+    assert.deepEqual(maskable, ["192x192", "512x512"]);
+    const html = readFileSync(join(root, "index.html"), "utf8");
+    assert.match(html, /<link rel="apple-touch-icon" href="icon-maskable-192\.png">/);
+});
+
 test("the header carries the A2 mark and the $nap wordmark; the font comes from this repo", async () => {
     // Michal, 2026-10-05: "A2 implement"; 2026-10-08: "The name of the app should be Snap, a
     // crosslisting app": the wordmark is "$nap" alone, the name Snap everywhere
