@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.22.2";
+import { VERSION } from "./version.js?v=2.23.0";
 import {
     adminLink,
     anyActive,
@@ -212,8 +212,14 @@ import {
     wrapCounter,
     wrapError,
     wrapOf,
-} from "./core.js?v=2.22.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.22.2";
+    ACCOUNT_DELETED,
+    accountName,
+    accountsOf,
+    deleteError,
+    newAccount,
+    SIGNED_OUT,
+} from "./core.js?v=2.23.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.23.0";
 
 // The venues the header and footer go out on, as the server's GET /me/wrap offers them
 // (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
@@ -228,6 +234,7 @@ import {
     checkPc,
     codeSession,
     createItem,
+    deleteMe,
     deletePhoto,
     ebayConnect,
     endSession,
@@ -256,8 +263,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.22.2";
-import { shrinkPhoto } from "./shrink.js?v=2.22.2";
+} from "./pc.js?v=2.23.0";
+import { shrinkPhoto } from "./shrink.js?v=2.23.0";
 import {
     bookCard,
     bookPriceValue,
@@ -270,8 +277,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.22.2";
-import { canScan, readIsbn } from "./scan.js?v=2.22.2";
+} from "./book.js?v=2.23.0";
+import { canScan, readIsbn } from "./scan.js?v=2.23.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -291,10 +298,19 @@ const CARD_KEY = "snap.admin.card";
  */
 const UNSYNCED_KEY = "snap.inventory.unsynced";
 /**
- * The session a sign-in link made, in localStorage when he kept Keep me signed in ticked,
- * else in sessionStorage (this tab only); used when there is no key.
+ * Before 2.23.0, the session a sign-in link made, in localStorage when he kept Keep me
+ * signed in ticked, else in sessionStorage (this tab only). Read once, to be carried into
+ * the accounts list; written since as a mirror of the current account (mirrorCurrent).
  */
 const SESSION_KEY = "snap.session";
+/**
+ * The accounts kept on this phone (Michal, 2026-10-18; accountsOf in core.js): a JSON list
+ * in localStorage for those kept on the phone, the same key in sessionStorage for a session
+ * he did not tick Keep me signed in for (this tab only).
+ */
+const ACCOUNTS_KEY = "snap.accounts";
+/** The current account's id, among those kept (ACCOUNTS_KEY); the first when it names none. */
+const CURRENT_KEY = "snap.accounts.current";
 /** Save as default's choices, per kind ({"goods": {...}, "book": {...}}): every new item starts from them. */
 const DEFAULTS_KEY = "snap.customize.defaults";
 /** When the home-screen banner was put away (an ISO date): it stays away a week. */
@@ -400,6 +416,23 @@ const wrap = {
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
+/**
+ * The accounts on this phone (Michal, 2026-10-18), in memory once read (readAccounts): the
+ * list, those kept on the phone and those for this tab together, and the current one's id.
+ * @type {{list: import("./core.js").Account[], current: string} | null}
+ */
+let accounts = null;
+/**
+ * Settings' Add account (or an expired account's Sign in again): the landing's two ways in
+ * are the screen while the account in hand stays; a sign-in made joins the list, Back keeps
+ * things as they were.
+ */
+let adding = false;
+/**
+ * Settings' Delete my account: its confirmation view open or folded, DELETE /me on its way
+ * (`busy`), and its line (what went wrong, or that the account was deleted).
+ */
+const deleting = { open: false, busy: false, status: "" };
 /**
  * The mail's code box on the sign-in screen (Michal, 2026-10-08): shown once a link is sent,
  * or by I already have a code; folded again by Back.
@@ -641,20 +674,367 @@ function chosenTheme() {
 }
 
 /**
- * Where calls go and who makes them: the saved PC address and key, checked; else, on a
- * phone signed in by a link, the product's server and the session; null with neither
- * (the landing is then the screen).
+ * Where calls go and who makes them: the current account's server and its key, or its
+ * session; null with no account, or one the server forgot (the landing is then the screen).
  */
 function settings() {
-    const s = checkSettings(readText("localStorage", PC_KEY), readText("localStorage", KEY_KEY));
-    if (s.ok) return { pc: s.pc, key: s.key };
-    const session = readSession();
-    return session ? { pc: DEFAULT_SERVER, session } : null;
+    const a = currentAccount();
+    if (!a || a.expired) return null;
+    return a.key ? { pc: a.pc, key: a.key } : { pc: a.pc, session: a.session };
 }
 
-/** The session a sign-in link made: kept on the phone, or for this tab only. */
-function readSession() {
-    return readText("localStorage", SESSION_KEY) || readText("sessionStorage", SESSION_KEY);
+// --- the accounts on this phone (Michal, 2026-10-18) --------------------------------------
+// "switch accounts somewhere so i can navigate easy between two logins to this app": the
+// phone keeps every account it signed in to, one of them current. A phone from before has
+// its one key or session carried into the list on the first load, nothing changing for it.
+
+/** The accounts, read once from the phone. */
+function allAccounts() {
+    if (!accounts) accounts = readAccounts();
+    return accounts;
+}
+
+/** The current account, whole; null with none kept. */
+function currentAccount() {
+    const { list, current } = allAccounts();
+    return list.find((a) => a.id === current) || null;
+}
+
+/**
+ * The accounts as stored, kept on the phone and for this tab, and the current one; or, on a
+ * phone from before 2.23.0 that stored neither list, its one address and key or its session
+ * as a list of one (and stored so from then on).
+ */
+function readAccounts() {
+    const stored = readText("localStorage", ACCOUNTS_KEY) || readText("sessionStorage", ACCOUNTS_KEY);
+    const list = [...accountsOf(readJson("localStorage", ACCOUNTS_KEY, null), true), ...accountsOf(readJson("sessionStorage", ACCOUNTS_KEY, null), false)];
+    let current = readText("localStorage", CURRENT_KEY);
+    const old = stored ? null : oldAccount();
+    if (old) {
+        list.push(old);
+        current = old.id;
+    }
+    if (!list.some((a) => a.id === current)) current = list.length ? list[0].id : "";
+    accounts = { list, current };
+    if (old) writeAccounts();
+    return accounts;
+}
+
+/** The one sign-in a page before 2.23.0 kept: the address and key, else the session, kept on the phone or for this tab. */
+function oldAccount() {
+    const s = checkSettings(readText("localStorage", PC_KEY), readText("localStorage", KEY_KEY));
+    if (s.ok) return newAccount({ pc: s.pc, key: s.key });
+    const kept = readText("localStorage", SESSION_KEY);
+    if (kept) return newAccount({ pc: DEFAULT_SERVER, session: kept, remember: true });
+    const tab = readText("sessionStorage", SESSION_KEY);
+    return tab ? newAccount({ pc: DEFAULT_SERVER, session: tab, remember: false }) : null;
+}
+
+/** The accounts to the phone: those kept there, those for this tab, the current one's id; and the mirror. */
+function writeAccounts() {
+    const { list, current } = allAccounts();
+    writeJson("localStorage", ACCOUNTS_KEY, list.filter((a) => a.remember));
+    writeJson("sessionStorage", ACCOUNTS_KEY, list.filter((a) => !a.remember));
+    writeText("localStorage", CURRENT_KEY, current);
+    mirrorCurrent();
+}
+
+/**
+ * The current account in the keys a page before 2.23.0 read (snap.pc and snap.key, or
+ * snap.session where Keep me signed in put it), so an older page on this phone still finds
+ * it; nothing of the others, and nothing for an account the server forgot. Read by no one here.
+ */
+function mirrorCurrent() {
+    const a = currentAccount();
+    const live = a && !a.expired ? a : null;
+    if (live && live.key) {
+        writeText("localStorage", PC_KEY, live.pc);
+        writeText("localStorage", KEY_KEY, live.key);
+    } else {
+        for (const key of [PC_KEY, KEY_KEY]) removeText("localStorage", key);
+    }
+    for (const store of ["localStorage", "sessionStorage"]) {
+        const its = live && live.session && store === (live.remember ? "localStorage" : "sessionStorage");
+        if (its) writeText(store, SESSION_KEY, live.session);
+        else removeText(store, SESSION_KEY);
+    }
+}
+
+/**
+ * A sign-in made (a key saved, a session from a link or a code): kept beside the others, and
+ * current. The same key on the same server, or a session of the same person there (the same
+ * token, or the name the server gave), is the one account: its entry is replaced, so signing
+ * in again after the server forgot a session takes the old entry's place. `replace` names an
+ * entry to replace whatever the parts say: Save and check correcting the key account in hand.
+ * @param {{pc:string, key?:string, session?:string, user?:string, remember?:boolean}} parts
+ * @param {string} [replace]
+ */
+function addAccount(parts, replace = "") {
+    const all = allAccounts();
+    const made = newAccount(parts);
+    const same = (a) =>
+        a.id === replace ||
+        (a.pc === made.pc && (made.key ? a.key === made.key : !!a.session && (a.session === made.session || (!!made.user && a.user === made.user))));
+    const i = all.list.findIndex(same);
+    if (i >= 0) {
+        made.id = all.list[i].id;
+        made.admin = all.list[i].admin;
+        all.list[i] = made;
+    } else all.list.push(made);
+    all.current = made.id;
+    adding = false;
+    writeAccounts();
+}
+
+/** Did the account just added reach the phone's storage? (A private window may keep nothing.) */
+function accountKept(id) {
+    return [accountsOf(readJson("localStorage", ACCOUNTS_KEY, null), true), accountsOf(readJson("sessionStorage", ACCOUNTS_KEY, null), false)].some((list) =>
+        list.some((a) => a.id === id)
+    );
+}
+
+/**
+ * Another account made current (Settings' list): the page takes it up as it does a
+ * sign-in (takeUp). One the server forgot is not: its Sign in again is the way.
+ * @param {string} id
+ */
+function switchAccount(id) {
+    const all = allAccounts();
+    const to = all.list.find((a) => a.id === id);
+    if (!to || to.expired || all.current === id) return;
+    all.current = id;
+    adding = false;
+    writeAccounts();
+    takeUp();
+}
+
+/**
+ * Remove from this phone (Michal, 2026-10-18: "a way to REMOVE account from phone [which is
+ * different than deleting an account]"): a session is first told to the server (DELETE
+ * /auth/session with that account's own session; not waited for, and a refusal or no answer
+ * changes nothing), then the entry is dropped. The current one removed, the next is taken up,
+ * or the landing is back when none is left. Settings' Sign out is this for the current
+ * account; Delete my account drops the entry with the server told nothing (`tell` false:
+ * its sessions went with the account).
+ * @param {string} id
+ * @param {boolean} [tell]
+ */
+function removeAccount(id, tell = true) {
+    const all = allAccounts();
+    const gone = all.list.find((a) => a.id === id);
+    if (!gone) return;
+    if (tell && gone.session) endSession({ pc: gone.pc, session: gone.session }).catch(() => {});
+    all.list = all.list.filter((a) => a.id !== id);
+    if (all.current !== id) {
+        writeAccounts();
+        renderAccounts();
+        return;
+    }
+    all.current = all.list.length ? all.list[0].id : "";
+    writeAccounts();
+    if (all.current) takeUp();
+    else toLanding("");
+}
+
+/**
+ * What the server said of the account in hand, let go: /me, the seller's address, the header
+ * and footer, the venues tapped, the server word and its timer, and Delete my account's view.
+ */
+function letGoAccount() {
+    me = null;
+    meAsked = false;
+    seller.info = null;
+    quietSeller();
+    dropWrap();
+    offTaps.clear();
+    serverStatus = null;
+    clearTimeout(healthTimer);
+    healthTimer = null;
+    Object.assign(deleting, { open: false, busy: false, status: "" });
+}
+
+/**
+ * The account current now taken up, as a sign-in is: the last one's answers let go, the
+ * landing and sign-in put away, the server checked and asked who this is (the Account block,
+ * the venue buttons and the sync bar follow), Settings' boxes and foldouts its own, the
+ * inventory asked afresh if open; the items in hand carry on, as they do after a sign-in.
+ */
+function takeUp() {
+    letGoAccount();
+    el.landingStatus.textContent = "";
+    entry = "";
+    codeOpen = false;
+    if (!el.settings.hidden) {
+        fillSettings();
+        el.settingsStatus.textContent = "";
+    }
+    if (!el.admin.hidden) {
+        admin.asked += 1;
+        dropUndo();
+        showList();
+        admin.rows = [];
+        renderRows();
+    }
+    render();
+    renderServer();
+    renderExtras();
+    renderAccount();
+    checkServer().catch(() => {});
+    if (!el.settings.hidden) {
+        loadSeller().catch(() => {});
+        loadWrap().catch(() => {});
+    }
+    if (!el.admin.hidden && admin.inventoryOpen) loadInventory().catch(() => {});
+    for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
+    pump();
+    retryLookup();
+}
+
+/** Settings' address and key boxes: the key account in hand; empty for a session, and while an account is being added. */
+function fillSettings() {
+    const a = currentAccount();
+    const keyed = !adding && a && a.key ? a : null;
+    el.pcAddress.value = keyed ? keyed.pc : "";
+    el.pcKey.value = keyed ? keyed.key : "";
+}
+
+/**
+ * Add account (Settings), or Sign in again on an account the server forgot: the landing
+ * (or, `signin`, the sign-in screen itself) in place of the posting screens, the account
+ * in hand kept; Back there puts it back.
+ * @param {boolean} [signin]
+ */
+function startAdding(signin = false) {
+    adding = true;
+    Object.assign(deleting, { open: false, status: "" });
+    el.landingStatus.textContent = "";
+    if (!el.admin.hidden) showAdmin(false);
+    askSignup().catch(() => {});
+    if (signin) showSignin(true);
+    else render();
+}
+
+/** The landing's Back while an account is being added: the screens as they were. */
+function stopAdding() {
+    adding = false;
+    entry = "";
+    render();
+}
+
+/**
+ * Settings' list of the accounts on this phone: each by name (accountName), the current one
+ * ticked, one the server forgot marked signed out with Sign in again, and Remove from this
+ * phone on each; under them Add account. No list at all with no account kept.
+ */
+function renderAccounts() {
+    const { list, current } = allAccounts();
+    el.accounts.hidden = list.length === 0;
+    el.accountsList.replaceChildren(...list.map((a) => accountRow(a, a.id === current)));
+    // the landing's way to another account, while the one in hand is signed out or gone
+    el.landingAccounts.hidden = adding || list.every((a) => a.expired || a.id === current);
+}
+
+/**
+ * One account's row: its name (a tap makes it current), its state, its actions.
+ * @param {import("./core.js").Account} a
+ * @param {boolean} current
+ */
+function accountRow(a, current) {
+    const li = document.createElement("li");
+    li.className = "account-row";
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "link account-name";
+    name.textContent = current ? `✓ ${accountName(a)}` : accountName(a);
+    name.setAttribute("aria-current", current ? "true" : "false");
+    name.addEventListener("click", () => switchAccount(a.id));
+    li.append(name);
+    if (a.expired) {
+        const state = document.createElement("span");
+        state.className = "account-state";
+        state.textContent = SIGNED_OUT;
+        li.append(state, accountAction("Sign in again", () => startAdding(true)));
+    }
+    li.append(accountAction("Remove from this phone", () => removeAccount(a.id)));
+    return li;
+}
+
+/** A small action after an account's name. */
+function accountAction(word, onTap) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "link account-action";
+    btn.textContent = word;
+    btn.addEventListener("click", onTap);
+    return btn;
+}
+
+// --- Delete my account (Michal, 2026-10-18: "in settings there also needs to be an option to
+// delete your account") -------------------------------------------------------------------
+
+/**
+ * The last thing in Settings: the quiet red link, its confirmation view when opened (the
+ * admin's told there the server will refuse), its button and Keep my account held while
+ * DELETE /me is on its way, and its line.
+ */
+function renderDelete() {
+    const can = !!settings();
+    el.settingsDelete.hidden = !can;
+    el.settingsDelete.setAttribute("aria-expanded", can && deleting.open ? "true" : "false");
+    el.deleteConfirm.hidden = !can || !deleting.open;
+    el.deleteAdminNote.hidden = !(me && me.admin);
+    el.deleteConfirmBtn.disabled = deleting.busy;
+    el.deleteKeep.disabled = deleting.busy;
+    el.deleteStatus.textContent = deleting.status;
+}
+
+/** Delete my account tapped: the confirmation view, in plain words, nothing sent yet. */
+function openDelete() {
+    deleting.open = true;
+    deleting.status = "";
+    renderDelete();
+    if (typeof el.deleteConfirm.scrollIntoView === "function") el.deleteConfirm.scrollIntoView({ block: "nearest" });
+}
+
+/** Keep my account: the view folded, nothing sent. */
+function keepAccount() {
+    if (deleting.busy) return;
+    deleting.open = false;
+    deleting.status = "";
+    renderDelete();
+}
+
+/**
+ * The red Delete my account: DELETE /me with the account's own key or session. A 204 drops
+ * the account from the phone (its sessions went with it; the server is told nothing more)
+ * and the next account, or the landing, says it was deleted. A refusal (the admin's account,
+ * a job of theirs still queued or running: 409), a 401 or no answer is said under the view
+ * (deleteError) and the account stays.
+ */
+async function confirmDelete() {
+    const s = settings();
+    const a = currentAccount();
+    if (!s || !a || deleting.busy) return;
+    deleting.busy = true;
+    deleting.status = "Deleting your account...";
+    renderDelete();
+    try {
+        await deleteMe(s);
+    } catch (e) {
+        deleting.busy = false;
+        deleting.status = deleteError(e.status, e.detail, e.message, e.code);
+        if (e.status === 0) heard(0);
+        renderDelete();
+        return;
+    }
+    Object.assign(deleting, { open: false, busy: false, status: "" });
+    removeAccount(a.id, false);
+    if (settings()) {
+        deleting.status = ACCOUNT_DELETED;
+        renderDelete();
+    } else {
+        el.landingStatus.textContent = ACCOUNT_DELETED;
+    }
 }
 
 /** Save as default's choices on this phone, both kinds. */
@@ -691,10 +1071,12 @@ function render() {
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
     // screen is below. That should not be there"); both items carry on out of sight
     const away = !el.admin.hidden;
-    // no settings and no session: the landing (or sign-in) is the whole screen instead
-    const out = !settings();
+    // no settings and no session, or an account being added: the landing (or sign-in) is the
+    // whole screen instead
+    const out = !settings() || adding;
     el.landing.hidden = !out || away || entry === "signin";
     el.signin.hidden = !out || away || entry !== "signin";
+    el.landingBack.hidden = !adding;
     const words = signinWords(signup.open);
     el.landingSignin.textContent = words.button;
     el.signinWhat.textContent = words.what;
@@ -1962,8 +2344,9 @@ function showAdmin(open, card = "") {
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
-        // the Account block starts folded and quiet on the next visit
+        // the Account block starts folded and quiet on the next visit, Delete my account too
         Object.assign(account, { packs: false, status: "" });
+        Object.assign(deleting, { open: false, status: "" });
         quietSeller();
         renderAccount();
         Object.assign(wrap.status, { header: "", footer: "" });
@@ -1978,7 +2361,8 @@ function showAdmin(open, card = "") {
         dropThumbs();
         return;
     }
-    const ok = !!settings();
+    // an account being added: Settings, for its key, as on a phone with none
+    const ok = !!settings() && !adding;
     const signing = ok && !!signupStep(me);
     showSettings(!ok || signing);
     loadInbox().catch(() => {});
@@ -2003,9 +2387,10 @@ function showSettings(open) {
     el.settings.hidden = !open;
     fold(el.settingsToggle, "Settings", open);
     if (open) {
-        el.pcAddress.value = readText("localStorage", PC_KEY);
-        el.pcKey.value = readText("localStorage", KEY_KEY);
+        fillSettings();
         el.settingsStatus.textContent = "";
+        renderAccounts();
+        renderDelete();
         loadSeller().catch(() => {});
         loadWrap().catch(() => {});
     }
@@ -4247,14 +4632,16 @@ function renderServer() {
 
 /**
  * What the PC last said: 200, or the PcError status (0 = no answer). A 401 on a phone
- * signed in by a link (no key) is a session the server no longer knows: it is let go and
- * the landing says so.
+ * signed in by a link (no key) is a session the server no longer knows: the account is
+ * marked signed out (kept in Settings' list, with Sign in again) and the landing says so.
  */
 function heard(status) {
     serverStatus = status;
     const s = settings();
     if (status === 401 && s && s.session) {
-        for (const store of ["localStorage", "sessionStorage"]) removeText(store, SESSION_KEY);
+        const a = currentAccount();
+        if (a) a.expired = true;
+        writeAccounts();
         toLanding(SIGNIN_EXPIRED);
         return;
     }
@@ -4276,6 +4663,13 @@ async function loadMe() {
     inbox.refused = false;
     try {
         me = meOf(await getMe(pc));
+        // the account's name in Settings' list, and whether it is the admin's
+        const a = currentAccount();
+        if (me && a && (a.user !== (me.user || me.email) || a.admin !== me.admin)) {
+            a.user = me.user || me.email;
+            a.admin = me.admin;
+            writeAccounts();
+        }
     } catch (e) {
         if (e.status !== 0) me = null;
         if (e.status === 401) heard(401);
@@ -4398,6 +4792,8 @@ function renderAccount() {
     renderSeller();
     el.accountStatus.textContent = account.status;
     renderSignup();
+    renderAccounts();
+    renderDelete();
 }
 
 // --- the seller's address, under the eBay line --------------------------------------------
@@ -4865,15 +5261,9 @@ function cameBack(back) {
  * The items in hand stay saved for when he is back in.
  */
 function toLanding(message) {
-    me = null;
-    meAsked = false;
-    seller.info = null;
-    quietSeller();
-    dropWrap();
-    serverStatus = null;
-    clearTimeout(healthTimer);
-    healthTimer = null;
+    letGoAccount();
     entry = "";
+    adding = false;
     el.landingStatus.textContent = message;
     if (!el.admin.hidden) showAdmin(false);
     askSignup().catch(() => {});
@@ -4884,24 +5274,20 @@ function toLanding(message) {
 }
 
 /**
- * Settings' Sign out / Forget this server: the address, the key and any session gone from
- * this phone, and the landing back (Michal, 2026-10-08). Sign out first tells the server
- * to forget the session (DELETE /auth/session); its answer is not waited for, and a
- * refusal or no answer changes nothing: the phone forgets the session either way.
+ * Settings' Sign out (Michal, 2026-10-08; of the current account since 2.23.0): the account
+ * in hand off this phone (removeAccount: a session is first told to the server, DELETE
+ * /auth/session, not waited for), the next account kept here taken up, or the landing back.
  */
 function forgetServer() {
-    const s = settings();
-    if (s && s.session) endSession(s).catch(() => {});
-    for (const key of [PC_KEY, KEY_KEY, SESSION_KEY]) removeText("localStorage", key);
-    removeText("sessionStorage", SESSION_KEY);
-    toLanding("");
+    const a = currentAccount();
+    if (a) removeAccount(a.id);
 }
 
-/** Settings' last button: Sign out on a phone signed in by a link, Forget this server with a key. */
+/** Sign out, under Settings' line: there once there is an account in hand. */
 function renderSignOut() {
-    const s = settings();
-    el.settingsSignout.hidden = !s;
-    el.settingsSignout.textContent = s && s.session ? "Sign out" : "Forget this server";
+    const a = currentAccount();
+    el.settingsSignout.hidden = !a;
+    el.settingsSignout.textContent = "Sign out";
 }
 
 // --- the way in: the landing, sign-in, the home screen ------------------------------
@@ -5020,21 +5406,12 @@ async function sendCode() {
 
 /**
  * A session made (by a link or a code): kept on the phone when he ticked Keep me signed in,
- * else for this tab; then the goods screen, checked and asked about as on any load.
+ * else for this tab, beside the accounts already there, and current (addAccount); then the
+ * goods screen, checked and asked about as on any load (takeUp).
  */
 function keepSession(made) {
-    for (const store of ["localStorage", "sessionStorage"]) removeText(store, SESSION_KEY);
-    writeText(made.remember ? "localStorage" : "sessionStorage", SESSION_KEY, made.session);
-    el.landingStatus.textContent = "";
-    entry = "";
-    codeOpen = false;
-    me = null;
-    meAsked = false;
-    render();
-    checkServer().catch(() => {});
-    for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
-    pump();
-    retryLookup();
+    addAccount({ pc: DEFAULT_SERVER, session: made.session, user: made.user, remember: made.remember });
+    takeUp();
 }
 
 /** Running from the home screen: the display mode an installed web app gets, or an iPhone's own flag. */
@@ -5154,11 +5531,17 @@ async function saveSettings() {
         el.settingsStatus.textContent = s.error;
         return;
     }
-    writeText("localStorage", PC_KEY, s.pc);
-    writeText("localStorage", KEY_KEY, s.key);
+    // the key account in hand corrected, in its place; Add account, or a phone signed in by
+    // email or with nothing, one more entry, current now
+    const was = currentAccount();
+    addAccount({ pc: s.pc, key: s.key }, !adding && was && was.key ? was.id : "");
     el.pcAddress.value = s.pc;
-    render();
-    if (!settings()) {
+    const all = allAccounts();
+    if (!accountKept(all.current)) {
+        // nothing reaches the phone's storage: not an account to work with
+        all.list = all.list.filter((a) => a.id !== all.current);
+        all.current = all.list.length ? all.list[0].id : "";
+        render();
         el.settingsStatus.textContent =
             "Could not save on this phone (private mode?). The buttons need it saved.";
         return;
@@ -5166,11 +5549,10 @@ async function saveSettings() {
     el.settingsStatus.textContent = "Saved. Checking the server...";
     // new settings, maybe another account: /me, the seller's address and the header and
     // footer are asked afresh
-    me = null;
-    meAsked = false;
-    seller.info = null;
-    quietSeller();
-    dropWrap();
+    letGoAccount();
+    renderAccounts();
+    renderDelete();
+    render();
     try {
         await checkPc(s);
         heard(200);
@@ -5527,6 +5909,15 @@ function main() {
         settingsStatus: $("settings-status"),
         settingsServer: $("settings-server"),
         settingsSignout: $("settings-signout"),
+        accounts: $("accounts"),
+        accountsList: $("accounts-list"),
+        accountsAdd: $("accounts-add"),
+        settingsDelete: $("settings-delete"),
+        deleteConfirm: $("delete-confirm"),
+        deleteAdminNote: $("delete-admin-note"),
+        deleteConfirmBtn: $("delete-confirm-btn"),
+        deleteKeep: $("delete-keep"),
+        deleteStatus: $("delete-status"),
         account: $("account"),
         accountUser: $("account-user"),
         accountCredits: $("account-credits"),
@@ -5537,6 +5928,8 @@ function main() {
         accountReconnect: $("account-reconnect"),
         accountStatus: $("account-status"),
         landing: $("landing"),
+        landingBack: $("landing-back"),
+        landingAccounts: $("landing-accounts"),
         landingInstall: $("landing-install"),
         landingInstallSteps: $("landing-install-steps"),
         landingKey: $("landing-key"),
@@ -5806,10 +6199,14 @@ function main() {
     el.landingSignin.addEventListener("click", () => showSignin(true));
     // the help line under the buttons: what the one under the pointer, the focus or a held
     // finger does (Michal, 2026-10-08); gone when it leaves
+    // Add account's Back, and Switch account to Settings' list (Michal, 2026-10-18)
+    el.landingBack.addEventListener("click", stopAdding);
+    el.landingAccounts.addEventListener("click", () => showAdmin(true));
     for (const [which, button] of [
         ["signin", el.landingSignin],
         ["key", el.landingKey],
         ["install", el.landingInstall],
+        ["accounts", el.landingAccounts],
     ]) {
         for (const type of ["mouseenter", "focus", "touchstart"]) {
             button.addEventListener(type, () => {
@@ -5856,6 +6253,17 @@ function main() {
         render();
     });
     el.settingsSignout.addEventListener("click", forgetServer);
+    // the accounts on this phone (Michal, 2026-10-18): Add account, and Delete my account
+    // with its confirmation view
+    el.accountsAdd.addEventListener("click", () => startAdding(false));
+    el.settingsDelete.addEventListener("click", () => {
+        if (deleting.open) keepAccount();
+        else openDelete();
+    });
+    el.deleteConfirmBtn.addEventListener("click", () => {
+        confirmDelete().catch(() => {});
+    });
+    el.deleteKeep.addEventListener("click", keepAccount);
     // the Account block: Buy postings unfolds the packs (each pill a checkout), Connect eBay
     el.accountBuy.addEventListener("click", () => {
         account.packs = !account.packs;

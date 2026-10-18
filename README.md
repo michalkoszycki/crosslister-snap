@@ -232,11 +232,12 @@ and every behaviour are the live app's.
   asked again after every job ends (a venue button's, a card's, the sync bar's) and
   after a refusal for want of postings, so the credits line keeps up; an answer that
   does not come keeps what the last one said.
-- **Sign out** (Settings' last button on a phone signed in by a link) first sends
-  `DELETE /auth/session` with the session, so the server forgets it too, and clears the
-  phone at once without waiting for the answer: a refusal or no answer changes nothing,
-  the session is gone from the phone either way. **Forget this server** (a key) tells the
-  server nothing.
+- **Sign out** (Settings, under its status line; of the current account since 2.23.0,
+  whichever way it came in) first sends `DELETE /auth/session` with the session, so the
+  server forgets it too, and drops the account from the phone at once without waiting for
+  the answer: a refusal or no answer changes nothing, the session is gone from the phone
+  either way. A key tells the server nothing. The next account kept on the phone takes
+  over, or the landing is back (see [Several accounts on one phone](#several-accounts-on-one-phone-2230)).
 
 ## The account: postings and eBay (2.11.0)
 
@@ -590,6 +591,50 @@ Craigslist."
   status, End listing, Sync or Edit, `POST_ONLY` in core.js); its fields are not shown. A listing is
   never marked behind on poshmark.
 - **Books** stay eBay only.
+
+## Several accounts on one phone (2.23.0)
+
+Michal, 2026-10-18: "mostly i want to make sure there is a logout somewhere. and switch
+accounts somewhere so i can navigate easy between two logins to this app ... there should be
+a way to REMOVE account from phone [which is different than deleting an account] - in
+settings there also needs to be an option to delete your account." He runs two on his phone:
+his admin key, and a second email account, as a stranger would.
+
+- **The phone keeps every account it signed in to** (`snap.accounts`, see
+  [Settings](#settings)): its server, its key or its session, and the name `GET /me` gives
+  it (a key account's name is its `user` too). One is current, and every call carries the
+  current one's key or session exactly as before. A phone from before has its one key or
+  session carried into the list on the first load, nothing changing on screen.
+- **Accounts on this phone**, in Settings under Sign out (`#accounts`): one row per account,
+  by name (`accountName`: `/me`'s name, else `Key for <server>` or `Signed in by email`), the
+  current one ticked and bold. A tap on another makes it current and the page takes it up as
+  it does a sign-in: the server checked, `/me` asked (the Account block, the venue buttons,
+  the sync bar and Admin's foldouts follow), the inventory asked afresh if open; the items in
+  hand carry on. **Add account** shows the landing's two ways in (Sign in by email, I have a
+  key) without dropping the others, with **← Back** to keep things as they were; the sign-in
+  made joins the list and is current. The same key on the same server, or a session of the
+  same person there, is one entry (replaced, not doubled).
+- **Signed out.** A session the server no longer knows (a 401) is marked, not dropped: the
+  landing says `Your sign-in expired; send yourself a new link` as before, and offers
+  **Switch account** when another account is kept; in the list the account reads `signed
+  out` with **Sign in again** (the sign-in screen; the new session takes its place) beside
+  Remove. A tap on its name does nothing.
+- **Remove from this phone**, on each row: a session is told to the server first (`DELETE
+  /auth/session` with that account's own session, not waited for; a 401 or 404 changes
+  nothing), then the entry is dropped. Removing the current account takes up the next, or
+  brings the landing back when none is left. **Sign out** is this for the current account.
+- **Delete my account**, the last thing in Settings, the red link, small (Michal: a way to
+  remove from the phone is one thing, deleting the account another). It opens its own
+  confirmation view, never a browser dialog: `Your account will be deleted from the server,
+  with its inventory, photos, jobs and settings.` `Listings already on eBay stay there: they
+  are yours on eBay. Postings you bought and did not use are lost.` `This cannot be undone.`;
+  for the admin (`/me` says so) also `The admin's account cannot be deleted from the app.`;
+  then the red **Delete my account** and **Keep my account**. Confirmed, `DELETE /me` with
+  the current account's key or session: a 204 drops the account from the phone (no `DELETE
+  /auth/session`: its sessions went with it) and the next account, or the landing, says
+  `Your account was deleted.`; a 409 (the admin's, `code: "ADMIN_ACCOUNT"`; or a job of
+  theirs queued or running) says the server's detail as a sentence and keeps the account;
+  a 401 or no answer says the usual words (`Could not delete the account: ...`) and keeps it.
 
 ## The screen, top to bottom
 
@@ -1099,7 +1144,8 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <server>/auth/link`, the sign-in screen's **Send me a link**, to `DEFAULT_SERVER`, no key, no session | `{"email": "...", "remember": true/false}` | 202 `{"sent": true}`; the email's link opens this page as `#login=<token>`; 404 until the server's sign-in lane ships |
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
 | `POST <server>/auth/session`, the sign-in screen's **Sign in with the code** (2.16.0), to `DEFAULT_SERVER`, no key, no session | `{"email": "anna@example.com", "code": "482913"}` (the Email box as `checkEmail` takes it, the code's six digits with any spaces dropped) | 200 as for a token: the session kept by `remember`, the landing gone; 401 `{"detail": "that code is not right"}` (five tries): its words, the box kept; 410: `That code was used or has expired; send yourself a new link.`; 422 or 400 (a server from before codes): `Codes are not available on this server yet; use the link in the mail.`; 404: as for the link |
-| `DELETE <server>/auth/session`, Settings' Sign out, with `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
+| `DELETE <server>/auth/session`, Settings' Sign out, or an account's Remove from this phone (2.23.0), with that account's `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
+| `DELETE <pc>/me`, Settings' **Delete my account**, confirmed (2.23.0), with the current account's key or session | no body | 204: the account and all of its on the server are gone; the phone drops the account (its sessions went with it) and says `Your account was deleted.`; 409 `{"detail", "code": "ADMIN_ACCOUNT"}` (the admin's) or 409 `{"detail"}` (a job of theirs queued or running): the detail as a sentence under the view, the account kept; 401 `Could not delete the account: wrong key - check Settings.`, no answer `...: cannot reach the server.`, the account kept |
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
 | `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
 | `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits, a ZIP+4 typed sent as its first five since 2.17.0); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
@@ -1167,9 +1213,11 @@ Empty. With capacity to generate that card from there."
   check**, the server word at its top), with the **Appearance** chips (Dark |
   Light | Sync with device, see [Settings](#settings)) above Save and check.
   Saving while the inventory is open asks for the list again. Under the status
-  line, once there is something to forget, **Forget this server** (with a key) or
-  **Sign out** (signed in by a link): the address, the key and any session leave
-  the phone, Admin closes and the landing is back.
+  line, once there is an account in hand, **Sign out**: that account leaves the
+  phone (a session told to the server first), and the next account kept on the
+  phone takes over, or Admin closes and the landing is back. Under it, since
+  2.23.0, **Accounts on this phone** (the list, **Add account**) and, last and
+  quiet, **Delete my account** (see [Several accounts on one phone](#several-accounts-on-one-phone-2230)).
 - **Inventory**: a **Search** box, small (36 px tall; its words stay 16 px, the
   size under which a phone zooms in on a box), asked 0.4 s after the last
   keystroke, or at once on the keyboard's search key; the line under it
@@ -1527,14 +1575,20 @@ Empty. With capacity to generate that card from there."
   for Dark chosen; a test checks the two copies declare the same tokens with
   the same values, so change both together.
 
-The address and key are stored in `localStorage` on the phone (`snap.pc`,
-`snap.key`), and so is the look (`snap.theme`: `dark`, `light` or `device`;
-none, or anything else, is `device`). Also kept: a sign-in's session
-(`snap.session`, in `localStorage` with Keep me signed in, else `sessionStorage`),
-customize's defaults (`snap.customize.defaults`) and the day the home-screen
-banner was put away (`snap.install.dismissed`); `/me`'s, `/me/seller`'s and `/me/wrap`'s answers are never stored. Every storage read and write is wrapped,
-so a private window or blocked site data only means Settings are not
-remembered.
+The accounts are stored in `localStorage` on the phone (`snap.accounts`, a JSON
+list of `{id, pc, key, session, user, admin, expired}`, one of a key or a session
+each; `snap.accounts.current`, the current one's id), a session he did not tick
+Keep me signed in for under the same key in `sessionStorage` (this tab only); and
+so is the look (`snap.theme`: `dark`, `light` or `device`; none, or anything else,
+is `device`). The keys a page before 2.23.0 read, `snap.pc` and `snap.key` (a key)
+or `snap.session` (a session, in `localStorage` with Keep me signed in, else
+`sessionStorage`), are kept as a mirror of the current account and read once, on
+the first load after the update, to carry an older phone's one sign-in into the
+list. Also kept: customize's defaults (`snap.customize.defaults`) and the day the
+home-screen banner was put away (`snap.install.dismissed`); `/me`'s, `/me/seller`'s
+and `/me/wrap`'s answers are never stored, only the name and admin flag `/me` gives
+each account, for the list. Every storage read and write is wrapped, so a private
+window or blocked site data only means Settings are not remembered.
 
 ## Getting a fix onto the phone
 

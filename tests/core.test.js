@@ -250,6 +250,7 @@ import {
     UNDO_MS,
 } from "../core.js";
 import { applyLabel, venueTickLabel, WRAP_MAX, WRAP_PARTS, wrapBody, wrapCounter, wrapError, wrapOf } from "../core.js";
+import { ACCOUNT_DELETED, accountName, accountsOf, ADMIN_NO_DELETE, deleteError, newAccount, SIGNED_OUT } from "../core.js";
 import {
     NAME_WAIT_HINT,
     photoStem,
@@ -4136,6 +4137,8 @@ test("landingHelp: what each of the landing's buttons does, under them (Michal, 
     assert.match(landingHelp("key"), /^A key lets you join a family account/);
     assert.match(landingHelp("install"), /^Install puts Snap on your home screen/);
     assert.match(landingHelp("signin"), /^Sign in with your email/);
+    // Switch account (2.23.0), under Install while another account kept on the phone is a way back in
+    assert.equal(landingHelp("accounts"), "Switch account: carry on as another account kept on this phone.");
     assert.equal(landingHelp(""), "");
     assert.equal(landingHelp("nothing"), "");
 });
@@ -4199,4 +4202,60 @@ test("the counter, the Apply to: pill's face, the apply button's word, a refusal
     assert.equal(wrapError(404, "Not Found"), "The header and footer are not available yet.");
     assert.equal(wrapError(400, "header.text: at most 2000 characters"), "header.text: at most 2000 characters");
     assert.equal(wrapError(0, "cannot reach the server"), "Could not save: cannot reach the server.");
+});
+
+// --- several accounts on one phone (Michal, 2026-10-18) ------------------------------------
+
+test("newAccount and accountsOf: an account from its parts, and the list as stored, leniently", () => {
+    const keyed = newAccount({ pc: "https://pc.tail1234.ts.net", key: "test-key-0123456789" });
+    assert.match(keyed.id, /^[a-z0-9]{10,}$/);
+    assert.deepEqual({ ...keyed, id: "" }, { id: "", pc: "https://pc.tail1234.ts.net", key: "test-key-0123456789", session: "", user: "", remember: true, admin: false, expired: false });
+    const tab = newAccount({ pc: "https://s.ts.net", session: "sess-1", user: "wife", remember: false });
+    assert.equal(tab.remember, false, "a session for this tab");
+    assert.equal(newAccount({ pc: "https://s.ts.net", key: "k".repeat(16), remember: false }).remember, true, "a key is always kept");
+    assert.notEqual(keyed.id, newAccount({ pc: "x", key: "y" }).id, "ids of their own");
+
+    const stored = [
+        keyed,
+        { ...tab, extra: 1 },
+        { id: "both", pc: "https://s.ts.net", key: "k".repeat(16), session: "sess-x", admin: true, expired: true },
+        { id: "", pc: "https://s.ts.net", session: "sess-2" },
+        { id: "nopc", session: "sess-3" },
+        { id: "nothing", pc: "https://s.ts.net" },
+        null,
+        "x",
+    ];
+    const read = accountsOf(JSON.parse(JSON.stringify(stored)), true);
+    assert.deepEqual(
+        read.map((a) => [a.id, a.key !== "", a.session, a.user, a.remember, a.admin, a.expired]),
+        [
+            [keyed.id, true, "", "", true, false, false],
+            [tab.id, false, "sess-1", "wife", true, false, false],
+            ["both", true, "", "", true, true, true],
+        ],
+        "a key wins over a session; remember is the store's"
+    );
+    assert.deepEqual(accountsOf(JSON.parse(JSON.stringify([tab])), false)[0].remember, false);
+    for (const not of [null, undefined, "x", 3, {}, { list: [] }]) assert.deepEqual(accountsOf(not, true), [], JSON.stringify(not));
+});
+
+test("accountName: whose it is, else what it is; and the words of the list and of Delete my account", () => {
+    assert.equal(accountName({ pc: "https://pc.tail1234.ts.net", key: "k", user: "michal" }), "michal");
+    assert.equal(accountName({ pc: "https://pc.tail1234.ts.net", key: "k", user: "" }), "Key for pc.tail1234.ts.net");
+    assert.equal(accountName({ pc: "http://127.0.0.1:8765", key: "k", user: "" }), "Key for 127.0.0.1:8765");
+    assert.equal(accountName({ pc: "not a url", key: "k", user: "" }), "Key for not a url");
+    assert.equal(accountName({ pc: "https://s.ts.net", key: "", user: "" }), "Signed in by email");
+    assert.equal(SIGNED_OUT, "signed out");
+    assert.equal(ADMIN_NO_DELETE, "The admin's account cannot be deleted from the app.");
+    assert.equal(ACCOUNT_DELETED, "Your account was deleted.");
+});
+
+test("deleteError: a 409 in the server's words as a sentence, the admin's by its code when it says nothing; else why", () => {
+    assert.equal(deleteError(409, "the admin's account cannot be deleted from the app", "the admin's account cannot be deleted from the app", "ADMIN_ACCOUNT"), "The admin's account cannot be deleted from the app.");
+    assert.equal(deleteError(409, "", "the server answered 409", "ADMIN_ACCOUNT"), ADMIN_NO_DELETE);
+    assert.equal(deleteError(409, "a job of yours is running (job j1).", "a job of yours is running (job j1).", ""), "A job of yours is running (job j1).");
+    assert.equal(deleteError(409, "", "the server answered 409"), "The server answered 409.");
+    assert.equal(deleteError(401, "a valid X-Crosslister-Key header is needed", "wrong key - check Settings"), "Could not delete the account: wrong key - check Settings.");
+    assert.equal(deleteError(0, "", "cannot reach the server"), "Could not delete the account: cannot reach the server.");
+    assert.equal(deleteError(500, "", "the server answered 500"), "Could not delete the account: the server answered 500.");
 });
