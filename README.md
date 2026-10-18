@@ -125,12 +125,14 @@ and every behaviour are the live app's.
   AI (or a book's main); "sent" is a green pill, "waiting" a black one,
   "failed" stays the red tap target; the AI / main marks are yellow chips when
   on, faint outlines when off.
-- **The icon** is the mark on a whole yellow circle, the camera as large as the
-  circle allows (Michal, 2026-10-18: "the entire circle should be yellow"). The
-  "any" icons are the circle on transparent; the maskable ones (and the iPhone's
-  apple-touch-icon) fill the square with yellow so the launcher's own crop is all
-  yellow, the camera inside the 40% safe-zone radius (`node tools/make-icons.mjs`
-  draws the PNGs, the $ as two arcs and a bar).
+- **The icon** has two looks. The "any" icons, which the splash screen shows,
+  are the mark on a yellow rounded square, unchanged (Michal, 2026-10-18:
+  "splash screen was ok. i wanted no changes to splash screen"). The maskable
+  ones, the launcher's icon and the iPhone's apple-touch-icon, fill the square
+  with yellow so the launcher's own circle crop is all yellow, the camera as
+  large as the 40% safe-zone radius allows (Michal, 2026-10-18: "the entire
+  circle should be yellow"). `node tools/make-icons.mjs` draws the PNGs, the $
+  as two arcs and a bar.
 
 ## The way in: the landing, the home screen, sign-in
 

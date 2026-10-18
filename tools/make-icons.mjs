@@ -9,20 +9,18 @@
 // The drawing is the A2 mark (Michal, 2026-10-05: "A2 implement"): the camera
 // of the header's logo, light variant, on yellow. The mark is authored on its
 // own 132 grid (as in index.html). The $ in the lens is drawn as two arcs and
-// a bar here, since there is no font to set it in.
-//
-// The ground is a whole yellow circle, the camera as large as the circle
-// allows (Michal, 2026-10-18: "the entire circle should be yellow ... the
-// circle that is the shape of the icon will just be a crop round the camera";
-// the old rounded square sat inside the launcher's own white circle). Two
-// shapes of it:
-// - icon-<size>.png ("any"): the circle, transparent around it.
-// - icon-maskable-<size>.png ("maskable", and the iPhone's apple-touch-icon):
-//   the yellow fills the square edge to edge; the launcher crops it to its own
-//   circle or squircle, and iOS paints a transparent pixel black.
-// The camera stays inside the maskable safe zone, the centred circle of radius
-// 40% of the width: its farthest points (the body's bottom corners) are 74.8
-// grid units from (66, 72), and 74.8 x 2.67 = 200 px of the 205 px allowed.
+// a bar here, since there is no font to set it in. Two looks:
+// - icon-<size>.png ("any", what the splash screen shows): the mark on a
+//   yellow rounded square, centred at about 80% of its width. Michal,
+//   2026-10-18: "splash screen was ok. i wanted no changes to splash screen."
+// - icon-maskable-<size>.png ("maskable": the launcher's icon, and the
+//   iPhone's apple-touch-icon): the yellow fills the square edge to edge, so
+//   the launcher's own circle crop is all yellow, never the rounded square on
+//   its white circle (Michal, 2026-10-18: "the entire circle should be
+//   yellow"); iOS paints a transparent pixel black. The camera is as large as
+//   the maskable safe zone allows, the centred circle of radius 40% of the
+//   width: its farthest points (the body's bottom corners) are 74.8 grid
+//   units from (66, 72), and 74.8 x 2.67 = 200 px of the 205 px allowed.
 
 import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
@@ -33,10 +31,9 @@ const YELLOW = [0xff, 0xfc, 0x00];
 const INK = [0x0b, 0x0b, 0x0b];
 const WHITE = [0xff, 0xff, 0xff];
 
-// the mark's 132 grid onto the 512 tile, (66, 72) on the tile's centre
-const K = 2.67;
-const SHIFT_X = 256 - 66 * K;
-const SHIFT_Y = 256 - 72 * K;
+// the mark's 132 grid onto the 512 tile: its scale and the grid point on the tile's centre
+const ANY = { k: 3.1, cx: 66, cy: 66 }; // 132 x 3.1 = 409, about 80% of 512
+const MASKABLE = { k: 2.67, cx: 66, cy: 72 };
 
 // the $: the same numbers as the path in icon.svg
 const S_TOP = { cx: 66, cy: 70.5, from: 90, to: 340 }; // round the left, over the top
@@ -47,9 +44,10 @@ const BAR = { x: 66, y0: 60.5, y1: 91.5, w: 3.2 };
 
 /** The colour at a point of the 512 tile, or null outside the ground (transparent). */
 function colourAt(X, Y, maskable) {
-    if (!maskable && (X - 256) ** 2 + (Y - 256) ** 2 > 256 * 256) return null;
-    const x = (X - SHIFT_X) / K;
-    const y = (Y - SHIFT_Y) / K;
+    if (!maskable && !insideRoundRect(X, Y, 0, 0, 512, 512, 112)) return null;
+    const { k, cx, cy } = maskable ? MASKABLE : ANY;
+    const x = (X - 256) / k + cx;
+    const y = (Y - 256) / k + cy;
     let c = YELLOW;
     // the viewfinder bump, then the body over it: white with an 8-wide ink outline
     if (insideRoundRect(x, y, 36, 2, 60, 38, 14)) c = INK;
