@@ -22,7 +22,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
 <title>About Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.24.0">
+<link rel="stylesheet" href="styles.css?v=2.24.1">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -47,9 +47,12 @@
   <p class="landing-tagline">a crosslisting app</p>
 
   <h2 id="what">What Snap is</h2>
+  <!-- Michal, 2026-10-22: "dont mention 'ebay' or 'craigslist' explicitly. just define the term
+       venue above. and define is with ebay and craigslist as example": the one place they are named -->
+  <p>A <dfn id="venue">venue</dfn> is a site where you sell, such as eBay or Craigslist.</p>
   <p>Snap lists what you photograph. Take the photos of an item on your phone; Snap writes the
-    listing, with a title, a price and a description, and posts it on eBay and Craigslist, on
-    your own accounts.</p>
+    listing, with a title, a price and a description, and posts it on your venues, on your own
+    accounts.</p>
   <!-- the support address, Michal's choice of 2026-10-08 -->
   <p>Snap is run by its developer; contact: the Feedback box in Admin, or the email below.</p>
   <p><a id="support" href="mailto:crosslistersnap@gmail.com">crosslistersnap@gmail.com</a></p>
@@ -58,7 +61,7 @@
   <p>What the server keeps, and why:</p>
   <ul>
     <li>Your photos, and the listings made from them, so they can be posted, changed and ended.</li>
-    <li>Your eBay token, so Snap can list for you on your eBay account.</li>
+    <li>Your venue tokens, so Snap can list for you on your accounts there.</li>
     <li>Your email address, to send you sign-in links.</li>
     <li>Your seller address, for shipping and pickup on your listings.</li>
     <li>Usage counts: how many postings you made and how many you have left.</li>
@@ -67,8 +70,8 @@
     drafts it.</p>
   <p>What it never keeps: your card details. Payments go to Stripe, and card numbers are typed
     only on Stripe's own page.</p>
-  <p>eBay can ask us to delete your eBay data (for example when you close your eBay account),
-    and we do.</p>
+  <p>A venue can ask us to delete the data we hold from it (for example when you close your
+    account there), and we do.</p>
   <p>Deleting your account is, for now, a request to the developer: write in the Feedback box or
     to the email above.</p>
   <p>The app loads nothing from other sites: no ads, no analytics, no trackers.</p>
@@ -77,7 +80,7 @@
   <ul>
     <li>Snap is a tool that lists what you photograph on your own accounts. You are the seller:
       what you list, its price and its description, and dealing with your buyers are yours, under
-      eBay's and Craigslist's own rules.</li>
+      each venue's own rules.</li>
     <li>Your first three postings are free; after that, postings are prepaid. Postings already
       used are not refunded.</li>
     <li>The service may stop or change at any time.</li>
@@ -85,7 +88,7 @@
 </main>
 
 <footer class="small">
-  <p class="version-line">Snap v<span class="mono" data-version>2.24.0</span></p>
+  <p class="version-line">Snap v<span class="mono" data-version>2.24.1</span></p>
 </footer>
 </body>
 </html>
