@@ -110,6 +110,9 @@ import {
     venueStatusLine,
     venueActions,
     editSaved,
+    photosBehind,
+    photoQuestion,
+    photoSaved,
     actionWord,
     endQuestion,
     actionJob,
@@ -3369,6 +3372,18 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(leftUnsynced({ ...ROW, pickup_only: false }, { ...ROW, pickup_only: true }), ["ebay"]);
     assert.deepEqual(leftUnsynced({ ...ROW, note: "" }, { ...ROW, note: "from the attic" }), [], "the user note");
     assert.deepEqual(leftUnsynced({ ...draft, description: "a" }, { ...draft, description: "b" }), [], "a draft has no listing");
+    // a photo added or removed (Michal, 2026-10-22): every listing the PC says has not got the
+    // row's photos yet, a push reaching it and the row up there
+    assert.deepEqual(leftUnsynced(both2, { ...both2, photos_behind: ["ebay", "craigslist"] }), ["ebay", "craigslist"]);
+    assert.deepEqual(leftUnsynced(ROW, { ...ROW, photos_behind: ["ebay", "craigslist"] }), ["ebay"], "craigslist's is a draft");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, price: "25.00", photos_behind: ["ebay"] }), ["ebay"], "once");
+    assert.deepEqual(photosBehind({ ...both2, venues: [...both2.venues, "poshmark"], photos_behind: ["poshmark"] }), [], "poshmark: no push");
+    assert.deepEqual(photosBehind({ ...both2, photos_behind: "ebay" }), [], "not a list");
+    assert.deepEqual(photosBehind(both2), []);
+    assert.equal(photoQuestion(3), "Remove photo 3 from this item?");
+    assert.deepEqual(photoSaved("photo added", []), { text: "photo added", kind: "ok" });
+    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; sync puts it on the listings", kind: "ok" });
     // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
     // craigslist's when its word for it moved
     const parts = { ...both2, condition: "FOR_PARTS_OR_NOT_WORKING" };

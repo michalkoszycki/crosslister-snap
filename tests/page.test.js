@@ -1986,6 +1986,8 @@ function inventoryPc(rows, wholes = {}, { jobs = {}, ...rest } = {}) {
     pc.conditions = null;
     pc.archived = new Set();
     pc.noArchive = false;
+    pc.photosAdded = [];
+    pc.refusePhoto = "";
     let made = 0;
     pc.fetch = async (url, init = {}) => {
         const method = init.method || "GET";
@@ -2025,6 +2027,25 @@ function inventoryPc(rows, wholes = {}, { jobs = {}, ...rest } = {}) {
             if (body.archived) pc.archived.add(parts[1]);
             else pc.archived.delete(parts[1]);
             return json({ ...whole, archived: body.archived });
+        }
+        if (parts[2] === "photos" && method !== "GET") {
+            // a listing's + and x (Michal, 2026-10-22), as the PC does them: the row answered,
+            // its photos renumbered, every venue it is listed on behind on them
+            if (pc.refusePhoto) return json({ detail: pc.refusePhoto }, 400);
+            if (method === "POST") {
+                assert.equal(init.headers["Content-Type"], "image/jpeg");
+                pc.photosAdded.push(await init.body.text());
+                whole.photos = [...whole.photos, { n: 0, name: `${parts[1]}-new.jpg` }];
+            } else {
+                assert.equal(method, "DELETE");
+                if (whole.photos.length === 1) return json({ detail: "an item keeps at least one photo: add another first" }, 400);
+                whole.photos = whole.photos.filter((p) => p.n !== Number(parts[3]));
+            }
+            whole.photos = whole.photos.map((p, i) => ({ ...p, n: i + 1 }));
+            whole.photos_behind = Object.entries(whole.statuses)
+                .filter(([, s]) => s.status === "listed")
+                .map(([v]) => v);
+            return json(whole);
         }
         if (parts[2] === "photos") {
             if (!whole.photos.some((p) => p.n === Number(parts[3]))) return json({ detail: "no such photo" }, 404);
@@ -3093,8 +3114,11 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
     assert.equal(toggles[1].attrs["aria-expanded"], "false");
 
     // the photos: a strip right under the heading, 88 px tiles; a tap shows one full size
-    const tiles = nodes.get("detail-photos").children[0].children.map((li) => li.children[0]);
+    const [strip] = nodes.get("detail-photos").children;
+    const tiles = strip.children.filter((li) => li.className === "thumb-box").map((li) => li.children[0]);
     assert.equal(tiles.length, 2);
+    // each with its x, then the + (Michal, 2026-10-22: "add a plus element at the end of photos")
+    assert.deepEqual(strip.children.map((li) => li.className), ["thumb-box", "thumb-box", "add-photo"]);
     assert.deepEqual(tiles.map((b) => b.children[0].src), ["blob:1", "blob:2"]);
     assert.equal(tiles[1].disabled, false);
     assert.equal(nodes.get("photo-view").hidden, true);
@@ -3646,6 +3670,114 @@ test("an End the PC refuses says why, and its button goes", async (t) => {
     assert.deepEqual(craigslist.actions, ["Open listing (link)", "Refresh status", "Edit"]);
     // the other venue's End stays
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
+});
+
+/** A listing's photo strip as the screen shows it: its tiles' x's, its + input, its line's words and buttons. */
+function photoStripOf(nodes) {
+    const kids = nodes.get("detail-photos").children;
+    const strip = kids.find((c) => c.className === "strip");
+    const line = kids.find((c) => c.className === "photo-edit");
+    const boxes = strip ? strip.children.filter((li) => li.className === "thumb-box") : [];
+    const add = strip && strip.children.find((li) => li.className === "add-photo");
+    return {
+        tiles: boxes.length,
+        kills: boxes.map((li) => li.children[1]).filter(Boolean),
+        input: add ? add.children[0].children[1] : null,
+        words: line.children.map((c) => c.textContent),
+        kind: line.children[0] ? line.children[0].className : "",
+        button: (word) => line.children.find((c) => c.textContent === word),
+    };
+}
+
+test("a listing's photos: + adds one (shrunk, as snapped), x asks then removes; each leaves the eBay listing behind", async (t) => {
+    // Michal, 2026-10-22: "when looking at item in inventory we need to add a plus element at
+    // the end of photos to add photo to an item and x at the edge of photo to remove photo (
+    // after confirming)"; a listing up somewhere then offers its sync ("Sync sends them")
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const whole = wholeRow("R5");
+    const pc = inventoryPc([summary("R5")], { R5: whole });
+    const local = memoryStore(NO_PHOTOS);
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    let made = 0;
+    globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    let strip = photoStripOf(nodes);
+    assert.equal(strip.tiles, 2);
+    assert.equal(strip.kills.length, 2);
+    assert.deepEqual(strip.kills.map((x) => x.attrs["aria-label"]), ["Remove R5-1.jpg", "Remove R5-2.jpg"]);
+    assert.deepEqual(strip.words, []);
+
+    // +: the photo is shrunk as a snapped one is, sent, and every picture read again
+    const calls = pc.calls.length;
+    strip.input.fire("change", { target: { files: [new Blob(["raw"], { type: "image/jpeg" })], value: "" } });
+    await settle();
+    assert.deepEqual(pc.photosAdded, ["jpeg 2000x1500"]);
+    assert.deepEqual(pc.calls.slice(calls), [
+        "POST /inventory/R5/photos",
+        "GET /inventory/R5/photos/1",
+        "GET /inventory/R5/photos/2",
+        "GET /inventory/R5/photos/3",
+    ]);
+    strip = photoStripOf(nodes);
+    assert.equal(strip.tiles, 3);
+    assert.deepEqual(strip.words, ["photo added; Sync to eBay puts it on the listing"]);
+    assert.equal(strip.kind, "venue-status ok");
+    // eBay's listing is behind its photos (craigslist's is a draft): its card offers the sync
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Sync to eBay", "Refresh status", "End listing", "Edit"]);
+
+    // x: a question first, nothing sent; Keep it puts it away
+    const asked = pc.calls.length;
+    strip.kills[1].fire("click");
+    strip = photoStripOf(nodes);
+    assert.deepEqual(strip.words, ["Remove photo 2 from this item?", "Yes, remove", "Keep it"]);
+    strip.button("Keep it").fire("click");
+    assert.deepEqual(photoStripOf(nodes).words, []);
+    assert.equal(pc.calls.length, asked, "nothing sent");
+
+    // Yes, remove: that photo off the row, the strip read again
+    photoStripOf(nodes).kills[1].fire("click");
+    photoStripOf(nodes).button("Yes, remove").fire("click");
+    assert.deepEqual(photoStripOf(nodes).words, ["removing the photo..."]);
+    await settle();
+    assert.equal(pc.calls[asked], "DELETE /inventory/R5/photos/2");
+    strip = photoStripOf(nodes);
+    assert.equal(strip.tiles, 2);
+    assert.deepEqual(strip.words, ["photo removed; Sync to eBay puts it on the listing"]);
+
+    // what the PC refuses is said under the strip, the photos as they were
+    pc.refusePhoto = "a job is running: try again when it is done";
+    strip.kills[0].fire("click");
+    photoStripOf(nodes).button("Yes, remove").fire("click");
+    await settle();
+    strip = photoStripOf(nodes);
+    assert.equal(strip.tiles, 2);
+    assert.deepEqual(strip.words, ["a job is running: try again when it is done"]);
+    assert.equal(strip.kind, "venue-status bad");
+});
+
+test("a listing with one photo has no x (the server keeps at least one); one with 24 has no +", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const one = wholeRow("R5", { photos: [{ n: 1, name: "R5-1.jpg" }] });
+    const full = wholeRow("F2", { photos: Array.from({ length: 24 }, (_, i) => ({ n: i + 1, name: `F2-${i + 1}.jpg` })) });
+    const pc = inventoryPc([summary("R5"), summary("F2")], { R5: one, F2: full });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    globalThis.URL.createObjectURL = () => "blob:x";
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    listed(nodes)[0].open.fire("click");
+    await settle();
+    let strip = photoStripOf(nodes);
+    assert.deepEqual([strip.tiles, strip.kills.length, !!strip.input], [1, 0, true]);
+    nodes.get("inventory-back").fire("click");
+    await settle();
+    listed(nodes)[1].open.fire("click");
+    await settle();
+    strip = photoStripOf(nodes);
+    assert.deepEqual([strip.tiles, strip.kills.length, !!strip.input], [24, 24, false]);
 });
 
 test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist pushes it; End as eBay's", async (t) => {

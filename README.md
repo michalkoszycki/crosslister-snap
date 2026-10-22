@@ -1120,6 +1120,8 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` / `poshmark` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
 | `GET <pc>/inventory/<sku>/photos/<n>`, a listing's thumbnails (photo 1 in the list with Show photos, every photo in its detail) | - | the image itself (`image/jpeg`, png or webp); 404 when missing |
+| `POST <pc>/inventory/<sku>/photos`, a listing's **+** (2.24.0), one per photo | the shrunk JPEG itself, `Content-Type: image/jpeg` | the whole row, as `GET /inventory/<sku>`, the photo last and `"photos_behind": [venue, ...]` naming each listing up somewhere that has not got the row's photos yet; 400 `{"detail"}` at 24 photos, 409 while a job runs, both said under the strip |
+| `DELETE <pc>/inventory/<sku>/photos/<n>`, a listing's **x**, through **Yes, remove** | - | the same, the photos renumbered; 400 for the only photo, 404 for one the row does not have, 409 while a job runs |
 | `GET <pc>/inventory/<sku>/conditions`, the eBay card's **Edit** (Michal, 2026-10-08) | - | `{"current": "NEW_OTHER", "allowed": ["NEW", "NEW_OTHER", "USED_EXCELLENT", "FOR_PARTS_OR_NOT_WORKING"], "labels": {enum: words}, "error": "<why, only when allowed is empty>"}`; `allowed` is what eBay allows the row's category, the chips in that order and in `labels`' words. `allowed` empty: every condition the page knows (`CONDITION_LABELS`), `eBay's list for this category could not be read: showing all (<error>)` under them; an older server's 404: every condition, nothing said |
 | `PATCH <pc>/inventory/<sku>`, a card's **Save** | JSON, only the fields changed (trimmed): any of `"condition"` (eBay's enum, only when another chip was pressed), `"title"`, `"price"` (`"24.50"`), `"description"`, `"note"`, `"condition_note"` from the eBay card, or `"craigslist": {"title", "price", "description", "category"}` from the craigslist card, `""` clearing an override, e.g. `{"title": "Brass desk lamp", "note": ""}`, `{"condition": "USED_EXCELLENT"}` or `{"craigslist": {"title": "", "category": "household items"}}`; nothing changed sends nothing | the whole row, as `GET /inventory/<sku>`; 400 `{"detail"}` names a bad field (shown under Save; one about the condition, which names the accepted enums, under the chips, as is an older server's 422 or 400 for a `condition` it does not take) |
 | `PATCH <pc>/inventory/<sku>`, a list row swiped past the mark, its **Undo**, or an archived row's **Unarchive** | `{"archived": true}` / `{"archived": false}`, nothing else | the whole row, `"archived"` in it; a 404 (a server without archiving): `Archiving is not available on this server yet` on the inventory's line, the row back in place; any other refusal `<sku>: <detail>` there |
@@ -1360,7 +1362,8 @@ Empty. With capacity to generate that card from there."
   keeps the listing, saying why. The listing: the title and price as its
   heading, the photos as a strip right under it (88 px tiles, fetched one at a
   time; a tap shows one full size on black, the whole picture, with **Close**
-  at the top right; a tap anywhere on it, or Escape, closes it too), then its
+  at the top right; a tap anywhere on it, or Escape, closes it too; see **A
+  listing's photos** below), then its
   **customize** (below), then one foldout per venue and nothing else, **ebay**
   then **craigslist**, then **poshmark** (2.18.0), all folded each time a listing opens (Michal,
   2026-10-07: "When I look at a card of a listing I want the eBay and
@@ -1443,6 +1446,28 @@ Empty. With capacity to generate that card from there."
     saying `craigslist not added`, holding one button, **Add craigslist to
     this item**: the server puts the listing on it, and the card fills with its
     derived fields, open.
+- **A listing's photos** (2.24.0; Michal, 2026-10-22: "when looking at item in inventory we
+  need to add a plus element at the end of photos to add photo to an item and x at the edge
+  of photo to remove photo ( after confirming)"). Each tile has the posting screen's **x** at
+  its top right while the listing has more than one photo (the server keeps at least one).
+  The x sends nothing: the line under the strip asks `Remove photo 2 from this item?`
+  **Yes, remove** | **Keep it** (inline, never a browser dialog), and only **Yes, remove**
+  sends `DELETE /inventory/<sku>/photos/<n>`. After the last tile, while the listing has
+  fewer than 24, a dashed **+** tile opens the phone's own chooser (camera or gallery,
+  several at once); each photo is shrunk as a snapped one is (2000 px, JPEG, **Fix dark
+  photos** as it stands, so a dark one goes brightened) and sent, one at a time, `POST
+  /inventory/<sku>/photos`, the line counting them (`adding photo 1 of 2...`); more than
+  there is room for is said and not sent. Either way the strip is drawn again and every
+  picture read again, and the line says `photo added`, `2 photos added` or `photo removed`.
+  The server then marks each listing up somewhere as behind on its photos (`photos_behind`
+  in the row, until a sync sends them), so the line adds the Sync that puts them there
+  (`photo added; Sync to eBay puts it on the listing`), and that venue's card and list
+  badge offer it, as after an Edit (Michal chose "Sync sends them": eBay's listing gets the
+  row's photos uploaded again, craigslist's posting has its old photos removed and the
+  row's uploaded in the server's browser; poshmark cannot edit a listing, so it keeps its
+  own). While a photo is on its way the listing's other buttons wait, and while a job of
+  the listing's runs the x's and the + do; a refusal (409 while a job runs, 400 for the
+  only photo) is said in the line, the strip as it was.
 - **A card's actions**, in its row under the fields (which ones show is
   `venueActions` in core.js):
   - **Post on <venue>** when the listing is on the venue and not listed (a
