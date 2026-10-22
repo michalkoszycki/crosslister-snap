@@ -1637,7 +1637,17 @@ test("back parks the item in hand; NEXT returns to it", async (t) => {
     assert.equal(nodes.get("price-line").textContent, "$9");
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/9");
     assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
+    assert.equal(nodes.get("message").hidden, false);
     assert.equal(nodes.get("snap-input").disabled, true, "what was posted stays as it is");
+    // the line is the posting screen's: out of sight while Admin is open, back as it closes
+    // (Michal, 2026-10-22: "admin is a not related to this. that tip should not occur on the admin view")
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("message").hidden, true);
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("message").hidden, false);
+    assert.equal(nodes.get("message").textContent, 'Back to "Lamp", as it was left. NEXT returns to the item you were on.');
 
     nodes.get("next-item").fire("click");
     await settle();

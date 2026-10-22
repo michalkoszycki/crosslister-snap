@@ -907,7 +907,11 @@ his admin key, and a second email account, as a stranger would.
   comes back to the item in hand (`Back on "Vase", the item you were on.`),
   on the kind last chosen with the switch; there is nothing further forward.
   Back past the oldest says `End of the item history: see the inventory list
-  on the server.` and stays on the oldest: back never leaves the page. The page
+  on the server.` and stays on the oldest: back never leaves the page. That line
+  (`#message`, a photo that failed says its words there too) is the posting screens'
+  alone: while Admin is open it is out of sight, and it shows again as Admin closes
+  (Michal, 2026-10-22: "admin is a not related to this. that tip should not occur on the
+  admin view"). The page
   mirrors the walk into the browser's own history, one entry per item plus
   one for the items in hand, so a reload keeps the place: on an earlier item
   it comes back on that item, and the walk goes on from there. When an 11th
