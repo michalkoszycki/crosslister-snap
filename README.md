@@ -535,8 +535,8 @@ venue the server adds gets its buttons with no change to the page. A server that
   unsynced mark goes (the others stay). Save's line names the one Sync (`saved; Sync to eBay puts
   it on the listing`), or, with more than one showing, `saved; sync puts it on the listings`. Up
   on none: `Sync to eBay opens once the listing is up on eBay` (more venues: `Sync opens once
-  the listing is up on eBay or craigslist`). The craigslist card's own **Sync to craigslist**
-  stays as it was (eBay's card has none).
+  the listing is up on eBay or craigslist`). Each card has its own **Sync to <venue>** too, while
+  an edit has left that listing behind (see the cards, below).
 - **The sync bar**: one **Sync from <venue>** per venue in `syncable.from` and one **Sync to
   <venue>** per venue in `syncable.to` (`syncButtons`), venue by venue, a from in the bar's left
   column and a to in its right (`#sync-from-ebay`, `#sync-to-ebay`, `#sync-to-craigslist`), each
@@ -1309,8 +1309,8 @@ Empty. With capacity to generate that card from there."
   Done, that venue is let go and its badge is the plain listed one again, a
   link; the inventory's line says how it ended (`G1: updated`, or the server's
   words). A Sync to <venue> from the sync bar that ends done lets every mark of
-  that venue go (the others stay), customize's Sync to <venue> its own, and the
-  craigslist card's Sync to craigslist its own.
+  that venue go (the others stay), customize's Sync to <venue> its own, and a
+  card's Sync to <venue> its own.
 - **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
   eBay**, and since 2.20.0 a Sync to (and a Sync from) per venue `/me`'s
   `syncable` names (see Venue symmetry: **Sync to craigslist** under Sync to
@@ -1461,14 +1461,21 @@ Empty. With capacity to generate that card from there."
     it**, never a browser dialog), and only **Yes, end it** sends it,
     `{"action": "end", "sku", "venue"}`. An End the server refuses (400) puts
     its words in the status line and the button goes.
-  - **Sync to craigslist**, on the craigslist card, after Open listing, while
-    the row is listed on craigslist and its craigslist fields changed since the
-    last sync (an Edit of the card, or an eBay field it is derived from; see the
-    sync badge): the push job `{"action": "push", "sku", "venue":
-    "craigslist"}`, a job button as Refresh is; done, the mark is let go and the
-    listing read again. A server that does not push to craigslist yet answers
-    400, and the card's line says its words. eBay's is customize's Sync to eBay
-    (customize has a Sync to craigslist too since 2.20.0; this one stays).
+  - **Sync to <venue>** (`Sync to eBay`, `Sync to craigslist`), on that venue's
+    card, after Open listing, a filled pill so it is plain to see, while the row
+    is listed there and a change since the last sync left the listing behind
+    (Michal, 2026-10-22: "I did an edit in description of a posting but there was
+    no sync to eBay button after I made the edit that needs to be aparent of user
+    makes any changes. ( This goes for each venue)"). eBay is behind once its
+    title, price, condition, description, condition note, quantity or pickup only
+    changed (`leftUnsynced`; the User note never posts); craigslist once any of its
+    four fields reads otherwise (an Edit of its card, or an eBay field it is
+    derived from). The card's Save then says `saved; Sync to eBay puts it on the
+    listing` (`editSaved`). It is the push job `{"action": "push", "sku",
+    "venue"}`, a job button as Refresh is; done, the mark is let go and the
+    listing read again. A server that does not push to that venue answers 400,
+    and the card's line says its words. Customize's Sync to <venue> stays, behind
+    or not. Poshmark has none (`POST_ONLY`).
   - **Edit** turns the card's fields into the page's own inputs (eBay: the
     condition, title, price, description, User note, condition note, the
     quantity and pickup only being customize's; craigslist: its four overrides,
@@ -1488,12 +1495,12 @@ Empty. With capacity to generate that card from there."
     under them), every condition the page knows. A chip pressed is drawn in
     place, so what is typed below stays; Save sends `"condition"` only when
     another chip is pressed, and a refusal of it is said under the chips. A
-    changed condition leaves the eBay listing behind (customize's Sync to eBay,
-    the sync badge) and the craigslist one when its word for it moved.
+    changed condition leaves the eBay listing behind (the card's and customize's
+    Sync to eBay, the sync badge) and the craigslist one when its word for it moved.
   - While something of the listing's is on its way or a job of its is still
     running, every action button but Open listing waits and the fields stay
     read-only: one job per listing at a time.
-  - **Post**, **Sync to craigslist**, **Refresh status**, **End listing**
+  - **Post**, a card's **Sync to <venue>**, **Refresh status**, **End listing**
     (pressed through **Yes, end it**) and customize's **Sync to <venue>** are job
     buttons, as a venue
     button is (Michal, 2026-10-07: "Anytime there is a load or sync or AI call
