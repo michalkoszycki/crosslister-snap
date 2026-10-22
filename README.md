@@ -353,13 +353,16 @@ older server looks exactly as it did.
   band with the mark, the stylesheet and Manrope) and with no script at all (its CSP allows
   none): what Snap is and who runs it (`Snap is run by its developer; contact: the Feedback box
   in Admin, or the email below`, with a `mailto:` to the support address,
-  `crosslistersnap@gmail.com`, Michal's choice of 2026-10-08), **Privacy** in plain words (what
-  the server keeps: the photos and listings, the eBay token to list for you, the email for
-  sign-in, the seller address, usage counts; that marked photos and the note go to the AI
-  service that drafts the listing; never card details, which go to Stripe; that eBay can ask us
-  to delete your eBay data and we do; that deleting an account is, for now, a request to the
-  developer), **Terms** (a tool that lists what you photograph on your own accounts; you are the
-  seller; three free postings then prepaid, used postings not refunded; the service may stop or
+  `crosslistersnap@gmail.com`, Michal's choice of 2026-10-08), what a **venue** is (`A venue is a
+  site where you sell, such as eBay or Craigslist.`: the one place the sites are named; Michal,
+  2026-10-22: "dont mention 'ebay' or 'craigslist' explicitly. just define the term venue
+  above"), **Privacy** in plain words (what the server keeps: the photos and listings, the
+  venue tokens to list for you, the email for sign-in, the seller address, usage counts; that
+  marked photos and the note go to the AI service that drafts the listing; never card details,
+  which go to Stripe; that a venue can ask us to delete the data we hold from it and we do;
+  that deleting an account is, for now, a request to the developer), **Terms** (a tool that
+  lists what you photograph on your own accounts; you are the seller, under each venue's own
+  rules; three free postings then prepaid, used postings not refunded; the service may stop or
   change) and the version (`data-version`, which `tools/bump-version.mjs` rewrites with the
   `?v=`s). **← Back to Snap** goes to `./`. The footer's **About and privacy**
   (`#about-link`) shows under the landing and under Admin, not under the posting screens. The

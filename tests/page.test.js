@@ -8579,19 +8579,26 @@ test("about.html: what Snap is, privacy and terms, the version; no script, the a
     );
     const words = page.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     for (const said of [
+        "A venue is a site where you sell, such as eBay or Craigslist.",
+        "posts it on your venues, on your own accounts",
         "Your photos",
-        "Your eBay token, so Snap can list for you",
+        "Your venue tokens, so Snap can list for you on your accounts there",
         "Your email address, to send you sign-in links",
         "Usage counts",
         "What it never keeps: your card details. Payments go to Stripe",
-        "eBay can ask us to delete your eBay data",
+        "A venue can ask us to delete the data we hold from it",
         "Deleting your account is, for now, a request to the developer",
         "You are the seller",
+        "under each venue's own rules",
         "Your first three postings are free; after that, postings are prepaid. Postings already used are not refunded.",
         "The service may stop or change at any time.",
     ]) {
         assert.ok(words.includes(said), `about.html says: ${said}`);
     }
+    // the sites are named once, as the venue's examples, and "venue" everywhere after (Michal,
+    // 2026-10-22: "dont mention 'ebay' or 'craigslist' explicitly. just define the term venue above")
+    assert.equal(words.match(/ebay/gi).length, 1, "eBay named once");
+    assert.equal(words.match(/craigslist/gi).length, 1, "Craigslist named once");
     // every file it points at is in the repo
     for (const m of page.matchAll(/(?:src|href)="([^"#:]+)"/g)) {
         if (m[1] === "./") continue;
