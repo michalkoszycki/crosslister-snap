@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.23.0";
+import { VERSION } from "./version.js?v=2.23.1";
 import {
     adminLink,
     anyActive,
@@ -102,6 +102,7 @@ import {
     DERIVED,
     derivedFields,
     EDIT_FIELDS,
+    editSaved,
     editValues,
     endQuestion,
     followRow,
@@ -218,8 +219,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.23.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.23.0";
+} from "./core.js?v=2.23.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.23.1";
 
 // The venues the header and footer go out on, as the server's GET /me/wrap offers them
 // (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
@@ -263,8 +264,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.23.0";
-import { shrinkPhoto } from "./shrink.js?v=2.23.0";
+} from "./pc.js?v=2.23.1";
+import { shrinkPhoto } from "./shrink.js?v=2.23.1";
 import {
     bookCard,
     bookPriceValue,
@@ -277,8 +278,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.23.0";
-import { canScan, readIsbn } from "./scan.js?v=2.23.0";
+} from "./book.js?v=2.23.1";
+import { canScan, readIsbn } from "./scan.js?v=2.23.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -3677,7 +3678,8 @@ function actionsNode(venue, busy) {
     for (const action of venueActions(row, venue, readUnsynced())) {
         if (action === "end" && c.noEnd) continue;
         const word = actionWord(action, venue);
-        const look = action === "post" ? "big venue-btn" : "pill";
+        // a Sync to <venue> is filled, so a listing left behind by an edit is plain to see
+        const look = action === "post" ? "big venue-btn" : action === "sync" ? "pill pill-ink" : "pill";
         if (action === "open") {
             box.append(linkNode(venueStatus(row, venue).url, "pill", word));
             continue;
@@ -3900,7 +3902,7 @@ async function saveEdit(venue) {
     heard(200);
     c.wait = "";
     c.edit = null;
-    c.note = null;
+    c.note = editSaved(venue, leftUnsynced(row, whole));
     c.job = null;
     markBehind(row.sku, row, whole);
     admin.changed = true;

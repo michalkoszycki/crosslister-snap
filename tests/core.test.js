@@ -109,6 +109,7 @@ import {
     sortQuery,
     venueStatusLine,
     venueActions,
+    editSaved,
     actionWord,
     endQuestion,
     actionJob,
@@ -2947,8 +2948,9 @@ test("a card's actions: add when not on the venue, post when not listed, open/re
     assert.equal(endQuestion("ebay"), "End this listing on ebay?");
 });
 
-test("the craigslist card offers Sync to craigslist while its listing is behind the row", () => {
-    // Michal, 2026-10-08: craigslist price and edits from the card
+test("a card offers Sync to <venue> while its listing is behind the row, eBay's as craigslist's", () => {
+    // Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-22: "there was no
+    // sync to eBay button after I made the edit ... This goes for each venue"
     const up = {
         sku: "C1",
         venues: ["ebay", "craigslist"],
@@ -2961,8 +2963,11 @@ test("the craigslist card offers Sync to craigslist while its listing is behind 
     assert.deepEqual(venueActions(up, "craigslist", behind), ["open", "sync", "refresh", "end", "edit"]);
     assert.deepEqual(venueActions(up, "craigslist"), ["open", "refresh", "end", "edit"], "caught up: no sync");
     assert.deepEqual(venueActions(up, "craigslist", [{ sku: "OTHER", venues: ["craigslist"] }]), ["open", "refresh", "end", "edit"]);
-    // eBay's is customize's Sync to eBay, not the card's
-    assert.deepEqual(venueActions(up, "ebay", [{ sku: "C1", venues: ["ebay"] }]), ["open", "refresh", "end", "edit"]);
+    assert.deepEqual(venueActions(up, "ebay", [{ sku: "C1", venues: ["ebay"] }]), ["open", "sync", "refresh", "end", "edit"]);
+    assert.deepEqual(venueActions(up, "ebay", behind), ["open", "refresh", "end", "edit"], "only craigslist is behind");
+    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; Sync to craigslist puts it on the listing", kind: "ok" });
+    assert.equal(editSaved("ebay", ["craigslist"]), null, "its own listing not behind: the status line");
     // a draft has no listing to sync: Post puts the row up whole
     const draft = { ...up, statuses: { ...up.statuses, craigslist: { status: "draft" } } };
     assert.deepEqual(venueActions(draft, "craigslist", behind), ["post", "edit"]);
@@ -3355,8 +3360,15 @@ test("the listings their venues have not caught up with: per sku and venue, each
     const derived = { ...both2, craigslist: { ...both2.craigslist, price: null } };
     assert.deepEqual(leftUnsynced(derived, { ...derived, price: "25.00" }), ["ebay", "craigslist"], "a derived price moves with eBay's");
     assert.deepEqual(leftUnsynced(both2, { ...both2, craigslist: { ...both2.craigslist, category: "household" } }), ["craigslist"]);
-    assert.deepEqual(leftUnsynced(both2, { ...both2, title: "Brass desk lamp" }), ["craigslist"], "its title derives from eBay's");
-    assert.deepEqual(leftUnsynced(both2, { ...both2, condition_note: "worn" }), [], "not one of its fields");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, title: "Brass desk lamp" }), ["ebay", "craigslist"], "craigslist's title derives from eBay's");
+    assert.deepEqual(leftUnsynced(both2, { ...both2, condition_note: "worn" }), ["ebay"], "not one of craigslist's fields");
+    // every other field eBay's listing shows leaves it behind too (Michal, 2026-10-22: "I did an
+    // edit in description of a posting but there was no sync to eBay button"); the user note never posts
+    assert.deepEqual(leftUnsynced(ROW, { ...ROW, description: "Solid brass, rewired." }), ["ebay"]);
+    assert.deepEqual(leftUnsynced({ ...ROW, quantity: 1 }, { ...ROW, quantity: 2 }), ["ebay"]);
+    assert.deepEqual(leftUnsynced({ ...ROW, pickup_only: false }, { ...ROW, pickup_only: true }), ["ebay"]);
+    assert.deepEqual(leftUnsynced({ ...ROW, note: "" }, { ...ROW, note: "from the attic" }), [], "the user note");
+    assert.deepEqual(leftUnsynced({ ...draft, description: "a" }, { ...draft, description: "b" }), [], "a draft has no listing");
     // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
     // craigslist's when its word for it moved
     const parts = { ...both2, condition: "FOR_PARTS_OR_NOT_WORKING" };

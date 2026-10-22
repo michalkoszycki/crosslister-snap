@@ -3431,7 +3431,12 @@ test("Edit's Condition: chips of what eBay allows, the row's pressed; Save sends
     cardOf(nodes, "ebay").button("Save").fire("click");
     await settle();
     assert.deepEqual(pc.patches, [{ title: "Cooler, works" }]);
-    assert.equal(local.getItem("snap.inventory.unsynced"), null, "neither listing behind a title");
+    // eBay's listing is behind its title, and its card says so and offers the sync, filled
+    // (Michal, 2026-10-22: "there was no sync to eBay button after I made the edit")
+    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
+    assert.equal(cardOf(nodes, "ebay").line, "saved; Sync to eBay puts it on the listing");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Sync to eBay", "Refresh status", "End listing", "Edit"]);
+    assert.equal(cardOf(nodes, "ebay").button("Sync to eBay").className, "pill pill-ink");
 
     // another chip pressed: the condition alone sent; both listings behind it
     cardOf(nodes, "ebay").button("Edit").fire("click");
@@ -3679,7 +3684,8 @@ test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist
         "End listing",
         "Edit",
     ]);
-    assert.equal(cardOf(nodes, "craigslist").button("Sync to craigslist").className, "pill");
+    assert.equal(cardOf(nodes, "craigslist").line, "saved; Sync to craigslist puts it on the listing");
+    assert.equal(cardOf(nodes, "craigslist").button("Sync to craigslist").className, "pill pill-ink", "filled: plain to see");
     assert.deepEqual(cardOf(nodes, "ebay").actions, listedActions, "eBay's price did not move");
 
     // a server that still refuses a craigslist push: its words, the sync still offered

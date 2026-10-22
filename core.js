@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.23.0";
+import { noteDirty, unsent } from "./queue.js?v=2.23.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.23.0";
+} from "./book.js?v=2.23.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -4065,16 +4065,17 @@ export function venueFacts(row, venue) {
  *   "add"     the row is not on this venue: its empty card puts it there
  *   "post"    on the venue and not listed (a draft; an ended or sold row goes up again)
  *   "open"    listed, with a link: the listing in a new tab
- *   "sync"    listed on craigslist, its craigslist fields changed since the last sync
- *             (unsyncedList): the push job puts the row on the listing (Michal,
- *             2026-10-08: craigslist price and edits from the card)
+ *   "sync"    listed, and a change since the last sync left this listing behind
+ *             (unsyncedList, leftUnsynced): the push job puts the row on the listing
+ *             (Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-22, for
+ *             eBay too: "there was no sync to eBay button after I made the edit ... This goes
+ *             for each venue")
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * eBay's sync stays customize's Sync to eBay (customize has a Sync to <venue> for every venue
- * listed since 2.20.0, craigslist's beside eBay's; this card's own stays). Poshmark
+ * customize keeps its Sync to <venue> for every venue listed, behind or not. Poshmark
  * (2026-10-11) is add, post and open alone: the server only posts there, it cannot yet
- * refresh, end, push or edit a listing.
+ * refresh, end, push or edit a listing, so nothing leaves it behind.
  * @param {Record<string, any>} row
  * @param {string} venue
  * @param {Unsynced[]} [unsynced] unsyncedList's
@@ -4085,7 +4086,7 @@ export function venueActions(row, venue, unsynced = []) {
     const s = venueStatus(row, venue);
     if (POST_ONLY.includes(venue)) return s.status !== "listed" ? ["post"] : s.url ? ["open"] : [];
     if (s.status !== "listed") return ["post", "edit"];
-    const behind = venue === "craigslist" && isUnsynced(unsynced, row.sku, venue);
+    const behind = isUnsynced(unsynced, row.sku, venue);
     return [...(s.url ? ["open"] : []), ...(behind ? ["sync"] : []), "refresh", "end", "edit"];
 }
 
@@ -4522,6 +4523,18 @@ export function customizeSaved(row, to) {
     return { text: `saved; ${actionWord("sync", venues[0])} puts it on the listing`, kind: "ok" };
 }
 
+/**
+ * Said on a card once its Edit is saved and the change left its own listing behind: the Sync
+ * that puts it there, by name ("saved; Sync to eBay puts it on the listing"). null when the
+ * listing is not behind (a draft, or nothing it shows changed): the card's status line then.
+ * @param {string} venue
+ * @param {string[]} behind leftUnsynced's
+ * @returns {{text:string, kind:string} | null}
+ */
+export function editSaved(venue, behind) {
+    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} puts it on the listing`, kind: "ok" } : null;
+}
+
 // --- Admin: a list row's price, dialled on its tile -------------------------------------
 //
 // Michal, 2026-10-07 ("one of the highest priority items"): "On the inventory card on the
@@ -4651,12 +4664,20 @@ export function unsyncedWithout(list, venue) {
 }
 
 /**
+ * The eBay fields a push puts on the live listing besides the price and the condition: any of
+ * them changed leaves the eBay listing behind (Michal, 2026-10-22: "I did an edit in
+ * description of a posting but there was no sync to eBay button after I made the edit"). The
+ * user note is not one: it never posts.
+ */
+const EBAY_LISTED_FIELDS = ["title", "description", "condition_note", "quantity", "pickup_only"];
+
+/**
  * The listings a change the PC answered (a tile's dial, customize's Save, a card's Edit) left
- * behind, by venue: eBay when the price or the condition moved and the row is listed there;
- * craigslist when the row is listed there and any of its fields reads otherwise now (an
- * override typed, or an eBay field it is derived from changed, the condition among them).
- * `before` may be a list row, which carries no description or overrides: what it does not
- * carry is taken as unchanged.
+ * behind, by venue: eBay when the price, the condition or another field its listing shows
+ * (EBAY_LISTED_FIELDS) moved and the row is listed there; craigslist when the row is listed
+ * there and any of its fields reads otherwise now (an override typed, or an eBay field it is
+ * derived from changed, the condition among them). `before` may be a list row, which carries
+ * no description or overrides: what it does not carry is taken as unchanged.
  * @param {Record<string, any>} before
  * @param {Record<string, any>} after the row the PC answered
  * @returns {string[]}
@@ -4666,7 +4687,9 @@ export function leftUnsynced(before, after) {
     const priced = Number(priceText(before.price)) !== Number(priceText(after.price));
     const grade = (row) => conditionEnum(row.condition) || plain(row.condition);
     const graded = "condition" in before && grade(before) !== grade(after);
-    if ((priced || graded) && canPush(after)) venues.push("ebay");
+    const said = (x) => String(x ?? "").trim();
+    const edited = EBAY_LISTED_FIELDS.some((key) => key in before && said(before[key]) !== said(after[key]));
+    if ((priced || graded || edited) && canPush(after)) venues.push("ebay");
     const listed = rowVenues(after).includes("craigslist") && venueStatus(after, "craigslist").status === "listed";
     const reads = (row) => {
         const d = derivedFields(row, "craigslist");
