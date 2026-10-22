@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.24.1";
+import { VERSION } from "./version.js?v=2.24.2";
 import {
     adminLink,
     anyActive,
@@ -223,8 +223,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.24.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.24.1";
+} from "./core.js?v=2.24.2";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.24.2";
 
 // The venues the header and footer go out on, as the server's GET /me/wrap offers them
 // (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
@@ -270,8 +270,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.24.1";
-import { shrinkPhoto } from "./shrink.js?v=2.24.1";
+} from "./pc.js?v=2.24.2";
+import { shrinkPhoto } from "./shrink.js?v=2.24.2";
 import {
     bookCard,
     bookPriceValue,
@@ -284,8 +284,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.24.1";
-import { canScan, readIsbn } from "./scan.js?v=2.24.1";
+} from "./book.js?v=2.24.2";
+import { canScan, readIsbn } from "./scan.js?v=2.24.2";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -1604,10 +1604,21 @@ function litMark(held, name) {
     return lit;
 }
 
+/**
+ * The posting screens' line, above them (a walk's "Back to ...", a photo that failed). It is
+ * theirs alone: while Admin is open it waits out of sight, and shows again as Admin closes
+ * (Michal, 2026-10-22: "when i switch to Admin... the thing is still there.... admin is a not
+ * related to this. that tip should not occur on the admin view").
+ */
 function say(message, kind = "info") {
     el.message.textContent = message || "";
     el.message.className = `message ${kind}`;
-    el.message.hidden = !message;
+    showMessage();
+}
+
+/** The posting screens' line shown when it has words and Admin is not open. */
+function showMessage() {
+    el.message.hidden = !el.message.textContent || !el.admin.hidden;
 }
 
 // --- the mode switch -----------------------------------------------------------
@@ -2332,6 +2343,7 @@ function fold(toggle, word, open) {
  */
 function adminShown(open) {
     el.admin.hidden = !open;
+    showMessage();
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
     // Snap while Admin is open, the way back to snapping (Michal, 2026-10-17)
     const link = adminLink(open);
@@ -4100,7 +4112,10 @@ async function resetTask(task, paint) {
         if (answer.state === "cancelled" && stopping()) task.stopping = false;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        say(`Could not cancel: ${e.message}`, "warn");
+        // said on the task's own line, in Admin (the posting screens' line is out of sight
+        // there), until the next poll says how the job stands
+        task.job = { ...task.job, state: "failed", error: `Could not cancel: ${e.message}` };
+        paint();
     }
     if (stopping()) later(task);
 }
