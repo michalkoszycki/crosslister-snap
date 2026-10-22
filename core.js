@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.23.1";
+import { noteDirty, unsent } from "./queue.js?v=2.24.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.23.1";
+} from "./book.js?v=2.24.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -4535,6 +4535,30 @@ export function editSaved(venue, behind) {
     return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} puts it on the listing`, kind: "ok" } : null;
 }
 
+/**
+ * The question a listing's photo x asks under the strip before anything is sent (Michal,
+ * 2026-10-22: "x at the edge of photo to remove photo ( after confirming)").
+ * @param {number} n
+ * @returns {string}
+ */
+export function photoQuestion(n) {
+    return `Remove photo ${n} from this item?`;
+}
+
+/**
+ * Said under the strip once a photo is added or removed (`done`: "photo added", "2 photos
+ * added", "photo removed"), then the Sync that puts the photos on a listing up somewhere:
+ * by name with one ("photo added; Sync to eBay puts it on the listing"), "sync" with more.
+ * @param {string} done
+ * @param {string[]} behind photosBehind's
+ * @returns {{text:string, kind:string}}
+ */
+export function photoSaved(done, behind) {
+    if (!behind.length) return { text: done, kind: "ok" };
+    if (behind.length > 1) return { text: `${done}; sync puts it on the listings`, kind: "ok" };
+    return { text: `${done}; ${actionWord("sync", behind[0])} puts it on the listing`, kind: "ok" };
+}
+
 // --- Admin: a list row's price, dialled on its tile -------------------------------------
 //
 // Michal, 2026-10-07 ("one of the highest priority items"): "On the inventory card on the
@@ -4676,13 +4700,34 @@ const EBAY_LISTED_FIELDS = ["title", "description", "condition_note", "quantity"
  * behind, by venue: eBay when the price, the condition or another field its listing shows
  * (EBAY_LISTED_FIELDS) moved and the row is listed there; craigslist when the row is listed
  * there and any of its fields reads otherwise now (an override typed, or an eBay field it is
- * derived from changed, the condition among them). `before` may be a list row, which carries
- * no description or overrides: what it does not carry is taken as unchanged.
+ * derived from changed, the condition among them). And every listing the PC says has not got
+ * the row's photos yet (`photos_behind`, set when a photo is added or removed: photosBehind).
+ * `before` may be a list row, which carries no description or overrides: what it does not
+ * carry is taken as unchanged.
  * @param {Record<string, any>} before
  * @param {Record<string, any>} after the row the PC answered
  * @returns {string[]}
  */
 export function leftUnsynced(before, after) {
+    const fields = fieldsBehind(before, after);
+    const photos = photosBehind(after);
+    return PUSHED.filter((v) => fields.includes(v) || photos.includes(v));
+}
+
+/**
+ * The listings a saved row's photos are behind on (Michal, 2026-10-22: a listing's + and x;
+ * "Sync sends them"): the venues its `photos_behind` names that a push reaches and the row is
+ * listed on. Until a Sync to <venue> there sends the photos, the PC keeps saying so.
+ * @param {Record<string, any>} row the whole row
+ * @returns {string[]}
+ */
+export function photosBehind(row) {
+    const named = Array.isArray(row.photos_behind) ? row.photos_behind.map(plain) : [];
+    return PUSHED.filter((v) => named.includes(v) && listedOn(row, v));
+}
+
+/** leftUnsynced's fields part: the listings a change of the row's fields left behind. */
+function fieldsBehind(before, after) {
     const venues = [];
     const priced = Number(priceText(before.price)) !== Number(priceText(after.price));
     const grade = (row) => conditionEnum(row.condition) || plain(row.condition);

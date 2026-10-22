@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.23.1";
+import { VERSION } from "./version.js?v=2.24.0";
 import {
     adminLink,
     anyActive,
@@ -111,7 +111,11 @@ import {
     inventoryRows,
     jobRunning,
     leftUnsynced,
+    MAX_PHOTOS,
     patchBody,
+    photoQuestion,
+    photoSaved,
+    photosBehind,
     priceWord,
     quantityValue,
     rowBadges,
@@ -219,8 +223,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.23.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.23.1";
+} from "./core.js?v=2.24.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.24.0";
 
 // The venues the header and footer go out on, as the server's GET /me/wrap offers them
 // (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
@@ -234,9 +238,11 @@ import {
     checkout,
     checkPc,
     codeSession,
+    addRowPhoto,
     createItem,
     deleteMe,
     deletePhoto,
+    deleteRowPhoto,
     ebayConnect,
     endSession,
     getBook,
@@ -264,8 +270,8 @@ import {
     reviewFeedback,
     searchBook,
     startSession,
-} from "./pc.js?v=2.23.1";
-import { shrinkPhoto } from "./shrink.js?v=2.23.1";
+} from "./pc.js?v=2.24.0";
+import { shrinkPhoto } from "./shrink.js?v=2.24.0";
 import {
     bookCard,
     bookPriceValue,
@@ -278,8 +284,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.23.1";
-import { canScan, readIsbn } from "./scan.js?v=2.23.1";
+} from "./book.js?v=2.24.0";
+import { canScan, readIsbn } from "./scan.js?v=2.24.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -515,6 +521,11 @@ const admin = {
     pictures: new Map(),
     /** the detail's photo number -> its 88 px tile */
     photoTiles: new Map(),
+    /**
+     * the photo strip's own state: the x's question (`ask`, a photo number or 0), what is on its
+     * way (`wait`), what was said (`note`); its line and the x's and the + input, as drawn
+     */
+    photoEdit: blankPhotoEdit(),
     /** the thumbnail the full-size view was opened from, focused again when it closes */
     opener: null,
 };
@@ -3315,7 +3326,7 @@ function dropCards() {
  */
 function rowBusy() {
     const busy = (c) => !!c.wait || jobRunning(c.job);
-    return busy(admin.custom) || VENUES.some((v) => busy(admin.cards[v]));
+    return !!admin.photoEdit.wait || busy(admin.custom) || VENUES.some((v) => busy(admin.cards[v]));
 }
 
 /** customize, then every venue card in its fixed order, and the foldouts' toggles; none without a row. */
@@ -3323,6 +3334,7 @@ function renderCards() {
     renderRowCustomize();
     for (const venue of VENUES) el.detailFolds[venue].card.replaceChildren(...(admin.row ? cardNodes(venue) : []));
     renderFolds();
+    paintPhotoEdit();
 }
 
 /**
@@ -4165,21 +4177,31 @@ async function askJob(c, mine, paint) {
     refreshRow({ ...whole, sku: admin.row.sku });
 }
 
-/** The photo strip under the heading: an 88 px tile per photo, its picture on its way (fetchRowPhotos). */
+/**
+ * The photo strip under the heading: an 88 px tile per photo, its picture on its way
+ * (fetchRowPhotos), each with an x at its top right while the row has more than one (the
+ * server keeps at least one); then a + tile while it has room (Michal, 2026-10-22: "add a
+ * plus element at the end of photos to add photo to an item and x at the edge of photo to
+ * remove photo ( after confirming)"); under them the strip's line (paintPhotoEdit). A row
+ * not read whole yet has neither.
+ */
 function renderDetailPhotos(row) {
     admin.photoTiles.clear();
+    admin.photoEdit.controls = [];
     const photos = rowPhotos(row);
+    const whole = Array.isArray(row.photos);
+    const kids = [];
     if (photos.length === 0) {
         const none = document.createElement("p");
         none.className = "small";
-        none.textContent = Array.isArray(row.photos) ? "No photos." : "Reading the photos...";
-        el.detailPhotos.replaceChildren(none);
-        return;
+        none.textContent = whole ? "No photos." : "Reading the photos...";
+        kids.push(none);
     }
     const strip = document.createElement("ul");
     strip.className = "strip";
     for (const p of photos) {
         const li = document.createElement("li");
+        li.className = "thumb-box";
         const tile = document.createElement("button");
         tile.type = "button";
         tile.className = "thumb";
@@ -4192,9 +4214,194 @@ function renderDetailPhotos(row) {
         });
         admin.photoTiles.set(p.n, tile);
         li.append(tile);
+        if (photos.length > 1) {
+            const x = actionButton("×", "kill thumb-kill", false, () => {
+                admin.photoEdit.ask = p.n;
+                admin.photoEdit.note = null;
+                paintPhotoEdit();
+            });
+            x.setAttribute("aria-label", `Remove ${p.name}`);
+            admin.photoEdit.controls.push(x);
+            li.append(x);
+        }
         strip.append(li);
     }
-    el.detailPhotos.replaceChildren(strip);
+    if (whole && photos.length < MAX_PHOTOS) strip.append(addPhotoNode());
+    if (strip.children.length) kids.push(strip);
+    const line = document.createElement("div");
+    line.className = "photo-edit";
+    admin.photoEdit.line = line;
+    kids.push(line);
+    el.detailPhotos.replaceChildren(...kids);
+    paintPhotoEdit();
+}
+
+/** The photo strip's state for a listing just opened: nothing asked, nothing on its way. */
+function blankPhotoEdit() {
+    return { ask: 0, wait: "", note: null, line: null, controls: [] };
+}
+
+/**
+ * The listing's photos as the PC now has them, after a + or an x: the strip drawn again
+ * and every picture fetched again (the numbers have moved), its line saying `note`.
+ */
+function showRowPhotos(pc, mine, note) {
+    for (const url of admin.pictures.values()) URL.revokeObjectURL(url);
+    admin.pictures.clear();
+    admin.photoEdit.note = note;
+    renderDetailPhotos(admin.row);
+    fetchRowPhotos(pc, mine).catch(() => {});
+}
+
+/**
+ * The + tile's photos: each shrunk as a snapped one is (Fix dark photos as it stands, so a
+ * dark one goes brightened), then added to the row, one at a time, its line counting them.
+ * Each listing up somewhere is then behind on its photos (photosBehind: the PC says so) and
+ * offers its Sync to <venue>. More than the row has room for is said, and none of those is
+ * sent; one the phone cannot read, or the PC refuses, stops the rest with its words.
+ */
+async function addRowPhotos(files) {
+    const pe = admin.photoEdit;
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy() || !files.length) return;
+    const mine = admin.shown;
+    const room = MAX_PHOTOS - rowPhotos(row).length;
+    const going = files.slice(0, Math.max(room, 0));
+    pe.ask = 0;
+    let current = row;
+    let added = 0;
+    let stop = files.length > going.length ? { text: `an item holds at most ${MAX_PHOTOS} photos`, kind: "bad" } : null;
+    for (const [i, file] of going.entries()) {
+        pe.wait = going.length > 1 ? `adding photo ${i + 1} of ${going.length}...` : "adding the photo...";
+        renderCards();
+        let whole;
+        try {
+            const { jpeg } = await shrinkPhoto(file, { fixDark });
+            if (mine !== admin.shown) return;
+            whole = await addRowPhoto(pc, row.sku, jpeg);
+        } catch (e) {
+            if (mine !== admin.shown) return;
+            if (e.status === 0 || e.status === 401) heard(e.status);
+            stop = { text: e.message || "could not read the photo", kind: "bad" };
+            break;
+        }
+        if (mine !== admin.shown) return;
+        heard(200);
+        markBehind(row.sku, current, whole);
+        current = { ...whole, sku: row.sku };
+        added += 1;
+    }
+    pe.wait = "";
+    if (!added) {
+        pe.note = stop;
+        renderCards();
+        return;
+    }
+    admin.changed = true;
+    refreshRow(current);
+    const done = added > 1 ? `${added} photos added` : "photo added";
+    showRowPhotos(pc, mine, stop || photoSaved(done, photosBehind(current)));
+}
+
+/**
+ * The x's "Yes, remove": photo n off the row (the server refuses the only one), the strip
+ * drawn again, each listing up somewhere behind on its photos as after a +.
+ */
+async function removeRowPhoto(n) {
+    const pe = admin.photoEdit;
+    const row = admin.row;
+    const pc = settings();
+    if (!row || !pc || rowBusy()) return;
+    const mine = admin.shown;
+    pe.ask = 0;
+    pe.note = null;
+    pe.wait = "removing the photo...";
+    renderCards();
+    let whole;
+    try {
+        whole = await deleteRowPhoto(pc, row.sku, n);
+    } catch (e) {
+        if (mine !== admin.shown) return;
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        pe.wait = "";
+        pe.note = { text: e.message, kind: "bad" };
+        renderCards();
+        return;
+    }
+    if (mine !== admin.shown) return;
+    heard(200);
+    pe.wait = "";
+    markBehind(row.sku, row, whole);
+    admin.changed = true;
+    const current = { ...whole, sku: row.sku };
+    refreshRow(current);
+    showRowPhotos(pc, mine, photoSaved("photo removed", photosBehind(current)));
+}
+
+/** The + tile: a label round a hidden file input, the phone's own chooser (camera or gallery). */
+function addPhotoNode() {
+    const li = document.createElement("li");
+    li.className = "add-photo";
+    const label = document.createElement("label");
+    label.className = "thumb thumb-add";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.className = "sr-only";
+    input.setAttribute("aria-label", "Add photos to this item");
+    admin.photoEdit.controls.push(input);
+    input.addEventListener(
+        "change",
+        onFiles((files) => {
+            addRowPhotos(Array.from(files || [])).catch(() => {});
+        })
+    );
+    const plus = document.createElement("span");
+    plus.setAttribute("aria-hidden", "true");
+    plus.textContent = "+";
+    label.append(plus, input);
+    li.append(label);
+    return li;
+}
+
+/**
+ * The strip's x's and + locked while the row is busy, and its line: the x's question
+ * (Yes, remove | Keep it), else what is on its way, else what was said last.
+ */
+function paintPhotoEdit() {
+    const pe = admin.photoEdit;
+    const line = pe.line;
+    if (!line) return;
+    const busy = rowBusy();
+    for (const control of pe.controls) control.disabled = busy;
+    if (pe.ask) {
+        const ask = document.createElement("span");
+        ask.className = "confirm-ask";
+        ask.textContent = photoQuestion(pe.ask);
+        const n = pe.ask;
+        line.replaceChildren(
+            ask,
+            actionButton("Yes, remove", "pill pill-small pill-bad", busy, () => {
+                removeRowPhoto(n).catch(() => {});
+            }),
+            actionButton("Keep it", "pill pill-small", false, () => {
+                pe.ask = 0;
+                paintPhotoEdit();
+            })
+        );
+        return;
+    }
+    const said = pe.wait ? { text: pe.wait, kind: "busy" } : pe.note;
+    if (!said) {
+        line.replaceChildren();
+        return;
+    }
+    const p = document.createElement("p");
+    p.className = said.kind ? `venue-status ${said.kind}` : "venue-status";
+    p.textContent = said.text;
+    line.replaceChildren(p);
 }
 
 /**
@@ -4231,6 +4438,7 @@ function dropPictures() {
     for (const url of admin.pictures.values()) URL.revokeObjectURL(url);
     admin.pictures.clear();
     admin.photoTiles.clear();
+    admin.photoEdit = blankPhotoEdit();
     el.detailPhotos.replaceChildren();
 }
 

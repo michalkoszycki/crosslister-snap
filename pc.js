@@ -167,7 +167,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.23.1";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.24.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -437,6 +437,30 @@ export async function getRowPhoto({ pc, ...auth }, sku, n) {
     const res = await request(`${rowUrl(pc, sku)}/photos/${n}`, auth);
     if (!res.ok) throw await refused(res);
     return res.blob();
+}
+
+/**
+ * A photo added to a saved row, last (a listing's +; Michal, 2026-10-22): the shrunk JPEG.
+ * 400 at the server's most photos, 409 while a job runs.
+ * @param {Settings} settings
+ * @param {string} sku
+ * @param {Blob} jpeg
+ * @returns {Promise<Record<string, any>>} the whole row, as getRow gives it
+ */
+export function addRowPhoto({ pc, ...auth }, sku, jpeg) {
+    return call(`${rowUrl(pc, sku)}/photos`, auth, { method: "POST", body: jpeg, type: "image/jpeg" });
+}
+
+/**
+ * Photo number n off a saved row (a listing's x, after its question). 400 for the row's
+ * only photo, 409 while a job runs.
+ * @param {Settings} settings
+ * @param {string} sku
+ * @param {number} n
+ * @returns {Promise<Record<string, any>>} the whole row, as getRow gives it
+ */
+export function deleteRowPhoto({ pc, ...auth }, sku, n) {
+    return call(`${rowUrl(pc, sku)}/photos/${n}`, auth, { method: "DELETE" });
 }
 
 /**
