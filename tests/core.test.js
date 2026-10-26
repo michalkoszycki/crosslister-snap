@@ -2973,7 +2973,7 @@ test("a card's actions: add when not on the venue, post when not listed, open/re
             "Edit",
         ]
     );
-    assert.equal(actionWord("sync", "ebay"), "Sync to eBay");
+    assert.equal(actionWord("sync", "ebay"), "Sync to ebay");
     assert.equal(endQuestion("ebay"), "End this listing on ebay?");
 });
 
@@ -2994,7 +2994,7 @@ test("a card offers Sync to <venue> while its listing is behind the row, eBay's 
     assert.deepEqual(venueActions(up, "craigslist", [{ sku: "OTHER", venues: ["craigslist"] }]), ["open", "refresh", "end", "edit"]);
     assert.deepEqual(venueActions(up, "ebay", [{ sku: "C1", venues: ["ebay"] }]), ["open", "sync", "refresh", "end", "edit"]);
     assert.deepEqual(venueActions(up, "ebay", behind), ["open", "refresh", "end", "edit"], "only craigslist is behind");
-    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to ebay puts it on the listing", kind: "ok" });
     assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; Sync to craigslist puts it on the listing", kind: "ok" });
     assert.equal(editSaved("ebay", ["craigslist"]), null, "its own listing not behind: the status line");
     // a draft has no listing to sync: Post puts the row up whole
@@ -3017,7 +3017,7 @@ test("the action jobs' bodies: end and refresh carry the sku and venue, a sync i
     assert.throws(() => actionJob("post", { sku: "R5", venue: "ebay" }), RangeError, "a post is jobRequest's");
     // since 2.20.0 a sync names its venue (syncJob: only to a server whose /me says syncable)
     assert.deepEqual(actionJob("sync", { direction: "to", venue: "craigslist" }), { action: "sync", direction: "to", venue: "craigslist" });
-    // a listing's customize, Sync to eBay (the contract of 2026-10-07), and since 2026-10-08
+    // a listing's customize, Sync to ebay (the contract of 2026-10-07), and since 2026-10-08
     // the craigslist card's Sync to craigslist
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "ebay" }), { action: "push", sku: "R5", venue: "ebay" });
     assert.deepEqual(actionJob("push", { sku: "R5", venue: "craigslist" }), { action: "push", sku: "R5", venue: "craigslist" });
@@ -3150,7 +3150,7 @@ test("a listing's customize: the Price slider at the row's grade, each word with
     assert.equal(sliderWords({ ...ROW, pricing: 3 }, 3).note, "a higher-end price; cheaper ones exist out there", "not moved");
 });
 
-test("a listing's customize: Save sends only what changed, the slider as pricing; Sync to eBay when listed there", () => {
+test("a listing's customize: Save sends only what changed, the slider as pricing; Sync to ebay when listed there", () => {
     const same = rowCustomize(GRADED);
     assert.equal(customizeChanges(GRADED, same), null, "nothing changed: nothing sent");
     assert.equal(customizeChanges(GRADED, { ...same, quantity: " 2 " }), null, "a stray space is no change");
@@ -3180,7 +3180,7 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     assert.deepEqual(followRow(GRADED, { ...same, quantity: "7" }, after), { quantity: "7", pickupOnly: true, pricing: 3 });
     assert.deepEqual(followRow(GRADED, { ...same, quantity: "x" }, after).quantity, "x", "as typed");
 
-    // Sync to eBay: only a listing up on eBay has something to update
+    // Sync to ebay: only a listing up on eBay has something to update
     assert.equal(canPush(GRADED), true);
     const draft = { ...GRADED, statuses: { ...GRADED.statuses, ebay: { status: "draft" } } };
     assert.equal(canPush(draft), false);
@@ -3198,7 +3198,7 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     // its status line: on its way, the push job, what the PC said; the quantity hint; why Sync is shut
     const idle = { wait: "", job: null, note: null, values: same };
     assert.deepEqual(customizeLine(GRADED, idle, ebay), { text: "", kind: "" });
-    assert.deepEqual(customizeLine(draft, idle, ebay), { text: "Sync to eBay opens once the listing is up on eBay", kind: "" });
+    assert.deepEqual(customizeLine(draft, idle, ebay), { text: "Sync to ebay opens once the listing is up on eBay", kind: "" });
     assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }, ebay), {
         text: EDIT_QUANTITY_HINT,
         kind: "bad",
@@ -3214,7 +3214,7 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     });
     const refused = { text: "no cached fair price for this row: set the price by hand", kind: "bad" };
     assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }, ebay), refused);
-    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to ebay puts it on the listing", kind: "ok" });
     assert.deepEqual(customizeSaved(draft, ebay), { text: "saved", kind: "ok" });
 });
 
@@ -3252,7 +3252,7 @@ test("customize's Sync to <venue>: one per venue the account syncs to and the ro
     const none = { ...both, statuses: { ebay: draft, craigslist: draft } };
     const idle = { wait: "", job: null, note: null, values: rowCustomize(both) };
     assert.deepEqual(customizeLine(none, idle, all), { text: "Sync opens once the listing is up on eBay or craigslist", kind: "" });
-    assert.equal(pushClosed(["ebay"]), "Sync to eBay opens once the listing is up on eBay");
+    assert.equal(pushClosed(["ebay"]), "Sync to ebay opens once the listing is up on eBay");
     assert.equal(pushClosed(["ebay", "craigslist", "poshmark"]), "Sync opens once the listing is up on eBay, craigslist or poshmark");
     assert.equal(pushClosed([]), "", "an account that syncs to none: nothing to open");
     assert.deepEqual(customizeLine(none, idle, []), { text: "", kind: "" });
@@ -3375,7 +3375,7 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(unsyncedWith("junk", "A", "ebay", false), []);
     assert.equal(isUnsynced(both, "A", "craigslist"), true);
     assert.equal(isUnsynced(both, "B", "craigslist"), false);
-    // the sync bar's Sync to eBay lets every eBay mark go, and only those
+    // the sync bar's Sync to ebay lets every eBay mark go, and only those
     assert.deepEqual(unsyncedWithout([...both, { sku: "B", venues: ["ebay"] }], "ebay"), [{ sku: "A", venues: ["craigslist"] }]);
 
     // a price move on a listing up on eBay leaves it behind; a draft, or no move, does not
@@ -3411,7 +3411,7 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(photosBehind(both2), []);
     assert.equal(photoQuestion(3), "Remove photo 3 from this item?");
     assert.deepEqual(photoSaved("photo added", []), { text: "photo added", kind: "ok" });
-    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to eBay puts it on the listing", kind: "ok" });
+    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to ebay puts it on the listing", kind: "ok" });
     assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; sync puts it on the listings", kind: "ok" });
     // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
     // craigslist's when its word for it moved

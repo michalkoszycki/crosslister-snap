@@ -3588,13 +3588,14 @@ function renderRowCustomize() {
     // pressed, its ring and "tap again to cancel", paused its continue and its own reset
     const venues = customizeVenues(row, to);
     const kids = venues.flatMap((venue) => {
-        const { btn, reset } = customSyncNodes(venue);
+        const { btn, reset, arrow } = customSyncNodes(venue);
         const pushing = pressed(c, `push ${venue}`);
         btn.disabled = pushing ? !taskTap(c) : !can.sync;
         paintJobButton(btn, actionWord("sync", venue), {
             busy: pushing,
             cancel: pushing && taskCancel(c),
             paused: pushing && c.paused,
+            trail: [arrow],
             reset,
         });
         return [btn, reset];
@@ -3606,11 +3607,15 @@ function renderRowCustomize() {
     paintCustomizeLine();
 }
 
-/** A venue's Sync to <venue> in customize and its reset, made the first time it is drawn. */
+/**
+ * A venue's Sync to <venue> in customize and its reset, made the first time it is drawn: the
+ * inventory's small green badge with the round arrow after the word, as every sync button
+ * (docs/UI.md, Michal 2026-10-26).
+ */
 function customSyncNodes(venue) {
     if (!customDrawn.nodes.has(venue)) {
         const word = actionWord("sync", venue);
-        const btn = actionButton(word, "pill", true, () => {
+        const btn = actionButton(word, "vbadge posted vsync", true, () => {
             if (pressed(admin.custom, `push ${venue}`)) onTaskTap(admin.custom, customizePaint());
             else pushRow(venue).catch(() => {});
         });
@@ -3621,7 +3626,7 @@ function customSyncNodes(venue) {
         reset.id = `detail-customize-reset-${venue}`;
         reset.hidden = true;
         reset.setAttribute("aria-label", `${RESET} ${word}`);
-        customDrawn.nodes.set(venue, { btn, reset });
+        customDrawn.nodes.set(venue, { btn, reset, arrow: syncArrow() });
     }
     return customDrawn.nodes.get(venue);
 }
@@ -3824,9 +3829,9 @@ function paintLine(venue) {
  * while taskCancel says so; paused, continue and its reset. It takes a tap whenever
  * taskTap has something for it to do.
  */
-function paintTaskButton(task, { node, word, reset }) {
+function paintTaskButton(task, { node, word, reset, trail = [] }) {
     node.disabled = !taskTap(task);
-    paintJobButton(node, word, { busy: true, cancel: taskCancel(task), paused: task.paused, reset });
+    paintJobButton(node, word, { busy: true, cancel: taskCancel(task), paused: task.paused, reset, trail });
 }
 
 /** A card's facts as a list of label and value; a derived one says so under it, muted. */
@@ -3905,8 +3910,10 @@ function actionsNode(venue, busy) {
     for (const action of venueActions(row, venue, readUnsynced())) {
         if (action === "end" && c.noEnd) continue;
         const word = actionWord(action, venue);
-        // a Sync to <venue> is filled, so a listing left behind by an edit is plain to see
-        const look = action === "post" ? "big venue-btn" : action === "sync" ? "pill pill-ink" : "pill";
+        // a Sync to <venue> is the green badge with its arrow, as every sync button (docs/UI.md),
+        // so a listing left behind by an edit is plain to see
+        const look = action === "post" ? "big venue-btn" : action === "sync" ? "vbadge posted vsync" : "pill";
+        const trail = action === "sync" ? [syncArrow()] : [];
         if (action === "open") {
             box.append(linkNode(venueStatus(row, venue).url, "pill", word));
             continue;
@@ -3922,12 +3929,14 @@ function actionsNode(venue, busy) {
                 resetTask(c, paint).catch(() => {});
             });
             reset.setAttribute("aria-label", `${RESET} ${word}`);
-            c.button = { node, word, reset };
+            c.button = { node, word, reset, trail };
             paintTaskButton(c, c.button);
             box.append(node, reset);
             continue;
         }
-        box.append(actionButton(word, look, busy, () => onAction(venue, action)));
+        const node = actionButton(word, look, busy, () => onAction(venue, action));
+        if (trail.length) node.replaceChildren(word, ...trail);
+        box.append(node);
     }
     return box;
 }

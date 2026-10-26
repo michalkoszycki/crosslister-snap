@@ -4469,7 +4469,8 @@ export function actionWord(action, venue) {
         case "open":
             return "Open listing";
         case "sync":
-            return `Sync to ${venueName(venue)}`;
+            // the venue lowercase, as on every button (Michal, 2026-10-26): syncWord's
+            return syncWord("to", venue);
         case "refresh":
             return "Refresh status";
         case "end":
@@ -4686,15 +4687,16 @@ export function patchBody(venue, before, after) {
 
 /**
  * Said under Save while the listing is up on none of the venues the account syncs to: there is
- * nothing to push to ("Sync to eBay opens once the listing is up on eBay"; with more venues,
- * "Sync opens once the listing is up on eBay or craigslist"); nothing when it syncs to none.
+ * nothing to push to ("Sync to ebay opens once the listing is up on eBay": the button by its
+ * word; with more venues, "Sync opens once the listing is up on eBay or craigslist");
+ * nothing when it syncs to none.
  * @param {string[]} to syncVenues' "to"
  * @returns {string}
  */
 export function pushClosed(to) {
     if (!to.length) return "";
     const names = to.map(venueName);
-    if (names.length === 1) return `Sync to ${names[0]} opens once the listing is up on ${names[0]}`;
+    if (names.length === 1) return `${actionWord("sync", to[0])} opens once the listing is up on ${names[0]}`;
     return `Sync opens once the listing is up on ${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
 }
 
