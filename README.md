@@ -70,9 +70,9 @@ OneDrive directly; that code is in the git history (up to version 1.2.2).
 | --- | --- |
 | `index.html` | the screen, plus the Content-Security-Policy |
 | `about.html` | About and privacy: what Snap is, who runs it, Privacy, Terms, the version; no script (the privacy policy URL eBay's developer console takes) |
-| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish signing up and the install nudge, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (Settings and its Account block with the Seller address, the header and footer on every listing, the inventory and a row's swipe to archive, a listing's customize, its cards and their actions, Feedback and the admin's inbox, Stats, the sync bar), customize and its Save as default, the venue buttons, polling, a reload, the walk back and forward |
+| `app.js` | screen wiring: the landing (its sign-up words), sign-in, Finish setting up and the install nudge, the top bar's account name, photos, the upload queue, the AI mark (a book's main mark), See in inventory, Admin (the inventory and a row's swipe to archive, a listing's customize, its cards and their actions; Settings' five folds: the account cards, the invite box and the People page, the venue blocks with their sync buttons and the address card, Posting defaults with the header and footer, Server, This phone; Feedback and the admin's inbox, Stats), customize, the venue buttons, polling, a reload, the walk back and forward |
 | `queue.js` | the upload queue's rules: what goes next, how long to wait, the badge word |
-| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup`, `/me/seller` and `/me/wrap` |
+| `pc.js` | every call to the server, Admin's inventory and its actions (archiving a row too), `/me`, Feedback and the admin's inbox, Stats, the sign-in and sign-out calls, Buy postings' checkout and Connect eBay too, `/auth/signup`, `/me/address` (and `/me/seller` for a new account's step 2), `/me/wrap`, `/me/people`, `/me/devices` and `/me/leave` |
 | `shrink.js` | a photo to at most 2000 px JPEG, orientation kept; Fix dark photos' measure, table and pass (`luminanceStats`, `levelsTable`, `applyTable`) |
 | `book.js` | the book mode's rules: the ISBN (ISBN-10 to 13, check digits), a book with no ISBN (what is searched, the year, the format chips), the price box, the price note, the book card, the conditions |
 | `scan.js` | the ISBN off a photo of the barcode, with the phone's own `BarcodeDetector` where it has one |
@@ -649,12 +649,14 @@ his admin key, and a second email account, as a stranger would.
   (the shown item's go first), and a job running for it keeps being asked
   about, so its link is there on switching back. Hidden while Admin is open,
   and so is the screen under it (see Admin, next).
-- **Admin** (header, top right; it was Settings until 2.1.0): **Settings** and
-  the **Inventory**, each a foldout, then the sync bar, opening where the
-  switch was (see [Admin](#admin)). **Settings** holds the server address and the
-  key: **Save and check** stores them and asks the server whether it knows the key
-  (a read of the newest job: no model call, nothing published). It also holds
-  **Appearance**: Dark, Light or Sync with device, applied on the tap. While
+- **Admin** (header, top right; it was Settings until 2.1.0): no title; the
+  **Inventory**, **Settings** (five folds of its own, see [Settings](#settings-2250)),
+  **Feedback**, **Stats** (an admin's) and **Close**, opening where the switch was
+  (see [Admin](#admin)). **Settings, Server** (a key account's) holds the server
+  address and the key: **Save and check** stores them and asks the server whether it
+  knows the key (a read of the newest job: no model call, nothing published).
+  **Settings, This phone** holds **Appearance**: Dark, Light or Sync with device,
+  applied on the tap. While
   Admin is open, on its list or on a listing, the goods and book screens are
   hidden too (Michal, 2026-10-08: "When I look at a card the posting screen is
   below. That should not be there"): their items carry on underneath, photos
@@ -780,17 +782,14 @@ his admin key, and a second email account, as a stranger would.
   server, and decides for every photo taken from then on (a book's too) whether a dark
   one is brightened (see **lit** above); NEXT puts it back to the default. Folded
   again on every load and every **NEXT**; the values themselves are kept for a
-  reload and reset by NEXT. Last in the card (Michal, 2026-10-08: "The customize
-  section should have a 'Save as default' button at the end, in case someone wants
-  to change something permanently."), **Save as default**, a small pill: it keeps
-  the price grade, Post without asking, Compare with eBay listings and Pickup only
-  as they stand (never the quantity, nor the user note) in
-  `snap.customize.defaults`, `{"goods": {...}, "book": {...}}`, says `saved as your
-  defaults` beside it for 2.5 s, and every new item of that kind starts from them:
-  NEXT, a fresh load, an item reset. An item read back keeps its own customize. The
-  book's customize has its own Save as default and its own defaults. The goods' Save as
-  default also keeps Fix dark photos as it stands, in `snap.photos.fixdark` (`"off"` or
-  `"on"`; on until saved off).
+  reload and reset by NEXT. Its starting values are Settings, Posting defaults'
+  (Michal, 2026-10-08: "in case someone wants to change something permanently";
+  in Settings since 2.25.0, Save as default gone from the box): the quantity, the
+  price grade, Post without asking, Compare with marketplace listings and Pickup only
+  in `snap.customize.defaults` (one set, written for goods and books alike), Fix dark
+  photos in `snap.photos.fixdark` (`"off"` or `"on"`), each saved as it changes;
+  every new item starts from them: NEXT, a fresh load, an item reset, and the item in
+  hand while nothing is on it yet. An item read back keeps its own customize.
 - **ebay | craigslist | poshmark**, side by side, each with its status line and link (poshmark the admin's alone: see "Poshmark, the admin's" above):
   `sending`, `queued, 1 ahead`, the server's step (`drafting the listing`...), then
   the link (opens in a new tab), or the server's error in its own words. The pressed
@@ -1121,8 +1120,8 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | customize, in any of the three `POST <pc>/jobs` bodies above | top-level `"quantity": 2` (only when not 1) and `"pickup_only": true` (only when ticked), e.g. `{"item", "venue", "ai", "quantity": 2, "pickup_only": true}`; left alone, the body is exactly as above | the same |
 | customize's price grade (Michal, 2026-10-06: "1 (quicksell what we have) 2 (fair price longer wait time) 3 (higher end price - probably cheaper options exist in the marketplace). these need to be reflected in the prompt. 1 by default.") | top-level `"pricing": 2` or `3`, only when not 1 (1, a quick sale, is what the server always did), e.g. `{"item", "venue", "ai", "pricing": 2}`; the server writes it into the model's prompt | the same |
 | customize's post without asking (Michal, 2026-10-06: "a checkbox for post without asking - which is our default now.") | top-level `"auto_post": false`, only when unticked (true, the default, publishes as ever), e.g. `{"item", "venue", "ai", "pricing": 2, "auto_post": false}`. The server drafts and saves the row without publishing; the job ends `done` with the row's `sku`, `title` and `price` and no link for that venue, which the page shows as `saved, not posted`. The press after it sends `{"sku", "venue"}` without `auto_post` (plus `pricing` and the rest), and the server publishes the saved row | the same |
-| customize's Compare with eBay listings (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
-| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url, "poshmark": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the credit is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
+| customize's Compare with marketplace listings (eBay's similar listings to the server) (Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put that toggle default off, in customization."; on by default since 2026-10-10: "Yes keep comparables on") | top-level `"comps": false`, only when unticked, in any of the three bodies, e.g. `{"item", "venue", "ai", "comps": false}`; never `"comps": true`: left alone, the server drafts with eBay's similar listings (a server from before 2026-10-10 took a missing key as off) | the same |
+| `GET <pc>/jobs/<id>`, every 3 s, until the link, the error or NEXT | - | `{"state": queued/running/done/failed, "step", "sku", "price", "title", "links": {"ebay": url, "craigslist": url, "poshmark": url}, "error", "ahead", "charged"}`; `charged` (2.18.0) only on a job that failed `cancelled from the phone`: `true` when the posting it reserved was kept (it had started), `false` when given back (still queued); the line under the button says `cancelled: the posting is lost` or `cancelled` (an older server sends none: `cancelled`). Such a job has a `sku` only when it had saved its row before the stop: a draft cancelled while drafting is dumped, and the page then keeps no sku. `price` is the saved row's (`"14.00"`), `""` until the row is saved (a book: right after the save; goods: after the draft); `title` the same way, the row's title (the line above the price, and an unnamed item's name in the history). The same in each of `GET /items/<id>`'s `jobs` |
 | `GET <pc>/jobs?limit=1` | the Settings check | `{"jobs": [...]}`, or 401 |
 | `GET <pc>/inventory?q=<t>&venue=<v>&status=<s>&limit=200&sort=<age or price>&order=<desc or asc>`, Admin's inventory list | every key always sent, each URL-encoded (`%20` for a space); `venue` `ebay` / `craigslist` / `poshmark` and `status` `draft` / `listed` / `sold` / `ended` / `archived`, `""` for All; the sort chips: Newest `sort=age&order=desc` (the default), Oldest `age` `asc`, Price ↓ `price` `desc`, Price ↑ `price` `asc` | `{"rows": [summary...]}` in that order (a row with no price last when sorted by price); a summary is `{"sku", "title", "price": "24.00" or null, "condition", "category", "category_path", "quantity", "venues": [...], "photos": 5 (a count), "note", "isbn", "pickup_only", "model_cost": "0.1046" or null, "pricing": 1/2/3 or null, "prices": {"quick", "market", "high"}, "statuses": {venue: {"status", "id", "url", "listed_at": ISO or null}}}`; `pricing` is the grade the row's price follows (null: none), `prices` the three prices the first model call made for the row, cached on it (`"24.00"` each, or null; all null on a row drafted before the cache or at the terminal) |
 | `GET <pc>/inventory/<sku>`, a listing tapped | - | the summary's keys plus `"description"`, `"condition_note"`, `"source"`, `"condition_details": {name: value}`, `"aspects": {name: [values]}`, `"package": {"weight_oz", "length_in", "width_in", "height_in"}` or null, `"craigslist": {"title", "price", "description", "category"}` (blank: derived from the eBay fields), `"photos": [{"n", "name"}...]` (a list here) and `"posting": {"pricing", "auto_post", "job"}`, the choices the job that drafted the row was sent with (the page no longer shows them: customize's slider reads the row's own `pricing`); 404 for an unknown sku |
@@ -1134,18 +1133,17 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `PATCH <pc>/inventory/<sku>`, a list row swiped past the mark, its **Undo**, or an archived row's **Unarchive** | `{"archived": true}` / `{"archived": false}`, nothing else | the whole row, `"archived"` in it; a 404 (a server without archiving): `Archiving is not available on this server yet` on the inventory's line, the row back in place; any other refusal `<sku>: <detail>` there |
 | `GET <pc>/inventory?...&status=archived&...`, the **Archived** chip | the list's query, `status=archived` | only the archived rows; every other listing (All included) leaves them out |
 | `PATCH <pc>/inventory/<sku>`, a list row's **+** or **−**, one per press (a tap, or a press held: sent once the finger lifts or leaves the button) | `{"price": "150.00"}`, the whole dollars the dial stopped at, never below `"1.00"`; never a grade (`pricing` is customize's slider's); a dial back where it started sends nothing | the same; 400 `{"detail"}` on the inventory's line as `<sku>: <detail>`, the price as it was |
-| `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to eBay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The server sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
+| `PATCH <pc>/inventory/<sku>`, customize's **Save** (and **Sync to ebay** with a change not yet saved) | `"quantity"` (a number), `"pickup_only"` and `"pricing"` (1, 2 or 3, the grade the slider was moved to), each only when it is not the row's, e.g. `{"pickup_only": true}`, `{"pricing": 3}` or `{"quantity": 3, "pickup_only": true, "pricing": 1}`; nothing changed sends nothing, a quantity that is not one is never sent, nor `pricing` on a row whose `prices` are all null. The server sets the row's `price` to that grade's cached price and records the grade: no model call, no job | the same, the new price in it; 400 `{"detail"}` in customize's status line (`no cached fair price for this row: set the price by hand`), the slider left where he put it |
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** (`poshmark` too) | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), ebay or craigslist (never poshmark: the server only posts there) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
-| `POST <pc>/jobs`, the sync bar's **Sync from <venue>** / **Sync to <venue>**, one per venue in `/me`'s `syncable` (2.20.0) | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, `{"action": "sync", "direction": "from"}` / `{"action": "sync", "direction": "to"}`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in the bar |
+| `POST <pc>/jobs`, a venue block's **Sync from <venue> ↻** / **Sync to <venue> ↻** under Settings, Venues (the sticky sync bar's until 2.25.0): both on every venue, grey where `/me`'s `syncable` does not name it or the account lacks the venue | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in that venue's block |
 | `POST <pc>/jobs`, a listing's customize **Sync to <venue>** (one row, as saved, onto its listing there; one button per venue in `syncable.to` the row is listed on, 2.20.0), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue"}`, the venue as `/me` names it: `"ebay"`, `"craigslist"` (the craigslist push is the server's from 2026-10-08), or one the server adds | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to that venue yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
-| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the Account block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, no Account block. Since 2.14.0 also `"pending"` and `"registered"` (and `"email"` while pending): see Finishing sign-up; not said, an account as today. Since 2.20.0 also `"syncable": {"to": ["ebay", "craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`; `syncableOf`: names trimmed, each once, a list not given is none): the venues customize's Sync to <venue> and the sync bar's buttons go to and from, in `venues`' order; not said: eBay's alone, as before |
-| any keyed call of a sign-up waiting for eBay (`"pending": true`), but `/me`, `GET /ebay/connect` and `DELETE /auth/session` | as ever | 403 `{"detail": "Connect eBay to finish signing up."}`: the page's check asks `/me`, the header says server ok, and the words are said as they are wherever a refusal shows |
+| `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the account card and the eBay block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, the card by the account's name alone. Since 2.14.0 also `"registered"` (false: the two steps in place of the posting screens; not said, registered); since 2.25.0 `"name"` (the person's chosen name), `"email"` and `"owner"` (false: a member, Leave this account in Delete account's place); `"pending"` is no longer read (an account is made at the first code). Since 2.20.0 also `"syncable": {"to": ["ebay", "craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`; `syncableOf`: names trimmed, each once, a list not given is none): the venues customize's Sync to <venue> and the venue blocks' sync buttons go to and from, in `venues`' order; not said: eBay's alone, as before |
 | `POST <pc>/jobs`, a posting (any of the bodies above) with no postings left | as above | 402 `{"detail": "You have used your 3 free postings. Buy postings in Settings."}`: the words under the button, and Buy postings under them |
-| `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown in the Account block; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
-| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected`, `#ebay=failed` or `#ebay=failed:<reason>` (`taken`: that eBay account is another Snap account's, said so; any other reason, the generic line); 503 while the server cannot connect eBay yet: its words in the Account block (and on Finish signing up); 404 (an older server): `Connecting eBay is not available yet.` |
+| `POST <pc>/pay/checkout`, a pack's pill under Buy postings | `{"pack": "10"}` (the pack's `id`) | `{"url": "https://checkout.stripe.com/..."}`, where the page sends the browser; 503 `{"detail": "Payments are not set up yet; contact the developer."}` shown on the account card; 404 (an older server): `Buying postings is not available yet.` Stripe sends the browser back as `#paid=<postings>` or `#paid=cancelled` |
+| `GET <pc>/ebay/connect`, Connect eBay | - | `{"url": "<eBay's consent page>"}`, where the page sends the browser; eBay sends it to the server, which sends it here as `#ebay=connected`, `#ebay=failed` or `#ebay=failed:<reason>` (`taken`: that eBay account is another Snap account's, said so; any other reason, the generic line); 503 while the server cannot connect eBay yet: its words on the account card (and on Finish setting up); 404 (an older server): `Connecting eBay is not available yet.` |
 | `POST <pc>/feedback`, Admin's Feedback **Send** | `{"text": "...", "screen": "goods" / "book" / "admin" / "card", "version": "2.10.0", "job": "<job id>"}`, `job` only when Include my last job is ticked and the page has one | 201 `{"id"}`; an error's `detail` under Send |
 | `GET <pc>/feedback?new=1`, an admin's Admin opened (and once /me says admin while it is), Feedback opened | - | `{"entries": [{"id", "user", "created", "text", "screen", "version", "user_agent", "job": {"id", "action", "venue", "state", "step", "error", "summary"} or null, "reviewed"}...]}`, newest first: the inbox above Feedback's box; 403 (anyone but an admin) or 404 (an older server): no inbox |
 | `PATCH <pc>/feedback/<id>`, an inbox entry's **Reviewed** | `{"reviewed": true}` | 2xx, any body or none: the entry leaves the inbox; a refusal's words under Send (`Not marked reviewed: <detail>.`) |
@@ -1154,13 +1152,22 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <server>/auth/session`, the page opened as `#login=<token>`, no key, no session | `{"token": "<token>"}` | `{"session": "<token>", "user": "<name>", "remember": true/false}`; the session kept by `remember`, then sent as `X-Crosslister-Session` on every call |
 | `POST <server>/auth/session`, the sign-in screen's **Sign in with the code** (2.16.0), to `DEFAULT_SERVER`, no key, no session | `{"email": "anna@example.com", "code": "482913"}` (the Email box as `checkEmail` takes it, the code's six digits with any spaces dropped) | 200 as for a token: the session kept by `remember`, the landing gone; 401 `{"detail": "that code is not right"}` (five tries): its words, the box kept; 410: `That code was used or has expired; send yourself a new link.`; 422 or 400 (a server from before codes): `Codes are not available on this server yet; use the link in the mail.`; 404: as for the link |
 | `DELETE <server>/auth/session`, Settings' Sign out, or an account's Remove from this phone (2.23.0), with that account's `X-Crosslister-Session` | no body | 204: the server forgets the session; not waited for, and any other answer (or none) is ignored: the phone forgets it either way |
-| `DELETE <pc>/me`, Settings' **Delete my account**, confirmed (2.23.0), with the current account's key or session | no body | 204: the account and all of its on the server are gone; the phone drops the account (its sessions went with it) and says `Your account was deleted.`; 409 `{"detail", "code": "ADMIN_ACCOUNT"}` (the admin's) or 409 `{"detail"}` (a job of theirs queued or running): the detail as a sentence under the view, the account kept; 401 `Could not delete the account: wrong key - check Settings.`, no answer `...: cannot reach the server.`, the account kept |
+| `DELETE <pc>/me`, the account card's **Delete account**, confirmed (2.23.0; the owner's alone since 2.25.0: not offered to the admin, a member has Leave this account), with the current account's key or session | no body | 204: the account and all of its on the server are gone; the phone drops the account (its sessions went with it) and says `Your account was deleted.`; 409 `{"detail"}` (a job of theirs queued or running, the admin's) or 403 `{"detail"}` (a member): the detail as a sentence under the view, the account kept; 401 `Could not delete the account: wrong key - check Settings.`, no answer `...: cannot reach the server.`, the account kept |
 | `GET <server>/auth/signup`, the landing on screen (a load with no settings and no session, not from a sign-in link), to `DEFAULT_SERVER`, no key, no session, once | - | `{"open": true/false}`: true words the landing's Sign in `Sign in or create an account` and the sign-in screen's line for a new account; false, a 404 or no answer: as before |
-| `GET <pc>/me/seller`, Settings opened (and after Save and check); every 10 s while the policies are `pending`, three minutes at most | - | `{"address": {"line1", "city", "state", "postal_code"}, "complete": true/false, "ebay": {"connected", "user", "policies": "ready" / "pending" / "failed: <why>" / "none"}}`: the four boxes (prefilled from her eBay account on connect, since 2.16.0: some of it there with `complete` false asks to confirm it, **Looks right**), the foldout open by itself when `complete` is false and eBay connected, the eBay line; 404 (an older server): no Address where you ship from foldout |
-| `PATCH <pc>/me/seller`, **Save address** (or **Looks right**, prefilled) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`: trimmed, the state upper-cased, the ZIP five digits, a ZIP+4 typed sent as its first five since 2.17.0); a box not right sends nothing | the same body as `GET`, the eBay line following its `policies`; 400 `{"detail"}` names a bad field, 409 for the admin (his address is in the server's `.env`): the server's words under Save; 404: `Saving the address is not available yet.` |
-| `GET <pc>/me/wrap`, Settings opened (and after Save and check) (2.19.0) | - | `{"header": {"on": true/false, "text": "...", "venues": ["ebay"]}, "footer": {...}, "available": ["ebay"] or ["ebay", "craigslist"]}` (`wrapOf`: a part not given is off and empty, `available` naming none is eBay): the two rows, their boxes and Apply to:'s pills; 404 (an older server): no rows |
-| `PATCH <pc>/me/wrap`, a row ticked or unticked, **Save**, an Apply to: pill (2.19.0) | one part, only what changed (`wrapBody`): `{"header": {"on": true, "venues": ["ebay"]}}` (the first tick, one venue available), `{"header": {"on": true}}`, `{"footer": {"on": false}}`, `{"header": {"text": "Free local pickup."}}` (trimmed, at most 2000 characters), `{"footer": {"venues": ["ebay", "craigslist"]}}` | the `GET` body; 400 `{"detail"}` for a bad value (a text over 2000 characters): its words on the row's line, the row as it was; 404: `The header and footer are not available yet.` |
-| `POST <pc>/me/wrap/apply`, **Apply to all existing <venue> listings** (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as the sync bar's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`); 400 `{"detail"}`: its words under the button |
+| `GET <pc>/me/address`, Settings opened (and after Save and check) (2.25.0) | - | `{"same": true/false, "shared": {"line1", "city", "state", "zip", "neighborhood"}, "venues": {<venue>: its fields}, "uses": {<venue>: [fields]}, "editable"}` (`addressOf`): the address card at the end of Venues, its tick, its one block or one per venue that uses an address, each venue block's Ships from line; the Venues fold opens by itself when eBay is connected and the shared address is not all there (`ADDRESS_NEEDED`, or Looks right for one prefilled from eBay); 404 (an older server): no card |
+| `PATCH <pc>/me/address`, **Save address** (2.25.0) | `{"same": true, "shared": {...the five}}` or `{"same": false, "venues": {"ebay": {"line1", "city", "state", "zip"}, "craigslist": {"zip", "neighborhood"}}}` (`addressSaveBody`: trimmed, the state upper-cased, the ZIP five digits, a venue's box not right named with it and nothing sent) | the `GET` body; then `/me` again for the eBay policies, every 10 s while `pending`, three minutes at most; 400 `{"detail"}` (its sentence), 409 (a job running): the server's words under Save; 404: `Saving the address is not available yet.` |
+| `PATCH <pc>/me/seller`, **Save address** (or **Looks right**) while a new account is on step 2 of Finish setting up (the route that starts the eBay policy setup, and writes the shared address too) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`) | any; the card read again from `GET /me/address`, then `/me` (registered: the goods screen); refusals as for `/me/address` |
+| `GET <pc>/me/wrap`, Settings opened (and after Save and check) (2.19.0) | - | `{"header": {"on": true/false, "text": "...", "venues": ["ebay"]}, "footer": {...}, "available": ["ebay"] or ["ebay", "craigslist"]}` (`wrapOf`: a part not given is off and empty, `available` naming none is eBay): the card under Posting defaults, each part's box and venue pills under its tick; 404 (an older server): no card |
+| `PATCH <pc>/me/wrap`, a part ticked or unticked, a venue pill, the card's one **Save** (2.19.0; one card since 2.25.0) | only what changed (`wrapBody`, `wrapTextsBody`): `{"header": {"on": true, "venues": ["ebay"]}}` (the first tick, one venue available), `{"footer": {"on": false}}`, `{"footer": {"venues": ["ebay", "craigslist"]}}`, and Save's texts, both parts in one body when both changed (`{"header": {"text": "Hello"}, "footer": {"text": "Bye"}}`, trimmed, at most 2000 characters each); nothing changed sends nothing | the `GET` body; 400 `{"detail"}`: its words on the card's line, a pill as it was; 404: `The header and footer are not available yet.` |
+| `POST <pc>/me/wrap/apply`, **Apply to all existing <venue> listings** (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as a sync button's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`); 400 `{"detail"}`: its words under the button |
+| `GET <pc>/me/people`, Settings opened (2.25.0) | - | `{"you", "owner": {"email", "name", "you"}, "members": [{"email", "name", "added", "signed_in", "you"}]}` (`peopleOf`): the People link's count, the owner's invite box, the People page's cards by `name` (never the email); 404 or 403: no link, no box |
+| `GET <pc>/me/devices` (the owner: `?all=1`), after the people (2.25.0) | - | `{"you", "devices": [{"id", "device", "created", "last_seen", "remember", "this"}]}`, or for `?all=1` `{"you", "people": [{"email", "devices": [...]}]}` (`devicesOf`): each person's devices on their card, "this device" or "last used ..." |
+| `POST <pc>/me/people`, **Invite** (the owner's) | `{"email"}` alone (`inviteBody`; the server names them after its first part) | 202: `Invitation sent`, the box cleared, the people asked again; 403 / 409 `{"detail"}`: its words under Invite |
+| `PATCH <pc>/me/people/me`, **Change name** on your own card | `{"name"}` (`nameBody`: trimmed, inner spaces one, not empty) | 200: the people asked again; 409 `{"detail"}`: its words on the page |
+| `DELETE <pc>/me/people/<email>`, **Remove** on a member (the owner's) | no body | 204: the people asked again (their sessions ended with them); a refusal's words on the page |
+| `DELETE <pc>/me/devices/<id>`, a device's **Sign out** | no body | 204: the people asked again; this device's: the account off the phone as Sign out does, the server told nothing more |
+| `POST <pc>/me/devices/sign-out-others`, **Sign out all other devices** | no body | `{"signed_out": n}`: `Signed out n other devices` on the page |
+| `POST <pc>/me/leave`, **Leave this account** (a member's, on the card or the People page) | no body | 204: the account off the phone, `You left the account.` on the landing (or the next account's card); 409 `{"detail"}`: its words on the card |
 
 The venue buttons open once every photo is `sent` and at least one is marked
 AI; the user note is sent first if it is still being typed. The `sku` comes from the
@@ -1210,23 +1217,20 @@ eBay foldout. Also a foldout for a venue that is not active should be there.
 Empty. With capacity to generate that card from there."
 
 - **Admin**, the header link where Settings was, opens a section above the
-  item (where Settings opened) with two foldouts in customize's shape (**▸**
-  folded, **▾** open), the sync bar and a **Close** at its bottom; while it is
+  item (where Settings opened), no title, with the Inventory, Settings, Feedback and
+  Stats foldouts in customize's shape (**▸** folded, **▾** open) and a **Close** at
+  its bottom; while it is
   open the link says **Snap** and closes it (2.21.0). The goods |
   book switch is hidden while Admin is open, and back on Close. It opens on
-  **Settings** while the address or key is missing or malformed, and otherwise
-  on the **Inventory**, asked afresh each time. Should the server then refuse the
+  **Settings** at its Server fold while the address or key is missing or malformed
+  (the Inventory and Feedback hidden), at Snap Account right after a sign-in made on
+  this phone, at Venues while a new account's eBay or address is still to do, and
+  otherwise on the **Inventory**, asked afresh each time. Should the server then refuse the
   key, the inventory's line says `wrong key - check Settings` and Settings
   opens too.
-- **Settings** is the old Settings card (the address, the key, **Save and
-  check**, the server word at its top), with the **Appearance** chips (Dark |
-  Light | Sync with device, see [Settings](#settings)) above Save and check.
-  Saving while the inventory is open asks for the list again. Under the status
-  line, once there is an account in hand, **Sign out**: that account leaves the
-  phone (a session told to the server first), and the next account kept on the
-  phone takes over, or Admin closes and the landing is back. Under it, since
-  2.23.0, **Accounts on this phone** (the list, **Add account**) and, last and
-  quiet, **Delete my account** (see [Several accounts on one phone](#several-accounts-on-one-phone-2230)).
+- **Settings**: five folds, Snap Account, Venues, Posting defaults, Server and This
+  phone (see [Settings](#settings-2250)); the People page, from Snap Account, takes
+  Admin's place as a listing does.
 - **Inventory**: a **Search** box, small (36 px tall; its words stay 16 px, the
   size under which a phone zooms in on a box), asked 0.4 s after the last
   keystroke, or at once on the keyboard's search key; the line under it
@@ -1308,8 +1312,8 @@ Empty. With capacity to generate that card from there."
   condition), craigslist when one of the craigslist card's fields reads otherwise
   now on a row listed there (its Edit, or an eBay field it is derived from: a + or
   − moves a derived price, a new condition its Craigslist word).
-  That venue's badge is then the same green bubble with the sync bar's to-eBay
-  icon where the tick was, then the venue, a button, not a link (`ebay listed,
+  That venue's badge is then the same green bubble with the sync symbol's to
+  half where the tick was, then the venue, a button, not a link (`ebay listed,
   sync to eBay` to a screen reader). A tap is a job button's: the ring in the
   icon's place and **tap again to cancel** under the words, the push
   (`{"action": "push", "sku", "venue"}`) a second later, asked about every 3 s;
@@ -1317,42 +1321,27 @@ Empty. With capacity to generate that card from there."
   as everywhere. One job per row: the row's other badge and its + and − wait.
   Done, that venue is let go and its badge is the plain listed one again, a
   link; the inventory's line says how it ended (`G1: updated`, or the server's
-  words). A Sync to <venue> from the sync bar that ends done lets every mark of
+  words). A venue block's Sync to <venue> that ends done lets every mark of
   that venue go (the others stay), customize's Sync to <venue> its own, and a
   card's Sync to <venue> its own.
-- **The sync bar**, under the inventory: **Sync from eBay** and **Sync to
-  eBay**, and since 2.20.0 a Sync to (and a Sync from) per venue `/me`'s
-  `syncable` names (see Venue symmetry: **Sync to craigslist** under Sync to
-  eBay), on a smoke sheet under a yellow rule, each with its half of the sync
-  symbol left of the word (Michal, 2026-10-07; 20 px, in the word's colour, on
-  one 24-unit box so the two read as one circle): a to the top arc, left to
-  right, its arrow at the right, in the right column; a from the bottom arc,
-  right to left, its arrow at the left, in the left column. It sticks to the bottom of the screen while Admin is on it
-  (`position: sticky`, so at the end of the list it sits in its own place above
-  Close and never covers the last row). A tap is a job button's, as a venue
-  button's: the ring turns in it at once (in the icon's place) with **tap again
-  to cancel** under the word, and the sync job leaves the phone a second later;
-  its line under the buttons says `queued`, then the server's step, then its
-  summary (`3 listings updated, 10 unchanged, 0 failed`) or its error, asked
-  every 3 s (with more than one venue in the bar, the venue first:
-  `craigslist: queued`); the other buttons are locked until it ends (one sync at
-  a time), and the list is then
-  asked for again (on the way back, when a listing is open). A tap on the
-  pressed one pauses it as a venue button's tap does: it reads **continue**
-  (its icon back, the ring gone), the others stay locked, its red **reset**
-  sits under the buttons, and the line says `paused` (held in its second) or
-  `paused: the server may still be working on it`. continue carries on; reset drops
-  a held press, or tells the server (`DELETE /jobs/<id>`), frees every button at once
-  with `cancelled`, and shows the server's own words once it has stopped; from its
-  `publishing ...` step on a tap only says `too late to cancel: it is
-  publishing`. A sync the server refuses shows the server's words. Closing Admin leaves
-  the job running on the server, still asked about.
+- **The sync buttons** (the sticky sync bar under the inventory until 2.25.0) are in
+  each venue's block under Settings, Venues: **Sync from <venue> ↻** and **Sync to
+  <venue> ↻** on every venue, the inventory's small green badge with the round arrow
+  after the words, grey where `/me`'s `syncable` does not name it or the account lacks
+  the venue, one line saying why. A tap is a job button's, as a venue button's: the
+  ring at once and **tap again to cancel**, the sync job a second later, its line in
+  that venue's block (`queued`, the server's step, the summary `3 listings updated, 10
+  unchanged, 0 failed` or its error, asked every 3 s); the others locked until it ends
+  (one sync at a time), then the list asked again. A tap on the pressed one pauses it
+  (**continue**, its red **reset** under the pair); reset drops a held press or tells
+  the server (`DELETE /jobs/<id>`); from `publishing ...` on a tap only says `too late
+  to cancel: it is publishing`. Closing Admin leaves the job running, still asked about.
 - **A listing tapped** is a page of its own (Michal, 2026-10-07: "Now when I am
   on a card I don't want to see admin or settings above. Looking at an item is
   a new page (at the top it just says back to inventory)"; "The general
   inventory commands should not be present of course when looking at a card"):
-  Admin's title, Settings and its line, the Inventory line, the search and
-  Options, the sync bar and Close all step aside, the page scrolls
+  Settings, Feedback, Stats, the Inventory line, the search and Options and
+  Close all step aside (as they do for the People page), the page scrolls
   to the top, and only **← Back to inventory** sits above the listing. The
   header stays, its link (**Snap** while Admin is open) still closing Admin. Back is the list again
   (on the same list, at the same row, nothing asked again, unless a card
@@ -1583,36 +1572,50 @@ Empty. With capacity to generate that card from there."
   403 or 404 takes the foldout away. Feedback and Stats step aside on a listing's
   own page, as Settings does.
 
-## Settings
+## Settings (2.25.0)
 
-- **The Account block** comes first, when the server's `/me` gives it: whose this phone
-  is, the postings left with **Buy postings**, the eBay it posts to with **Connect eBay**
-  (**eBay connected: <user>** in green once it is, **Reconnect** under it) (see "The account: postings and eBay" above), and under it the **Seller address** (see
-  "Many sellers" above).
-- **Header on every listing** and **Footer on every listing**, under the Account block, each
-  ticked opening its foldout: the box, **Apply to:**'s venue pills, **Save**, and **Apply to all
-  existing listings** per venue (see "A header and a footer on every listing" above); none from a
-  server without `/me/wrap`.
-- **Server address**: `https://<pc>.<tailnet>.ts.net`, the address
-  `tailscale funnel` prints. Only `https://*.ts.net` is accepted, plus
-  `http://127.0.0.1` and `http://localhost` for trying the page on the server
-  itself; the page's CSP allows exactly those, so any other address could only
-  fail silently.
-- **Key**: one of the keys in `CROSSLISTER_KEYS` in the server's `.env`. Michal and
-  his wife may use the same key on two phones.
-- **Appearance** (Michal, 2026-10-06: "In settings I want to have the mode
-  options. Dark, light or sync with device"): three chips above **Save and
-  check**, **Dark** | **Light** | **Sync with device**, the default. A tap
-  applies the look at once and remembers it on this phone; it is not part of
-  Save and check. Dark or Light sets `data-theme` on `<html>` and puts that
-  look's colour on both `theme-color` metas (the status bar: `#0B0B0B` or
-  `#FFFC00`, read from the tags themselves); Sync with device removes the
-  attribute and puts the metas back as `index.html` has them. The saved look
-  is applied first thing on load, before the page renders. In `styles.css`
-  the dark tokens are written twice, `@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) }` for the device and `:root[data-theme="dark"]`
-  for Dark chosen; a test checks the two copies declare the same tokens with
-  the same values, so change both together.
+Settings is five folds of its own (Michal, 2026-10-25: "a two-level fold"; `docs/UI.md`
+is the spec), each closed until the one the person needs opens by itself (Snap Account
+after a sign-in made on this phone, Venues while a new account's eBay or address is still to
+do, Server for I have a key), and the phone remembers which were left open
+(`snap.settings.folds`).
+
+- **Snap Account**: one card per account on this phone, the current one first and outlined:
+  its name, "by key" on a key account, **Buy postings** with the postings left beside it,
+  the packs under it, its line; for the owner the invite box (one label, one box,
+  **Invite**: `POST /me/people {"email"}`); **People on this account ›** with the count; and
+  bottom right **Delete account** (the owner's; none for the admin, **Leave this account**
+  for a member) and **Sign out**. The other accounts' cards have **Switch to this account**
+  (or **Sign in again**) and **Remove from this phone**; **Add account** under them. The
+  People link opens the **People page** in Admin's place: one card per person by the name
+  they chose (never the email), owner or member, you, invited and not signed in yet;
+  **Change name** on your own, **Remove** on a member (the owner's); their devices with
+  **Sign out** each (this device's is a sign-out), **Sign out all other devices** on your
+  own; a member's page ends with **Leave this account**.
+- **Venues**: one block per venue in `/me`'s order: its status line, **Ships from ...**, its
+  actions (Connect eBay or Reconnect; Ask for it in Feedback for a venue the account lacks),
+  **Sync from <venue> ↻** and **Sync to <venue> ↻** always both, grey with one line of
+  reason where the function or the venue is missing, the job's line. Last, the **Address
+  where you ship from** card: **Same address for every venue**, one block or, unticked, one
+  per venue that uses an address (`GET`/`PATCH /me/address`), **Save address**.
+- **Posting defaults**: the defaults every new item starts with (Quantity, Pickup only, the
+  Price slider, Post without asking, Compare with marketplace listings, Fix dark photos),
+  saved on this phone as each changes (`snap.customize.defaults`, `snap.photos.fixdark`);
+  the item's customize box starts from them and has no Save as default any more. Then the
+  **Header and footer on every listing** card: each part's tick, its box and venue pills only
+  under it, one **Save**, **Apply to all existing <venue> listings** per venue ticked.
+- **Server**: a key account's alone (an email account has nothing to type there). **Server
+  address**: `https://<pc>.<tailnet>.ts.net`, the address `tailscale funnel` prints; only
+  `https://*.ts.net` is accepted, plus `http://127.0.0.1` and `http://localhost` for trying
+  the page on the server itself (the page's CSP allows exactly those). **Key**: one of the
+  keys in `CROSSLISTER_KEYS` in the server's `.env`. **Save and check**, its line. The
+  server word is in the top bar alone.
+- **This phone**: **Appearance**, **Dark** | **Light** | **Sync with device** (the default),
+  applied at once and remembered (`data-theme` on `<html>`, both `theme-color` metas; the
+  saved look applied before the page renders; the dark tokens written twice in
+  `styles.css`, for the device and for Dark chosen, which a test keeps identical), and
+  **Install on the home screen** or "Installed on the home screen." Show photos stays in the
+  inventory's Options.
 
 The accounts are stored in `localStorage` on the phone (`snap.accounts`, a JSON
 list of `{id, pc, key, session, user, admin, expired}`, one of a key or a session
@@ -1624,8 +1627,8 @@ or `snap.session` (a session, in `localStorage` with Keep me signed in, else
 `sessionStorage`), are kept as a mirror of the current account and read once, on
 the first load after the update, to carry an older phone's one sign-in into the
 list. Also kept: customize's defaults (`snap.customize.defaults`) and the day the
-home-screen banner was put away (`snap.install.dismissed`); `/me`'s, `/me/seller`'s
-and `/me/wrap`'s answers are never stored, only the name and admin flag `/me` gives
+home-screen banner was put away (`snap.install.dismissed`); `/me`'s, `/me/address`'s,
+`/me/wrap`'s and `/me/people`'s answers are never stored, only the name and admin flag `/me` gives
 each account, for the list. Every storage read and write is wrapped, so a private
 window or blocked site data only means Settings are not remembered.
 
