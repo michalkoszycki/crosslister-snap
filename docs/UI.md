@@ -155,7 +155,8 @@ saved), and the phone remembers which were left open.
    "invited, not signed in yet" until their first sign-in, **Change name** on your own,
    **Remove** on a member (owner only); under it their signed-in **devices**: the device
    as the browser names it ("iPhone, Safari"), "this device" or "last used …", **Sign
-   out** per device; on your own card **Sign out all other devices**. A member sees only
+   out** per device (this device's is a sign-out); on your own card **Sign out all other
+   devices** while there is another device of yours (a key has no sessions). A member sees only
    their own devices; the owner sees everyone's. The invited person gets a mail with a
    link and a code that sign them into this account, not a new one, and can change their
    name afterwards. For a member the page ends with **Leave this account**, and the
@@ -193,7 +194,9 @@ saved), and the phone remembers which were left open.
    first: "The defaults every posting starts with. Each can be adjusted for one posting
    at the time of posting, through the customize menu on the Snap page." Then the
    defaults: Quantity, Pickup only, the Price
-   slider, Post without asking, Compare with marketplace listings, Fix dark photos. Then
+   slider, Post without asking, Compare with marketplace listings, Fix dark photos, each
+   saved as it changes; kept on this phone for now (the server has no place for them yet,
+   so they do not follow to a new phone: rule 6's exception until it does). Then
    **Header and footer on every listing** as one card: Header on/off, and only once it is
    ticked its text box and one pill per venue the account has under it (Michal,
    2026-10-26: "choice of venue only makes sense after"); Footer the same; **Save**, and
@@ -271,4 +274,6 @@ controls disabled, the row edits refused with the server's words); **an expired 
   settled what the text left open: no reason line under the sync buttons where the status
   line already says why; eBay's Connect eBay pill only while it is not connected (the
   status line says "Connected as …" after); Inventory and Feedback shown to a new account
-  (4.3 and section 5 over the older line in 4.5).
+  (4.3 and section 5 over the older line in 4.5); Sign out all other devices only while
+  there is another device; the Posting defaults kept on the phone until the server keeps
+  them.
