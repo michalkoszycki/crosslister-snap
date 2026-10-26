@@ -1129,7 +1129,7 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .link.sign-out { min-height: 44px; padding: 10px 0; color: var(--bad); }
 /* the current account's name in the top bar, after the wordmark (docs/UI.md, 2026-10-25):
    muted, regular, cut off with an ellipsis before the server word */
-.header-user { flex: 1 1 auto; min-width: 0; font-size: 18px; font-weight: 400; letter-spacing: -0.01em; color: var(--head-name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-user { flex: 1 1 0; min-width: 0; font-size: 18px; font-weight: 400; letter-spacing: -0.01em; color: var(--head-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .header-user[hidden] { display: none; }
 
 /* Settings as five folds (Michal, 2026-10-25: "a two-level fold"): each heading larger than

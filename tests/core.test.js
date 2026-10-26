@@ -2488,7 +2488,7 @@ test("the price grade and auto-post are kept for a reload only when not the defa
 // "Yes keep comparables on".
 
 test("Compare with eBay listings: on by default; unticked, comps: false in every body and said under both buttons", () => {
-    assert.equal(COMPS_NOTE, "without eBay comparisons");
+    assert.equal(COMPS_NOTE, "without marketplace comparisons");
     assert.equal(customizeBody({ ...initialCustomize(), comps: true }).comps, undefined, "never comps: true");
     assert.deepEqual(customizeBody({ ...initialCustomize(), comps: false }), { comps: false });
     assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "no" }), {}, "only false is false");
@@ -2506,10 +2506,10 @@ test("Compare with eBay listings: on by default; unticked, comps: false in every
         comps: false,
     });
     assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), { sku: "B-9", venue: "craigslist", comps: false });
-    assert.equal(venueIdleNote(s, "ebay"), "without eBay comparisons");
-    assert.equal(venueIdleNote(s, "craigslist"), "without eBay comparisons");
+    assert.equal(venueIdleNote(s, "ebay"), "without marketplace comparisons");
+    assert.equal(venueIdleNote(s, "craigslist"), "without marketplace comparisons");
     const all = reduce(reduce(s, { type: "setPricing", grade: 2 }), { type: "setPickupOnly", on: true });
-    assert.equal(venueIdleNote(all, "ebay"), "pickup only · fair price · without eBay comparisons");
+    assert.equal(venueIdleNote(all, "ebay"), "pickup only · fair price · without marketplace comparisons");
 
     // fixed while a job is on its way, reset by NEXT
     const going = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });

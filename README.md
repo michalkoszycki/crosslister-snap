@@ -771,7 +771,7 @@ his admin key, and a second email account, as a stranger would.
   body says `"comps": false` and it does not. Before a press, the line under each button says what
   customize changed, joined with ` · `: `pickup only` (under ebay only), the
   grade when it is not a quick sale (`fair price`, `higher end`), `saved, not
-  posted` while that box is unticked and `without eBay comparisons` while this
+  posted` while that box is unticked and `without marketplace comparisons` while this
   one is unticked, e.g. `pickup only · fair price · saved, not posted`, so it is
   plain it took. All five go with either button, the second one's too (the server
   updates the saved row first), and lock while a job is on its way. Then **Fix dark

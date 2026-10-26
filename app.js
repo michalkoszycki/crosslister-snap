@@ -5058,6 +5058,8 @@ function syncNodes(direction, venue) {
     const key = `${direction} ${venue}`;
     if (!syncDrawn.nodes.has(key)) {
         const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-${direction}`, false, () => {
+            // a grey one is disabled; should a tap reach it all the same, it does nothing
+            if (!pressed(sync, key) && syncReason(venue, direction, me, ebayNow())) return;
             startSync(direction, venue).catch(() => {});
         });
         btn.id = `sync-${direction}-${venue}`;

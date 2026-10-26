@@ -492,20 +492,23 @@ export function syncReason(venue, direction, me, ebay) {
     if (!venueAllowed(me, venue)) return NOT_AVAILABLE;
     if (venue === "ebay" && ebay && !ebay.connected) return CONNECT_FIRST;
     if (syncVenues(me, direction).includes(venue)) return "";
-    if (venue === "poshmark") return "Poshmark sync is not built yet.";
-    // in a sentence the venue is capitalised (docs/UI.md's vocabulary): eBay, Craigslist
-    const name = venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
+    const name = sentenceVenue(venue);
     return direction === "from" ? `${name} cannot be read back yet.` : `${name} cannot be written to yet.`;
+}
+
+/** A venue in a sentence, capitalised (docs/UI.md's vocabulary): eBay, Craigslist, Poshmark. */
+function sentenceVenue(venue) {
+    return venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
 }
 
 /** A grey sync button's reason in the eBay block while eBay is not connected. */
 export const CONNECT_FIRST = "Connect eBay first";
 
 /**
- * The one muted line under a venue block's pair of sync buttons where either is grey: the
- * from button's reason first, else the to button's; "" when both work, and "" where the
- * block's own status line says it already (a venue the account lacks, an eBay not connected:
- * the spec's "less is more", Michal 2026-10-26).
+ * The one muted line under a venue block's pair of sync buttons where one is grey: its reason
+ * (syncReason), or "<Venue> sync is not built yet." where both are; "" when both work, and ""
+ * where the block's own status line says it already (a venue the account lacks, an eBay not
+ * connected: the spec's "less is more", Michal 2026-10-26).
  * @param {string} venue
  * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
  * @param {Ebay|null} ebay
@@ -513,7 +516,10 @@ export const CONNECT_FIRST = "Connect eBay first";
  */
 export function syncNote(venue, me, ebay) {
     if (!venueAllowed(me, venue) || (venue === "ebay" && ebay && !ebay.connected)) return "";
-    return syncReason(venue, "from", me, ebay) || syncReason(venue, "to", me, ebay);
+    const from = syncReason(venue, "from", me, ebay);
+    const to = syncReason(venue, "to", me, ebay);
+    if (from && to) return `${sentenceVenue(venue)} sync is not built yet.`;
+    return from || to;
 }
 
 /**
@@ -2105,7 +2111,7 @@ export const QUANTITY_HINT = "Quantity (under customize) must be a whole number,
 export const PICKUP_NOTE = "pickup only";
 
 /** Under both buttons, before the press, once Compare with eBay listings is unticked. */
-export const COMPS_NOTE = "without eBay comparisons";
+export const COMPS_NOTE = "without marketplace comparisons";
 
 /**
  * This item's customize: a book keeps its own in the book slice, goods at the top.
@@ -2143,7 +2149,7 @@ export function customizeBody(customize) {
  * The line under a venue button before it is pressed: what customize changed,
  * so he sees it took, joined with " · ": "pickup only" under ebay once ticked
  * (craigslist is pickup anyway), the price grade when it is not a quick sale,
- * "saved, not posted" while auto-post is off, and "without eBay comparisons" once
+ * "saved, not posted" while auto-post is off, and "without marketplace comparisons" once
  * unticked. Nothing when left alone.
  * @param {SnapState} state
  * @param {string} venue
