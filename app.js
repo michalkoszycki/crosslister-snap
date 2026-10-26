@@ -935,6 +935,8 @@ function takeUp() {
     if (!el.settings.hidden) {
         fillSettings();
         el.settingsStatus.textContent = "";
+        // a key account has its Server fold, an email account none
+        renderSettingsFolds();
     }
     if (!el.admin.hidden) {
         admin.asked += 1;
@@ -2603,7 +2605,6 @@ function toggleFold(key) {
     folds[key] = !folds[key];
     writeJson("localStorage", FOLDS_KEY, folds);
     renderSettingsFolds();
-    if (key === "account" && folds.account) loadPeople().catch(() => {});
 }
 
 /** A fold opened by itself (the one the person needs now), Settings open with it, Admin too. */
@@ -5920,7 +5921,8 @@ function showPeople(on) {
  * The People page: one card per person, the owner first (peopleOf), its name, its words
  * (personWords), Change name on your own (the box and its Save while open), Remove on a
  * member for the owner; under each their devices (deviceLine), Sign out on each, and Sign
- * out all other devices on your own card; Leave this account at the end for a member.
+ * out all other devices on your own card while there is another; Leave this account at the
+ * end for a member.
  */
 function renderPeople() {
     const info = people.info;
@@ -5997,7 +5999,8 @@ function renderPeople() {
                 }
                 li.append(list);
             }
-            if (p.you) {
+            // only where there is another device of yours to sign out (a key has no sessions)
+            if (p.you && devices.some((d) => !d.thisDevice)) {
                 const others = actionButton("Sign out all other devices", "link person-action", people.busy, () => {
                     signOutRest().catch(() => {});
                 });

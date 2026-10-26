@@ -10793,3 +10793,244 @@ test("Delete account: refused (a job of theirs running, a member's 403), a 401 o
         if (status === 0) assert.equal(server(nodes), "server off (bad)");
     }
 });
+
+// --- the people on an account and their devices (Michal, 2026-10-25: "allow two users to join
+// the same family group", "let it be a simple separate page", "log out all other devices") ------
+
+/** An ISO time `days` ago, for a device's last use. */
+function daysAgo(days) {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/** The owner's account, its two people and their devices, as the server's people routes answer them. */
+function familyPc({ you = "anna@example.com" } = {}) {
+    const owner = you === "anna@example.com";
+    const pc = signinPc({
+        me: { user: "anna", name: owner ? "anna" : "Bob", email: you, owner, admin: false, craigslist: false, venues: ["ebay"], credits: { free_left: 2, bought_left: 0 }, packs: [] },
+    });
+    pc.people = {
+        you,
+        owner: { email: "anna@example.com", name: "anna", you: owner },
+        members: [{ email: "bob@example.com", name: "Bob", added: "2026-10-25T10:00:00", signed_in: true, you: !owner }],
+    };
+    pc.you = you;
+    pc.devices = {
+        "anna@example.com": [
+            { id: "d1", device: "iPhone, Safari", created: daysAgo(3), last_seen: daysAgo(0), remember: true, this: owner },
+            { id: "d2", device: "Android, Chrome", created: daysAgo(9), last_seen: daysAgo(1.5), remember: true, this: false },
+        ],
+        "bob@example.com": [{ id: "d3", device: "Mac, Safari", created: daysAgo(2), last_seen: daysAgo(owner ? 4.2 : 0), remember: true, this: !owner }],
+    };
+    return pc;
+}
+
+/** The People page's cards as the screen shows them: name, words, actions, devices, and whether Sign out all other devices is there. */
+function peopleCards(nodes) {
+    return nodes.get("people-list").children.map((li) => {
+        const kid = (cls) => li.children.find((k) => k.className === cls);
+        const actions = kid("person-actions");
+        const list = kid("device-list");
+        return {
+            name: li.children[0].textContent,
+            words: li.children[1].textContent,
+            actions: actions ? actions.children.map((b) => b.textContent) : [],
+            devices: list ? list.children.map((row) => row.children[0].textContent) : [],
+            others: li.children.some((k) => k.id === "people-signout-others"),
+        };
+    });
+}
+
+/** Admin, Settings, Snap Account open: where the invite box and the People link are. */
+async function openAccountFold(nodes) {
+    await openSettings(nodes);
+    if (nodes.get("fold-account").hidden) nodes.get("fold-account-toggle").fire("click");
+    await settle();
+}
+
+test("people, the owner's: the invite box (one label, one box, one button), the People link with its count, the People page by name with devices", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = familyPc();
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    win.scrollTo = () => {};
+    assert.deepEqual(pc.peopleAsks, [], "not asked before Settings opens");
+    await openAccountFold(nodes);
+    assert.deepEqual(pc.peopleAsks, ["session sess-1"]);
+    assert.deepEqual(pc.devicesAsks, ["session sess-1 ?all=1"], "the owner sees everyone's devices");
+    assert.equal(nodes.get("invite").hidden, false);
+    assert.equal(nodes.get("account-people").hidden, false);
+    assert.equal(nodes.get("people-count").textContent, "2 people");
+    assert.ok(!pc.calls.some((c) => c.includes("/me/")), "counted apart");
+
+    // Invite: their email alone (Michal, 2026-10-26: "don't ask for their name. just email is fine")
+    nodes.get("invite-email").value = "carol";
+    nodes.get("invite-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("invite-status").textContent, "That is not an email address.");
+    assert.deepEqual(pc.invites, []);
+    pc.inviteRefuse = { status: 409, detail: "carol@example.com already belongs to an account" };
+    nodes.get("invite-email").value = "carol@example.com";
+    nodes.get("invite-send").fire("click");
+    await settle();
+    assert.equal(nodes.get("invite-status").textContent, "carol@example.com already belongs to an account");
+    pc.inviteRefuse = null;
+    nodes.get("invite-send").fire("click");
+    assert.equal(nodes.get("invite-status").textContent, "Inviting...");
+    assert.equal(nodes.get("invite-send").disabled, true);
+    await settle();
+    assert.deepEqual(pc.invites.at(-1), { body: { email: "carol@example.com" }, auth: "session sess-1", type: "application/json" });
+    assert.equal(nodes.get("invite-status").textContent, "Invitation sent");
+    assert.equal(nodes.get("invite-email").value, "", "the box cleared");
+    assert.equal(nodes.get("people-count").textContent, "3 people");
+
+    // the People page, in Admin's place: Admin's own folds and Close out of sight
+    nodes.get("account-people").fire("click");
+    await settle();
+    assert.equal(nodes.get("people").hidden, false);
+    for (const id of ["inventory-toggle", "settings-toggle", "settings", "feedback-toggle", "admin-close"]) assert.equal(nodes.get(id).hidden, true, id);
+    assert.deepEqual(peopleCards(nodes), [
+        { name: "anna", words: "owner · you", actions: ["Change name"], devices: ["iPhone, Safari · this device", "Android, Chrome · last used yesterday"], others: true },
+        { name: "Bob", words: "member", actions: ["Remove"], devices: ["Mac, Safari · last used 4 days ago"], others: false },
+        { name: "carol", words: "member · invited, not signed in yet", actions: ["Remove"], devices: [], others: false },
+    ]);
+    // people by their chosen name, never by email (Michal, 2026-10-25)
+    assert.ok(!JSON.stringify(peopleCards(nodes)).includes("@"), "no email on the page");
+    assert.equal(nodes.get("people-leave").hidden, true, "the owner does not leave: Delete account is hers");
+
+    // Change name: the box with the name, Save; empty is refused
+    let card = nodes.get("people-list").children[0];
+    card.children.find((k) => k.className === "person-actions").children[0].fire("click");
+    const box = findIn(nodes.get("people-list"), "person-name-input");
+    assert.equal(box.value, "anna");
+    box.value = "   ";
+    findIn(nodes.get("people-list"), "person-name-save").fire("click");
+    await settle();
+    assert.equal(nodes.get("people-status").textContent, "Enter a name.");
+    assert.deepEqual(pc.renames, []);
+    findIn(nodes.get("people-list"), "person-name-input").value = " Anna  K ";
+    findIn(nodes.get("people-list"), "person-name-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.renames, [{ body: { name: "Anna K" }, auth: "session sess-1", type: "application/json" }]);
+    assert.equal(peopleCards(nodes)[0].name, "Anna K");
+    assert.equal(findIn(nodes.get("people-list"), "person-name-input"), undefined, "the box closes");
+
+    // Sign out all other devices: this one kept, the line says how many
+    findIn(nodes.get("people-list"), "people-signout-others").fire("click");
+    await settle();
+    assert.deepEqual(pc.othersOut, ["session sess-1"]);
+    assert.equal(nodes.get("people-status").textContent, "Signed out 1 other device");
+    assert.deepEqual(peopleCards(nodes)[0].devices, ["iPhone, Safari · this device"]);
+    assert.equal(peopleCards(nodes)[0].others, false, "no other device left to sign out");
+
+    // the owner signs out a member's device, then removes the member
+    findIn(nodes.get("people-list"), "device-d3-signout").fire("click");
+    await settle();
+    assert.deepEqual(pc.signedOut, ["d3"]);
+    assert.deepEqual(peopleCards(nodes)[1].devices, []);
+    card = nodes.get("people-list").children[1];
+    card.children.find((k) => k.className === "person-actions").children[0].fire("click");
+    assert.equal(nodes.get("people-status").textContent, "Removing Bob...");
+    await settle();
+    assert.deepEqual(pc.removed, ["bob@example.com"]);
+    assert.deepEqual(peopleCards(nodes).map((p) => p.name), ["Anna K", "carol"]);
+    assert.equal(nodes.get("people-count").textContent, "2 people");
+
+    // Back to settings: Admin's page again, Settings as it was
+    nodes.get("people-back").fire("click");
+    assert.equal(nodes.get("people").hidden, true);
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("fold-account").hidden, false);
+    assert.equal(nodes.get("admin-close").hidden, false);
+
+    // this device's Sign out is a sign-out: the account off the phone, the landing
+    nodes.get("account-people").fire("click");
+    await settle();
+    findIn(nodes.get("people-list"), "device-d1-signout").fire("click");
+    await settle();
+    assert.deepEqual(pc.signedOut, ["d3", "d1"]);
+    assert.deepEqual(pc.signouts, [], "its session ended with it: nothing more to tell");
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("people").hidden, true);
+    assert.deepEqual(kept(local), []);
+});
+
+test("people, a member's: no invite, no Delete account; their own devices only; Leave this account, on the card and at the end of the page", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = familyPc({ you: "bob@example.com" });
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const { nodes, win } = await loadPage({ local, fetchImpl: pc.fetch });
+    win.scrollTo = () => {};
+    await openAccountFold(nodes);
+    assert.deepEqual(pc.devicesAsks, ["session sess-1 "], "their own devices: no ?all=1");
+    assert.equal(nodes.get("invite").hidden, true, "inviting is the owner's");
+    assert.equal(nodes.get("people-count").textContent, "2 people");
+    assert.equal(nodes.get("settings-delete").hidden, true);
+    assert.equal(nodes.get("account-leave").hidden, false);
+    nodes.get("account-people").fire("click");
+    await settle();
+    assert.deepEqual(peopleCards(nodes), [
+        { name: "anna", words: "owner", actions: [], devices: [], others: false },
+        { name: "Bob", words: "member · you", actions: ["Change name"], devices: ["Mac, Safari · this device"], others: false },
+    ]);
+    assert.equal(nodes.get("people-leave").hidden, false);
+
+    // refused (a key cannot leave, the owner cannot): the server's words, the account stays
+    pc.leaveRefuse = "a key is the account's own: it cannot leave";
+    nodes.get("people-back").fire("click");
+    nodes.get("account-leave").fire("click");
+    await settle();
+    assert.equal(nodes.get("delete-status").textContent, "a key is the account's own: it cannot leave");
+    assert.equal(nodes.get("landing").hidden, true);
+    // left: the account off the phone, the landing says so
+    pc.leaveRefuse = null;
+    nodes.get("account-people").fire("click");
+    await settle();
+    nodes.get("people-leave").fire("click");
+    await settle();
+    assert.deepEqual(pc.leaves, ["session sess-1", "session sess-1"]);
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("landing-status").textContent, "You left the account.");
+    assert.deepEqual(kept(local), []);
+    assert.deepEqual(pc.signouts, [], "their sessions ended with it");
+});
+
+test("Settings' five folds: closed until one is needed, each remembered on this phone; This phone holds the look and Install; the name in the top bar", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    // 18 px regular in the header's muted grey, cut off with an ellipsis before the server word
+    assert.match(css, /\.header-user \{ flex: 1 1 0; min-width: 0; font-size: 18px; font-weight: 400;[^}]*color: var\(--head-muted\);[^}]*text-overflow: ellipsis; white-space: nowrap; \}/);
+    assert.match(html, /<span class="wordmark-snap">\$nap<\/span><\/span>\s*<\/h1>\s*(<!--[\s\S]*?-->\s*)?<span id="header-user" class="header-user" hidden><\/span>\s*<div class="header-right">/);
+    const local = memoryStore(GOOD);
+    const pc = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    const open = () => ["account", "venues", "posting", "server", "phone"].filter((k) => !nodes.get(`fold-${k}`).hidden);
+    assert.deepEqual(open(), [], "five closed headings");
+    nodes.get("fold-phone-toggle").fire("click");
+    nodes.get("fold-posting-toggle").fire("click");
+    assert.deepEqual(open(), ["posting", "phone"]);
+    assert.equal(nodes.get("fold-phone-toggle").textContent, "▾ This phone");
+    assert.equal(nodes.get("fold-phone-toggle").attrs["aria-expanded"], "true");
+    nodes.get("fold-posting-toggle").fire("click");
+    assert.deepEqual(JSON.parse(local.getItem("snap.settings.folds")), { account: false, venues: false, posting: false, server: false, phone: true });
+    // This phone: the look, and not installed in a browser tab
+    assert.equal(nodes.get("phone-installed").hidden, true);
+    // a reload: the fold left open is open again
+    const again = await loadPage({ local, fetchImpl: pc.fetch });
+    await openSettings(again.nodes);
+    assert.deepEqual(["account", "venues", "posting", "server", "phone"].filter((k) => !again.nodes.get(`fold-${k}`).hidden), ["phone"]);
+    // from the home screen: Installed on the home screen, no Install
+    const home = await loadPage({ local, fetchImpl: pc.fetch, display: "standalone" });
+    await openSettings(home.nodes);
+    assert.equal(home.nodes.get("phone-installed").hidden, false);
+    assert.equal(home.nodes.get("phone-install").hidden, true);
+    // a venue the account lacks: Ask for it in Feedback opens Feedback
+    const seller = fakePc({ me: { ...ACCOUNT_ME, craigslist: false, venues: ["ebay"] } });
+    const hers = await loadPage({ local: memoryStore(GOOD), fetchImpl: seller.fetch });
+    await openSettings(hers.nodes);
+    assert.equal(hers.nodes.get("venue-craigslist-ask").hidden, false);
+    assert.equal(hers.nodes.get("venue-poshmark-ask").hidden, false);
+    assert.equal(hers.nodes.get("feedback").hidden, true);
+    hers.nodes.get("venue-craigslist-ask").fire("click");
+    assert.equal(hers.nodes.get("feedback").hidden, false);
+});
