@@ -135,8 +135,10 @@ saved), and the phone remembers which were left open.
    **Add account**, which returns to the landing without dropping the others.
 
    On the current card, for the owner, the invite box: "Invite someone to this account",
-   their name, their email, **Invite** (Michal, 2026-10-25: "the invite someone section
-   should return here, above the people on this account"); then, for everyone, one link:
+   their email alone, **Invite** (Michal, 2026-10-25: "the invite someone section should
+   return here, above the people on this account", "don't ask for their name. just email
+   is fine … simple"); the person's name starts as the first part of their email and
+   **Change name** alters it; then, for everyone, one link:
    **People on this account ›** with the count ("2 people", "just you"). It opens the
    **People page** (Michal, 2026-10-25: "let it be a
    simple separate page"), its own screen in Admin's place with **← Back to settings** at
@@ -159,21 +161,21 @@ saved), and the phone remembers which were left open.
 2. **Venues.** One block per venue, same shape: the venue's name; its status line
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
-   start posting"); one muted line "Ships from …" showing the address that venue uses
-   (set under Posting); its actions (eBay: Connect / Reconnect; Craigslist and Poshmark:
-   "Ask for it in Feedback" when not available); its sync buttons (**Sync from eBay**,
-   **Sync to eBay**, **Sync to craigslist**; a venue that cannot sync says why in one
-   muted line).
-3. **Posting.** First the **Address where you ship from** (Michal, 2026-10-25: "move
-   address you ship from to Posting … Address can be same for all venues, but also if
-   unchecked it would split into addresses per venue"): a checkbox **Same address for
-   every venue**, ticked by default, above one address block (street, city, state, ZIP)
-   and **Save address**. Unticked, the block splits into one per venue that uses an
-   address, each prefilled from the shared one: eBay the full address, Craigslist the ZIP
-   and the neighbourhood, Poshmark a line saying it uses none. Ticking it again keeps the
-   eBay address as the shared one (it is the one eBay prefilled). The page reads and
-   writes `GET`/`PATCH /me/address` (`same`, `shared`, `venues`, `uses`). Then the
-   defaults every new item starts with: Quantity, Pickup only, the Price
+   start posting"); one muted line "Ships from …" showing the address that venue uses;
+   its actions (eBay: Connect / Reconnect; Craigslist and Poshmark: "Ask for it in
+   Feedback" when not available); its sync buttons (**Sync from eBay ↻**, **Sync to
+   eBay ↻**, **Sync to craigslist ↻**, the inventory's small green button with the
+   round arrow after the words, everywhere a sync button appears, Michal 2026-10-26; a
+   venue that cannot sync says why in one muted line).
+   Last, after the venue blocks, the **Address where you ship from** card (Michal,
+   2026-10-26: "the address box should be at the end of venues"): a checkbox **Same
+   address for every venue**, ticked by default, above one address block (street, city,
+   state, ZIP) and **Save address**. Unticked, the block splits into one per venue that
+   uses an address, each prefilled from the shared one: eBay the full address, Craigslist
+   the ZIP and the neighbourhood, Poshmark a line saying it uses none. Ticking it again
+   keeps the eBay address as the shared one (it is the one eBay prefilled). The page
+   reads and writes `GET`/`PATCH /me/address` (`same`, `shared`, `venues`, `uses`).
+3. **Posting.** The defaults every new item starts with: Quantity, Pickup only, the Price
    slider, Post without asking, Compare with marketplace listings, Fix dark photos. Then
    **Header and footer on every listing** as one card: Header on/off with its text and one
    pill per venue the account has, Footer the same, **Save**, and one **Apply to all

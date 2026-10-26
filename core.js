@@ -368,21 +368,24 @@ export function signinNote({ isIos, standalone }) {
  * craigslist or admin the server does not say is as today (craigslist on, admin off); no
  * credits, packs or eBay from an older server is no Account block to speak of. Poshmark the
  * other way round (Michal, 2026-10-11: "make it available only to me"): on only when the
- * server says `"poshmark": true`, since a server that does not say it cannot post there. A sign-up
- * still under way (Michal, 2026-10-08) says `pending` (signed in by email, eBay not yet
- * connected: no user yet, only the email) or, connected, `registered` false until the
- * address is in; a server that says neither is an account as today, pending nothing. Since
- * 2.20.0 `syncable` (syncableOf), the venues the account may sync to and from; null from a
- * server that does not say, which syncs eBay alone (syncVenues).
+ * server says `"poshmark": true`, since a server that does not say it cannot post there. An
+ * account made at the first sign-in code (Michal, 2026-10-25) says `registered` false until
+ * eBay is connected and the address is in; a server that does not say is an account as today.
+ * Since 2.20.0 `syncable` (syncableOf), the venues the account may sync to and from; null from
+ * a server that does not say, which syncs eBay alone (syncVenues). Since 2.25.0 `name` (the
+ * person's chosen name, shown on the People page), `email` and `owner` (false for a member of
+ * someone's account: Leave this account in place of Delete account; not said is the owner).
  * @param {unknown} answer
- * @returns {{user:string, email:string, admin:boolean, craigslist:boolean, poshmark:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, pending:boolean, registered:boolean, syncable:Syncable|null} | null}
+ * @returns {{user:string, name:string, email:string, owner:boolean, admin:boolean, craigslist:boolean, poshmark:boolean, venues:string[], credits:Credits|null, packs:Pack[], ebay:Ebay|null, registered:boolean, syncable:Syncable|null} | null}
  */
 export function meOf(answer) {
     if (!answer || typeof answer !== "object") return null;
     const a = /** @type {Record<string, unknown>} */ (answer);
     return {
         user: typeof a.user === "string" ? a.user : "",
+        name: plain(a.name),
         email: plain(a.email),
+        owner: a.owner !== false,
         admin: a.admin === true,
         craigslist: a.craigslist !== false,
         poshmark: a.poshmark === true,
@@ -390,7 +393,6 @@ export function meOf(answer) {
         credits: creditsOf(a.credits),
         packs: (Array.isArray(a.packs) ? a.packs : []).map(packOf).filter((p) => p !== null),
         ebay: ebayOf(a.ebay),
-        pending: a.pending === true,
         registered: a.registered !== false,
         syncable: syncableOf(a.syncable),
     };
@@ -453,13 +455,14 @@ export function syncButtons(me) {
 }
 
 /**
- * A sync bar button's word, after its icon: "Sync from eBay", "Sync to craigslist".
+ * A sync button's word, before its round arrow: "Sync from ebay", "Sync to craigslist" (the
+ * venue lowercase, as on every button and chip: Michal, 2026-10-26).
  * @param {"from"|"to"} direction
  * @param {string} venue
  * @returns {string}
  */
 export function syncWord(direction, venue) {
-    return `Sync ${direction} ${venueName(venue)}`;
+    return `Sync ${direction} ${venue}`;
 }
 
 /**
@@ -476,54 +479,61 @@ export function syncJob(me, direction, venue) {
 }
 
 /**
- * The sync bar's line for its job: the venue first when the bar holds more than one venue's
- * buttons (`many`), "craigslist: 3 listings updated, 10 unchanged, 0 failed"; as it is
- * otherwise, and for a line no press made (`venue` "").
- * @param {{text:string, kind:string} | null} line busyLine's
- * @param {string} venue the venue last pressed
- * @param {boolean} many
- * @returns {{text:string, kind:string} | null}
+ * Why a venue block's sync button is grey (Michal, 2026-10-26: every block shows both, "Sync
+ * from <venue>" and "Sync to <venue>"; one whose function does not exist, or whose venue the
+ * account lacks, is greyed with its reason): "" when it works.
+ * @param {string} venue
+ * @param {"from"|"to"} direction
+ * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @param {Ebay|null} ebay /me's
+ * @returns {string}
  */
-export function syncBarLine(line, venue, many) {
-    return line && many && venue ? { ...line, text: `${venueName(venue)}: ${line.text}` } : line;
+export function syncReason(venue, direction, me, ebay) {
+    if (!venueAllowed(me, venue)) return NOT_AVAILABLE;
+    if (venue === "ebay" && ebay && !ebay.connected) return CONNECT_FIRST;
+    if (syncVenues(me, direction).includes(venue)) return "";
+    if (venue === "poshmark") return "Poshmark sync is not built yet.";
+    const name = venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
+    return direction === "from" ? `${name} cannot be read back yet.` : `${name} cannot be written to yet.`;
 }
 
-/** What a server answers every keyed route but /me, Connect eBay and Sign out while a sign-up waits for eBay (403). */
-export const SIGNUP_UNFINISHED = "Connect eBay to finish signing up.";
+/** A grey sync button's reason in the eBay block while eBay is not connected. */
+export const CONNECT_FIRST = "Connect eBay first";
 
 /**
- * Where a sign-up stands (Michal, 2026-10-08): "ebay" while the account is pending (step 1,
- * Connect eBay), "address" once eBay made it a real account but the address is not in yet
- * (step 2, Settings' Seller address), "" once registered (the goods screen), and for no /me.
- * @param {{user:string, pending:boolean, registered:boolean} | null} me meOf's
+ * The one muted line under a venue block's pair of sync buttons where either is grey: the
+ * from button's reason first, else the to button's; "" when both work.
+ * @param {string} venue
+ * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
+ * @param {Ebay|null} ebay
+ * @returns {string}
+ */
+export function syncNote(venue, me, ebay) {
+    return syncReason(venue, "from", me, ebay) || syncReason(venue, "to", me, ebay);
+}
+
+/**
+ * Where a new account stands (Michal, 2026-10-25: the account is made at the first code, so
+ * there is no pending person): "ebay" while /me says `registered` false and eBay is not
+ * connected (step 1, Connect eBay), "address" once it is but the address is not in yet (step
+ * 2, the address under Settings, Posting), "" once registered (the goods screen), and for no /me.
+ * @param {{user:string, registered:boolean, ebay:Ebay|null} | null} me meOf's
  * @returns {""|"ebay"|"address"}
  */
 export function signupStep(me) {
-    if (!me) return "";
-    if (me.pending) return "ebay";
-    return me.user && !me.registered ? "address" : "";
+    if (!me || !me.user || me.registered) return "";
+    return me.ebay && me.ebay.connected ? "address" : "ebay";
 }
 
 /**
- * The Account block's first line while a sign-up waits for eBay: the email it was signed in
- * with, and that it is not an account yet.
- * @param {string} email
- * @returns {string}
- */
-export function pendingLine(email) {
-    return email ? `Signed in as ${email}, not registered yet` : "Signed in, not registered yet";
-}
-
-/**
- * A line saying what could not be done and why ("Could not read the inventory: <why>."), but
- * a sign-up's refusal (403, SIGNUP_UNFINISHED) said as the server says it, the one thing to do.
+ * A line saying what could not be done and why ("Could not read the inventory: <why>.").
  * @param {string} lead
  * @param {number} status the PcError's
  * @param {string} message errorText's words
  * @returns {string}
  */
 export function refusalLine(lead, status, message) {
-    return status === 403 && message === SIGNUP_UNFINISHED ? message : `${lead}: ${message}.`;
+    return `${lead}: ${message}.`;
 }
 
 /** A whole count the server gives, or null for anything that is not one. */
@@ -560,15 +570,14 @@ function ebayOf(x) {
 }
 
 /**
- * The Account block's first line: whose this phone is ("Signed in as anna" for a sign-in's
- * session, "Key: michal" for a key); "" when /me names nobody.
- * @param {string} user
- * @param {boolean} bySession
+ * The small line under an account card's name (Michal, 2026-10-25: "by key" only on a key
+ * account, since every new account is by email; "signed out" on one the server forgot).
+ * @param {{key:string, expired:boolean}} a
  * @returns {string}
  */
-export function userLine(user, bySession) {
-    if (!user) return "";
-    return bySession ? `Signed in as ${user}` : `Key: ${user}`;
+export function accountKind(a) {
+    if (a.expired) return SIGNED_OUT;
+    return a.key ? "by key" : "";
 }
 
 // --- several accounts on one phone (Michal, 2026-10-18) -----------------------------------
@@ -675,6 +684,186 @@ export function deleteError(status, detail, message, code = "") {
     return `Could not delete the account: ${message}.`;
 }
 
+// --- the people on an account (Michal, 2026-10-25: "allow two users to join the same family
+// group"): the owner and the members, each by the name they chose, never by email; their
+// signed-in devices; an invite by name and email; Leave this account for a member.
+
+/**
+ * One person on the account: the name they chose, their email (never shown; the owner's
+ * Remove names it to the server), whether they own the account, whether this is the person
+ * looking, and whether an invited one has signed in yet.
+ * @typedef {{name:string, email:string, owner:boolean, you:boolean, signedIn:boolean}} Person
+ */
+
+/**
+ * GET /me/people's answer: the owner first, then the members as the server lists them;
+ * `owner`, whether the person looking owns the account. Null for an answer that is not one.
+ * @param {unknown} answer
+ * @returns {{owner:boolean, people:Person[]} | null}
+ */
+export function peopleOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    if (!a.owner || typeof a.owner !== "object") return null;
+    const own = /** @type {Record<string, unknown>} */ (a.owner);
+    /** @param {Record<string, unknown>} p */
+    const person = (p, owner) => ({
+        name: plain(p.name) || plain(p.email),
+        email: plain(p.email),
+        owner,
+        you: p.you === true,
+        signedIn: owner || p.signed_in !== false,
+    });
+    const members = (Array.isArray(a.members) ? a.members : []).filter((m) => m && typeof m === "object").map((m) => person(/** @type {Record<string, unknown>} */ (m), false));
+    return { owner: own.you === true, people: [person(own, true), ...members] };
+}
+
+/**
+ * A signed-in device as the server lists it: its id (for Sign out), the device as the
+ * browser names it ("iPhone, Safari"), when it was last used, and whether it is this one.
+ * @typedef {{id:string, device:string, lastSeen:string, thisDevice:boolean}} Device
+ */
+
+/**
+ * GET /me/devices' answer: the devices by their person's email, one list for a member's own
+ * (`{"you", "devices"}`), one per person for the owner asking `?all=1` (`{"you", "people":
+ * [{"email", "devices"}]}`). Null for an answer that is not one.
+ * @param {unknown} answer
+ * @returns {Record<string, Device[]> | null}
+ */
+export function devicesOf(answer) {
+    if (!answer || typeof answer !== "object") return null;
+    const a = /** @type {Record<string, unknown>} */ (answer);
+    /** @param {unknown} list */
+    const devices = (list) =>
+        (Array.isArray(list) ? list : [])
+            .filter((d) => d && typeof d === "object")
+            .map((d) => {
+                const x = /** @type {Record<string, unknown>} */ (d);
+                return { id: plain(x.id), device: plain(x.device), lastSeen: plain(x.last_seen), thisDevice: x.this === true };
+            })
+            .filter((d) => d.id !== "");
+    if (Array.isArray(a.people)) {
+        return Object.fromEntries(
+            a.people.filter((p) => p && typeof p === "object").map((p) => {
+                const x = /** @type {Record<string, unknown>} */ (p);
+                return [plain(x.email), devices(x.devices)];
+            })
+        );
+    }
+    if (Array.isArray(a.devices)) return { [plain(a.you)]: devices(a.devices) };
+    return null;
+}
+
+/**
+ * The words after a person's name on their card: "owner" or "member", "you" on yourself,
+ * "invited, not signed in yet" until their first sign-in, with middle dots between.
+ * @param {Person} p
+ * @returns {string}
+ */
+export function personWords(p) {
+    const words = [p.owner ? "owner" : "member"];
+    if (p.you) words.push("you");
+    if (!p.signedIn) words.push("invited, not signed in yet");
+    return words.join(" · ");
+}
+
+/**
+ * When a device was last used, in plain words: "today", "yesterday", "12 days ago"; "" when
+ * the server did not say or the date cannot be read.
+ * @param {string} iso
+ * @param {number} now
+ * @returns {string}
+ */
+export function lastUsedWord(iso, now) {
+    const at = typeof iso === "string" && iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(at)) return "";
+    const days = Math.max(0, Math.floor((now - at) / (24 * 60 * 60 * 1000)));
+    if (days === 0) return "today";
+    if (days === 1) return "yesterday";
+    return `${days} days ago`;
+}
+
+/**
+ * A device's line: "iPhone, Safari · this device", or "... · last used yesterday" (the device
+ * alone when the server did not say when).
+ * @param {Device} d
+ * @param {number} now
+ * @returns {string}
+ */
+export function deviceLine(d, now) {
+    const name = d.device || "a device";
+    if (d.thisDevice) return `${name} · this device`;
+    const when = lastUsedWord(d.lastSeen, now);
+    return when ? `${name} · last used ${when}` : name;
+}
+
+/**
+ * The count after "People on this account ›" on the account card: "just you" alone, else
+ * "2 people"; "" before the server answered.
+ * @param {number|null} n
+ * @returns {string}
+ */
+export function peopleCount(n) {
+    if (n === null || n === undefined) return "";
+    return n <= 1 ? "just you" : `${n} people`;
+}
+
+/** Said under Invite once the server took it (202). */
+export const INVITE_SENT = "Invitation sent";
+
+/**
+ * Invite's body: their email alone (checkEmail's; Michal, 2026-10-26: "don't ask for their
+ * name. just email is fine"; the server names them after its first part). A box not right is
+ * named, and nothing is sent.
+ * @param {{email:unknown}} o
+ * @returns {{ok:true, body:{email:string}} | {ok:false, error:string}}
+ */
+export function inviteBody({ email }) {
+    const checked = checkEmail(email);
+    if (!checked.ok) return { ok: false, error: checked.error.replace("your email", "their email") };
+    return { ok: true, body: { email: checked.email } };
+}
+
+/**
+ * Change name's body: the name as typed, trimmed; empty is refused.
+ * @param {unknown} raw
+ * @returns {{ok:true, body:{name:string}} | {ok:false, error:string}}
+ */
+export function nameBody(raw) {
+    const name = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+    return name ? { ok: true, body: { name } } : { ok: false, error: "Enter a name." };
+}
+
+/**
+ * A people action's line when it did not go: a server without the route (404) has it not
+ * available yet; a refusal (400, 403, 409) is the server's own words; anything else says what
+ * went wrong after `lead` ("Could not invite").
+ * @param {string} lead
+ * @param {number} status the PcError's (0: no answer)
+ * @param {string} message errorText's words
+ * @returns {string}
+ */
+export function peopleError(lead, status, message) {
+    if (status === 404) return "People on an account are not available on this server yet.";
+    if ([400, 403, 409].includes(status)) return message;
+    return `${lead}: ${message}.`;
+}
+
+/**
+ * Said after Sign out all other devices: "Signed out 2 other devices" (one: "device").
+ * @param {unknown} n the server's "signed_out"
+ * @returns {string}
+ */
+export function signedOutOthers(n) {
+    const count = wholeOf(n);
+    if (count === null) return "Signed out the other devices";
+    return `Signed out ${count} other ${count === 1 ? "device" : "devices"}`;
+}
+
+/** Said on the landing (or under the next account) once Leave this account went through. */
+export const LEFT_ACCOUNT = "You left the account.";
+
 /** "1 posting", "3 postings". */
 function postingsWord(n) {
     return `${n} ${n === 1 ? "posting" : "postings"}`;
@@ -725,19 +914,49 @@ export function policiesLine(state, justReady = false) {
 }
 
 /**
- * The account's eBay line: "eBay: connected as anna", with the business policies' state
- * while they are not ready (policiesLine), or "eBay: not connected"; "" when the server
- * does not say.
+ * The eBay block's status line under Venues (Michal, 2026-10-25, the Settings mock):
+ * "Connected as anna_sells · policies ready" (the policies' state after a middle dot while it
+ * has one: policiesLine, "ready" said once), or "Not connected"; "" when the server does not say.
  * @param {Ebay|null} ebay
  * @param {boolean} [justReady] policiesLine's: "policies ready" said once
  * @returns {string}
  */
-export function ebayLine(ebay, justReady = false) {
+export function ebayStatusLine(ebay, justReady = false) {
     if (!ebay) return "";
-    if (!ebay.connected) return "eBay: not connected";
-    const who = ebay.user ? `eBay: connected as ${ebay.user}` : "eBay: connected";
+    if (!ebay.connected) return NOT_CONNECTED;
+    const who = ebay.user ? `Connected as ${ebay.user}` : "Connected";
     const policies = policiesLine(ebay.policies, justReady);
-    return policies ? `${who}; ${policies}` : who;
+    return policies ? `${who} · ${policies}` : who;
+}
+
+/** The eBay block's status while no eBay is connected, over the Connect eBay pill. */
+export const NOT_CONNECTED = "Not connected";
+
+/** Under Connect eBay in the eBay block while it is not (the mock, 2026-10-25). */
+export const CONNECT_TO_POST = "Connect eBay to start posting";
+
+/** The eBay block's address line for a new account whose eBay is not connected yet (Michal, 2026-10-25). */
+export const ADDRESS_FROM_EBAY = "Your ship-from address is prefilled from eBay once connected (under Posting)";
+
+/** A venue's status line in its block when the account has it on the server (Craigslist, Poshmark). */
+export const ON_SERVER = "Signed in on the server";
+
+/** ... and when it does not: the line, and the way to ask (the link opens Feedback). */
+export const NOT_AVAILABLE = "Not available for your account yet.";
+export const ASK_IN_FEEDBACK = "Ask for it in Feedback";
+
+/**
+ * A venue block's status line under Venues: eBay's from its connection (ebayStatusLine),
+ * every other venue's from whether the account has it (venueAllowed).
+ * @param {string} venue
+ * @param {{craigslist:boolean, poshmark?:boolean} | null} me meOf's
+ * @param {Ebay|null} ebay
+ * @param {boolean} [justReady]
+ * @returns {string}
+ */
+export function venueBlockLine(venue, me, ebay, justReady = false) {
+    if (venue === "ebay") return ebayStatusLine(ebay, justReady);
+    return venueAllowed(me, venue) ? ON_SERVER : NOT_AVAILABLE;
 }
 
 /**
@@ -794,73 +1013,205 @@ export const ADDRESS_NEEDED =
     "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.";
 
 /**
- * The seller's address as the server keeps it, whether it is all there, and her eBay.
- * @typedef {{address:{line1:string, city:string, state:string, postal_code:string}, complete:boolean, ebay:Ebay|null}} Seller
+ * The fields an address may hold, in the order the boxes are drawn, each with its label.
+ * The server's `uses` names which of them a venue takes (eBay the first four, Craigslist the
+ * ZIP and the neighbourhood, Poshmark none).
  */
+export const ADDRESS_FIELDS = [
+    ["line1", "Street address"],
+    ["city", "City"],
+    ["state", "State"],
+    ["zip", "ZIP"],
+    ["neighborhood", "Neighborhood"],
+];
 
 /**
- * GET (or PATCH) /me/seller's answer; null for one that is not one (no address and no
- * word on whether it is complete).
- * @param {unknown} answer
- * @returns {Seller|null}
+ * The ship-from address as the server keeps it (GET /me/address, Michal, 2026-10-25: "Address
+ * can be same for all venues, but also if unchecked it would split into addresses per
+ * venue"): one shared address, or one per venue; which fields each venue uses; and whether
+ * this account may change it (the admin's is set on the server).
+ * @typedef {Record<string, string>} AddressFields
+ * @typedef {{same:boolean, shared:AddressFields, venues:Record<string, AddressFields>, uses:Record<string, string[]>, editable:boolean}} Address
  */
-export function sellerOf(answer) {
+
+/** The field names ADDRESS_FIELDS lists. */
+const FIELD_NAMES = ADDRESS_FIELDS.map(([k]) => k);
+
+/** An address's fields, each a plain string, the ones ADDRESS_FIELDS knows. */
+function fieldsOf(x) {
+    const at = x && typeof x === "object" ? /** @type {Record<string, unknown>} */ (x) : {};
+    return Object.fromEntries(FIELD_NAMES.map((k) => [k, plain(at[k])]));
+}
+
+/**
+ * GET (or PATCH) /me/address's answer, leniently: `same` true unless said false, a venue's
+ * fields and `uses` as given (a venue `uses` does not name takes nothing), `editable` true
+ * unless said false. Null for an answer that is not one (neither `shared` nor `uses`).
+ * @param {unknown} answer
+ * @returns {Address|null}
+ */
+export function addressOf(answer) {
     if (!answer || typeof answer !== "object") return null;
     const a = /** @type {Record<string, unknown>} */ (answer);
-    const at = a.address && typeof a.address === "object" ? /** @type {Record<string, unknown>} */ (a.address) : null;
-    if (!at && typeof a.complete !== "boolean") return null;
-    const field = (k) => (at ? plain(at[k]) : "");
+    const given = (k) => !!a[k] && typeof a[k] === "object";
+    if (!given("shared") && !given("uses")) return null;
+    const venues = given("venues") ? /** @type {Record<string, unknown>} */ (a.venues) : {};
+    const uses = given("uses") ? /** @type {Record<string, unknown>} */ (a.uses) : {};
     return {
-        address: { line1: field("line1"), city: field("city"), state: field("state"), postal_code: field("postal_code") },
-        complete: a.complete === true,
-        ebay: ebayOf(a.ebay),
+        same: a.same !== false,
+        shared: fieldsOf(a.shared),
+        venues: Object.fromEntries(Object.entries(venues).map(([v, f]) => [v, fieldsOf(f)])),
+        uses: Object.fromEntries(
+            Object.entries(uses).map(([v, list]) => [v, (Array.isArray(list) ? list : []).filter((f) => typeof f === "string" && FIELD_NAMES.includes(f))])
+        ),
+        editable: a.editable !== false,
     };
 }
 
+/** The fields eBay takes, and what "complete" means: street, city, state and ZIP. */
+const FULL_ADDRESS = ["line1", "city", "state", "zip"];
+
 /**
- * Where the seller's address stands: "complete" (all there), "prefilled" (the server filled
- * some of it from her eBay account on connect, to be confirmed: Michal, 2026-10-08), or
- * "empty" (none of it, or no answer).
- * @param {Seller|null} seller
+ * Where the shared address stands: "complete" (street, city, state and ZIP all there),
+ * "prefilled" (the server filled some of it from the eBay account on connect, to be
+ * confirmed: Michal, 2026-10-08), or "empty" (none of it, or no answer).
+ * @param {Address|null} info
  * @returns {"empty"|"prefilled"|"complete"}
  */
-export function addressState(seller) {
-    if (!seller) return "empty";
-    if (seller.complete) return "complete";
-    return Object.values(seller.address).some((v) => v !== "") ? "prefilled" : "empty";
+export function addressState(info) {
+    if (!info) return "empty";
+    const filled = FULL_ADDRESS.filter((k) => info.shared[k] !== "");
+    if (filled.length === FULL_ADDRESS.length) return "complete";
+    return filled.length ? "prefilled" : "empty";
 }
 
 /**
- * The foldout's own line: why it opens by itself when Settings does (eBay connected, the
+ * The address card's own line: why the Posting fold opens by itself (eBay connected, the
  * address not all there: that is the moment it is needed), or where a prefilled one came
- * from; "" otherwise, and it stays folded.
- * @param {Seller|null} seller
+ * from; "" otherwise.
+ * @param {Address|null} info
+ * @param {Ebay|null} ebay /me's
  * @returns {string}
  */
-export function sellerLine(seller) {
-    if (!seller || seller.complete || !seller.ebay || !seller.ebay.connected) return "";
-    return addressState(seller) === "prefilled" ? ADDRESS_PREFILLED : ADDRESS_NEEDED;
+export function sellerLine(info, ebay) {
+    if (!info || !ebay || !ebay.connected || addressState(info) === "complete") return "";
+    return addressState(info) === "prefilled" ? ADDRESS_PREFILLED : ADDRESS_NEEDED;
 }
 
 /**
- * Save address's body, from the four boxes as typed: each trimmed (inner spaces one), the
- * state two letters upper-cased, the ZIP five digits; a ZIP+4 typed is taken, its first five
- * sent (Michal, 2026-10-10), so it comes back five after Save. A box that is not right is
- * named, and nothing is sent.
+ * The fields a venue ships from: the shared address while it is the same for every venue,
+ * else the venue's own (a field it has not got yet from the shared one), the fields `uses`
+ * names only.
+ * @param {string} venue
+ * @param {Address|null} info
+ * @returns {AddressFields}
+ */
+export function addressFor(venue, info) {
+    if (!info) return {};
+    const uses = info.uses[venue] || [];
+    const own = info.venues[venue] || {};
+    return Object.fromEntries(uses.map((k) => [k, info.same ? info.shared[k] : own[k] || info.shared[k] || ""]));
+}
+
+/**
+ * The muted "Ships from ..." line in a venue's block under Venues (Michal, 2026-10-25): the
+ * fields that venue uses, as "12 Oak St, Chicago IL 60601" or "60609, McKinley Park"; "" for a
+ * venue that uses none, or whose fields are still empty.
+ * @param {string} venue
+ * @param {Address|null} info
+ * @returns {string}
+ */
+export function shipsFromLine(venue, info) {
+    const f = addressFor(venue, info);
+    const parts = [];
+    if (f.line1) parts.push(f.line1);
+    const town = [f.city, [f.state, f.zip].filter(Boolean).join(" ")].filter(Boolean).join(" ");
+    if (town && (f.city || f.state)) parts.push(town);
+    else if (f.zip) parts.push(f.zip);
+    if (f.neighborhood) parts.push(f.neighborhood);
+    return parts.length ? `Ships from ${parts.join(", ")}` : "";
+}
+
+/** One address's boxes checked: each trimmed (inner spaces one), the state two letters upper-cased, the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */
+function checkFields(fields, uses) {
+    const text = (x) => (typeof x === "string" ? x.trim().replace(/\s+/g, " ") : "");
+    /** @type {AddressFields} */
+    const out = {};
+    for (const k of uses) {
+        const v = text(fields[k]);
+        if (k === "line1" && !v) return { ok: false, error: "Enter the street address." };
+        if (k === "city" && !v) return { ok: false, error: "Enter the city." };
+        if (k === "state") {
+            const st = v.toUpperCase();
+            if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
+            out[k] = st;
+            continue;
+        }
+        if (k === "zip") {
+            const z = /^(\d{5})(?:[- ]?\d{4})?$/.exec(v);
+            if (!z) return { ok: false, error: "The ZIP is five digits, as 60601." };
+            out[k] = z[1];
+            continue;
+        }
+        out[k] = v;
+    }
+    return { ok: true, fields: out };
+}
+
+/**
+ * Save address's body (PATCH /me/address): with Same address for every venue ticked,
+ * `{"same": true, "shared": {...}}` from the one block, every field checked as eBay needs it
+ * (checkFields); unticked, `{"same": false, "venues": {ebay: {...}, craigslist: {...}}}` from
+ * the blocks of the venues that use an address, each checked on the fields it uses, a box not
+ * right named with its venue. Nothing is sent while a box is not right.
+ * @param {{same:boolean, shared?:Record<string, unknown>, venues?:Record<string, Record<string, unknown>>, uses:Record<string, string[]>}} o
+ * @returns {{ok:true, body:{same:boolean, shared?:AddressFields, venues?:Record<string, AddressFields>}} | {ok:false, error:string}}
+ */
+export function addressSaveBody({ same, shared = {}, venues = {}, uses }) {
+    if (same) {
+        const made = checkFields(shared, [...FULL_ADDRESS, "neighborhood"]);
+        if (!made.ok) return made;
+        return { ok: true, body: { same: true, shared: made.fields } };
+    }
+    /** @type {Record<string, AddressFields>} */
+    const out = {};
+    for (const [venue, fields] of Object.entries(uses)) {
+        if (!fields.length) continue;
+        const made = checkFields(venues[venue] || {}, fields);
+        if (!made.ok) return { ok: false, error: `${venueName(venue)}: ${made.error}` };
+        out[venue] = made.fields;
+    }
+    return { ok: true, body: { same: false, venues: out } };
+}
+
+/**
+ * Step 2 of Finish setting up saves through PATCH /me/seller as it always did (the route that
+ * starts the eBay policy setup, and writes the shared address too): its body from the shared
+ * block's four boxes, each checked as checkFields does (a ZIP+4 typed sent as its first five).
+ * A box that is not right is named, and nothing is sent.
  * @param {{line1?:unknown, city?:unknown, state?:unknown, zip?:unknown}} fields
  * @returns {{ok:true, body:{address:{line1:string, city:string, state:string, postal_code:string}}} | {ok:false, error:string}}
  */
-export function addressBody({ line1, city, state, zip } = {}) {
-    const text = (x) => (typeof x === "string" ? x.trim().replace(/\s+/g, " ") : "");
-    const street = text(line1);
-    if (!street) return { ok: false, error: "Enter the street address." };
-    const town = text(city);
-    if (!town) return { ok: false, error: "Enter the city." };
-    const st = text(state).toUpperCase();
-    if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
-    const z = /^(\d{5})(?:[- ]?\d{4})?$/.exec(text(zip));
-    if (!z) return { ok: false, error: "The ZIP is five digits, as 60601." };
-    return { ok: true, body: { address: { line1: street, city: town, state: st, postal_code: z[1] } } };
+export function addressBody(fields = {}) {
+    const made = checkFields(fields, FULL_ADDRESS);
+    if (!made.ok) return made;
+    const { line1, city, state, zip } = made.fields;
+    return { ok: true, body: { address: { line1, city, state, postal_code: zip } } };
+}
+
+/** Under the address card for the admin, whose address is the server's own (editable false). */
+export const ADDRESS_ON_SERVER = "The admin's address is set on the server.";
+
+/** The tick over the address block (Michal, 2026-10-25). */
+export const SAME_ADDRESS = "Same address for every venue";
+
+/**
+ * The muted line in a venue's own address block, for a venue that uses none (Poshmark).
+ * @param {string} venue
+ * @returns {string}
+ */
+export function noAddressLine(venue) {
+    return `${venue} does not use a ship-from address`;
 }
 
 /**
@@ -943,6 +1294,25 @@ export function wrapBody(part, { on, text, venues } = {}) {
     }
     if (venues !== undefined) body.venues = venueList(venues);
     return { ok: true, body: { [part]: body } };
+}
+
+/**
+ * The one Save's body (Michal, 2026-10-25: one card, one Save): each part's text as typed,
+ * only where it differs from what the server has (`info`); each tidied and checked as
+ * wrapBody does, a part too long named. `{}` when nothing changed: nothing to send.
+ * @param {{header:unknown, footer:unknown}} texts the two boxes
+ * @param {Wrap} info the server's
+ * @returns {{ok:true, body:Record<string, Partial<WrapPart>>} | {ok:false, error:string}}
+ */
+export function wrapTextsBody(texts, info) {
+    /** @type {Record<string, Partial<WrapPart>>} */
+    const body = {};
+    for (const part of WRAP_PARTS) {
+        const made = wrapBody(part, { text: texts[part] });
+        if (!made.ok) return { ok: false, error: `${part === "header" ? "Header" : "Footer"}: ${made.error}` };
+        if (made.body[part].text !== info[part].text) body[part] = made.body[part];
+    }
+    return { ok: true, body };
 }
 
 /**
@@ -1392,11 +1762,12 @@ export const TAP_AGAIN = "tap again to cancel";
  * posting, from the press's second on until the publish begins (Michal, 2026-10-17:
  * "When I cancel a run of an AI call the job still posted. If I cancel, that means I
  * want to absolutely stop it, even though we may be getting an answer from the server.
- * Just dump that answer. In the little note say: credits will be lost."). The server
- * dumps a draft cancelled while drafting; the posting it reserved is kept once the job
- * has started (cancelledLine).
+ * Just dump that answer. In the little note say: credits will be lost."; the page says
+ * postings, never credits: the spec's vocabulary, 2026-10-25). The server dumps a draft
+ * cancelled while drafting; the posting it reserved is kept once the job has started
+ * (cancelledLine).
  */
-export const TAP_TO_CANCEL = `${TAP_AGAIN}: credits will be lost`;
+export const TAP_TO_CANCEL = `${TAP_AGAIN}: the posting will be lost`;
 
 /**
  * The second line inside a busy venue button: TAP_AGAIN while the press is still held
@@ -1449,7 +1820,7 @@ export const CANCELLED_ON_PC = "cancelled from the phone";
  * @returns {string}
  */
 export function cancelledLine(job) {
-    return job && job.charged === true ? `${CANCELLED}: the credit is lost` : CANCELLED;
+    return job && job.charged === true ? `${CANCELLED}: the posting is lost` : CANCELLED;
 }
 
 /**
@@ -1821,30 +2192,32 @@ function savedCustomize(c) {
 }
 
 // Michal, 2026-10-08: "The customize section should have a 'Save as default' button at
-// the end, in case someone wants to change something permanently." Kept per kind on this
-// phone: the price grade and the three ticks, never the quantity (nor the user note, which
-// is not customize's); every new item starts from them.
+// the end, in case someone wants to change something permanently." Since 2026-10-25 the
+// defaults are edited in Settings, Posting (one set for goods and books alike, saved on
+// change) and kept on this phone in the same place, per kind; every new item starts from
+// them, the quantity too (Michal's Posting fold lists it).
 
 /**
- * What Save as default keeps of a customize, and what a new item starts from.
- * @typedef {{pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean}} CustomizeDefaults
+ * What the Posting fold keeps of a customize, and what a new item starts from.
+ * @typedef {{quantity:string, pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean}} CustomizeDefaults
  */
 
-/** Said beside Save as default for a moment. */
-export const DEFAULTS_SAVED = "saved as your defaults";
+/** Said beside the Posting fold's defaults for a moment after a change. */
+export const DEFAULTS_SAVED = "saved";
 
 /** How long DEFAULTS_SAVED stays. */
 export const DEFAULTS_SAVED_MS = 2500;
 
 /**
  * One kind's defaults from a customize (or from storage, leniently: anything odd is the
- * plain default).
+ * plain default; a quantity that is not one, 1 or more, is 1).
  * @param {unknown} c
  * @returns {CustomizeDefaults}
  */
 export function defaultsOf(c) {
     const r = recoveredCustomize(c);
-    return { pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly };
+    const quantity = quantityValue(r.quantity);
+    return { quantity: quantity ? String(quantity) : "1", pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly };
 }
 
 /**
@@ -1859,7 +2232,7 @@ export function customizeDefaults(raw) {
 }
 
 /**
- * A new item's customize from the defaults of its kind; the quantity stays as it is.
+ * A new item's customize from the defaults of its kind, the quantity included.
  * @param {SnapState} state
  * @param {{goods:CustomizeDefaults, book:CustomizeDefaults}} defaults
  * @returns {SnapState}
