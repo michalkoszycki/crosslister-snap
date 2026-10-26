@@ -147,7 +147,7 @@
   <!-- Finish setting up (Michal, 2026-10-08; the account itself is made at the first code since
        2026-10-25): an account not yet registered sees its two steps in place of the posting
        screens, GET /me saying where it stands: Connect eBay (the eBay block's button under
-       Venues, repeated here), then where you ship from (the address under Settings, Posting),
+       Venues, repeated here), then where you ship from (the address card at the end of Venues),
        greyed until eBay is connected, when step 1's button says eBay connected in green (Michal,
        2026-10-10). Registered, the goods screen (app.js, signupStep in core.js) -->
   <section id="signup-steps" class="landing signup" hidden>
@@ -197,7 +197,7 @@
   <!-- Admin (Michal, 2026-10-06: "accessible through Admin which would replace Settings.
        Settings would remain part of Admin though"; docs/UI.md, 2026-10-25): no title; the
        Inventory first (Michal, 2026-10-22: "inventory should be before settings"), then Settings
-       as five folds of its own (Snap Account, Venues, Posting, Server, This phone), Feedback, Stats
+       as five folds of its own (Snap Account, Venues, Posting defaults, Server, This phone), Feedback, Stats
        (an admin's), Close. A listing open, and the People page, are pages of their own (Michal,
        2026-10-07: "Looking at an item is a new page (at the top it just says back to inventory)"):
        app.js hides the folds and Close while one is. -->
@@ -267,7 +267,7 @@
           <!-- the same pill row as pickup only, on by default and last of the options (Michal,
                2026-10-07: "in inventory, let's keep photos showing by default. And that checkbox
                should be at end of options. Not right in the awkward middle"); app.js remembers
-               it unticked on this phone, and This phone under Settings mirrors it -->
+               it unticked on this phone (Michal, 2026-10-26: it stays here, not under This phone) -->
           <label class="pickup">
             <input id="inventory-photos" type="checkbox" checked>
             <span>Show photos</span>
@@ -413,8 +413,9 @@
 
       <!-- 2. Venues (Michal, 2026-10-17 and 2026-10-18: "venue symmetry"): one block per venue,
            the same shape, in /me's order (app.js): its status line, its Ships from line, its
-           actions, its sync buttons (the sticky sync bar's, since 2026-10-25, drawn by app.js
-           from /me's "syncable" into each block), and one muted line where it cannot sync -->
+           actions, its two sync buttons (the sticky sync bar's until 2026-10-25; both always,
+           grey where /me's "syncable" or the account lacks it, Michal 2026-10-26: drawn by
+           app.js), the job's line, and one muted line saying why one is grey -->
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
@@ -424,9 +425,8 @@
             <p id="account-ebay" class="small venue-line" hidden></p>
             <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
             <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
-            <!-- connected, the button above says so in green and does nothing (Michal, 2026-10-10:
-                 "It better just say eBay connected on the same button, lit in green"); this is the
-                 way to eBay's consent again, for a token eBay let lapse (app.js) -->
+            <!-- connected, the status line above says so and Connect eBay goes; this is the way
+                 to eBay's consent again, for a token eBay let lapse (app.js) -->
             <button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect</button>
             <p id="venue-ebay-note" class="small venue-note" hidden></p>
             <div id="venue-ebay-sync" class="venue-sync"></div>
@@ -453,7 +453,7 @@
           </div>
         </div>
         <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
-             (Michal, 2026-10-07), copied into each sync button by app.js: to the top arc, left to
+             (Michal, 2026-10-07), copied into an inventory row's sync badge by app.js: to the top arc, left to
              right, its arrow pointing right; from the bottom arc, right to left, its arrow
              pointing left -->
         <div class="sync-icons" hidden>
@@ -562,7 +562,7 @@
           </label>
           <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
-            <span>Fix dark photos<small>brightens a dark photo on the phone before it goes</small></span>
+            <span>Fix dark photos</span>
           </label>
           <p id="posting-status" class="small account-status" aria-live="polite"></p>
         </div>
@@ -570,8 +570,10 @@
         <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
              checkbox for footnote/header for all posts ... once you check header you get a header
              foldout with all these options"; one card with one Save since 2026-10-25): each part's
-             tick, its box and counter, a pill per venue /me/wrap offers (drawn by app.js), Save,
-             then Apply to all existing listings per venue ticked. An older server's 404: no card -->
+             tick, and only under a ticked one its box, counter and a pill per venue /me/wrap
+             offers (Michal, 2026-10-26: "choice of venue only makes sense after"; drawn by
+             app.js), Save, then Apply to all existing listings per venue ticked. An older
+             server's 404: no card -->
         <div id="wrap" class="card wrap" hidden>
           <p class="card-name">Header and footer on every listing</p>
           <label class="pickup">
@@ -594,7 +596,6 @@
             <p id="wrap-footer-count" class="small wrap-count">0 / 2000</p>
             <div id="wrap-footer-venues" class="wrap-venues" role="group" aria-label="Footer: apply to"></div>
           </div>
-          <p class="small wrap-note">Added with a blank line between it and the description.</p>
           <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-save">Save</button>
           <p id="wrap-status" class="small account-status" aria-live="polite"></p>
           <div id="wrap-apply" class="wrap-apply" hidden></div>
@@ -621,8 +622,8 @@
       </div>
 
       <!-- 5. This phone: what never leaves the phone. The look (Michal, 2026-10-06: "Dark, light
-           or sync with device"): a tap applies and remembers it at once; Show photos in the
-           inventory (the Options tick, mirrored); Install on the home screen -->
+           or sync with device"): a tap applies and remembers it at once; Install on the home
+           screen, or that it is there ("Show photos" stays in the inventory's Options) -->
       <button type="button" id="fold-phone-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-phone">▸ This phone</button>
       <div id="fold-phone" class="fold-body" hidden>
@@ -683,7 +684,7 @@
     <!-- The People page (Michal, 2026-10-25: "let it be a simple separate page"), in Admin's
          place as a listing's page is: Back, the heading, one card per person (app.js), the owner
          first, each with its devices; a member's Leave this account at the end -->
-    <div id="people" class="people" hidden>
+    <div id="people" class="card inventory people" hidden>
       <button type="button" id="people-back" class="link back-link">← Back to settings</button>
       <h2 class="detail-heading">People on this account</h2>
       <p id="people-status" class="small account-status" aria-live="polite"></p>

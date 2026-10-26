@@ -493,6 +493,7 @@ export function syncReason(venue, direction, me, ebay) {
     if (venue === "ebay" && ebay && !ebay.connected) return CONNECT_FIRST;
     if (syncVenues(me, direction).includes(venue)) return "";
     if (venue === "poshmark") return "Poshmark sync is not built yet.";
+    // in a sentence the venue is capitalised (docs/UI.md's vocabulary): eBay, Craigslist
     const name = venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
     return direction === "from" ? `${name} cannot be read back yet.` : `${name} cannot be written to yet.`;
 }
@@ -502,13 +503,16 @@ export const CONNECT_FIRST = "Connect eBay first";
 
 /**
  * The one muted line under a venue block's pair of sync buttons where either is grey: the
- * from button's reason first, else the to button's; "" when both work.
+ * from button's reason first, else the to button's; "" when both work, and "" where the
+ * block's own status line says it already (a venue the account lacks, an eBay not connected:
+ * the spec's "less is more", Michal 2026-10-26).
  * @param {string} venue
  * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
  * @param {Ebay|null} ebay
  * @returns {string}
  */
 export function syncNote(venue, me, ebay) {
+    if (!venueAllowed(me, venue) || (venue === "ebay" && ebay && !ebay.connected)) return "";
     return syncReason(venue, "from", me, ebay) || syncReason(venue, "to", me, ebay);
 }
 
@@ -934,9 +938,6 @@ export const NOT_CONNECTED = "Not connected";
 
 /** Under Connect eBay in the eBay block while it is not (the mock, 2026-10-25). */
 export const CONNECT_TO_POST = "Connect eBay to start posting";
-
-/** The eBay block's address line for a new account whose eBay is not connected yet (Michal, 2026-10-25). */
-export const ADDRESS_FROM_EBAY = "Your ship-from address is prefilled from eBay once connected (under Posting)";
 
 /** A venue's status line in its block when the account has it on the server (Craigslist, Poshmark). */
 export const ON_SERVER = "Signed in on the server";

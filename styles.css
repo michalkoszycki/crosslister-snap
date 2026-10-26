@@ -1016,31 +1016,16 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .choice-note { margin: 4px 2px 0; font-size: 13px; color: var(--muted); }
 
 /* The sync buttons, in each venue's block under Settings, Venues (docs/UI.md, 2026-10-25; the
-   sticky bar under the inventory until then): the outlined pills in a row, a venue's from before
-   its to, the resets after every button so a paused one's sits under them all; the job's line
-   under the row, in that venue's block alone. */
-.venue-sync { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+   sticky bar under the inventory until then): both always, the inventory's small green badge
+   with the round arrow after the words (Michal, 2026-10-26), grey where the function or the
+   venue is missing; a venue's from before its to, the resets after both so a paused one's
+   sits under the pair; the job's line under the row, in that venue's block alone. */
+.venue-sync { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .venue-sync:empty { display: none; }
-.venue-sync .reset-call { grid-column: 1 / -1; }
-.sync-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 48px;
-    padding: 8px 10px;
-    background: var(--field);
-    color: var(--ink);
-    border: 2px solid var(--ink);
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-}
-.sync-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
-/* each its half of the sync symbol, 20 px, left of the word (Michal, 2026-10-07) */
-.sync-btn .btn-icon svg { width: 20px; height: 20px; }
-/* pressed, the turning ring takes the icon's room: a half-width button holds the word and one of them */
-.sync-btn.busy .btn-icon { display: none; }
+.venue-sync .reset-call { flex-basis: 100%; text-align: left; }
+.venue-sync button.vbadge:disabled.muted { opacity: 0.6; }
+.sync-arrow { font-size: 14px; line-height: 1; }
+button.vbadge.busy .sync-arrow { display: none; }
 .sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sync-status:empty { display: none; }
 .sync-status.busy { color: var(--ink); }

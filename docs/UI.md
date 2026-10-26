@@ -4,14 +4,20 @@
 > and updates it in the same lane. A change that contradicts it is a bug, not a feature.
 > Decisions carry Michal's date; a section marked *proposed* is not yet agreed.
 >
-> Draft 2026-10-22. The Settings part follows the mock Michal reviewed that day; its open
-> decisions are listed at the end.
+> Draft 2026-10-22. The Settings part follows the mock Michal reviewed that day; its
+> decisions, listed at the end, were decided on 2026-10-26 and built in v2.25.0.
 
 ## 1. Rules that shape every screen
 
 1. **Plain words, from the user's side.** A control says what happens ("Sign out", "Buy
    postings"). No developer words on the page: no "tenant", "key line", "RuName",
    "CROSSLISTER_". The server is "the server", never "the PC".
+   **Less is more** (Michal, 2026-10-26: "the controls should be minimal, no multiple
+   lines of text with no impact or info necessary to the user. less is more. save this
+   design rule."): a control is one label, one box, one button; a line of text exists
+   only when the person needs what it says; a title that only names a box becomes that
+   box's label, and a hint that only repeats the label goes in the box as its
+   placeholder.
 2. **Venues are symmetrical** (Michal, 2026-10-17 and 2026-10-18). Whatever one venue has
    on a screen, every venue has in the same place and shape: a button, a chip, a block, a
    sync action, a header-and-footer pill. A venue that cannot do something says so in its
@@ -52,8 +58,8 @@
 ## 3. The top bar
 
 Always present. Left: the camera mark and the "$nap" wordmark, as today. After the
-wordmark: **the current account's name** (`/me` `user`, or the email while signing up),
-muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
+wordmark: **the current account's name** (`/me` `user`; there is no one signing up without
+an account since 2026-10-25, 4.3), muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
 "wrong key" red, "checking server...", "server not set"), then the Admin link, which reads
 "Snap" while Admin is open and takes the person back. The server word appears here only;
 nowhere else on the page repeats it.
@@ -102,16 +108,16 @@ tapped, says it is not available for this account yet and points to Feedback. Th
 screen has the same venue blocks as the goods screen, not eBay alone.
 
 The customize fold holds this item's values. Its starting values come from Settings,
-Posting (4.5). *Proposed:* "Save as default" leaves the fold; the defaults are edited in
-Settings.
+Posting defaults (4.5). "Save as default" has left the fold; the defaults are edited in
+Settings (decided 2026-10-26, section 6).
 
 ### 4.5 Admin
 
 Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
 settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only);
-**Close**. The sticky sync bar is gone
-(*proposed*: its buttons live in each venue's block). Inventory, Feedback and Stats are
-hidden while a sign-up is unfinished and when no server is set.
+**Close**. The sticky sync bar is gone: its buttons live in each venue's block (decided
+2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
+new account sees the whole of Admin, 4.3).
 
 **Settings** has five parts, each a fold of its own inside Settings (Michal, 2026-10-25:
 a two-level fold), its heading larger than its contents, indented one step in from the
@@ -134,10 +140,11 @@ saved), and the phone remembers which were left open.
    three sentences, **Delete account** in red, **Keep my account**). Under the cards:
    **Add account**, which returns to the landing without dropping the others.
 
-   On the current card, for the owner, the invite box: "Invite someone to this account",
-   their email alone, **Invite** (Michal, 2026-10-25: "the invite someone section should
-   return here, above the people on this account", "don't ask for their name. just email
-   is fine … simple"); the person's name starts as the first part of their email and
+   On the current card, for the owner, the invite box: one label "Invite someone to this
+   account" in the field-label style, one box with "email" as its placeholder, one
+   **Invite** button, nothing else (Michal, 2026-10-25/26: "the invite someone section
+   should return here, above the people on this account", "don't ask for their name. just
+   email is fine … simple", "less is more"); the person's name starts as the first part of their email and
    **Change name** alters it; then, for everyone, one link:
    **People on this account ›** with the count ("2 people", "just you"). It opens the
    **People page** (Michal, 2026-10-25: "let it be a
@@ -162,11 +169,18 @@ saved), and the phone remembers which were left open.
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
    start posting"); one muted line "Ships from …" showing the address that venue uses;
-   its actions (eBay: Connect / Reconnect; Craigslist and Poshmark: "Ask for it in
-   Feedback" when not available); its sync buttons (**Sync from eBay ↻**, **Sync to
-   eBay ↻**, **Sync to craigslist ↻**, the inventory's small green button with the
-   round arrow after the words, everywhere a sync button appears, Michal 2026-10-26; a
-   venue that cannot sync says why in one muted line).
+   its actions (eBay: **Connect eBay** while not connected, **Reconnect** once it is, the
+   status line then saying "Connected as …"; Craigslist and Poshmark: "Ask for it in
+   Feedback" when not available); its two sync buttons, always both, **Sync from
+   <venue> ↻** and **Sync to <venue> ↻** with the venue lowercase as on every button
+   ("Sync from ebay ↻"; Michal, 2026-10-26), the inventory's small green button with the
+   round arrow after the words, greyed out where the function does not exist yet or the
+   account lacks the venue (Michal, 2026-10-26: "even if function does not exist, there
+   should be sync from and to buttons for each venue, gray if function is still not
+   working"), with one muted line of reason under them ("Craigslist cannot be read back
+   yet.", "Poshmark sync is not built yet."), and none where the status line says it
+   already ("Not available for your account yet.", "Not connected"). The same green
+   button and arrow everywhere a sync button appears.
    Last, after the venue blocks, the **Address where you ship from** card (Michal,
    2026-10-26: "the address box should be at the end of venues"): a checkbox **Same
    address for every venue**, ticked by default, above one address block (street, city,
@@ -175,15 +189,21 @@ saved), and the phone remembers which were left open.
    the ZIP and the neighbourhood, Poshmark a line saying it uses none. Ticking it again
    keeps the eBay address as the shared one (it is the one eBay prefilled). The page
    reads and writes `GET`/`PATCH /me/address` (`same`, `shared`, `venues`, `uses`).
-3. **Posting.** The defaults every new item starts with: Quantity, Pickup only, the Price
+3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). One line
+   first: "The defaults every posting starts with. Each can be adjusted for one posting
+   at the time of posting, through the customize menu on the Snap page." Then the
+   defaults: Quantity, Pickup only, the Price
    slider, Post without asking, Compare with marketplace listings, Fix dark photos. Then
-   **Header and footer on every listing** as one card: Header on/off with its text and one
-   pill per venue the account has, Footer the same, **Save**, and one **Apply to all
-   existing <venue> listings** per venue. Turning one off keeps its text.
+   **Header and footer on every listing** as one card: Header on/off, and only once it is
+   ticked its text box and one pill per venue the account has under it (Michal,
+   2026-10-26: "choice of venue only makes sense after"); Footer the same; **Save**, and
+   one **Apply to all existing <venue> listings** per ticked venue. Turning one off keeps
+   its text and hides its box and pills.
 4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
    check**, its status line. An email account has no Server part.
-5. **This phone.** Appearance (Dark / Light / Sync with device), Show photos in the
-   inventory, Install on the home screen (or "Installed on the home screen").
+5. **This phone.** Appearance (Dark / Light / Sync with device) and Install on the home
+   screen (or "Installed on the home screen"). "Show photos" is an inventory setting and
+   stays at the top of the Inventory fold (Michal, 2026-10-26).
 
 **Inventory.** Search; **▸ Options** (venue chips, status chips including Archived, sort
 chips, Show photos); the list, with swipe to archive and **Undo**. A row opens the
@@ -229,15 +249,17 @@ says to set it); **server off / offline** (the banner, photos wait, the buttons 
 controls disabled, the row edits refused with the server's words); **an expired session**
 (the landing's line, the card reads "signed out" with "Sign in again").
 
-## 6. Open decisions (2026-10-22, Michal's)
+## 6. Decisions (asked 2026-10-22, decided 2026-10-26, Michal's)
 
-1. Sync buttons in each venue's block, or the sticky bar kept for use beside the inventory.
-2. "Save as default" becomes Settings, Posting.
-3. Header and footer under Posting with a pill per venue, or inside each venue's block.
-4. The admin's card hides Delete account, or shows it and lets the server refuse.
-5. Wording: "Pickup only, no shipping"; "Compare with marketplace listings"; the landing
-   names no venue; cancel notes say "postings"; About says deletion is in Settings.
-6. Two ways to close Admin (top bar "Snap" and bottom "Close"), or the bottom one goes.
+1. **Decided:** the sync buttons live in each venue's block; the sticky bar is gone.
+2. **Decided:** "Save as default" leaves the customize box; the defaults live in Settings,
+   Posting defaults, and the box on an item starts from them.
+3. **Decided:** header and footer under Posting defaults, with a pill per venue.
+4. **Decided:** the admin's card shows no Delete account.
+5. **Decided:** the wording changes: "Pickup only, no shipping"; "Compare with marketplace
+   listings"; the landing names no venue; cancel notes say "postings"; About says an
+   account is deleted from Settings.
+6. **Decided:** both ways to close Admin stay (the top bar's "Snap" and the bottom "Close").
 
 ## 7. Changes to this document
 
@@ -245,3 +267,8 @@ controls disabled, the row edits refused with the server's words); **an expired 
 - 2026-10-25: Inventory before Settings, no Admin title, Sign out bottom right beside
   Delete account, the five parts of Settings as folds; the account made at the first code;
   people on an account and devices with sign-out (Michal's decisions of the day).
+- 2026-10-26: section 6 decided; built in v2.25.0 (the Settings lane). Where the build
+  settled what the text left open: no reason line under the sync buttons where the status
+  line already says why; eBay's Connect eBay pill only while it is not connected (the
+  status line says "Connected as …" after); Inventory and Feedback shown to a new account
+  (4.3 and section 5 over the older line in 4.5).

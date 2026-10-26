@@ -126,7 +126,6 @@ import {
     rowVenues,
     sliderWords,
     busyLine,
-    syncButtons,
     syncJob,
     syncLine,
     syncNote,
@@ -174,7 +173,6 @@ import {
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
     ADDRESS_FIELDS,
-    ADDRESS_FROM_EBAY,
     ADDRESS_ON_SERVER,
     addressBody,
     addressOf,
@@ -427,13 +425,13 @@ let meAsked = false;
 /** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
 const offTaps = new Set();
 /**
- * Settings' Account block, as the screen has it: Buy postings' packs unfolded, a checkout or
+ * Settings' account card, as the screen has it: Buy postings' packs unfolded, a checkout or
  * Connect eBay on its way (`busy`), and its line (`status`: the way back from Stripe or eBay,
  * or what went wrong).
  */
 const account = { packs: false, busy: false, status: "" };
 /**
- * The address where you ship from (GET /me/address), first under Posting, as the screen has
+ * The address where you ship from (GET /me/address), last under Venues, as the screen has
  * it: the server's answer (addressOf; null until asked, and from an older server's 404, which
  * is no card), the Same address for every venue tick as on screen, a Save on its way, its line,
  * "policies ready" to be said (once), the poll's timer while eBay's policies are being set up
@@ -442,7 +440,7 @@ const account = { packs: false, busy: false, status: "" };
  */
 const seller = { info: null, same: true, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0, venueBoxes: {} };
 /**
- * The header and footer on every listing (GET /me/wrap), one card under Posting, as the screen
+ * The header and footer on every listing (GET /me/wrap), one card under Posting defaults, as the screen
  * has it: the server's answer (wrapOf; null until asked, and from an older server's 404, which
  * is no card), its line, its one Save on its way, `asked`, bumped per ask so a late answer for
  * an older one is dropped, per venue the job task (jobTask) of Apply to all existing listings
@@ -457,6 +455,8 @@ const wrap = {
     apply: {},
     /** @type {Record<string, {pills:Record<string, HTMLButtonElement>, btn:HTMLButtonElement, reset:HTMLButtonElement, line:HTMLElement}>} */
     drawn: {},
+    /** What each part's pill row and the apply row hold now, so each is redrawn only when that changes. */
+    shown: { header: "", footer: "", apply: "" },
 };
 /**
  * The people on this account (GET /me/people, /me/devices; Michal, 2026-10-25), as the screen
@@ -595,17 +595,17 @@ let swipe = null;
 const undo = { entry: null, timer: null };
 
 /**
- * The sync bar, an Admin job task as a card is (jobTask): one sync at a time (the server
- * refuses a second, 409); its action the button last pressed ("<direction> <venue>",
- * "to craigslist"), and `venue` that button's venue, kept past the press for its line.
+ * The venue blocks' sync buttons, one Admin job task as a card is (jobTask): one sync at a
+ * time (the server refuses a second, 409); its action the button last pressed ("<direction>
+ * <venue>", "to craigslist"), and `venue` that button's venue, kept past the press for its
+ * line, which shows in that venue's block.
  */
 const sync = { ...jobTask(), venue: "" };
 /**
- * The sync bar's buttons as drawn (syncButtons, from /me), by "<direction> <venue>": the
- * button, its copy of index.html's half of the sync symbol, its reset; made the first time a
- * /me names it. `shown`: which are in the bar now, so it is redrawn only when that changes.
+ * The venue blocks' sync buttons as drawn, by "<direction> <venue>": the button, its round
+ * arrow, its reset; made once per venue and direction (every block has both).
  */
-const syncDrawn = { nodes: new Map(), shown: "" };
+const syncDrawn = { nodes: new Map() };
 /**
  * customize's Sync to <venue> buttons as drawn (customizeVenues), by venue: the button and
  * its reset; `shown`, the venues in the row of buttons now.
@@ -2481,8 +2481,8 @@ function adminShown(open) {
 
 /**
  * Admin opens on Settings (its Server fold) while no server is set or an account is being
- * added, on Settings at Snap Account right after a sign-in made on this phone (docs/UI.md), and
- * otherwise on the inventory, asked afresh, or on the listing left open there (Michal,
+ * added, on Settings at Snap Account right after a sign-in made on this phone and at Venues
+ * while a new account is not set up yet (docs/UI.md), and otherwise on the inventory, asked afresh, or on the listing left open there (Michal,
  * 2026-10-07: "When I press admin I want to land on this same page tho as if the open card
  * was there all along"), or on the listing `card` names (See in inventory). Closed, it lets
  * go of the photos it fetched.
@@ -2524,9 +2524,13 @@ function showAdmin(open, card = "") {
         return;
     }
     loadInbox().catch(() => {});
-    if (freshSignin) {
+    // the fold the person needs now (docs/UI.md): Snap Account after a sign-in made on this
+    // phone, Venues while a new account's eBay is not connected or its address not saved
+    const step = signupStep(me);
+    if (freshSignin || step) {
+        if (freshSignin) folds.account = true;
+        if (step) folds.venues = true;
         freshSignin = false;
-        folds.account = true;
         showSettings(true);
         showInventory(false);
         return;
@@ -3229,6 +3233,18 @@ function syncIcon(direction = "to") {
     const icon = el.syncIcons[direction].cloneNode(true);
     icon.removeAttribute("id");
     return icon;
+}
+
+/**
+ * The round arrow after a sync button's words ("Sync from ebay ↻": Michal, 2026-10-26), out of
+ * a screen reader's way and out of sight while the button's ring turns (styles.css).
+ */
+function syncArrow() {
+    const arrow = document.createElement("span");
+    arrow.className = "sync-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "↻";
+    return arrow;
 }
 
 /**
@@ -4992,9 +5008,10 @@ async function askSync() {
  * The sync buttons in each venue's block under Settings, Venues (Michal, 2026-10-26: every
  * block shows both, Sync from and Sync to, the inventory's small green button with the round
  * arrow after the words): one whose function does not exist, or whose venue the account lacks,
- * is grey and does nothing (syncReason), the one muted reason line under the pair; the others
- * are job buttons, the pressed one its ring (continue while paused) and, while it is paused,
- * its reset, the job's line under that venue's pair; one sync at a time locks the rest.
+ * is grey and disabled (syncReason), the one muted reason line under the pair where the
+ * block's status line does not say it already (syncNote); the others are job buttons, the
+ * pressed one its ring (continue while paused) and, while it is paused, its reset, the job's
+ * line under that venue's pair; one sync at a time locks the rest.
  */
 function renderSync() {
     const line = busyLine(sync);
@@ -5007,16 +5024,16 @@ function renderSync() {
         block.syncStatus.className = said && said.kind ? `sync-status ${said.kind}` : "sync-status";
         const drawn = ["from", "to"].map((direction) => {
             const nodes = syncNodes(/** @type {"from"|"to"} */ (direction), venue);
-            const reason = syncReason(venue, /** @type {"from"|"to"} */ (direction), me, ebay);
-            const busy = !reason && pressed(sync, `${direction} ${venue}`);
-            nodes.btn.classList.toggle("off", !!reason);
-            nodes.btn.setAttribute("aria-disabled", reason ? "true" : "false");
-            nodes.btn.disabled = !reason && locked && !(busy && taskTap(sync));
+            const busy = pressed(sync, `${direction} ${venue}`);
+            const grey = !busy && !!syncReason(venue, /** @type {"from"|"to"} */ (direction), me, ebay);
+            nodes.btn.classList.toggle("posted", !grey);
+            nodes.btn.classList.toggle("muted", grey);
+            nodes.btn.disabled = grey || (locked && !(busy && taskTap(sync)));
             paintJobButton(nodes.btn, syncWord(/** @type {"from"|"to"} */ (direction), venue), {
                 busy,
                 cancel: busy && taskCancel(sync),
                 paused: busy && sync.paused,
-                trail: [nodes.icon],
+                trail: [nodes.arrow],
                 reset: nodes.reset,
             });
             return nodes;
@@ -5033,16 +5050,14 @@ function renderSync() {
 }
 
 /**
- * A venue block's sync button and its reset, made once: `sync-<direction>-<venue>`, its half
- * of the sync symbol (the from or the to arc) after the word, and its reset
- * `sync-<direction>-<venue>-reset` (drawn after both buttons). A grey one (syncReason) takes
- * the tap and does nothing: the line under the pair says why.
+ * A venue block's sync button and its reset, made once: `sync-<direction>-<venue>`, the
+ * inventory's small green badge (Michal, 2026-10-26) with the round arrow "↻" after the word,
+ * and its reset `sync-<direction>-<venue>-reset` (drawn after both buttons).
  */
 function syncNodes(direction, venue) {
     const key = `${direction} ${venue}`;
     if (!syncDrawn.nodes.has(key)) {
-        const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-btn sync-${direction}`, false, () => {
-            if (syncReason(venue, direction, me, ebayNow())) return;
+        const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-${direction}`, false, () => {
             startSync(direction, venue).catch(() => {});
         });
         btn.id = `sync-${direction}-${venue}`;
@@ -5052,7 +5067,7 @@ function syncNodes(direction, venue) {
         reset.id = `sync-${direction}-${venue}-reset`;
         reset.hidden = true;
         reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
-        syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
+        syncDrawn.nodes.set(key, { btn, arrow: syncArrow(), reset });
     }
     return syncDrawn.nodes.get(key);
 }
@@ -5239,10 +5254,10 @@ function renderAccount() {
 
 /**
  * The venue blocks, in /me's order: each its status line (venueBlockLine), its Ships from
- * line (shipsFromLine; the new account's eBay block says the address comes from eBay), eBay's
- * Connect eBay (in the posted green and done with once connected: paintConnect) with
- * Reconnect under it and "Connect eBay to start posting" while not, the other venues' "Ask for
- * it in Feedback" while the account lacks them; the sync buttons are renderSync's.
+ * line (shipsFromLine), eBay's Connect eBay and "Connect eBay to start posting" while it is
+ * not connected, Reconnect once it is (the status line says "Connected as ...", so the green
+ * button is the two steps' alone), the other venues' "Ask for it in Feedback" while the
+ * account lacks them; the sync buttons are renderSync's.
  */
 function renderVenues() {
     const ebay = ebayNow();
@@ -5255,13 +5270,12 @@ function renderVenues() {
         block.status.hidden = !words;
         block.status.classList.toggle("ok", !!words && (venue !== "ebay" ? venueAllowed(me, venue) : !!ebay && ebay.connected));
         const allowed = venueAllowed(me, venue);
-        let ships = allowed ? shipsFromLine(venue, seller.info) : "";
-        if (venue === "ebay" && !ships && ebay && !ebay.connected) ships = ADDRESS_FROM_EBAY;
+        const ships = allowed ? shipsFromLine(venue, seller.info) : "";
         block.ships.textContent = ships;
         block.ships.hidden = !ships;
         if (venue === "ebay") {
             const connected = !!ebay && ebay.connected;
-            el.accountConnect.hidden = !ebay;
+            el.accountConnect.hidden = !ebay || connected;
             paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
             el.accountReconnect.hidden = !connected;
             el.accountReconnect.disabled = account.busy;
@@ -5592,7 +5606,7 @@ function renderWrap() {
     const shown = applies.map((n) => n.id).join(" ");
     if (wrap.shown.apply !== shown) {
         wrap.shown.apply = shown;
-        el.wrapApply.replaceChildren(...applies, ...(applies.length ? [el.wrapApplyNote] : []));
+        el.wrapApply.replaceChildren(...applies);
     }
 }
 
@@ -7142,11 +7156,6 @@ function main() {
     for (const m of MODES) fillCustomize(m);
     fixDark = savedFixDark();
     readFolds();
-    // the note the apply buttons share, kept to be drawn after them
-    el.wrapApplyNote = document.createElement("p");
-    el.wrapApplyNote.className = "small wrap-note";
-    el.wrapApplyNote.textContent = "Pushes the header and footer as set now to every listing on that venue";
-    wrap.shown = { header: "", footer: "", apply: "" };
     render();
 
     renderServer();
