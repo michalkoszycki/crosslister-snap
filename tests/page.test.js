@@ -8780,22 +8780,25 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
     assert.deepEqual([keyed.signups, linked.signups], [[], []]);
 });
 
-test("Seller address sits under the eBay line, folded and hidden until the server answers; About and privacy in the footer", () => {
-    const account = /<div id="account" class="account" hidden>([\s\S]*?)<p id="account-status"/.exec(html)[1];
-    assert.match(account, /id="account-reconnect"[^>]*>Reconnect<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="seller-toggle"/);
-    assert.match(account, /<button type="button" id="seller-toggle" class="link customize-toggle seller-toggle" aria-expanded="false"\s+aria-controls="seller" hidden>▸ Address where you ship from<\/button>/);
-    assert.match(account, /<div id="seller" class="seller" hidden>/);
+test("the address where you ship from is the last card under Venues, hidden until the server answers; About and privacy in the footer", () => {
+    // Michal, 2026-10-26: "the address box should be at the end of venues"
+    const venues = /<div id="fold-venues" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-posting-toggle"/.exec(html)[1];
+    const card = /<div id="seller" class="card address-card" hidden>([\s\S]*?)<p id="seller-status"/.exec(venues)[1];
+    assert.ok(venues.indexOf('id="seller"') > venues.indexOf('id="venue-poshmark-cannot"'), "after the venue blocks");
+    assert.match(card, /<p class="card-name">Address where you ship from<\/p>/);
+    assert.match(card, /<input id="address-same" type="checkbox" checked>\s*<span>Same address for every venue<\/span>/);
     for (const [id, label, fill] of [
         ["seller-line1", "Street address", "address-line1"],
         ["seller-city", "City", "address-level2"],
         ["seller-state", "State", "address-level1"],
         ["seller-zip", "ZIP", "postal-code"],
     ]) {
-        assert.match(account, new RegExp(`<span class="field-label">${label}</span>\\s*<input id="${id}"[^>]*autocomplete="${fill}"`));
+        assert.match(card, new RegExp(`<span class="field-label">${label}</span>\\s*<input id="${id}"[^>]*autocomplete="${fill}"`));
     }
-    assert.match(account, /id="seller-zip"[^>]*inputmode="numeric"/);
-    assert.match(account, /<button type="button" id="seller-save"[^>]*>Save address<\/button>/);
-    assert.match(account, /<p id="seller-status"[^>]*aria-live="polite"><\/p>/);
+    assert.match(card, /id="seller-zip"[^>]*inputmode="numeric"/);
+    assert.match(card, /<label id="seller-neighborhood-field" class="field field-small" hidden>\s*<span class="field-label">Neighborhood<\/span>/);
+    assert.match(card, /<div id="address-venues" class="address-venues" hidden><\/div>/);
+    assert.match(card, /<button type="button" id="seller-save"[^>]*>Save address<\/button>/);
     const css = readFileSync(join(root, "styles.css"), "utf8");
     assert.match(css, /\.seller-row \{ display: grid;/);
     // the footer's link to the page eBay's developer console takes as the privacy policy
@@ -8847,7 +8850,7 @@ test("about.html: what Snap is, privacy and terms, the version; no script, the a
         "Usage counts",
         "What it never keeps: your card details. Payments go to Stripe",
         "A venue can ask us to delete the data we hold from it",
-        "Deleting your account is, for now, a request to the developer",
+        "You delete your account yourself, in Snap under Admin, Settings, Snap Account",
         "You are the seller",
         "under each venue's own rules",
         "Your first three postings are free; after that, postings are prepaid. Postings already used are not refunded.",
@@ -8866,19 +8869,37 @@ test("about.html: what Snap is, privacy and terms, the version; no script, the a
     }
 });
 
-/** A connected eBay with no address yet, as GET /me/seller answers a new seller. */
-const NEW_SELLER = {
-    address: { line1: "", city: "", state: "", postal_code: "" },
-    complete: false,
-    ebay: { connected: true, user: "anna_sells", policies: "none" },
+/** GET /me/address for a seller who has saved none yet: one shared address, eBay the venue that uses it. */
+const NEW_ADDRESS = {
+    same: true,
+    shared: { line1: "", city: "", state: "", zip: "", neighborhood: "" },
+    venues: { ebay: { line1: "", city: "", state: "", zip: "" } },
+    uses: { ebay: ["line1", "city", "state", "zip"] },
+    editable: true,
 };
 
-/** The Seller address foldout as the screen shows it. */
-function sellerOf(nodes) {
+/** The admin's three venues: eBay the full address, Craigslist the ZIP and the neighbourhood, Poshmark none. */
+const MICHAL_ADDRESS = {
+    same: true,
+    shared: { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609", neighborhood: "McKinley Park" },
+    venues: {
+        ebay: { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609" },
+        craigslist: { zip: "60609", neighborhood: "McKinley Park" },
+    },
+    uses: { ebay: ["line1", "city", "state", "zip"], craigslist: ["zip", "neighborhood"], poshmark: [] },
+    editable: true,
+};
+
+/** A connected eBay with no policies yet, on /me. */
+const ANNA_EBAY = { connected: true, user: "anna_sells", policies: "none" };
+
+/** The address card as the screen shows it, with the eBay block's line over it. */
+function addressCard(nodes) {
     return {
-        toggle: nodes.get("seller-toggle").hidden ? null : nodes.get("seller-toggle").textContent,
-        open: !nodes.get("seller").hidden,
+        shown: !nodes.get("seller").hidden,
+        venuesOpen: !nodes.get("fold-venues").hidden,
         note: nodes.get("seller-note").hidden ? null : nodes.get("seller-note").textContent,
+        same: nodes.get("address-same").checked,
         status: nodes.get("seller-status").textContent,
         ebay: nodes.get("account-ebay").hidden ? null : nodes.get("account-ebay").textContent,
     };
@@ -8891,175 +8912,265 @@ function typeAddress(nodes, { line1, city, state, zip }) {
     nodes.get("seller-zip").value = zip;
 }
 
-test("Seller address: open by itself for a connected eBay with no address; saved, the policies set up and said ready once", async (t) => {
+/** A node app.js drew under `root`, by its id; undefined when it is not there. */
+function findIn(root, id) {
+    for (const kid of root.children) {
+        if (typeof kid === "string") continue;
+        if (kid.id === id) return kid;
+        const deeper = findIn(kid, id);
+        if (deeper) return deeper;
+    }
+    return undefined;
+}
+
+/** Each venue's block when the address is not the same for every venue: its name, then its boxes (id: value) or its line. */
+function addressVenues(nodes) {
+    return nodes.get("address-venues").children.map((block) => [
+        block.children[0].textContent,
+        ...block.children.slice(1).map((k) => (k.className === "small venue-note" ? k.textContent : `${k.children[0].textContent}=${k.children[1].value}`)),
+    ]);
+}
+
+test("the address card: the Venues fold opens by itself for a connected eBay with no address; saved, the policies set up and said ready once", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: NEW_SELLER.ebay } });
-    pc.seller = structuredClone(NEW_SELLER);
+    const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: { ...ANNA_EBAY } } });
+    pc.address = structuredClone(NEW_ADDRESS);
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    assert.deepEqual(pc.sellerAsks, [], "not asked before Settings opens");
+    assert.deepEqual(pc.addressAsks, [], "not asked before Settings opens");
     await openSettings(nodes);
-    await settle();
-    assert.deepEqual(pc.sellerAsks, ["key test-key-0123456789"]);
-    assert.deepEqual(sellerOf(nodes), {
-        toggle: "▾ Address where you ship from",
-        open: true,
+    assert.deepEqual(pc.addressAsks, ["key test-key-0123456789"]);
+    assert.deepEqual(addressCard(nodes), {
+        shown: true,
+        venuesOpen: true,
         note: ADDRESS_NEEDED,
+        same: true,
         status: "",
-        ebay: "eBay: connected as anna_sells",
+        ebay: "Connected as anna_sells",
     });
+    assert.equal(nodes.get("fold-venues-toggle").textContent, "▾ Venues");
     // Michal, 2026-10-08: "then your address. what address?": what it is for, and who sees what
     assert.equal(
         ADDRESS_NEEDED,
         "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state."
     );
-    assert.equal(nodes.get("seller-toggle").attrs["aria-expanded"], "true");
     // typed in rather than prefilled: what Snap sets up is listed all the same, above Save address
     assert.equal(nodes.get("seller-policies").hidden, false);
     assert.equal(nodes.get("seller-save").textContent, "Save address");
+    // no venue of hers uses a neighbourhood: no box for it; no address yet: no Ships from
+    assert.equal(nodes.get("seller-neighborhood-field").hidden, true);
+    assert.equal(nodes.get("venue-ebay-ships").hidden, true);
 
     // a box not right: named, nothing sent
     nodes.get("seller-save").fire("click");
     await settle();
-    assert.equal(sellerOf(nodes).status, "Enter the street address.");
+    assert.equal(addressCard(nodes).status, "Enter the street address.");
     typeAddress(nodes, { line1: " 12  Oak St ", city: "Chicago", state: "Illinois", zip: "60601" });
     nodes.get("seller-save").fire("click");
     await settle();
-    assert.equal(sellerOf(nodes).status, "The state is two letters, as IL.");
-    assert.deepEqual(pc.sellerSaves, []);
+    assert.equal(addressCard(nodes).status, "The state is two letters, as IL.");
+    assert.deepEqual(pc.addressSaves, []);
 
     // saved: the server sets up her policies, and the eBay line says so while it does
-    pc.policiesAfterSave = "pending";
+    pc.me.ebay.policies = "pending";
     nodes.get("seller-state").value = "il";
     nodes.get("seller-save").fire("click");
-    assert.equal(sellerOf(nodes).status, "Saving...");
+    assert.equal(addressCard(nodes).status, "Saving...");
     assert.equal(nodes.get("seller-save").disabled, true, "one Save at a time");
+    const mes = pc.mes;
     await settle();
-    assert.deepEqual(pc.sellerSaves, [
+    assert.deepEqual(pc.addressSaves, [
         {
-            body: { address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } },
+            body: { same: true, shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" } },
             auth: "key test-key-0123456789",
             type: "application/json",
         },
     ]);
-    assert.deepEqual(sellerOf(nodes), {
-        toggle: "▾ Address where you ship from",
-        open: true,
+    assert.equal(pc.mes, mes + 1, "/me asked again, for the policies");
+    assert.deepEqual(addressCard(nodes), {
+        shown: true,
+        venuesOpen: true,
         note: null,
+        same: true,
         status: "saved",
-        ebay: "eBay: connected as anna_sells; setting up your policies...",
+        ebay: "Connected as anna_sells · setting up your policies...",
     });
     assert.equal(nodes.get("seller-line1").value, "12 Oak St", "the boxes as the server keeps it");
     assert.equal(nodes.get("seller-state").value, "IL");
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago IL 60601");
 
-    // asked again every 10 s while they are pending ...
+    // /me asked again every 10 s while they are pending ...
     t.mock.timers.tick(SELLER_POLL_MS);
     await settle();
-    assert.equal(pc.sellerAsks.length, 2);
-    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; setting up your policies...");
+    assert.equal(pc.mes, mes + 2);
+    assert.equal(addressCard(nodes).ebay, "Connected as anna_sells · setting up your policies...");
     // ... and once ready, said so, and asked no more
-    pc.seller.ebay.policies = "ready";
+    pc.me.ebay.policies = "ready";
     t.mock.timers.tick(SELLER_POLL_MS);
     await settle();
-    assert.equal(pc.sellerAsks.length, 3);
-    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; policies ready");
+    assert.equal(pc.mes, mes + 3);
+    assert.equal(addressCard(nodes).ebay, "Connected as anna_sells · policies ready");
     t.mock.timers.tick(SELLER_POLL_MS * 3);
     await settle();
-    assert.equal(pc.sellerAsks.length, 3, "nothing more to wait for");
+    assert.equal(pc.mes, mes + 3, "nothing more to wait for");
 
-    // Admin closed and opened again: "policies ready" was said once; folded, the address all there
+    // Admin closed and opened again: "policies ready" was said once; the address all there
     nodes.get("admin-close").fire("click");
     await openSettings(nodes);
-    await settle();
-    assert.deepEqual(sellerOf(nodes), {
-        toggle: "▸ Address where you ship from",
-        open: false,
-        note: null,
-        status: "",
-        ebay: "eBay: connected as anna_sells",
-    });
+    assert.equal(addressCard(nodes).ebay, "Connected as anna_sells");
+    assert.equal(addressCard(nodes).note, null);
     assert.equal(nodes.get("seller-city").value, "Chicago");
-    // the toggle unfolds it
-    nodes.get("seller-toggle").fire("click");
-    assert.equal(sellerOf(nodes).open, true);
 });
 
-test("Seller address: failed policies say contact the developer; pending is asked about three minutes at most; refusals in the server's words", async (t) => {
+test("the address card: failed policies say contact the developer; pending is asked about three minutes at most; refusals in the server's words", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const done = { ...NEW_SELLER, address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" }, complete: true };
-    const pc = fakePc({ me: structuredClone(ACCOUNT_ME) });
-    pc.seller = structuredClone(done);
+    const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: { ...ANNA_EBAY, policies: "ready" } } });
+    pc.address = { ...structuredClone(NEW_ADDRESS), shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" } };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
-    await settle();
-    assert.equal(sellerOf(nodes).open, false, "the address all there: folded");
-    assert.equal(sellerOf(nodes).note, null);
-    nodes.get("seller-toggle").fire("click");
+    assert.equal(addressCard(nodes).venuesOpen, false, "the address all there: Venues stays folded");
+    assert.equal(addressCard(nodes).note, null);
     assert.equal(nodes.get("seller-zip").value, "60601");
+    assert.equal(nodes.get("seller-policies").hidden, true);
 
     // the policies could not be made: said, and nothing more asked
-    pc.policiesAfterSave = "failed: no return policy allowed";
+    pc.me.ebay.policies = "failed: no return policy allowed";
     nodes.get("seller-zip").value = "60601-1234";
     nodes.get("seller-save").fire("click");
     await settle();
     // Michal, 2026-10-10: a ZIP+4 is taken, its five sent, and the box shows the five after Save
-    assert.equal(pc.sellerSaves.at(-1).body.address.postal_code, "60601");
+    assert.equal(pc.addressSaves.at(-1).body.shared.zip, "60601");
     assert.equal(nodes.get("seller-zip").value, "60601");
-    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; policies failed: no return policy allowed; contact the developer");
-    const asks = pc.sellerAsks.length;
+    assert.equal(addressCard(nodes).ebay, "Connected as anna_sells · policies failed: no return policy allowed; contact the developer");
+    const asks = pc.mes;
     t.mock.timers.tick(SELLER_POLL_MS * 2);
     await settle();
-    assert.equal(pc.sellerAsks.length, asks);
+    assert.equal(pc.mes, asks);
 
     // pending that never ends: asked every 10 s, three minutes' worth, then left as it is
-    pc.policiesAfterSave = "pending";
+    pc.me.ebay.policies = "pending";
     nodes.get("seller-save").fire("click");
     await settle();
     for (let i = 0; i < SELLER_POLL_MAX + 4; i += 1) {
         t.mock.timers.tick(SELLER_POLL_MS);
         await settle();
     }
-    assert.equal(pc.sellerAsks.length, asks + SELLER_POLL_MAX);
+    assert.equal(pc.mes, asks + 1 + SELLER_POLL_MAX);
     assert.equal(SELLER_POLL_MAX * SELLER_POLL_MS, 3 * 60 * 1000);
-    assert.equal(sellerOf(nodes).ebay, "eBay: connected as anna_sells; setting up your policies...");
+    assert.equal(addressCard(nodes).ebay, "Connected as anna_sells · setting up your policies...");
 
-    // the admin: his address is in the server's .env (409); a bad field (400); no route yet (404)
+    // a job of hers running (409), a value the server refuses (400, its sentence), no route yet (404)
     for (const [status, detail, said] of [
-        [409, "The admin's address is in the server's .env; change it there.", "The admin's address is in the server's .env; change it there."],
-        [400, "postal_code: not a US ZIP", "postal_code: not a US ZIP"],
+        [409, "job 12 is queued or running; let it finish or cancel it, then try again", "job 12 is queued or running; let it finish or cancel it, then try again"],
+        [400, "craigslist: zip must be five digits or ZIP+4, not 'M5V 2T6'", "craigslist: zip must be five digits or ZIP+4, not 'M5V 2T6'"],
         [404, "Not Found", "Saving the address is not available yet."],
         [500, "boom", "Could not save the address: boom."],
     ]) {
-        pc.sellerRefuse = { status, detail };
+        pc.addressRefuse = { status, detail };
         nodes.get("seller-save").fire("click");
         await settle();
-        assert.equal(sellerOf(nodes).status, said, `answered ${status}`);
+        assert.equal(addressCard(nodes).status, said, `answered ${status}`);
     }
 });
 
-test("Seller address: no foldout from an older server, nor before an eBay is connected opens it", async (t) => {
+test("Same address for every venue: unticked, one block per venue that uses an address, prefilled; Save sends them; ticked again, eBay's is the shared one", async (t) => {
+    // Michal, 2026-10-25: "Address can be same for all venues, but also if unchecked it would
+    // split into addresses per venue"
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    // an older server (its /me/seller a 404): the Account block as it was
+    const pc = fakePc({ me: { user: "michal", admin: true, craigslist: true, poshmark: true, venues: ["ebay", "craigslist", "poshmark"], ebay: { connected: true, user: "czubin_industries", policies: "ready" } } });
+    pc.address = structuredClone(MICHAL_ADDRESS);
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    // each venue block says where it ships from, the fields it uses; Poshmark uses none
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(nodes.get("venue-craigslist-ships").textContent, "Ships from 60609, McKinley Park");
+    assert.equal(nodes.get("venue-poshmark-ships").hidden, true);
+    assert.equal(nodes.get("seller-neighborhood-field").hidden, false, "Craigslist uses the neighbourhood");
+    assert.equal(nodes.get("seller-neighborhood").value, "McKinley Park");
+    assert.equal(nodes.get("address-shared").hidden, false);
+    assert.equal(nodes.get("address-venues").hidden, true);
+
+    // unticked: a block per venue, prefilled from the shared one; nothing sent yet
+    nodes.get("address-same").checked = false;
+    nodes.get("address-same").fire("change");
+    assert.equal(nodes.get("address-shared").hidden, true);
+    assert.equal(nodes.get("address-venues").hidden, false);
+    assert.deepEqual(addressVenues(nodes), [
+        ["ebay", "Street address=4234 S Wolcott Ave", "City=Chicago", "State=IL", "ZIP=60609"],
+        ["craigslist", "ZIP=60609", "Neighborhood=McKinley Park"],
+        ["poshmark", "Poshmark does not use a ship-from address."],
+    ]);
+    assert.deepEqual(pc.addressSaves, []);
+    const box = (id) => findIn(nodes.get("address-venues"), id);
+    // a box not right is named with its venue, nothing sent
+    box("address-craigslist-zip").value = "M5V";
+    nodes.get("seller-save").fire("click");
+    await settle();
+    assert.equal(addressCard(nodes).status, "Craigslist: The ZIP is five digits, as 60601.");
+    assert.deepEqual(pc.addressSaves, []);
+    // Craigslist its own: sent per venue, the venues that use one
+    box("address-craigslist-zip").value = "60608";
+    box("address-craigslist-neighborhood").value = "Pilsen";
+    nodes.get("seller-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.addressSaves.map((s) => s.body), [
+        {
+            same: false,
+            venues: {
+                ebay: { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609" },
+                craigslist: { zip: "60608", neighborhood: "Pilsen" },
+            },
+        },
+    ]);
+    assert.equal(addressCard(nodes).status, "saved");
+    assert.equal(addressCard(nodes).same, false);
+    assert.equal(nodes.get("venue-craigslist-ships").textContent, "Ships from 60608, Pilsen");
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+
+    // a fresh look reads it back split
+    const again = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(again.nodes);
+    assert.equal(again.nodes.get("address-same").checked, false);
+    assert.deepEqual(addressVenues(again.nodes)[1], ["craigslist", "ZIP=60608", "Neighborhood=Pilsen"]);
+
+    // ticked again: eBay's address is the shared one (the one eBay prefilled), sent as it
+    findIn(again.nodes.get("address-venues"), "address-ebay-line1").value = "1 New St";
+    again.nodes.get("address-same").checked = true;
+    again.nodes.get("address-same").fire("change");
+    assert.equal(again.nodes.get("address-shared").hidden, false);
+    assert.equal(again.nodes.get("seller-line1").value, "1 New St");
+    assert.equal(again.nodes.get("seller-neighborhood").value, "Pilsen", "the neighbourhood Craigslist had");
+    again.nodes.get("seller-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.addressSaves.at(-1).body, {
+        same: true,
+        shared: { line1: "1 New St", city: "Chicago", state: "IL", zip: "60609", neighborhood: "Pilsen" },
+    });
+    assert.equal(again.nodes.get("venue-craigslist-ships").textContent, "Ships from 60609, Pilsen");
+});
+
+test("the address card: none from an older server; signing out takes it away with the account", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // an older server (its /me/address a 404): no card, no Ships from
     const old = fakePc({ me: structuredClone(ACCOUNT_ME) });
     const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
     await openSettings(before.nodes);
-    await settle();
-    assert.equal(old.sellerAsks.length, 1);
-    assert.equal(sellerOf(before.nodes).toggle, null);
-    assert.equal(sellerOf(before.nodes).open, false);
-    assert.equal(accountOf(before.nodes).ebay, "eBay: not connected");
+    assert.equal(old.addressAsks.length, 1);
+    assert.equal(addressCard(before.nodes).shown, false);
+    assert.equal(before.nodes.get("venue-ebay-ships").hidden, true);
+    assert.equal(accountOf(before.nodes).ebay, "Not connected");
+    assert.equal(addressCard(before.nodes).venuesOpen, false, "nothing to ask for yet");
 
-    // no eBay yet, no address: the foldout there, folded, nothing said
+    // no eBay yet, no address: the card there, nothing said
     const fresh = fakePc({ me: structuredClone(ACCOUNT_ME) });
-    fresh.seller = { ...structuredClone(NEW_SELLER), ebay: { connected: false, user: "", policies: "none" } };
+    fresh.address = structuredClone(NEW_ADDRESS);
     const page = await loadPage({ local: memoryStore(GOOD), fetchImpl: fresh.fetch });
     await openSettings(page.nodes);
-    await settle();
-    assert.deepEqual(sellerOf(page.nodes), { toggle: "▸ Address where you ship from", open: false, note: null, status: "", ebay: "eBay: not connected" });
+    assert.deepEqual(addressCard(page.nodes), { shown: true, venuesOpen: false, note: null, same: true, status: "", ebay: "Not connected" });
     assert.equal(page.nodes.get("account-connect").hidden, false);
 
     // signed out: the address goes with the account
     page.nodes.get("settings-signout").fire("click");
-    assert.equal(page.nodes.get("seller-toggle").hidden, true);
+    assert.equal(page.nodes.get("seller").hidden, true);
 });
 
 // --- 2.14.0 (Michal, 2026-10-08): See in inventory, archive by a swipe, the Feedback inbox,
@@ -9444,22 +9555,33 @@ test("Feedback, for an admin: the new entries above the box, counted in its togg
     assert.equal(old.nodes.get("feedback-toggle").textContent, "▾ Feedback");
 });
 
-test("a sign-up waiting for eBay: Finish signing up in place of the posting screens; Connect eBay, the address, then the goods screen", async (t) => {
+/** A new account, made at the first code (Michal, 2026-10-25): an ordinary account, its eBay not connected yet. */
+const NEW_ME = {
+    user: "anna",
+    name: "anna",
+    email: "anna@example.com",
+    owner: true,
+    admin: false,
+    craigslist: false,
+    venues: ["ebay"],
+    registered: false,
+    credits: { free_left: 3, bought_left: 0 },
+    packs: [],
+    ebay: { connected: false, user: "", policies: "none" },
+};
+
+/** PATCH /me/seller's answer once step 2 saves (the server writes the shared address too). */
+const SELLER_SAVED = {
+    address: { line1: "", city: "", state: "", postal_code: "" },
+    complete: false,
+    ebay: { connected: true, user: "anna_sells", policies: "none" },
+};
+
+test("a new account: Finish setting up in place of the posting screens, the rest of Admin as anyone's; Connect eBay, the address, then the goods screen", async (t) => {
+    // Michal, 2026-10-25: "create the account EVEN if they don't create a venue": no pending
+    // person; the two steps until eBay is connected and the address saved (docs/UI.md, 4.3)
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const PENDING_ME = {
-        user: "",
-        email: "anna@example.com",
-        admin: false,
-        craigslist: true,
-        venues: [],
-        pending: true,
-        registered: false,
-        credits: { free_left: 3, bought_left: 0 },
-        packs: [],
-        ebay: { connected: false, user: "", policies: "none" },
-    };
-    const pc = fakePc({ me: structuredClone(PENDING_ME) });
-    pc.pending = "Connect eBay to finish signing up.";
+    const pc = fakePc({ me: structuredClone(NEW_ME) });
     pc.connect = 503;
     const local = memoryStore({ "snap.session": "sess-1" });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
@@ -9467,8 +9589,9 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     const shown = (n) => screens.filter((id) => !n.get(id).hidden);
     assert.deepEqual(shown(nodes), ["signup-steps"], "in place of the posting screens");
     assert.equal(pc.checks, 1);
-    assert.equal(pc.mes, 1, "the check refused: /me says why");
-    assert.equal(server(nodes), "server ok (ok)", "the server answered, refusing");
+    assert.equal(pc.mes, 1);
+    assert.equal(server(nodes), "server ok (ok)");
+    assert.equal(nodes.get("header-user").textContent, "anna", "an account with a name from the first code");
     assert.equal(nodes.get("signup-step-ebay").classList.contains("done"), false);
     assert.equal(nodes.get("signup-connect").hidden, false);
     assert.equal(nodes.get("signup-connect").textContent, "Connect eBay");
@@ -9477,15 +9600,14 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     assert.equal(nodes.get("signup-step-address").classList.contains("off"), true, "step 2 greyed");
     assert.equal(nodes.get("signup-address").disabled, true);
     assert.equal(nodes.get("about-link").hidden, false);
-    assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish signing up<\/h2>/);
+    assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish setting up<\/h2>\s*<p class="landing-what">Two steps, once, and Snap lists for you\.<\/p>/);
     assert.match(html, /id="signup-connect" class="big">Connect eBay</);
     // Michal, 2026-10-08: "then your address. what address?": step 2 says where, and what it is for
     const step2 = /<li id="signup-step-address"[^>]*>([\s\S]*?)<\/li>/.exec(html)[1];
     assert.match(step2, /<span id="signup-address-word" class="signup-word">Address where you ship from<\/span>\s*<span class="signup-line">([^<]*)<\/span>/);
-    assert.equal(nodes.get("signup-address-word").textContent, "Address where you ship from");
-    assert.equal(/<span class="signup-line">([^<]*)<\/span>/.exec(step2)[1], ADDRESS_NEEDED, "the same line as the Settings foldout's");
+    assert.equal(/<span class="signup-line">([^<]*)<\/span>/.exec(step2)[1], ADDRESS_NEEDED, "the same line as the address card's");
 
-    // Connect eBay, here as in the Account block: a server that cannot yet says its own words
+    // Connect eBay, here as in the eBay block: a server that cannot yet says its own words
     nodes.get("signup-connect").fire("click");
     assert.equal(nodes.get("signup-status").textContent, "Opening eBay...");
     assert.equal(nodes.get("signup-connect").disabled, true);
@@ -9497,35 +9619,34 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     await settle();
     assert.deepEqual(globalThis.location.assigned, [EBAY_CONSENT]);
 
-    // Admin meanwhile: on Settings, whose Account block says who and that it is not an account yet
+    // Admin meanwhile: Settings at Venues, the eBay block saying what is next; Inventory and
+    // Feedback there as for anyone (an ordinary account, its inventory empty)
     nodes.get("admin-toggle").fire("click");
     await settle();
     assert.equal(nodes.get("settings").hidden, false);
-    assert.equal(nodes.get("inventory").hidden, true, "the inventory would be refused");
-    assert.ok(!pc.calls.some((c) => c.startsWith("GET /inventory")));
-    assert.equal(nodes.get("account-user").textContent, "Signed in as anna@example.com, not registered yet");
-    assert.equal(nodes.get("account-ebay").textContent, "eBay: not connected");
-    // the server's refusal, wherever a refusal is said, in its own words
-    nodes.get("feedback-toggle").fire("click");
-    nodes.get("feedback-text").value = "Stuck";
-    nodes.get("feedback-send").fire("click");
-    await settle();
-    assert.equal(nodes.get("feedback-status").textContent, "Connect eBay to finish signing up.");
+    assert.equal(nodes.get("fold-venues").hidden, false, "the fold the person needs now");
+    assert.equal(nodes.get("fold-account").hidden, true);
+    assert.equal(nodes.get("inventory-toggle").hidden, false);
+    assert.equal(nodes.get("feedback-toggle").hidden, false);
+    assert.equal(nodes.get("account-user").textContent, "anna");
+    assert.equal(nodes.get("account-ebay").textContent, "Not connected");
+    assert.equal(nodes.get("venue-ebay-note").textContent, "Connect eBay to start posting");
+    assert.deepEqual(["sync-from-ebay", "sync-to-ebay"].map((id) => drawn(nodes, id).disabled), [true, true], "nothing to sync yet");
     nodes.get("admin-close").fire("click");
     assert.deepEqual(shown(nodes), ["signup-steps"]);
 
-    // back from eBay: the account is real now, and Settings opens on the Seller address, saying why
-    pc.pending = "";
-    pc.me = { ...PENDING_ME, user: "anna", email: "", pending: false, registered: false, ebay: { connected: true, user: "anna_sells", policies: "none" } };
-    pc.seller = structuredClone(NEW_SELLER);
+    // back from eBay: Settings opens on the address at the end of Venues, saying why
+    pc.me = { ...NEW_ME, ebay: { connected: true, user: "anna_sells", policies: "none" } };
+    pc.address = structuredClone(NEW_ADDRESS);
+    pc.seller = structuredClone(SELLER_SAVED);
     const back = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
     const n = back.nodes;
     assert.equal(globalThis.location.hash, "");
     assert.equal(pc.mes, 2, "asked again, once");
-    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
+    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false]);
     assert.equal(n.get("seller-note").textContent, ADDRESS_NEEDED);
     assert.equal(n.get("account-status").textContent, "eBay connected");
-    assert.equal(n.get("account-user").textContent, "Signed in as anna");
+    assert.equal(n.get("account-ebay").textContent, "Connected as anna_sells");
     // closed: step 1's button says eBay connected, in the posted green and done with (Michal,
     // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
     // heading without a tick since the button says it; step 2 open
@@ -9540,54 +9661,46 @@ test("a sign-up waiting for eBay: Finish signing up in place of the posting scre
     assert.equal(n.get("signup-step-address").classList.contains("off"), false);
     assert.equal(n.get("signup-address").disabled, false);
 
-    // step 2: Settings' Seller address; saved, /me says registered, and the goods screen is hers
+    // step 2: the address card; saved through PATCH /me/seller as ever (the route that starts
+    // the eBay policy setup), /me says registered, and the goods screen is hers
     n.get("signup-address").fire("click");
     await settle();
-    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
+    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false]);
     pc.me = { ...pc.me, registered: true };
     typeAddress(n, { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    const asked = pc.addressAsks.length;
     n.get("seller-save").fire("click");
     await settle();
     assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
+    assert.deepEqual(pc.addressSaves, [], "not through /me/address");
+    assert.equal(pc.addressAsks.length, asked + 1, "the card read back from /me/address");
     assert.equal(pc.mes, 3, "asked once the address is in");
+    assert.equal(n.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago IL 60601");
     n.get("admin-close").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
 });
 
-/** A sign-up back from eBay: a real account now, its address not given yet. */
-const CONNECTED_ME = {
-    user: "anna",
-    email: "",
-    admin: false,
-    craigslist: true,
-    venues: [],
-    pending: false,
-    registered: false,
-    credits: { free_left: 3, bought_left: 0 },
-    packs: [],
-    ebay: { connected: true, user: "anna_sells", policies: "none" },
-};
+/** A new account back from eBay: its address not given yet. */
+const CONNECTED_ME = { ...NEW_ME, ebay: { connected: true, user: "anna_sells", policies: "none" } };
 
 test("an address prefilled from eBay: step 2 asks to confirm it, the boxes filled, what Snap sets up listed, Looks right sends them", async (t) => {
     // Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the policies,
     // after connecting eBay"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
-    pc.seller = {
-        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "" },
-        complete: false,
-        ebay: { connected: true, user: "anna_sells", policies: "none" },
-    };
+    pc.address = { ...structuredClone(NEW_ADDRESS), shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "", neighborhood: "" } };
+    pc.seller = structuredClone(SELLER_SAVED);
     const local = memoryStore({ "snap.session": "sess-1" });
     const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
-    assert.deepEqual(["admin", "settings", "seller"].map((id) => n.get(id).hidden), [false, false, false], "open by itself");
-    assert.deepEqual(sellerOf(n), {
-        toggle: "▾ Address where you ship from",
-        open: true,
+    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false], "open by itself");
+    assert.deepEqual(addressCard(n), {
+        shown: true,
+        venuesOpen: true,
         note: "Prefilled from your eBay account; change it if you ship from elsewhere.",
+        same: true,
         status: "",
-        ebay: "eBay: connected as anna_sells",
+        ebay: "Connected as anna_sells",
     });
     assert.deepEqual(["seller-line1", "seller-city", "seller-state", "seller-zip"].map((id) => n.get(id).value), ["12 Oak St", "Chicago", "IL", ""]);
     // under the boxes, above the button: what Snap sets up on her eBay
@@ -9615,7 +9728,7 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     await settle();
     n.get("seller-save").fire("click");
     await settle();
-    assert.equal(sellerOf(n).status, "The ZIP is five digits, as 60601.");
+    assert.equal(addressCard(n).status, "The ZIP is five digits, as 60601.");
     assert.deepEqual(pc.sellerSaves, []);
     n.get("seller-zip").value = "60601";
     pc.me = { ...pc.me, registered: true };
@@ -9631,22 +9744,18 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
 
 test("an address that came all there from eBay: step 2 ticked; Settings opened from it asks /me again, the goods screen once registered", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
-    pc.seller = {
-        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" },
-        complete: true,
-        ebay: { connected: true, user: "anna_sells", policies: "pending" },
-    };
+    const pc = fakePc({ me: { ...structuredClone(CONNECTED_ME), ebay: { connected: true, user: "anna_sells", policies: "pending" } } });
+    pc.address = { ...structuredClone(NEW_ADDRESS), shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" } };
     const local = memoryStore({ "snap.session": "sess-1" });
     const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
-    assert.equal(sellerOf(n).note, null, "nothing to say: it is all there");
+    assert.equal(addressCard(n).note, null, "nothing to say: it is all there");
     assert.equal(n.get("seller-policies").hidden, true);
-    assert.equal(n.get("seller-save").textContent, "Save address", "the foldout still takes a correction");
+    assert.equal(n.get("seller-save").textContent, "Save address", "the card still takes a correction");
     n.get("admin-close").fire("click");
     assert.equal(n.get("signup-steps").hidden, false, "/me still says not registered");
     assert.equal(n.get("signup-step-address").classList.contains("done"), true, "step 2 ticked");
     assert.equal(n.get("signup-address-word").textContent, "Address where you ship from");
-    assert.equal(n.get("signup-address").disabled, false, "Settings' foldout still takes a correction");
+    assert.equal(n.get("signup-address").disabled, false, "the card still takes a correction");
 
     // its button: Settings, whose address all there has /me asked again; registered, the goods screen
     const mes = pc.mes;
@@ -9655,6 +9764,7 @@ test("an address that came all there from eBay: step 2 ticked; Settings opened f
     await settle();
     assert.equal(pc.mes, mes + 1);
     assert.deepEqual(pc.sellerSaves, [], "nothing to send");
+    assert.deepEqual(pc.addressSaves, []);
     n.get("admin-close").fire("click");
     assert.equal(n.get("signup-steps").hidden, true);
     assert.equal(n.get("work").hidden, false);

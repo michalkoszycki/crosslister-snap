@@ -1185,7 +1185,7 @@ export function addressSaveBody({ same, shared = {}, venues = {}, uses }) {
     for (const [venue, fields] of Object.entries(uses)) {
         if (!fields.length) continue;
         const made = checkFields(venues[venue] || {}, fields);
-        if (!made.ok) return { ok: false, error: `${venueName(venue)}: ${made.error}` };
+        if (!made.ok) return { ok: false, error: `${sentenceVenue(venue)}: ${made.error}` };
         out[venue] = made.fields;
     }
     return { ok: true, body: { same: false, venues: out } };
@@ -1218,7 +1218,7 @@ export const SAME_ADDRESS = "Same address for every venue";
  * @returns {string}
  */
 export function noAddressLine(venue) {
-    return `${venue} does not use a ship-from address`;
+    return `${sentenceVenue(venue)} does not use a ship-from address.`;
 }
 
 /**
