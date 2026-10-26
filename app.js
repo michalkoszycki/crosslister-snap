@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.24.2";
+import { VERSION } from "./version.js?v=2.25.0";
 import {
     adminLink,
     anyActive,
@@ -126,10 +126,10 @@ import {
     rowVenues,
     sliderWords,
     busyLine,
-    syncBarLine,
-    syncButtons,
     syncJob,
     syncLine,
+    syncNote,
+    syncReason,
     syncVenues,
     syncWord,
     unsyncedList,
@@ -163,24 +163,42 @@ import {
     venueOff,
     venueAllowed,
     accountError,
+    accountKind,
     creditsLine,
-    ebayLine,
     connectLabel,
     packLabel,
     returnHash,
     returnLine,
     safeLink,
-    userLine,
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
+    ADDRESS_FIELDS,
+    ADDRESS_ON_SERVER,
     addressBody,
+    addressOf,
+    addressSaveBody,
+    CONNECT_TO_POST,
+    noAddressLine,
     sellerError,
     sellerLine,
-    sellerOf,
+    shipsFromLine,
+    venueBlockLine,
     SHIP_FROM,
     CONFIRM_SHIP_FROM,
     POLICY_LINES,
     addressState,
+    deviceLine,
+    devicesOf,
+    INVITE_SENT,
+    inviteBody,
+    LEFT_ACCOUNT,
+    nameBody,
+    peopleCount,
+    peopleError,
+    peopleOf,
+    personWords,
+    signedOutOthers,
+    wrapTextsBody,
     installState,
     installSteps,
     isDesktopBrowser,
@@ -207,7 +225,6 @@ import {
     feedbackWord,
     inboxHead,
     inboxOf,
-    pendingLine,
     refusalLine,
     signupStep,
     applyLabel,
@@ -223,12 +240,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.24.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.24.2";
-
-// The venues the header and footer go out on, as the server's GET /me/wrap offers them
-// (`available`): not Poshmark yet, whose listings the server does not wrap from the phone.
-const WRAP_VENUES = VENUES.filter((v) => !POST_ONLY.includes(v));
+} from "./core.js?v=2.25.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.25.0";
 import {
     addVenue,
     applyWrap,
@@ -245,20 +258,25 @@ import {
     deleteRowPhoto,
     ebayConnect,
     endSession,
+    getAddress,
     getBook,
     getConditions,
+    getDevices,
     getFeedbackInbox,
     getInventory,
     getItem,
     getJob,
     getMe,
+    getPeople,
     getPhoto,
     getRow,
     getRowPhoto,
-    getSeller,
     getSignup,
     getStats,
     getWrap,
+    inviteMember,
+    leaveAccount,
+    patchAddress,
     patchRow,
     patchSeller,
     patchWrap,
@@ -267,11 +285,15 @@ import {
     postJob,
     putNote,
     putPhoto,
+    removeMember,
+    renameMe,
     reviewFeedback,
     searchBook,
+    signOutDevice,
+    signOutOthers,
     startSession,
-} from "./pc.js?v=2.24.2";
-import { shrinkPhoto } from "./shrink.js?v=2.24.2";
+} from "./pc.js?v=2.25.0";
+import { shrinkPhoto } from "./shrink.js?v=2.25.0";
 import {
     bookCard,
     bookPriceValue,
@@ -284,8 +306,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.24.2";
-import { canScan, readIsbn } from "./scan.js?v=2.24.2";
+} from "./book.js?v=2.25.0";
+import { canScan, readIsbn } from "./scan.js?v=2.25.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -318,12 +340,22 @@ const SESSION_KEY = "snap.session";
 const ACCOUNTS_KEY = "snap.accounts";
 /** The current account's id, among those kept (ACCOUNTS_KEY); the first when it names none. */
 const CURRENT_KEY = "snap.accounts.current";
-/** Save as default's choices, per kind ({"goods": {...}, "book": {...}}): every new item starts from them. */
+/** The Posting fold's defaults, per kind ({"goods": {...}, "book": {...}}, one set written for both): every new item starts from them. */
 const DEFAULTS_KEY = "snap.customize.defaults";
 /** When the home-screen banner was put away (an ISO date): it stays away a week. */
 const INSTALL_KEY = "snap.install.dismissed";
-/** Fix dark photos as Save as default left it ("off"; on until then): every new item starts from it. */
+/** Fix dark photos as the Posting fold left it ("off"; on until then): every new item starts from it. */
 const FIXDARK_KEY = "snap.photos.fixdark";
+/** Which of Settings' five folds were left open on this phone (a JSON object, fold -> true). */
+const FOLDS_KEY = "snap.settings.folds";
+/** Settings' five folds, in their order, each with its heading. */
+const FOLDS = [
+    ["account", "Snap Account"],
+    ["venues", "Venues"],
+    ["posting", "Posting defaults"],
+    ["server", "Server"],
+    ["phone", "This phone"],
+];
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
 /** What app.js draws its own icons in (a listed badge's tick). */
@@ -350,7 +382,7 @@ const blobs = new Map();
 
 /**
  * Fix dark photos, the tick in customize: brighten a dark photo before it goes (shrink.js).
- * The phone's, for every photo taken from now on; NEXT puts it back to Save as default's.
+ * The phone's, for every photo taken from now on; NEXT puts it back to the Posting fold's.
  */
 let fixDark = true;
 
@@ -393,33 +425,56 @@ let meAsked = false;
 /** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
 const offTaps = new Set();
 /**
- * Settings' Account block, as the screen has it: Buy postings' packs unfolded, a checkout or
+ * Settings' account card, as the screen has it: Buy postings' packs unfolded, a checkout or
  * Connect eBay on its way (`busy`), and its line (`status`: the way back from Stripe or eBay,
  * or what went wrong).
  */
 const account = { packs: false, busy: false, status: "" };
 /**
- * The Account block's Seller address (GET /me/seller), as the screen has it: the server's
- * answer (sellerOf; null until asked, and from an older server's 404, which is no foldout),
- * the foldout open, a Save on its way, its line, "policies ready" to be said (once), the
- * poll's timer while eBay's policies are being set up and how many times it has asked, and
- * `asked`, bumped per ask so a late answer for an older one is dropped.
+ * The address where you ship from (GET /me/address), last under Venues, as the screen has
+ * it: the server's answer (addressOf; null until asked, and from an older server's 404, which
+ * is no card), the Same address for every venue tick as on screen, a Save on its way, its line,
+ * "policies ready" to be said (once), the poll's timer while eBay's policies are being set up
+ * and how many times it has asked, and `asked`, bumped per ask so a late answer for an older
+ * one is dropped. `venueBoxes`: venue -> field -> its input, drawn while the tick is off.
  */
-const seller = { info: null, open: false, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0 };
+const seller = { info: null, same: true, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0, venueBoxes: {} };
 /**
- * Settings' header and footer on every listing (GET /me/wrap), as the screen has them: the
- * server's answer (wrapOf; null until asked, and from an older server's 404, which is no rows),
- * each part's line and its Save on its way, `asked`, bumped per ask so a late answer for an
- * older one is dropped, and per venue the job task (jobTask) of Apply to all existing
- * listings: one push carries both parts, so the header's button and the footer's are one task.
+ * The header and footer on every listing (GET /me/wrap), one card under Posting defaults, as the screen
+ * has it: the server's answer (wrapOf; null until asked, and from an older server's 404, which
+ * is no card), its line, its one Save on its way, `asked`, bumped per ask so a late answer for
+ * an older one is dropped, per venue the job task (jobTask) of Apply to all existing listings
+ * (one push carries both parts), and the pills and apply buttons as drawn, by venue.
  */
 const wrap = {
     info: null,
-    status: { header: "", footer: "" },
-    busy: { header: false, footer: false },
+    status: "",
+    busy: false,
     asked: 0,
-    apply: Object.fromEntries(WRAP_VENUES.map((v) => [v, jobTask()])),
+    /** @type {Record<string, ReturnType<typeof jobTask>>} */
+    apply: {},
+    /** @type {Record<string, {pills:Record<string, HTMLButtonElement>, btn:HTMLButtonElement, reset:HTMLButtonElement, line:HTMLElement}>} */
+    drawn: {},
+    /** What each part's pill row and the apply row hold now, so each is redrawn only when that changes. */
+    shown: { header: "", footer: "", apply: "" },
 };
+/**
+ * The people on this account (GET /me/people, /me/devices; Michal, 2026-10-25), as the screen
+ * has them: the server's answers (peopleOf, devicesOf; null until asked, and from a server
+ * without them), the People page open in Admin's place, an action on its way (`busy`), the
+ * page's line, the invite box's line, Change name's box open (`renaming`), and `asked`.
+ */
+const people = { info: null, devices: null, open: false, busy: false, status: "", inviteStatus: "", renaming: false, asked: 0 };
+/**
+ * Settings' five folds (Michal, 2026-10-25: "a two-level fold"), open or closed, as read from
+ * the phone (FOLDS_KEY) and as opened by themselves since (the one the person needs now).
+ * @type {Record<string, boolean>}
+ */
+let folds = {};
+/** A sign-in just made on this phone: Admin's first open lands on Settings, Snap Account open. */
+let freshSignin = false;
+/** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
+let settingsOpen = false;
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -455,11 +510,11 @@ const signup = { open: false, asked: false };
 let installPrompt = null;
 /** Installed from this tab (the prompt accepted): the nudges go. */
 let installed = false;
-/** The two taps unfolded, under the landing's Install and under the banner's Add. */
-const stepsOpen = { landing: false, banner: false };
+/** The two taps unfolded, under the landing's Install, under the banner's Add and under This phone's Install. */
+const stepsOpen = { landing: false, banner: false, phone: false };
 
-/** Save as default's "saved as your defaults", per kind, until its moment is over. */
-const defaultTimers = { goods: null, book: null };
+/** The Posting fold's "saved", until its moment is over. */
+let defaultsTimer = null;
 
 /** The last job this page sent (any POST /jobs), for Feedback's Include my last job. */
 let lastJob = "";
@@ -540,17 +595,17 @@ let swipe = null;
 const undo = { entry: null, timer: null };
 
 /**
- * The sync bar, an Admin job task as a card is (jobTask): one sync at a time (the server
- * refuses a second, 409); its action the button last pressed ("<direction> <venue>",
- * "to craigslist"), and `venue` that button's venue, kept past the press for its line.
+ * The venue blocks' sync buttons, one Admin job task as a card is (jobTask): one sync at a
+ * time (the server refuses a second, 409); its action the button last pressed ("<direction>
+ * <venue>", "to craigslist"), and `venue` that button's venue, kept past the press for its
+ * line, which shows in that venue's block.
  */
 const sync = { ...jobTask(), venue: "" };
 /**
- * The sync bar's buttons as drawn (syncButtons, from /me), by "<direction> <venue>": the
- * button, its copy of index.html's half of the sync symbol, its reset; made the first time a
- * /me names it. `shown`: which are in the bar now, so it is redrawn only when that changes.
+ * The venue blocks' sync buttons as drawn, by "<direction> <venue>": the button, its round
+ * arrow, its reset; made once per venue and direction (every block has both).
  */
-const syncDrawn = { nodes: new Map(), shown: "" };
+const syncDrawn = { nodes: new Map() };
 /**
  * customize's Sync to <venue> buttons as drawn (customizeVenues), by venue: the button and
  * its reset; `shown`, the venues in the row of buttons now.
@@ -849,8 +904,8 @@ function removeAccount(id, tell = true) {
 }
 
 /**
- * What the server said of the account in hand, let go: /me, the seller's address, the header
- * and footer, the venues tapped, the server word and its timer, and Delete my account's view.
+ * What the server said of the account in hand, let go: /me, the address, the header and
+ * footer, the people, the venues tapped, the server word and its timer, and Delete account's view.
  */
 function letGoAccount() {
     me = null;
@@ -858,6 +913,7 @@ function letGoAccount() {
     seller.info = null;
     quietSeller();
     dropWrap();
+    dropPeople();
     offTaps.clear();
     serverStatus = null;
     clearTimeout(healthTimer);
@@ -879,6 +935,8 @@ function takeUp() {
     if (!el.settings.hidden) {
         fillSettings();
         el.settingsStatus.textContent = "";
+        // a key account has its Server fold, an email account none
+        renderSettingsFolds();
     }
     if (!el.admin.hidden) {
         admin.asked += 1;
@@ -892,14 +950,18 @@ function takeUp() {
     renderExtras();
     renderAccount();
     checkServer().catch(() => {});
-    if (!el.settings.hidden) {
-        loadSeller().catch(() => {});
-        loadWrap().catch(() => {});
-    }
+    if (!el.settings.hidden) loadSettingsParts();
     if (!el.admin.hidden && admin.inventoryOpen) loadInventory().catch(() => {});
     for (const m of MODES) setState(m, reduce(slots[m], { type: "resume" }));
     pump();
     retryLookup();
+}
+
+/** What Settings asks the server for as it opens (and after Save and check): the address, the header and footer, the people. */
+function loadSettingsParts() {
+    loadSeller().catch(() => {});
+    loadWrap().catch(() => {});
+    loadPeople().catch(() => {});
 }
 
 /** Settings' address and key boxes: the key account in hand; empty for a session, and while an account is being added. */
@@ -934,73 +996,75 @@ function stopAdding() {
 }
 
 /**
- * Settings' list of the accounts on this phone: each by name (accountName), the current one
- * ticked, one the server forgot marked signed out with Sign in again, and Remove from this
- * phone on each; under them Add account. No list at all with no account kept.
+ * The other accounts kept on this phone, under the current one's card (Michal, 2026-10-25:
+ * one card each): the name, "by key" or "signed out" under it, Switch to this account (Sign in
+ * again on one the server forgot) and Remove from this phone; under them Add account. No list
+ * at all with no other account kept.
  */
 function renderAccounts() {
     const { list, current } = allAccounts();
+    const others = list.filter((a) => a.id !== current);
     el.accounts.hidden = list.length === 0;
-    el.accountsList.replaceChildren(...list.map((a) => accountRow(a, a.id === current)));
+    el.accountsList.hidden = others.length === 0;
+    el.accountsList.replaceChildren(...others.map(accountCard));
     // the landing's way to another account, while the one in hand is signed out or gone
     el.landingAccounts.hidden = adding || list.every((a) => a.expired || a.id === current);
 }
 
 /**
- * One account's row: its name (a tap makes it current), its state, its actions.
+ * Another account's card: its name, what it is, Switch to this account (or Sign in again), and
+ * Remove from this phone.
  * @param {import("./core.js").Account} a
- * @param {boolean} current
  */
-function accountRow(a, current) {
+function accountCard(a) {
     const li = document.createElement("li");
-    li.className = "account-row";
-    const name = document.createElement("button");
-    name.type = "button";
-    name.className = "link account-name";
-    name.textContent = current ? `✓ ${accountName(a)}` : accountName(a);
-    name.setAttribute("aria-current", current ? "true" : "false");
-    name.addEventListener("click", () => switchAccount(a.id));
+    li.className = "card account-card";
+    const name = document.createElement("p");
+    name.className = "account-user";
+    name.textContent = accountName(a);
     li.append(name);
-    if (a.expired) {
-        const state = document.createElement("span");
-        state.className = "account-state";
-        state.textContent = SIGNED_OUT;
-        li.append(state, accountAction("Sign in again", () => startAdding(true)));
+    const kind = accountKind(a);
+    if (kind) {
+        const state = document.createElement("p");
+        state.className = "small account-kind";
+        state.textContent = kind;
+        li.append(state);
     }
-    li.append(accountAction("Remove from this phone", () => removeAccount(a.id)));
+    const row = document.createElement("div");
+    row.className = "account-row";
+    row.append(
+        a.expired
+            ? actionButton("Sign in again", "pill pill-small", false, () => startAdding(true))
+            : actionButton("Switch to this account", "pill pill-small", false, () => switchAccount(a.id)),
+        actionButton("Remove from this phone", "link account-action", false, () => removeAccount(a.id))
+    );
+    li.append(row);
     return li;
 }
 
-/** A small action after an account's name. */
-function accountAction(word, onTap) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "link account-action";
-    btn.textContent = word;
-    btn.addEventListener("click", onTap);
-    return btn;
-}
-
-// --- Delete my account (Michal, 2026-10-18: "in settings there also needs to be an option to
-// delete your account") -------------------------------------------------------------------
+// --- Delete account (Michal, 2026-10-18: "in settings there also needs to be an option to
+// delete your account"), Leave this account (a member's, 2026-10-25) ----------------------
 
 /**
- * The last thing in Settings: the quiet red link, its confirmation view when opened (the
- * admin's told there the server will refuse), its button and Keep my account held while
- * DELETE /me is on its way, and its line.
+ * The card's last line: Delete account in quiet red (not for the admin, whose account the
+ * server refuses to delete, nor for a member, who gets Leave this account instead), its
+ * confirmation view when opened, its button and Keep my account held while DELETE /me is on
+ * its way, and its line.
  */
 function renderDelete() {
-    const can = !!settings();
-    el.settingsDelete.hidden = !can;
-    el.settingsDelete.setAttribute("aria-expanded", can && deleting.open ? "true" : "false");
-    el.deleteConfirm.hidden = !can || !deleting.open;
-    el.deleteAdminNote.hidden = !(me && me.admin);
+    const can = !!settings() && !!me && !me.admin;
+    const owner = can && me.owner;
+    el.settingsDelete.hidden = !owner;
+    el.settingsDelete.setAttribute("aria-expanded", owner && deleting.open ? "true" : "false");
+    el.deleteConfirm.hidden = !owner || !deleting.open;
     el.deleteConfirmBtn.disabled = deleting.busy;
     el.deleteKeep.disabled = deleting.busy;
+    el.accountLeave.hidden = !can || owner;
+    el.accountLeave.disabled = people.busy;
     el.deleteStatus.textContent = deleting.status;
 }
 
-/** Delete my account tapped: the confirmation view, in plain words, nothing sent yet. */
+/** Delete account tapped: the confirmation view, in plain words, nothing sent yet. */
 function openDelete() {
     deleting.open = true;
     deleting.status = "";
@@ -1049,14 +1113,46 @@ async function confirmDelete() {
     }
 }
 
-/** Save as default's choices on this phone, both kinds. */
+/** The Posting fold's defaults on this phone, both kinds. */
 function readDefaults() {
     return customizeDefaults(readJson("localStorage", DEFAULTS_KEY, null));
 }
 
-/** Fix dark photos as Save as default left it on this phone: on unless he saved it off. */
+/** Fix dark photos as the Posting fold left it on this phone: on unless he saved it off. */
 function savedFixDark() {
     return readText("localStorage", FIXDARK_KEY) !== "off";
+}
+
+/**
+ * Leave this account (a member's, Michal 2026-10-25): POST /me/leave, then the account off
+ * this phone (its sessions ended with it: the server is told nothing more) and the next
+ * account, or the landing, says so. A refusal is said on the card's line.
+ */
+async function leaveThisAccount() {
+    const s = settings();
+    const a = currentAccount();
+    if (!s || !a || people.busy) return;
+    people.busy = true;
+    deleting.status = "Leaving the account...";
+    renderDelete();
+    try {
+        await leaveAccount(s);
+    } catch (e) {
+        people.busy = false;
+        deleting.status = peopleError("Could not leave the account", e.status, e.message);
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        renderDelete();
+        return;
+    }
+    people.busy = false;
+    deleting.status = "";
+    removeAccount(a.id, false);
+    if (settings()) {
+        deleting.status = LEFT_ACCOUNT;
+        renderDelete();
+    } else {
+        el.landingStatus.textContent = LEFT_ACCOUNT;
+    }
 }
 
 /** A kind's next item: a fresh screen, its customize from the defaults he saved. */
@@ -1097,7 +1193,12 @@ function render() {
     const note = signinNote({ isIos: onIos(), standalone: standalone() });
     el.signinNote.textContent = note;
     el.signinNote.hidden = !note;
-    // a sign-up not finished (GET /me): its two steps in place of the posting screens
+    // the current account's name in the top bar, after the wordmark; absent on the landing
+    const a = currentAccount();
+    el.headerUser.textContent = me && me.user ? me.user : a && a.user ? a.user : "";
+    el.headerUser.hidden = out || !el.headerUser.textContent;
+    // an account not set up yet (GET /me: registered false): its two steps in place of the
+    // posting screens
     const signing = !out && !!signupStep(me);
     el.signupSteps.hidden = !signing || away;
     renderSignup();
@@ -1302,8 +1403,6 @@ function customizeNodes(m) {
               pricingNote: el.bookPricingNote,
               autoPost: el.bookAutoPost,
               comps: el.bookComps,
-              saveDefault: el.bookCustomizeDefault,
-              defaultStatus: el.bookCustomizeDefaultStatus,
           }
         : {
               toggle: el.customizeToggle,
@@ -1315,27 +1414,56 @@ function customizeNodes(m) {
               pricingNote: el.pricingNote,
               autoPost: el.autoPost,
               comps: el.comps,
-              saveDefault: el.customizeDefault,
-              defaultStatus: el.customizeDefaultStatus,
           };
 }
 
+// --- Settings, Posting: the defaults every new item starts with (Michal, 2026-10-08: "in case
+// someone wants to change something permanently"; in Settings since 2026-10-25, Save as
+// default gone from the customize box) ----------------------------------------------------
+
+/** The Posting fold's boxes as the phone keeps the defaults (a load, a change saved). */
+function renderPosting() {
+    const d = readDefaults().goods;
+    el.postingQuantity.value = d.quantity;
+    el.postingPickupOnly.checked = d.pickupOnly;
+    const grade = pricingOf(d.pricing);
+    el.postingPricing.value = String(grade.grade);
+    el.postingPricing.setAttribute("aria-valuetext", grade.word);
+    PRICING.forEach((p, i) => el.postingPricingWords[i].classList.toggle("on", p.grade === grade.grade));
+    el.postingPricingNote.textContent = grade.note;
+    el.postingAutoPost.checked = d.autoPost;
+    el.postingComps.checked = d.comps;
+    el.postingFixDark.checked = savedFixDark();
+}
+
 /**
- * Save as default (Michal, 2026-10-08: "in case someone wants to change something
- * permanently"): this kind's price grade and its three ticks as they stand, kept on this
- * phone for every new item of the kind (NEXT, a fresh load); never the quantity. The goods'
- * also keeps Fix dark photos. Said beside it for a moment.
+ * A default changed: the boxes as they stand kept on this phone (one set, for goods and books
+ * alike; a quantity that is not one is not kept), Fix dark photos beside them, "saved" said
+ * for a moment, and an item in hand that has nothing on it yet starts from them at once.
  */
-function saveDefaults(m) {
-    writeJson("localStorage", DEFAULTS_KEY, { ...readDefaults(), [m]: defaultsOf(customizeOf(slots[m])) });
-    // Fix dark photos is the phone's, in the goods card: saved with the goods' defaults
-    if (m === "goods") writeText("localStorage", FIXDARK_KEY, fixDark ? "on" : "off");
-    const node = customizeNodes(m).defaultStatus;
-    node.textContent = DEFAULTS_SAVED;
-    clearTimeout(defaultTimers[m]);
-    defaultTimers[m] = setTimeout(() => {
-        node.textContent = "";
+function savePostingDefaults() {
+    const d = defaultsOf({
+        quantity: el.postingQuantity.value,
+        pickupOnly: el.postingPickupOnly.checked,
+        pricing: pricingGrade(el.postingPricing.value),
+        autoPost: el.postingAutoPost.checked,
+        comps: el.postingComps.checked,
+    });
+    writeJson("localStorage", DEFAULTS_KEY, { goods: d, book: d });
+    writeText("localStorage", FIXDARK_KEY, el.postingFixDark.checked ? "on" : "off");
+    for (const m of MODES) {
+        const s = slots[m];
+        if (s.itemId || s.photos.length || restoring[m]) continue;
+        if (m === "goods") fixDark = el.postingFixDark.checked;
+        setState(m, applyDefaults(s, { goods: d, book: d }));
+        fillCustomize(m);
+    }
+    el.postingStatus.textContent = DEFAULTS_SAVED;
+    clearTimeout(defaultsTimer);
+    defaultsTimer = setTimeout(() => {
+        el.postingStatus.textContent = "";
     }, DEFAULTS_SAVED_MS);
+    renderPosting();
 }
 
 /**
@@ -1450,8 +1578,8 @@ function renderVenue(m, venue, ok, nodes) {
  * change to 'continue'"), the word is CONTINUE and the ring stops; its `reset`, the
  * small red control beside it, shows only then.
  */
-function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = false, label = word, lead = [], reset = null }) {
-    const kids = [...lead, paused ? CONTINUE : word];
+function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = false, label = word, lead = [], trail = [], reset = null }) {
+    const kids = [...lead, paused ? CONTINUE : word, ...trail];
     if (cancel) {
         const small = document.createElement("small");
         small.className = "tap-cancel";
@@ -2354,12 +2482,12 @@ function adminShown(open) {
 }
 
 /**
- * Admin opens on Settings while they are missing or wrong, and otherwise on the
- * inventory, asked afresh, or on the listing left open there (Michal, 2026-10-07:
- * "When I press admin I want to land on this same page tho as if the open card
- * was there all along"), or on the listing `card` names (See in inventory). A sign-up not
- * finished opens on Settings, where its Account block is: the inventory would be refused.
- * Closed, it lets go of the photos it fetched.
+ * Admin opens on Settings (its Server fold) while no server is set or an account is being
+ * added, on Settings at Snap Account right after a sign-in made on this phone and at Venues
+ * while a new account is not set up yet (docs/UI.md), and otherwise on the inventory, asked afresh, or on the listing left open there (Michal,
+ * 2026-10-07: "When I press admin I want to land on this same page tho as if the open card
+ * was there all along"), or on the listing `card` names (See in inventory). Closed, it lets
+ * go of the photos it fetched.
  * @param {boolean} open
  * @param {string} [card] a listing's sku to land on
  */
@@ -2368,12 +2496,15 @@ function showAdmin(open, card = "") {
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
-        // the Account block starts folded and quiet on the next visit, Delete my account too
+        // the account card starts folded and quiet on the next visit, Delete account too
         Object.assign(account, { packs: false, status: "" });
         Object.assign(deleting, { open: false, status: "" });
         quietSeller();
+        showPeople(false);
+        people.status = "";
+        people.inviteStatus = "";
         renderAccount();
-        Object.assign(wrap.status, { header: "", footer: "" });
+        wrap.status = "";
         renderWrap();
         // a search still waiting or an answer still on its way is for a list no longer shown
         clearTimeout(searchTimer);
@@ -2385,14 +2516,31 @@ function showAdmin(open, card = "") {
         dropThumbs();
         return;
     }
+    renderExtras();
     // an account being added: Settings, for its key, as on a phone with none
     const ok = !!settings() && !adding;
-    const signing = ok && !!signupStep(me);
-    showSettings(!ok || signing);
+    if (!ok) {
+        folds.server = true;
+        showSettings(true);
+        showInventory(false);
+        return;
+    }
     loadInbox().catch(() => {});
-    const sku = ok && !signing ? card || readText("localStorage", CARD_KEY) : "";
+    // the fold the person needs now (docs/UI.md): Snap Account after a sign-in made on this
+    // phone, Venues while a new account's eBay is not connected or its address not saved
+    const step = signupStep(me);
+    if (freshSignin || step) {
+        if (freshSignin) folds.account = true;
+        if (step) folds.venues = true;
+        freshSignin = false;
+        showSettings(true);
+        showInventory(false);
+        return;
+    }
+    showSettings(false);
+    const sku = card || readText("localStorage", CARD_KEY);
     if (!sku) {
-        showInventory(ok && !signing);
+        showInventory(true);
         return;
     }
     admin.inventoryOpen = true;
@@ -2405,9 +2553,14 @@ function toggleAdmin() {
     showAdmin(el.admin.hidden);
 }
 
-/** Settings, inside Admin: opening them opens Admin too, for a caller that sends him there. */
+/**
+ * Settings, inside Admin: opening them opens Admin too, for a caller that sends him there.
+ * Opened, its five folds as they were left (renderFolds), the Server fold's boxes filled, and
+ * the server asked for the address, the header and footer and the people.
+ */
 function showSettings(open) {
     if (open && el.admin.hidden) adminShown(true);
+    settingsOpen = open;
     el.settings.hidden = !open;
     fold(el.settingsToggle, "Settings", open);
     if (open) {
@@ -2415,13 +2568,51 @@ function showSettings(open) {
         el.settingsStatus.textContent = "";
         renderAccounts();
         renderDelete();
-        loadSeller().catch(() => {});
-        loadWrap().catch(() => {});
+        renderSettingsFolds();
+        loadSettingsParts();
     }
 }
 
 function toggleSettings() {
     showSettings(el.settings.hidden);
+}
+
+/** Which of Settings' folds this phone left open, read once (FOLDS_KEY). */
+function readFolds() {
+    const raw = readJson("localStorage", FOLDS_KEY, null);
+    const kept = raw && typeof raw === "object" ? raw : {};
+    folds = Object.fromEntries(FOLDS.map(([key]) => [key, kept[key] === true]));
+}
+
+/**
+ * Settings' five folds (Michal, 2026-10-25): each open or closed as `folds` has it; the
+ * Server fold only for a key account (an email account has no server to type), or while no
+ * account is in hand or one is being added.
+ */
+function renderSettingsFolds() {
+    const a = currentAccount();
+    const server = adding || !a || !!a.key;
+    for (const [key, word] of FOLDS) {
+        const open = !!folds[key] && (key !== "server" || server);
+        el.folds[key].toggle.hidden = key === "server" && !server;
+        el.folds[key].body.hidden = !open;
+        fold(el.folds[key].toggle, word, open);
+    }
+}
+
+/** A fold's heading tapped: open or closed, remembered on this phone. */
+function toggleFold(key) {
+    folds[key] = !folds[key];
+    writeJson("localStorage", FOLDS_KEY, folds);
+    renderSettingsFolds();
+}
+
+/** A fold opened by itself (the one the person needs now), Settings open with it, Admin too. */
+function openFold(key) {
+    folds[key] = true;
+    showSettings(true);
+    const body = el.folds[key].body;
+    if (typeof body.scrollIntoView === "function") body.scrollIntoView({ block: "start" });
 }
 
 /**
@@ -3046,6 +3237,18 @@ function syncIcon(direction = "to") {
 }
 
 /**
+ * The round arrow after a sync button's words ("Sync from ebay ↻": Michal, 2026-10-26), out of
+ * a screen reader's way and out of sight while the button's ring turns (styles.css).
+ */
+function syncArrow() {
+    const arrow = document.createElement("span");
+    arrow.className = "sync-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "↻";
+    return arrow;
+}
+
+/**
  * A sync badge tapped: after the second a job button waits, the push job puts the row as
  * saved on its listing on that venue ({"action": "push", "sku", "venue"}), asked about every
  * POLL_MS. Done, the venue has the row and the badge is the plain listed one again, a link.
@@ -3385,13 +3588,14 @@ function renderRowCustomize() {
     // pressed, its ring and "tap again to cancel", paused its continue and its own reset
     const venues = customizeVenues(row, to);
     const kids = venues.flatMap((venue) => {
-        const { btn, reset } = customSyncNodes(venue);
+        const { btn, reset, arrow } = customSyncNodes(venue);
         const pushing = pressed(c, `push ${venue}`);
         btn.disabled = pushing ? !taskTap(c) : !can.sync;
         paintJobButton(btn, actionWord("sync", venue), {
             busy: pushing,
             cancel: pushing && taskCancel(c),
             paused: pushing && c.paused,
+            trail: [arrow],
             reset,
         });
         return [btn, reset];
@@ -3403,11 +3607,15 @@ function renderRowCustomize() {
     paintCustomizeLine();
 }
 
-/** A venue's Sync to <venue> in customize and its reset, made the first time it is drawn. */
+/**
+ * A venue's Sync to <venue> in customize and its reset, made the first time it is drawn: the
+ * inventory's small green badge with the round arrow after the word, as every sync button
+ * (docs/UI.md, Michal 2026-10-26).
+ */
 function customSyncNodes(venue) {
     if (!customDrawn.nodes.has(venue)) {
         const word = actionWord("sync", venue);
-        const btn = actionButton(word, "pill", true, () => {
+        const btn = actionButton(word, "vbadge posted vsync", true, () => {
             if (pressed(admin.custom, `push ${venue}`)) onTaskTap(admin.custom, customizePaint());
             else pushRow(venue).catch(() => {});
         });
@@ -3418,7 +3626,7 @@ function customSyncNodes(venue) {
         reset.id = `detail-customize-reset-${venue}`;
         reset.hidden = true;
         reset.setAttribute("aria-label", `${RESET} ${word}`);
-        customDrawn.nodes.set(venue, { btn, reset });
+        customDrawn.nodes.set(venue, { btn, reset, arrow: syncArrow() });
     }
     return customDrawn.nodes.get(venue);
 }
@@ -3621,9 +3829,9 @@ function paintLine(venue) {
  * while taskCancel says so; paused, continue and its reset. It takes a tap whenever
  * taskTap has something for it to do.
  */
-function paintTaskButton(task, { node, word, reset }) {
+function paintTaskButton(task, { node, word, reset, trail = [] }) {
     node.disabled = !taskTap(task);
-    paintJobButton(node, word, { busy: true, cancel: taskCancel(task), paused: task.paused, reset });
+    paintJobButton(node, word, { busy: true, cancel: taskCancel(task), paused: task.paused, reset, trail });
 }
 
 /** A card's facts as a list of label and value; a derived one says so under it, muted. */
@@ -3702,8 +3910,10 @@ function actionsNode(venue, busy) {
     for (const action of venueActions(row, venue, readUnsynced())) {
         if (action === "end" && c.noEnd) continue;
         const word = actionWord(action, venue);
-        // a Sync to <venue> is filled, so a listing left behind by an edit is plain to see
-        const look = action === "post" ? "big venue-btn" : action === "sync" ? "pill pill-ink" : "pill";
+        // a Sync to <venue> is the green badge with its arrow, as every sync button (docs/UI.md),
+        // so a listing left behind by an edit is plain to see
+        const look = action === "post" ? "big venue-btn" : action === "sync" ? "vbadge posted vsync" : "pill";
+        const trail = action === "sync" ? [syncArrow()] : [];
         if (action === "open") {
             box.append(linkNode(venueStatus(row, venue).url, "pill", word));
             continue;
@@ -3719,12 +3929,14 @@ function actionsNode(venue, busy) {
                 resetTask(c, paint).catch(() => {});
             });
             reset.setAttribute("aria-label", `${RESET} ${word}`);
-            c.button = { node, word, reset };
+            c.button = { node, word, reset, trail };
             paintTaskButton(c, c.button);
             box.append(node, reset);
             continue;
         }
-        box.append(actionButton(word, look, busy, () => onAction(venue, action)));
+        const node = actionButton(word, look, busy, () => onAction(venue, action));
+        if (trail.length) node.replaceChildren(word, ...trail);
+        box.append(node);
     }
     return box;
 }
@@ -4478,21 +4690,39 @@ function showList() {
 function showCard(on) {
     if (on) showSettings(false);
     if (on) visit.sawCard = true;
-    for (const node of [el.adminTitle, el.settingsToggle, el.inventoryToggle, el.syncBar, el.adminClose]) node.hidden = on;
     el.inventoryBrowse.hidden = on;
     el.inventoryDetail.hidden = !on;
     renderExtras();
 }
 
+/**
+ * Admin's own folds and Close, there on its page and gone while a page of its own (a listing,
+ * the People page) is on screen; the Inventory and Feedback never show while no server is set
+ * (docs/UI.md).
+ */
+function renderAdminPage() {
+    const page = !el.inventoryDetail.hidden || people.open;
+    const ok = !!settings() && !adding;
+    if (!ok) admin.inventoryOpen = false;
+    el.inventoryToggle.hidden = page || !ok;
+    el.inventory.hidden = !admin.inventoryOpen || people.open;
+    el.settingsToggle.hidden = page;
+    el.settings.hidden = page || !settingsOpen;
+    el.adminClose.hidden = page;
+    el.people.hidden = !people.open;
+}
+
 // --- Admin's Feedback and Stats ---------------------------------------------------------
 
 /**
- * Feedback and Stats, after the inventory: each a foldout as Settings is, both stepping
- * aside on a listing's own page. Stats is an admin's only (GET /me says so) and goes for
- * good once the server refuses it (403, or a 404 from an older server).
+ * Feedback and Stats, after Settings: each a foldout as Settings is, both stepping aside on
+ * a page of its own (a listing's, the People page). Feedback never shows while no server is
+ * set. Stats is an admin's only (GET /me says so) and goes for good once the server refuses
+ * it (403, or a 404 from an older server).
  */
 function renderExtras() {
-    const card = !el.inventoryDetail.hidden;
+    renderAdminPage();
+    const card = !el.inventoryDetail.hidden || people.open || !settings() || adding;
     el.feedbackToggle.hidden = card;
     el.feedback.hidden = card || !extras.feedback;
     // an admin's new entries, counted in the toggle and listed above the box
@@ -4785,47 +5015,61 @@ async function askSync() {
 }
 
 /**
- * The sync bar's line, and its buttons, one per venue and direction /me syncs (syncButtons;
- * eBay's two from a server that does not say): each its half of the sync symbol and word,
- * the pressed one its ring (continue while paused) and, while it is paused, its reset.
+ * The sync buttons in each venue's block under Settings, Venues (Michal, 2026-10-26: every
+ * block shows both, Sync from and Sync to, the inventory's small green button with the round
+ * arrow after the words): one whose function does not exist, or whose venue the account lacks,
+ * is grey and disabled (syncReason), the one muted reason line under the pair where the
+ * block's status line does not say it already (syncNote); the others are job buttons, the
+ * pressed one its ring (continue while paused) and, while it is paused, its reset, the job's
+ * line under that venue's pair; one sync at a time locks the rest.
  */
 function renderSync() {
-    const buttons = syncButtons(me);
-    const many = new Set(buttons.map((b) => b.venue)).size > 1;
-    const line = syncBarLine(busyLine(sync), sync.venue, many);
-    el.syncStatus.textContent = line ? line.text : "";
-    el.syncStatus.className = line && line.kind ? `sync-status ${line.kind}` : "sync-status";
+    const line = busyLine(sync);
     const locked = !!sync.wait || jobRunning(sync.job);
-    const drawn = buttons.map(({ direction, venue }) => {
-        const nodes = syncNodes(direction, venue);
-        const busy = pressed(sync, `${direction} ${venue}`);
-        nodes.btn.disabled = locked && !(busy && taskTap(sync));
-        paintJobButton(nodes.btn, syncWord(direction, venue), {
-            busy,
-            cancel: busy && taskCancel(sync),
-            paused: busy && sync.paused,
-            lead: [nodes.icon],
-            reset: nodes.reset,
+    const ebay = ebayNow();
+    for (const venue of VENUES) {
+        const block = el.venueBlocks[venue];
+        const said = sync.venue === venue ? line : null;
+        block.syncStatus.textContent = said ? said.text : "";
+        block.syncStatus.className = said && said.kind ? `sync-status ${said.kind}` : "sync-status";
+        const drawn = ["from", "to"].map((direction) => {
+            const nodes = syncNodes(/** @type {"from"|"to"} */ (direction), venue);
+            const busy = pressed(sync, `${direction} ${venue}`);
+            const grey = !busy && !!syncReason(venue, /** @type {"from"|"to"} */ (direction), me, ebay);
+            nodes.btn.classList.toggle("posted", !grey);
+            nodes.btn.classList.toggle("muted", grey);
+            nodes.btn.disabled = grey || (locked && !(busy && taskTap(sync)));
+            paintJobButton(nodes.btn, syncWord(/** @type {"from"|"to"} */ (direction), venue), {
+                busy,
+                cancel: busy && taskCancel(sync),
+                paused: busy && sync.paused,
+                trail: [nodes.arrow],
+                reset: nodes.reset,
+            });
+            return nodes;
         });
-        return nodes;
-    });
-    const shown = buttons.map((b) => `${b.direction} ${b.venue}`).join(",");
-    if (syncDrawn.shown !== shown) {
-        // the resets after every button: the one showing sits under them all (styles.css)
-        syncDrawn.shown = shown;
-        el.syncButtons.replaceChildren(...drawn.map((n) => n.btn), ...drawn.map((n) => n.reset));
+        if (!block.syncDrawn) {
+            // the resets after both buttons: the one showing sits under the pair (styles.css)
+            block.syncDrawn = true;
+            block.sync.replaceChildren(...drawn.map((n) => n.btn), ...drawn.map((n) => n.reset));
+        }
+        const note = syncNote(venue, me, ebay);
+        block.cannot.textContent = note;
+        block.cannot.hidden = !note;
     }
 }
 
 /**
- * A sync bar button and its reset, made the first time /me names its venue and direction:
- * `sync-<direction>-<venue>`, its half of the sync symbol (the from or the to column's) left
- * of the word, and its reset `sync-<direction>-<venue>-reset` (drawn after every button).
+ * A venue block's sync button and its reset, made once: `sync-<direction>-<venue>`, the
+ * inventory's small green badge (Michal, 2026-10-26) with the round arrow "↻" after the word,
+ * and its reset `sync-<direction>-<venue>-reset` (drawn after both buttons).
  */
 function syncNodes(direction, venue) {
     const key = `${direction} ${venue}`;
     if (!syncDrawn.nodes.has(key)) {
-        const btn = actionButton(syncWord(direction, venue), `sync-btn sync-${direction}`, false, () => {
+        const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-${direction}`, false, () => {
+            // a grey one is disabled; should a tap reach it all the same, it does nothing
+            if (!pressed(sync, key) && syncReason(venue, direction, me, ebayNow())) return;
             startSync(direction, venue).catch(() => {});
         });
         btn.id = `sync-${direction}-${venue}`;
@@ -4835,7 +5079,7 @@ function syncNodes(direction, venue) {
         reset.id = `sync-${direction}-${venue}-reset`;
         reset.hidden = true;
         reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
-        syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
+        syncDrawn.nodes.set(key, { btn, arrow: syncArrow(), reset });
     }
     return syncDrawn.nodes.get(key);
 }
@@ -4843,15 +5087,13 @@ function syncNodes(direction, venue) {
 // --- the server check ----------------------------------------------------------
 // The page asks the PC by itself (on load, every HEALTH_MS while on screen, when
 // back online or back on screen) and shows "server ok" / "server off" in the
-// header and in Settings. Every other call to the PC updates it too.
+// header, and there alone (docs/UI.md). Every other call to the PC updates it too.
 
 function renderServer() {
     const line = serverLine(!!settings(), serverStatus);
-    for (const node of [el.server, el.settingsServer]) {
-        node.textContent = line.text;
-        node.classList.toggle("ok", line.kind === "ok");
-        node.classList.toggle("bad", line.kind === "bad");
-    }
+    el.server.textContent = line.text;
+    el.server.classList.toggle("ok", line.kind === "ok");
+    el.server.classList.toggle("bad", line.kind === "bad");
     renderSignOut();
 }
 
@@ -4888,10 +5130,10 @@ async function loadMe() {
     inbox.refused = false;
     try {
         me = meOf(await getMe(pc));
-        // the account's name in Settings' list, and whether it is the admin's
+        // the account's name in the top bar and on its card, and whether it is the admin's
         const a = currentAccount();
-        if (me && a && (a.user !== (me.user || me.email) || a.admin !== me.admin)) {
-            a.user = me.user || me.email;
+        if (me && a && (a.user !== me.user || a.admin !== me.admin)) {
+            a.user = me.user;
             a.admin = me.admin;
             writeAccounts();
         }
@@ -4904,9 +5146,10 @@ async function loadMe() {
 }
 
 /**
- * What /me changes on screen: the craigslist and poshmark buttons, their empty cards, Stats,
- * the Account block, a sign-up's steps in place of the posting screens, and the venues the
- * sync bar and customize's Sync buttons go to and from (`syncable`).
+ * What /me changes on screen: the top bar's name, the craigslist and poshmark buttons, their
+ * empty cards, Stats, the account card, the venue blocks, a new account's steps in place of
+ * the posting screens, and the venues the sync buttons and customize's go to and from
+ * (`syncable`).
  */
 function renderMe() {
     render();
@@ -4917,11 +5160,11 @@ function renderMe() {
 }
 
 /**
- * Finish signing up (Michal, 2026-10-08), while /me says the sign-up is not done: step 1,
- * Connect eBay, until eBay made the account a real one (then its button says eBay connected,
- * in green: paintConnect); step 2, the address where you ship from, greyed until then (asked
- * to be confirmed when eBay prefilled it, ticked when it is all there). Its line is the
- * Account block's (Connect eBay's way out and what went wrong, a 503's words among them).
+ * Finish setting up (Michal, 2026-10-08), while /me says the account is not registered: step
+ * 1, Connect eBay, until it is (then its button says eBay connected, in green: paintConnect);
+ * step 2, the address where you ship from, greyed until then (asked to be confirmed when eBay
+ * prefilled it, ticked when it is all there). Its line is the account card's (Connect eBay's
+ * way out and what went wrong, a 503's words among them).
  */
 function renderSignup() {
     const step = settings() ? signupStep(me) : "";
@@ -4930,7 +5173,7 @@ function renderSignup() {
     paintConnect(el.signupConnect, connected, ebay ? ebay.user : "");
     el.signupStepAddress.classList.toggle("off", !connected);
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
-    // there (ticked; Settings' foldout still takes a correction while /me catches up)
+    // there (ticked; the address card still takes a correction while /me catches up)
     const address = connected ? addressState(seller.info) : "empty";
     el.signupAddressWord.textContent = address === "prefilled" ? CONFIRM_SHIP_FROM : SHIP_FROM;
     el.signupStepAddress.classList.toggle("done", address === "complete");
@@ -4938,9 +5181,9 @@ function renderSignup() {
     el.signupStatus.textContent = step ? account.status : "";
 }
 
-/** The account's eBay, the seller's answer the newer word on it (its policies follow a Save). */
+/** The account's eBay, as /me last said (its policies followed while they are being set up: pollPolicies). */
 function ebayNow() {
-    return (seller.info && seller.info.ebay) || (me ? me.ebay : null);
+    return me ? me.ebay : null;
 }
 
 /**
@@ -4957,35 +5200,39 @@ function paintConnect(btn, connected, user) {
     btn.disabled = connected || account.busy;
 }
 
-/** Settings' Seller address unfolded, its note saying why: step 2 of a sign-up. */
+/** The address card, at the end of Venues, on screen: step 2 of a new account, the way back from eBay. */
 function openSeller() {
-    seller.open = true;
+    openFold("venues");
     renderAccount();
-    if (typeof el.sellerToggle.scrollIntoView === "function") el.sellerToggle.scrollIntoView({ block: "start" });
+    if (typeof el.seller.scrollIntoView === "function") el.seller.scrollIntoView({ block: "start" });
 }
 
-// --- Settings' Account block: postings, Buy postings, Connect eBay --------------------------
+// --- Settings, Snap Account: the current account's card ----------------------------------
 // Michal, 2026-10-08: three free postings per person, then prepaid postings bought through
-// Stripe; and Connect eBay from the phone, for another seller's own eBay. The page only sends
-// the browser to Stripe's or eBay's page; each sends it back here with a hash (cameBack).
+// Stripe; the page only sends the browser to Stripe's page, which sends it back here with a
+// hash (cameBack). Since 2026-10-25 one card per account kept on the phone, the current one
+// first and outlined: its name, "by key", the postings on the Buy postings line, its status
+// line, the owner's invite box, the People link, and Delete account (Leave this account for a
+// member) with Sign out at the bottom right.
 
 /**
- * The Account block from /me: each part only when the server gives it, and no block at all
- * from an older server (no /me), unless its line has something to say.
+ * The current account's card: there while an account is in hand (its name from /me, else
+ * from the phone); each part only when the server gives it. The venue blocks, the address
+ * card and the people follow it, since /me moves them all.
  */
 function renderAccount() {
-    const s = settings();
+    const a = currentAccount();
     const credits = me ? me.credits : null;
     const packs = me ? me.packs : [];
     // an unlimited key has nothing to buy
-    const canBuy = packs.length > 0 && !(credits && credits.unlimited);
-    const user = !me ? "" : me.pending ? pendingLine(me.email) : userLine(me.user, !!(s && s.session));
-    const left = creditsLine(credits);
-    const ebay = ebayNow();
-    const ebayWords = ebayLine(ebay, seller.ready);
-    el.account.hidden = !me && !account.status && !seller.info;
-    el.accountUser.textContent = user;
-    el.accountUser.hidden = !user;
+    const canBuy = !!settings() && packs.length > 0 && !(credits && credits.unlimited);
+    const left = settings() ? creditsLine(credits) : "";
+    el.account.hidden = !a;
+    el.accountUser.textContent = a ? accountName(a) : "";
+    const kind = a ? accountKind(a) : "";
+    el.accountKind.textContent = kind;
+    el.accountKind.hidden = !kind;
+    el.accountSigninAgain.hidden = !a || !a.expired;
     el.accountCredits.textContent = left;
     el.accountCredits.hidden = !left;
     el.accountBuy.hidden = !canBuy;
@@ -5005,66 +5252,190 @@ function renderAccount() {
             return pill;
         })
     );
-    el.accountEbay.textContent = ebayWords;
-    el.accountEbay.hidden = !ebayWords;
-    // connected, the button says so in green and Reconnect under it is the way to eBay's
-    // consent again, for a token eBay let lapse (Michal, 2026-10-10)
-    const connected = !!ebay && ebay.connected;
-    el.accountConnect.hidden = !ebay;
-    paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
-    el.accountReconnect.hidden = !connected;
-    el.accountReconnect.disabled = account.busy;
-    renderSeller();
     el.accountStatus.textContent = account.status;
+    renderVenues();
+    renderSeller();
+    renderPeopleLink();
     renderSignup();
     renderAccounts();
     renderDelete();
 }
 
-// --- the seller's address, under the eBay line --------------------------------------------
-// Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue." Another
-// seller's listings ship from, and are picked up at, her own address: the server keeps it
-// (GET/PATCH /me/seller) and sets up her eBay business policies from it.
+// --- Settings, Venues: one block per venue (Michal, 2026-10-17 and 2026-10-18: "venue
+// symmetry") ----------------------------------------------------------------------------
 
 /**
- * The Address where you ship from foldout: shown once the server gave an answer, open or
- * folded, its line and its Save. While the address is still to be given after eBay connected, what Snap sets
- * up on her eBay is listed above Save; prefilled from eBay, Save is Looks right (Michal,
- * 2026-10-08), sending the boxes as they are.
+ * The venue blocks, in /me's order: each its status line (venueBlockLine), its Ships from
+ * line (shipsFromLine), eBay's Connect eBay and "Connect eBay to start posting" while it is
+ * not connected, Reconnect once it is (the status line says "Connected as ...", so the green
+ * button is the two steps' alone), the other venues' "Ask for it in Feedback" while the
+ * account lacks them; the sync buttons are renderSync's.
+ */
+function renderVenues() {
+    const ebay = ebayNow();
+    const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
+    el.venues.replaceChildren(...order.map((v) => el.venueBlocks[v].block));
+    for (const venue of VENUES) {
+        const block = el.venueBlocks[venue];
+        const words = settings() ? venueBlockLine(venue, me, ebay, seller.ready) : "";
+        block.status.textContent = words;
+        block.status.hidden = !words;
+        block.status.classList.toggle("ok", !!words && (venue !== "ebay" ? venueAllowed(me, venue) : !!ebay && ebay.connected));
+        const allowed = venueAllowed(me, venue);
+        const ships = allowed ? shipsFromLine(venue, seller.info) : "";
+        block.ships.textContent = ships;
+        block.ships.hidden = !ships;
+        if (venue === "ebay") {
+            const connected = !!ebay && ebay.connected;
+            el.accountConnect.hidden = !ebay || connected;
+            paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
+            el.accountReconnect.hidden = !connected;
+            el.accountReconnect.disabled = account.busy;
+            block.note.textContent = ebay && !connected ? CONNECT_TO_POST : "";
+            block.note.hidden = !block.note.textContent;
+        } else block.ask.hidden = allowed || !settings();
+    }
+    renderSync();
+}
+
+// --- the address where you ship from, at the end of Venues --------------------------------
+// Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue." Another
+// seller's listings ship from, and are picked up at, her own address: the server keeps it
+// (GET/PATCH /me/address since 2026-10-25: one for every venue, or one per venue, Michal:
+// "Address can be same for all venues, but also if unchecked it would split into addresses
+// per venue") and sets up her eBay business policies from it.
+
+/**
+ * The address card: shown once the server gave an answer; its line (why the fold opened by
+ * itself, or where a prefilled address came from); the Same address for every venue tick;
+ * the one block, or one per venue that uses an address (addressVenueBlocks), a venue that uses
+ * none saying so; what Snap sets up on her eBay while the address is still to be given after
+ * eBay connected; Save address (Looks right for one prefilled from eBay: Michal, 2026-10-08)
+ * and its line. The admin's is the server's own: the boxes read-only, no Save.
  */
 function renderSeller() {
     const info = seller.info;
-    el.sellerToggle.hidden = !info;
-    fold(el.sellerToggle, SHIP_FROM, seller.open);
-    el.seller.hidden = !info || !seller.open;
-    const note = sellerLine(info);
-    el.sellerNote.textContent = note;
-    el.sellerNote.hidden = !note;
+    el.seller.hidden = !info;
+    if (!info) return;
+    const note = sellerLine(info, ebayNow());
+    el.sellerNote.textContent = note || (info.editable ? "" : ADDRESS_ON_SERVER);
+    el.sellerNote.hidden = !el.sellerNote.textContent;
+    el.addressSame.checked = seller.same;
+    el.addressSame.disabled = !info.editable;
+    el.addressShared.hidden = !seller.same;
+    const usesNeighborhood = Object.entries(info.uses).some(([v, fields]) => (me ? me.venues : VENUES).includes(v) && fields.includes("neighborhood"));
+    el.sellerNeighborhoodField.hidden = !usesNeighborhood;
+    for (const box of [el.sellerLine1, el.sellerCity, el.sellerState, el.sellerZip, el.sellerNeighborhood]) box.readOnly = !info.editable;
+    el.addressVenues.hidden = seller.same;
     el.sellerPolicies.hidden = !note;
     el.sellerSave.textContent = addressState(info) === "prefilled" ? "Looks right" : "Save address";
     el.sellerSave.disabled = seller.busy;
+    el.sellerSave.hidden = !info.editable;
     el.sellerStatus.textContent = seller.status;
 }
 
-/** The four boxes as the server has the address (Settings opened, a Save answered). */
+/** The shared block's boxes as the server has the address (Settings opened, a Save answered). */
 function fillSeller(info) {
-    el.sellerLine1.value = info.address.line1;
-    el.sellerCity.value = info.address.city;
-    el.sellerState.value = info.address.state;
-    el.sellerZip.value = info.address.postal_code;
+    el.sellerLine1.value = info.shared.line1;
+    el.sellerCity.value = info.shared.city;
+    el.sellerState.value = info.shared.state;
+    el.sellerZip.value = info.shared.zip;
+    el.sellerNeighborhood.value = info.shared.neighborhood;
 }
 
-/** Folded and quiet for the next visit, and no more asking about the policies. */
+/** The shared block's boxes, as typed. */
+function sharedBoxes() {
+    return {
+        line1: el.sellerLine1.value,
+        city: el.sellerCity.value,
+        state: el.sellerState.value,
+        zip: el.sellerZip.value,
+        neighborhood: el.sellerNeighborhood.value,
+    };
+}
+
+/**
+ * The tick off: one block per venue the account has (in /me's order), each prefilled from the
+ * shared block as it stands (or the venue's own, once the server keeps one) with the boxes
+ * that venue uses; a venue that uses none gets its muted line. Drawn afresh each time.
+ * @param {Address} info
+ */
+function drawAddressVenues(info) {
+    const venues = (me ? me.venues : VENUES).filter((v) => VENUES.includes(v));
+    seller.venueBoxes = {};
+    const shared = sharedBoxes();
+    el.addressVenues.replaceChildren(
+        ...venues.map((venue) => {
+            const block = document.createElement("div");
+            block.className = "address-venue";
+            const name = document.createElement("p");
+            name.className = "venue-name";
+            name.textContent = venue;
+            block.append(name);
+            const uses = info.uses[venue] || [];
+            if (!uses.length) {
+                const none = document.createElement("p");
+                none.className = "small venue-note";
+                none.textContent = noAddressLine(venue);
+                block.append(none);
+                return block;
+            }
+            const own = info.same ? {} : info.venues[venue] || {};
+            seller.venueBoxes[venue] = {};
+            for (const [field, label] of ADDRESS_FIELDS) {
+                if (!uses.includes(field)) continue;
+                const wrap = document.createElement("label");
+                wrap.className = "field field-small";
+                const span = document.createElement("span");
+                span.className = "field-label";
+                span.textContent = label;
+                const input = document.createElement("input");
+                input.className = "small-input";
+                input.type = "text";
+                input.id = `address-${venue}-${field}`;
+                input.value = own[field] || shared[field] || "";
+                input.readOnly = !info.editable;
+                wrap.append(span, input);
+                block.append(wrap);
+                seller.venueBoxes[venue][field] = input;
+            }
+            return block;
+        })
+    );
+}
+
+/**
+ * Same address for every venue ticked or unticked: unticked, the venue blocks come up from
+ * the shared one; ticked again, eBay's goes on as the shared one (it is the one eBay
+ * prefilled: docs/UI.md). Nothing is sent until Save address.
+ */
+function setSameAddress(on) {
+    const info = seller.info;
+    if (!info) return;
+    if (!on) drawAddressVenues(info);
+    else if (seller.venueBoxes.ebay) {
+        for (const [field, input] of Object.entries(seller.venueBoxes.ebay)) {
+            const box = { line1: el.sellerLine1, city: el.sellerCity, state: el.sellerState, zip: el.sellerZip, neighborhood: el.sellerNeighborhood }[field];
+            if (box) box.value = input.value;
+        }
+        if (seller.venueBoxes.craigslist && seller.venueBoxes.craigslist.neighborhood) el.sellerNeighborhood.value = seller.venueBoxes.craigslist.neighborhood.value;
+    }
+    seller.same = on;
+    seller.status = "";
+    renderSeller();
+}
+
+/** Quiet for the next visit, and no more asking about the policies. */
 function quietSeller() {
     clearTimeout(seller.poll);
-    Object.assign(seller, { open: false, status: "", ready: false, poll: null, polls: 0 });
+    Object.assign(seller, { status: "", ready: false, poll: null, polls: 0 });
     seller.asked += 1;
 }
 
 /**
- * GET /me/seller, as Settings opens: the boxes filled (prefilled from eBay, maybe), and the
- * foldout open by itself, saying why, when eBay is connected and the address is not all
- * there. An older server's 404: no foldout.
+ * GET /me/address, as Settings opens: the boxes filled (prefilled from eBay, maybe), and the
+ * Venues fold open by itself, saying why, when eBay is connected and the address is not all
+ * there. An older server's 404: no card.
  */
 async function loadSeller() {
     const pc = settings();
@@ -5072,38 +5443,44 @@ async function loadSeller() {
     seller.asked += 1;
     const mine = seller.asked;
     try {
-        const info = sellerOf(await getSeller(pc));
+        const info = addressOf(await getAddress(pc));
         if (mine !== seller.asked) return;
         seller.info = info;
         if (info) {
+            seller.same = info.same;
             fillSeller(info);
-            if (sellerLine(info)) seller.open = true;
-            if (info.ebay && info.ebay.policies === "pending") pollSeller(true);
-            // a sign-up whose address came all there from eBay: /me again, for the goods screen
-            if (info.complete && signupStep(me) === "address") loadMe().catch(() => {});
+            if (!info.same) drawAddressVenues(info);
+            if (sellerLine(info, ebayNow())) folds.venues = true;
+            const ebay = ebayNow();
+            if (ebay && ebay.policies === "pending") pollPolicies(true);
+            // a new account whose address came all there from eBay: /me again, for the goods screen
+            if (addressState(info) === "complete" && signupStep(me) === "address") loadMe().catch(() => {});
         }
     } catch (e) {
         if (mine !== seller.asked) return;
         if (e.status === 404) seller.info = null;
         if (e.status === 0 || e.status === 401) heard(e.status);
     }
+    if (!el.settings.hidden) renderSettingsFolds();
     renderAccount();
 }
 
 /**
- * Save address: PATCH /me/seller with the four boxes (addressBody), or the box that is not
- * right named and nothing sent. Saved, the eBay line follows the answer's policies: asked
- * again every 10 s while they are being set up.
+ * Save address: PATCH /me/address with the boxes as they stand (addressSaveBody: the one
+ * shared block, or one per venue), or the box that is not right named and nothing sent.
+ * Saved, /me is asked again for the policies the server now sets up, and every 10 s while
+ * it does.
  */
 async function saveSeller() {
     const pc = settings();
-    if (!pc || seller.busy) return;
-    const made = addressBody({
-        line1: el.sellerLine1.value,
-        city: el.sellerCity.value,
-        state: el.sellerState.value,
-        zip: el.sellerZip.value,
-    });
+    const info = seller.info;
+    if (!pc || !info || seller.busy) return;
+    const venues = Object.fromEntries(Object.entries(seller.venueBoxes).map(([v, boxes]) => [v, Object.fromEntries(Object.entries(boxes).map(([f, input]) => [f, input.value]))]));
+    const uses = Object.fromEntries(Object.entries(info.uses).filter(([v]) => (me ? me.venues : VENUES).includes(v)));
+    // step 2 of Finish setting up saves through PATCH /me/seller as ever: the route that starts
+    // the eBay policy setup (and writes the shared address too); the card otherwise /me/address
+    const step2 = signupStep(me) === "address";
+    const made = step2 ? addressBody(sharedBoxes()) : addressSaveBody({ same: seller.same, shared: sharedBoxes(), venues, uses });
     if (!made.ok) {
         seller.status = made.error;
         renderAccount();
@@ -5118,19 +5495,21 @@ async function saveSeller() {
     const mine = seller.asked;
     renderAccount();
     try {
-        const info = sellerOf(await patchSeller(pc, made.body));
+        const answer = step2 ? addressOf(await patchSeller(pc, made.body).then(() => getAddress(pc))) : addressOf(await patchAddress(pc, made.body));
         // Admin closed meanwhile (or another account): the next visit asks afresh
         if (mine !== seller.asked) return;
         seller.status = "saved";
-        if (info) {
-            seller.info = info;
-            fillSeller(info);
-            const policies = info.ebay ? info.ebay.policies : "";
-            seller.ready = policies === "ready";
-            if (policies === "pending") pollSeller(true);
+        if (answer) {
+            seller.info = answer;
+            seller.same = answer.same;
+            fillSeller(answer);
+            if (!answer.same) drawAddressVenues(answer);
         }
-        // a sign-up's last step: the address in, /me says registered, and the goods screen is his
-        if (signupStep(me) === "address") loadMe().catch(() => {});
+        // the server sets up her eBay policies from it: /me says how they stand; a new
+        // account's last step: the address in, /me says registered, and the goods screen is hers
+        await loadMe();
+        const ebay = ebayNow();
+        if (ebay && ebay.policies === "pending") pollPolicies(true);
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         if (mine === seller.asked) seller.status = sellerError(e.status, e.message);
@@ -5141,12 +5520,12 @@ async function saveSeller() {
 }
 
 /**
- * While eBay's policies are being set up: GET /me/seller every 10 s until they are ready
- * (said once) or failed, three minutes at most (`fresh` starts the count again). The boxes
- * are left as he may be typing in them.
+ * While eBay's policies are being set up: GET /me every 10 s until they are ready (said
+ * once on the eBay block's line) or failed, three minutes at most (`fresh` starts the count
+ * again).
  * @param {boolean} fresh
  */
-function pollSeller(fresh) {
+function pollPolicies(fresh) {
     clearTimeout(seller.poll);
     if (fresh) seller.polls = 0;
     if (seller.polls >= SELLER_POLL_MAX) {
@@ -5160,73 +5539,121 @@ function pollSeller(fresh) {
         if (!pc) return;
         const mine = seller.asked;
         try {
-            const info = sellerOf(await getSeller(pc));
-            if (mine !== seller.asked || !info) return;
-            seller.info = info;
+            const answer = meOf(await getMe(pc));
+            if (mine !== seller.asked || !answer) return;
+            me = answer;
         } catch (e) {
             if (e.status === 401) heard(401);
             if (mine !== seller.asked) return;
         }
-        const policies = seller.info && seller.info.ebay ? seller.info.ebay.policies : "";
+        const ebay = ebayNow();
+        const policies = ebay ? ebay.policies : "";
         if (policies === "ready") seller.ready = true;
-        renderAccount();
-        if (policies === "pending") pollSeller(false);
+        renderMe();
+        if (policies === "pending") pollPolicies(false);
     }, SELLER_POLL_MS);
 }
 
-// --- a header and a footer on every listing, under the Account block ----------------------
+// --- a header and a footer on every listing, one card under Posting defaults --------------
 // Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts.
 // When you check that, a text area appears ... If you uncheck it, it should not lose what you
 // had ... Below would be the venue buttons; 'Apply to:' above them ... Finally a button 'Apply
 // to all existing listings' (per the venue specified)." The server keeps both (GET/PATCH
-// /me/wrap) and puts them round every description it posts.
+// /me/wrap) and puts them round every description it posts. Since 2026-10-25 one card: the
+// two ticks, each unfolding its box and its pills (one per venue /me/wrap offers), one Save,
+// and Apply to all existing listings per venue ticked.
 
 /**
- * The two rows: each ticked as the server has it, its foldout open while it is; the box's
- * counter; Apply to:'s pill per venue the account posts to, ticked in the posted green; Save
- * and its line; and per venue ticked (or still pushing) Apply to all existing listings, a job
- * button as the sync bar's, its line under it. No rows until the server answered.
+ * The card: each part ticked as the server has it, its box and its venue pills (ticked in the
+ * posted green) under it while it is; the boxes' counters; Save and its line; and per venue
+ * ticked in either part (or still pushing) Apply to all existing listings, a job button, its
+ * line under it. No card until the server answered.
  */
 function renderWrap() {
     const info = wrap.info;
     el.wrap.hidden = !info;
+    const venues = info ? info.available : [];
+    for (const venue of venues) wrapNodes(venue);
     for (const part of WRAP_PARTS) {
         const p = el.wrapParts[part];
         const now = info ? info[part] : null;
         p.on.checked = !!now && now.on;
         p.fold.hidden = !now || !now.on;
         p.count.textContent = wrapCounter(p.text.value);
-        p.save.disabled = wrap.busy[part];
-        p.status.textContent = wrap.status[part];
-        let applies = false;
-        for (const venue of WRAP_VENUES) {
-            const offered = !!info && info.available.includes(venue);
+        const pills = venues.map((venue) => {
+            const pill = wrap.drawn[venue].pills[part];
             const ticked = !!now && now.venues.includes(venue);
-            const pill = p.venues[venue];
             const face = venueTickLabel(venue, ticked);
-            pill.hidden = !offered;
             pill.replaceChildren(...(face.tick ? [face.text, tickIcon()] : [face.text]));
             pill.setAttribute("aria-pressed", ticked ? "true" : "false");
-            // one task per venue, painted under both rows: the push carries the header and the footer
-            const task = wrap.apply[venue];
-            const busy = pressed(task, "apply");
-            const { btn, reset, line } = p.apply[venue];
-            const shown = offered && (ticked || busy);
-            applies ||= shown;
-            btn.hidden = !shown;
-            btn.disabled = busy && !taskTap(task);
-            paintJobButton(btn, applyLabel(venue), {
-                busy,
-                cancel: busy && taskCancel(task),
-                paused: busy && task.paused,
-                reset,
-            });
-            const said = shown ? busyLine(task) : null;
-            line.textContent = said ? said.text : "";
-            line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
+            return pill;
+        });
+        if (wrap.shown[part] !== venues.join(" ")) {
+            wrap.shown[part] = venues.join(" ");
+            p.venues.replaceChildren(...pills);
         }
-        p.applies.hidden = !applies;
     }
+    el.wrapSave.disabled = wrap.busy;
+    el.wrapStatus.textContent = wrap.status;
+    const applies = [];
+    for (const venue of venues) {
+        const ticked = !!info && WRAP_PARTS.some((part) => info[part].on && info[part].venues.includes(venue));
+        const task = wrap.apply[venue];
+        const busy = pressed(task, "apply");
+        const { btn, reset, line } = wrap.drawn[venue];
+        if (!ticked && !busy) continue;
+        btn.disabled = busy && !taskTap(task);
+        paintJobButton(btn, applyLabel(venue), {
+            busy,
+            cancel: busy && taskCancel(task),
+            paused: busy && task.paused,
+            reset,
+        });
+        const said = busyLine(task);
+        line.textContent = said ? said.text : "";
+        line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
+        applies.push(btn, reset, line);
+    }
+    el.wrapApply.hidden = !applies.length;
+    const shown = applies.map((n) => n.id).join(" ");
+    if (wrap.shown.apply !== shown) {
+        wrap.shown.apply = shown;
+        el.wrapApply.replaceChildren(...applies);
+    }
+}
+
+/**
+ * A venue's pills (one per part, `wrap-<part>-<venue>`), its Apply to all existing listings
+ * (`wrap-apply-<venue>`), its reset and its line, made once per venue /me/wrap offers.
+ */
+function wrapNodes(venue) {
+    if (!wrap.drawn[venue]) {
+        wrap.apply[venue] = jobTask();
+        const pills = Object.fromEntries(
+            WRAP_PARTS.map((part) => {
+                const pill = actionButton(venue, "pill pill-small wrap-venue", false, () => toggleWrapVenue(part, venue));
+                pill.id = `wrap-${part}-${venue}`;
+                pill.setAttribute("aria-pressed", "false");
+                return [part, pill];
+            })
+        );
+        const btn = actionButton(applyLabel(venue), "pill pill-small", false, () => {
+            startApply(venue).catch(() => {});
+        });
+        btn.id = `wrap-apply-${venue}`;
+        const reset = actionButton(RESET, "reset-call", false, () => {
+            resetTask(wrap.apply[venue], renderWrap).catch(() => {});
+        });
+        reset.id = `wrap-apply-${venue}-reset`;
+        reset.hidden = true;
+        reset.setAttribute("aria-label", `${RESET} ${applyLabel(venue)}`);
+        const line = document.createElement("p");
+        line.id = `wrap-apply-${venue}-status`;
+        line.className = "venue-status";
+        line.setAttribute("aria-live", "polite");
+        wrap.drawn[venue] = { pills, btn, reset, line };
+    }
+    return wrap.drawn[venue];
 }
 
 /** Each part's box as the server has its text (Settings opened, a row ticked again, a Save answered). */
@@ -5269,7 +5696,7 @@ async function changeWrap(part, changes) {
     if (!pc || !wrap.info) return false;
     const made = wrapBody(part, changes);
     if (!made.ok) {
-        wrap.status[part] = made.error;
+        wrap.status = made.error;
         renderWrap();
         return false;
     }
@@ -5285,7 +5712,7 @@ async function changeWrap(part, changes) {
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         if (mine === wrap.asked) wrap.info = before;
-        wrap.status[part] = wrapError(e.status, e.message);
+        wrap.status = wrapError(e.status, e.message);
         return false;
     } finally {
         renderWrap();
@@ -5304,7 +5731,7 @@ async function changeWrap(part, changes) {
 function tickWrap(part, on) {
     const info = wrap.info;
     if (!info) return;
-    wrap.status[part] = "";
+    wrap.status = "";
     /** @type {{on:boolean, venues?:string[]}} */
     const changes = { on };
     if (on && info.available.length === 1 && info[part].venues.length === 0) changes.venues = info.available;
@@ -5312,34 +5739,56 @@ function tickWrap(part, on) {
     changeWrap(part, changes).catch(() => {});
 }
 
-/** An Apply to: pill: that venue in or out of the part's venues, sent at once. */
+/** A venue pill: that venue in or out of the part's venues, sent at once. */
 function toggleWrapVenue(part, venue) {
     const info = wrap.info;
     if (!info) return;
-    wrap.status[part] = "";
+    wrap.status = "";
     const now = info[part].venues;
     const venues = now.includes(venue) ? now.filter((v) => v !== venue) : [...now, venue];
     changeWrap(part, { venues }).catch(() => {});
 }
 
-/** Save: the part's text, its line saying so; the box as the server keeps it, unless typed in meanwhile. */
-async function saveWrap(part) {
-    if (wrap.busy[part] || !wrap.info || !settings()) return;
-    const box = el.wrapParts[part].text;
-    const sent = box.value;
-    wrap.busy[part] = true;
-    wrap.status[part] = "Saving...";
-    let saved = false;
-    try {
-        saved = await changeWrap(part, { text: sent });
-    } finally {
-        wrap.busy[part] = false;
+/**
+ * The one Save: both texts as typed, only what differs from the server's (wrapTextsBody), in
+ * one PATCH; its line saying so; the boxes as the server keeps them, unless typed in meanwhile.
+ */
+async function saveWrap() {
+    const pc = settings();
+    const info = wrap.info;
+    if (wrap.busy || !info || !pc) return;
+    const sent = { header: el.wrapParts.header.text.value, footer: el.wrapParts.footer.text.value };
+    const made = wrapTextsBody(sent, info);
+    if (!made.ok) {
+        wrap.status = made.error;
+        renderWrap();
+        return;
     }
-    if (saved) {
-        wrap.status[part] = "saved";
-        if (box.value === sent && wrap.info) fillWrap(wrap.info, [part]);
+    if (!Object.keys(made.body).length) {
+        wrap.status = "saved";
+        renderWrap();
+        return;
     }
+    wrap.busy = true;
+    wrap.status = "Saving...";
+    wrap.asked += 1;
+    const mine = wrap.asked;
     renderWrap();
+    try {
+        const answer = wrapOf(await patchWrap(pc, made.body));
+        if (mine !== wrap.asked) return;
+        if (answer) wrap.info = answer;
+        wrap.status = "saved";
+        for (const part of WRAP_PARTS) {
+            if (el.wrapParts[part].text.value === sent[part] && wrap.info) fillWrap(wrap.info, [part]);
+        }
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === wrap.asked) wrap.status = wrapError(e.status, e.message);
+    } finally {
+        wrap.busy = false;
+        renderWrap();
+    }
 }
 
 /**
@@ -5391,12 +5840,10 @@ async function startApply(venue) {
 function dropWrap() {
     wrap.asked += 1;
     wrap.info = null;
-    for (const part of WRAP_PARTS) {
-        wrap.status[part] = "";
-        wrap.busy[part] = false;
-        el.wrapParts[part].text.value = "";
-    }
-    for (const venue of WRAP_VENUES) {
+    wrap.status = "";
+    wrap.busy = false;
+    for (const part of WRAP_PARTS) el.wrapParts[part].text.value = "";
+    for (const venue of Object.keys(wrap.apply)) {
         const task = wrap.apply[venue];
         takeBack(task);
         clearTimeout(task.timer);
@@ -5406,8 +5853,288 @@ function dropWrap() {
     renderWrap();
 }
 
+// --- the people on this account (Michal, 2026-10-25: "allow two users to join the same
+// family group") -----------------------------------------------------------------------
+// The owner's card carries the invite box (their email alone); everyone's carries the People
+// link, which opens the People page in Admin's place: one card per person by the name they
+// chose, their devices with Sign out, Change name on your own, Remove on a member (the
+// owner's), Leave this account at the end (a member's).
+
 /**
- * Admin open on Settings, at the Account block: where a venue button's Buy postings leads
+ * GET /me/people, then GET /me/devices (everyone's, `?all=1`, when the person looking owns
+ * the account): the count on the People link and the People page. A server without them
+ * (404) or refusing (403): no link, no invite box.
+ */
+async function loadPeople() {
+    const pc = settings();
+    if (!pc) return;
+    people.asked += 1;
+    const mine = people.asked;
+    try {
+        const info = peopleOf(await getPeople(pc));
+        if (mine !== people.asked) return;
+        people.info = info;
+        if (info) {
+            const devices = devicesOf(await getDevices(pc, info.owner));
+            if (mine !== people.asked) return;
+            people.devices = devices;
+        }
+    } catch (e) {
+        if (mine !== people.asked) return;
+        if (e.status === 404 || e.status === 403) {
+            people.info = null;
+            people.devices = null;
+        }
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    }
+    renderPeopleLink();
+    renderPeople();
+}
+
+/** The people let go with the account: the page closed, the lines quiet. */
+function dropPeople() {
+    people.asked += 1;
+    Object.assign(people, { info: null, devices: null, busy: false, status: "", inviteStatus: "", renaming: false });
+    if (people.open) showPeople(false);
+}
+
+/** The invite box (the owner's) and the People link with its count, on the current account's card. */
+function renderPeopleLink() {
+    const info = settings() ? people.info : null;
+    const owner = !!info && info.owner;
+    el.invite.hidden = !owner;
+    el.inviteSend.disabled = people.busy;
+    el.inviteStatus.textContent = people.inviteStatus;
+    el.accountPeople.hidden = !info;
+    el.peopleCount.textContent = info ? peopleCount(info.people.length) : "";
+}
+
+/**
+ * The People page in Admin's place, or Admin's own page again: opened, the people asked for
+ * afresh and the page at the top.
+ * @param {boolean} on
+ */
+function showPeople(on) {
+    people.open = on;
+    people.status = "";
+    people.renaming = false;
+    renderExtras();
+    renderPeople();
+    if (on) {
+        loadPeople().catch(() => {});
+        if (typeof globalThis.window.scrollTo === "function") globalThis.window.scrollTo({ top: 0 });
+    }
+}
+
+/**
+ * The People page: one card per person, the owner first (peopleOf), its name, its words
+ * (personWords), Change name on your own (the box and its Save while open), Remove on a
+ * member for the owner; under each their devices (deviceLine), Sign out on each, and Sign
+ * out all other devices on your own card while there is another; Leave this account at the
+ * end for a member.
+ */
+function renderPeople() {
+    const info = people.info;
+    el.peopleStatus.textContent = people.status;
+    el.peopleLeave.hidden = !info || info.owner;
+    el.peopleLeave.disabled = people.busy;
+    if (!people.open || !info) {
+        el.peopleList.replaceChildren();
+        return;
+    }
+    const now = Date.now();
+    el.peopleList.replaceChildren(
+        ...info.people.map((p) => {
+            const li = document.createElement("li");
+            li.className = "card person-card";
+            const name = document.createElement("p");
+            name.className = "person-name";
+            name.textContent = p.name;
+            const words = document.createElement("p");
+            words.className = "small person-words";
+            words.textContent = personWords(p);
+            li.append(name, words);
+            const actions = document.createElement("div");
+            actions.className = "person-actions";
+            if (p.you) {
+                actions.append(
+                    actionButton("Change name", "link person-action", people.busy, () => {
+                        people.renaming = !people.renaming;
+                        renderPeople();
+                    })
+                );
+            }
+            if (!p.owner && info.owner) {
+                actions.append(
+                    actionButton("Remove", "link person-action", people.busy, () => {
+                        removePerson(p).catch(() => {});
+                    })
+                );
+            }
+            if (actions.children.length) li.append(actions);
+            if (p.you && people.renaming) {
+                const field = document.createElement("label");
+                field.className = "field field-small";
+                const label = document.createElement("span");
+                label.className = "field-label";
+                label.textContent = "Your name";
+                const input = document.createElement("input");
+                input.className = "small-input";
+                input.type = "text";
+                input.id = "person-name-input";
+                input.value = p.name;
+                field.append(label, input);
+                const save = actionButton("Save", "pill pill-ink pill-small", people.busy, () => {
+                    rename(input.value).catch(() => {});
+                });
+                save.id = "person-name-save";
+                li.append(field, save);
+            }
+            const devices = (people.devices && people.devices[p.email]) || [];
+            if (devices.length) {
+                const list = document.createElement("ul");
+                list.className = "device-list";
+                for (const d of devices) {
+                    const row = document.createElement("li");
+                    row.className = "device";
+                    const line = document.createElement("span");
+                    line.textContent = deviceLine(d, now);
+                    const out = actionButton("Sign out", "link device-signout", people.busy, () => {
+                        signOutOne(d).catch(() => {});
+                    });
+                    out.id = `device-${d.id}-signout`;
+                    row.append(line, out);
+                    list.append(row);
+                }
+                li.append(list);
+            }
+            // only where there is another device of yours to sign out (a key has no sessions)
+            if (p.you && devices.some((d) => !d.thisDevice)) {
+                const others = actionButton("Sign out all other devices", "link person-action", people.busy, () => {
+                    signOutRest().catch(() => {});
+                });
+                others.id = "people-signout-others";
+                li.append(others);
+            }
+            return li;
+        })
+    );
+}
+
+/** One people action on its way: the page's line meanwhile, then the people asked for again; a refusal said (peopleError). */
+async function peopleAction(lead, meanwhile, run) {
+    const pc = settings();
+    if (!pc || people.busy) return false;
+    people.busy = true;
+    people.status = meanwhile;
+    renderPeople();
+    renderPeopleLink();
+    renderDelete();
+    try {
+        await run(pc);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        people.busy = false;
+        people.status = peopleError(lead, e.status, e.message);
+        renderPeople();
+        renderPeopleLink();
+        renderDelete();
+        return false;
+    }
+    people.busy = false;
+    people.status = "";
+    renderDelete();
+    await loadPeople();
+    return true;
+}
+
+/** Invite: POST /me/people with their email (inviteBody); 202: "Invitation sent", the box cleared. */
+async function invite() {
+    const pc = settings();
+    if (!pc || people.busy) return;
+    const made = inviteBody({ email: el.inviteEmail.value });
+    if (!made.ok) {
+        people.inviteStatus = made.error;
+        renderPeopleLink();
+        return;
+    }
+    people.busy = true;
+    people.inviteStatus = "Inviting...";
+    renderPeopleLink();
+    try {
+        await inviteMember(pc, made.body);
+        people.inviteStatus = INVITE_SENT;
+        el.inviteEmail.value = "";
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        people.inviteStatus = peopleError("Could not invite", e.status, e.message);
+    } finally {
+        people.busy = false;
+        renderPeopleLink();
+    }
+    await loadPeople();
+}
+
+/** Remove, on a member's card (the owner's): DELETE /me/people/<email>; their sessions end with them. */
+function removePerson(p) {
+    return peopleAction("Could not remove them", `Removing ${p.name}...`, (pc) => removeMember(pc, p.email));
+}
+
+/** Change name's Save: PATCH /me/people/me (nameBody); the page says the new name. */
+async function rename(raw) {
+    const made = nameBody(raw);
+    if (!made.ok) {
+        people.status = made.error;
+        renderPeople();
+        return;
+    }
+    const done = await peopleAction("Could not change the name", "Saving...", (pc) => renameMe(pc, made.body));
+    if (done) people.renaming = false;
+    renderPeople();
+}
+
+/**
+ * Sign out, on a device: DELETE /me/devices/<id>. This device's drops the account from the
+ * phone as Sign out does (its session ended with it: the server is told nothing more).
+ */
+async function signOutOne(d) {
+    if (!d.thisDevice) {
+        await peopleAction("Could not sign out the device", "Signing out...", (pc) => signOutDevice(pc, d.id));
+        return;
+    }
+    const pc = settings();
+    const a = currentAccount();
+    if (!pc || !a || people.busy) return;
+    people.busy = true;
+    people.status = "Signing out...";
+    renderPeople();
+    try {
+        await signOutDevice(pc, d.id);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        people.busy = false;
+        people.status = peopleError("Could not sign out the device", e.status, e.message);
+        renderPeople();
+        return;
+    }
+    people.busy = false;
+    removeAccount(a.id, false);
+}
+
+/** Sign out all other devices: POST /me/devices/sign-out-others, "Signed out n other devices". */
+async function signOutRest() {
+    let said = "";
+    await peopleAction("Could not sign out the other devices", "Signing out...", async (pc) => {
+        said = signedOutOthers((await signOutOthers(pc)).signed_out);
+    });
+    if (said) {
+        people.status = said;
+        renderPeople();
+    }
+}
+
+/**
+ * Admin open on Settings, at the account card: where a venue button's Buy postings leads
  * (`packs`: its pack choice unfolded), and the way back from Stripe or eBay.
  * @param {boolean} packs
  */
@@ -5416,7 +6143,7 @@ function openAccount(packs) {
         Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
         adminShown(true);
     }
-    showSettings(true);
+    openFold("account");
     account.packs = packs;
     renderAccount();
     if (typeof el.account.scrollIntoView === "function") el.account.scrollIntoView({ block: "start" });
@@ -5475,7 +6202,7 @@ function cameBack(back) {
     openAccount(false);
     loadMe()
         .then(() => {
-            // a sign-up's eBay connected: the account is real now, and the address is next
+            // a new account's eBay connected: the address is next, at the end of Venues
             if (back.kind === "ebay" && signupStep(me) === "address" && !el.admin.hidden) openSeller();
         })
         .catch(() => {});
@@ -5508,7 +6235,7 @@ function forgetServer() {
     if (a) removeAccount(a.id);
 }
 
-/** Sign out, under Settings' line: there once there is an account in hand. */
+/** Sign out, bottom right of the account card: there once there is an account in hand. */
 function renderSignOut() {
     const a = currentAccount();
     el.settingsSignout.hidden = !a;
@@ -5636,6 +6363,8 @@ async function sendCode() {
  */
 function keepSession(made) {
     addAccount({ pc: DEFAULT_SERVER, session: made.session, user: made.user, remember: made.remember });
+    // Admin's first open lands on Settings, Snap Account open (docs/UI.md: "Account after a new sign-in")
+    freshSignin = true;
     takeUp();
 }
 
@@ -5677,6 +6406,12 @@ function renderInstall(away) {
     el.installAdd.setAttribute("aria-expanded", stepsOpen.banner ? "true" : "false");
     el.installSteps.textContent = steps;
     el.installSteps.hidden = banner !== "steps" || !stepsOpen.banner;
+    // This phone, under Settings: Install on the home screen, or that it is there already
+    el.phoneInstall.hidden = onLanding === "hidden";
+    el.phoneInstall.setAttribute("aria-expanded", stepsOpen.phone ? "true" : "false");
+    el.phoneInstallSteps.textContent = steps;
+    el.phoneInstallSteps.hidden = onLanding !== "steps" || !stepsOpen.phone;
+    el.phoneInstalled.hidden = !base.standalone;
 }
 
 /**
@@ -5772,19 +6507,19 @@ async function saveSettings() {
         return;
     }
     el.settingsStatus.textContent = "Saved. Checking the server...";
-    // new settings, maybe another account: /me, the seller's address and the header and
-    // footer are asked afresh
+    // new settings, maybe another account: /me, the address, the header and footer and the
+    // people are asked afresh
     letGoAccount();
     renderAccounts();
     renderDelete();
+    renderSettingsFolds();
     render();
     try {
         await checkPc(s);
         heard(200);
         el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
         loadMe().catch(() => {});
-        loadSeller().catch(() => {});
-        loadWrap().catch(() => {});
+        loadSettingsParts();
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
         el.settingsStatus.textContent = refusalLine("Saved, but", e.status, e.message);
@@ -6125,33 +6860,75 @@ function main() {
         adminToggle: $("admin-toggle"),
         admin: $("admin"),
         adminClose: $("admin-close"),
-        adminTitle: $("admin-title"),
+        headerUser: $("header-user"),
         settingsToggle: $("settings-toggle"),
         settings: $("settings"),
+        folds: Object.fromEntries(FOLDS.map(([key]) => [key, { toggle: $(`fold-${key}-toggle`), body: $(`fold-${key}`) }])),
         pcAddress: $("pc-address"),
         pcKey: $("pc-key"),
         settingsSave: $("settings-save"),
         settingsStatus: $("settings-status"),
-        settingsServer: $("settings-server"),
         settingsSignout: $("settings-signout"),
         accounts: $("accounts"),
         accountsList: $("accounts-list"),
         accountsAdd: $("accounts-add"),
         settingsDelete: $("settings-delete"),
+        accountLeave: $("account-leave"),
         deleteConfirm: $("delete-confirm"),
-        deleteAdminNote: $("delete-admin-note"),
         deleteConfirmBtn: $("delete-confirm-btn"),
         deleteKeep: $("delete-keep"),
         deleteStatus: $("delete-status"),
         account: $("account"),
         accountUser: $("account-user"),
+        accountKind: $("account-kind"),
         accountCredits: $("account-credits"),
         accountBuy: $("account-buy"),
         accountPacks: $("account-packs"),
+        accountStatus: $("account-status"),
+        accountSigninAgain: $("account-signin-again"),
+        invite: $("invite"),
+        inviteEmail: $("invite-email"),
+        inviteSend: $("invite-send"),
+        inviteStatus: $("invite-status"),
+        accountPeople: $("account-people"),
+        peopleCount: $("people-count"),
+        people: $("people"),
+        peopleBack: $("people-back"),
+        peopleStatus: $("people-status"),
+        peopleList: $("people-list"),
+        peopleLeave: $("people-leave"),
         accountEbay: $("account-ebay"),
         accountConnect: $("account-connect"),
         accountReconnect: $("account-reconnect"),
-        accountStatus: $("account-status"),
+        venues: $("venues"),
+        venueBlocks: Object.fromEntries(
+            VENUES.map((v) => [
+                v,
+                {
+                    block: $(`venue-${v}`),
+                    status: v === "ebay" ? $("account-ebay") : $(`venue-${v}-status`),
+                    ships: $(`venue-${v}-ships`),
+                    note: v === "ebay" ? $("venue-ebay-note") : null,
+                    ask: v === "ebay" ? null : $(`venue-${v}-ask`),
+                    sync: $(`venue-${v}-sync`),
+                    syncStatus: $(`sync-${v}-status`),
+                    cannot: $(`venue-${v}-cannot`),
+                    syncDrawn: false,
+                },
+            ])
+        ),
+        postingQuantity: $("posting-quantity"),
+        postingPickupOnly: $("posting-pickup-only"),
+        postingPricing: $("posting-pricing"),
+        postingPricingWords: PRICING.map(({ grade }) => $(`posting-pricing-${grade}`)),
+        postingPricingNote: $("posting-pricing-note"),
+        postingAutoPost: $("posting-auto-post"),
+        postingComps: $("posting-comps"),
+        postingFixDark: $("posting-fix-dark"),
+        postingStatus: $("posting-status"),
+        phoneInstall: $("phone-install"),
+        phoneInstallSteps: $("phone-install-steps"),
+        phoneInstalled: $("phone-installed"),
         landing: $("landing"),
         landingBack: $("landing-back"),
         landingAccounts: $("landing-accounts"),
@@ -6179,13 +6956,17 @@ function main() {
         signupAddress: $("signup-address"),
         signupAddressWord: $("signup-address-word"),
         signupStatus: $("signup-status"),
-        sellerToggle: $("seller-toggle"),
         seller: $("seller"),
         sellerNote: $("seller-note"),
+        addressSame: $("address-same"),
+        addressShared: $("address-shared"),
+        addressVenues: $("address-venues"),
         sellerLine1: $("seller-line1"),
         sellerCity: $("seller-city"),
         sellerState: $("seller-state"),
         sellerZip: $("seller-zip"),
+        sellerNeighborhoodField: $("seller-neighborhood-field"),
+        sellerNeighborhood: $("seller-neighborhood"),
         sellerPolicies: $("seller-policies"),
         sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),
@@ -6199,23 +6980,13 @@ function main() {
                     fold: $(`wrap-${part}`),
                     text: $(`wrap-${part}-text`),
                     count: $(`wrap-${part}-count`),
-                    venues: Object.fromEntries(WRAP_VENUES.map((v) => [v, $(`wrap-${part}-${v}`)])),
-                    save: $(`wrap-${part}-save`),
-                    status: $(`wrap-${part}-status`),
-                    applies: $(`wrap-${part}-apply`),
-                    apply: Object.fromEntries(
-                        WRAP_VENUES.map((v) => [
-                            v,
-                            {
-                                btn: $(`wrap-${part}-apply-${v}`),
-                                reset: $(`wrap-${part}-apply-${v}-reset`),
-                                line: $(`wrap-${part}-apply-${v}-status`),
-                            },
-                        ])
-                    ),
+                    venues: $(`wrap-${part}-venues`),
                 },
             ])
         ),
+        wrapSave: $("wrap-save"),
+        wrapStatus: $("wrap-status"),
+        wrapApply: $("wrap-apply"),
         aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
@@ -6270,10 +7041,7 @@ function main() {
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
-        syncBar: $("sync-bar"),
-        syncButtons: $("sync-buttons"),
         syncIcons: { from: $("sync-from-icon"), to: $("sync-to-icon") },
-        syncStatus: $("sync-status"),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
         photoViewClose: $("photo-view-close"),
@@ -6322,8 +7090,6 @@ function main() {
         autoPost: $("auto-post"),
         comps: $("comps"),
         fixDark: $("fix-dark"),
-        customizeDefault: $("customize-default"),
-        customizeDefaultStatus: $("customize-default-status"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -6367,8 +7133,6 @@ function main() {
         bookPricingNote: $("book-pricing-note"),
         bookAutoPost: $("book-auto-post"),
         bookComps: $("book-comps"),
-        bookCustomizeDefault: $("book-customize-default"),
-        bookCustomizeDefaultStatus: $("book-customize-default-status"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
         bookSeeInventory: $("book-see-inventory"),
@@ -6403,12 +7167,15 @@ function main() {
     mode = walked ? recordKind(walked) : chosenMode();
     // a fresh screen starts from his defaults; an item read back keeps its own customize
     for (const m of MODES) slots[m] = applyDefaults(reduce(slots[m], { type: "online", online: navigator.onLine }), readDefaults());
+    for (const m of MODES) fillCustomize(m);
     fixDark = savedFixDark();
+    readFolds();
     render();
 
     renderServer();
     renderExtras();
     renderAccount();
+    renderPosting();
     // what Snap sets up on her eBay, listed under the address boxes: fixed, so written once
     el.sellerPolicyList.replaceChildren(
         ...POLICY_LINES.map((line) => {
@@ -6478,8 +7245,9 @@ function main() {
         render();
     });
     el.settingsSignout.addEventListener("click", forgetServer);
-    // the accounts on this phone (Michal, 2026-10-18): Add account, and Delete my account
-    // with its confirmation view
+    el.accountSigninAgain.addEventListener("click", () => startAdding(true));
+    // the accounts on this phone (Michal, 2026-10-18): Add account, and Delete account with
+    // its confirmation view; Leave this account for a member (2026-10-25)
     el.accountsAdd.addEventListener("click", () => startAdding(false));
     el.settingsDelete.addEventListener("click", () => {
         if (deleting.open) keepAccount();
@@ -6489,49 +7257,73 @@ function main() {
         confirmDelete().catch(() => {});
     });
     el.deleteKeep.addEventListener("click", keepAccount);
-    // the Account block: Buy postings unfolds the packs (each pill a checkout), Connect eBay
+    for (const node of [el.accountLeave, el.peopleLeave]) {
+        node.addEventListener("click", () => {
+            leaveThisAccount().catch(() => {});
+        });
+    }
+    // the people on this account: the invite box, the People page and its way back
+    el.inviteSend.addEventListener("click", () => {
+        invite().catch(() => {});
+    });
+    el.inviteEmail.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") invite().catch(() => {});
+    });
+    el.accountPeople.addEventListener("click", () => showPeople(true));
+    el.peopleBack.addEventListener("click", () => showPeople(false));
+    // Settings' five folds: a tap opens or closes one, remembered on this phone
+    for (const [key] of FOLDS) el.folds[key].toggle.addEventListener("click", () => toggleFold(key));
+    // the account card: Buy postings unfolds the packs (each pill a checkout)
     el.accountBuy.addEventListener("click", () => {
         account.packs = !account.packs;
         renderAccount();
     });
-    // ... and, connected, Reconnect: eBay's consent again (a token eBay let lapse)
+    // the eBay block: Connect eBay, and, connected, Reconnect: eBay's consent again (a token
+    // eBay let lapse)
     for (const node of [el.accountConnect, el.accountReconnect]) {
         node.addEventListener("click", () => {
             connectEbay().catch(() => {});
         });
     }
-    // Seller address: the foldout, and Save address
-    el.sellerToggle.addEventListener("click", () => {
-        seller.open = !seller.open;
-        renderAccount();
-    });
-    el.sellerSave.addEventListener("click", () => {
-        saveSeller().catch(() => {});
-    });
-    // the header and the footer: each row's tick, its box's counter, Save, Apply to:'s pills,
-    // and Apply to all existing listings with its reset
-    for (const [part, p] of Object.entries(el.wrapParts)) {
-        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
-        p.text.addEventListener("input", () => {
-            // "saved" no longer speaks for what is in the box
-            if (!wrap.busy[part]) wrap.status[part] = "";
-            renderWrap();
-        });
-        p.save.addEventListener("click", () => {
-            saveWrap(part).catch(() => {});
-        });
-        for (const [venue, pill] of Object.entries(p.venues)) pill.addEventListener("click", () => toggleWrapVenue(part, venue));
-        for (const [venue, { btn, reset }] of Object.entries(p.apply)) {
-            btn.addEventListener("click", () => {
-                startApply(venue).catch(() => {});
-            });
-            reset.addEventListener("click", () => {
-                resetTask(wrap.apply[venue], renderWrap).catch(() => {});
+    // a venue the account lacks: Ask for it in Feedback opens the Feedback fold
+    for (const venue of VENUES) {
+        const ask = el.venueBlocks[venue].ask;
+        if (ask) {
+            ask.addEventListener("click", () => {
+                extras.feedback = true;
+                renderExtras();
+                if (typeof el.feedback.scrollIntoView === "function") el.feedback.scrollIntoView({ block: "start" });
             });
         }
     }
+    // the address: Same address for every venue, and Save address
+    el.addressSame.addEventListener("change", () => setSameAddress(el.addressSame.checked));
+    el.sellerSave.addEventListener("click", () => {
+        saveSeller().catch(() => {});
+    });
+    // the Posting defaults: every box saved as it changes
+    for (const node of [el.postingPickupOnly, el.postingAutoPost, el.postingComps, el.postingFixDark]) node.addEventListener("change", savePostingDefaults);
+    for (const node of [el.postingQuantity, el.postingPricing]) node.addEventListener("input", savePostingDefaults);
+    // This phone: Install on the home screen, as the landing's
+    el.phoneInstall.addEventListener("click", () => {
+        onInstall("phone").catch(() => {});
+    });
+    // the header and the footer: each part's tick, its box's counter, the one Save (the pills
+    // and the apply buttons are drawn per venue /me/wrap offers, with their own listeners)
+    for (const [, p] of Object.entries(el.wrapParts)) {
+        const part = /** @type {"header"|"footer"} */ (p.on.id.split("-")[1]);
+        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
+        p.text.addEventListener("input", () => {
+            // "saved" no longer speaks for what is in the box
+            if (!wrap.busy) wrap.status = "";
+            renderWrap();
+        });
+    }
+    el.wrapSave.addEventListener("click", () => {
+        saveWrap().catch(() => {});
+    });
     renderWrap();
-    // a venue button refused for want of postings: its Buy postings opens the Account block
+    // a venue button refused for want of postings: its Buy postings opens the account card
     for (const node of [el.ebayBuy, el.craigslistBuy, el.poshmarkBuy, el.bookEbayBuy]) node.addEventListener("click", () => openAccount(true));
     // See in inventory: Admin on the listing the item became, as its row's tap opens it
     for (const [m, node] of [["goods", el.seeInventory], ["book", el.bookSeeInventory]]) {
@@ -6540,12 +7332,15 @@ function main() {
             if (sku) showAdmin(true, sku);
         });
     }
-    // Finish signing up: Connect eBay, as the Account block's; then the address, in Settings
+    // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
     el.signupConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});
     });
     el.signupAddress.addEventListener("click", () => {
-        openAccount(false);
+        if (el.admin.hidden) {
+            Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
+            adminShown(true);
+        }
         openSeller();
     });
     el.feedbackToggle.addEventListener("click", () => {
@@ -6714,7 +7509,6 @@ function main() {
         nodes.comps.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setComps", on: nodes.comps.checked }))
         );
-        nodes.saveDefault.addEventListener("click", () => saveDefaults(m));
     }
 
     window.addEventListener("online", () => {

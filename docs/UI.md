@@ -1,0 +1,279 @@
+# Snap: what each screen contains
+
+> The page's specification. Every lane that touches a screen reads this first, builds to it,
+> and updates it in the same lane. A change that contradicts it is a bug, not a feature.
+> Decisions carry Michal's date; a section marked *proposed* is not yet agreed.
+>
+> Draft 2026-10-22. The Settings part follows the mock Michal reviewed that day; its
+> decisions, listed at the end, were decided on 2026-10-26 and built in v2.25.0.
+
+## 1. Rules that shape every screen
+
+1. **Plain words, from the user's side.** A control says what happens ("Sign out", "Buy
+   postings"). No developer words on the page: no "tenant", "key line", "RuName",
+   "CROSSLISTER_". The server is "the server", never "the PC".
+   **Less is more** (Michal, 2026-10-26: "the controls should be minimal, no multiple
+   lines of text with no impact or info necessary to the user. less is more. save this
+   design rule."): a control is one label, one box, one button; a line of text exists
+   only when the person needs what it says; a title that only names a box becomes that
+   box's label, and a hint that only repeats the label goes in the box as its
+   placeholder.
+2. **Venues are symmetrical** (Michal, 2026-10-17 and 2026-10-18). Whatever one venue has
+   on a screen, every venue has in the same place and shape: a button, a chip, a block, a
+   sync action, a header-and-footer pill. A venue that cannot do something says so in its
+   own block, in its own words. Nothing is worded for eBay alone.
+3. **Who sees what is decided by `/me`, once.** Four kinds of person open the page:
+   the admin (Michal, by key), a seller signed in by email, a family member by key, and
+   someone still signing up. Section 5 is the one table of what each sees. A control
+   that a person cannot use is not shown to them, with one exception: a venue button the
+   account lacks is shown grey and explains itself when tapped.
+4. **Fill the whole screen.** A lane that adds or moves a control reviews the screen it
+   lands on against this document and fixes what no longer fits, in the same lane, and
+   lists what it changed beyond the ask. Michal keeps the veto on that list, not the job
+   of noticing.
+5. **A screen is complete at rest.** Nothing waits for a hover. Every fold starts closed
+   except the one the person needs now (Settings for a new sign-in or a sign-up step,
+   Inventory otherwise).
+6. **Phone-local things live under "This phone".** Appearance, show photos, install, the
+   accounts kept on the phone. Everything else is the server's and survives a new phone.
+7. **The look is the A2 "Signal Yellow" system** (chosen 2026-10-06): the yellow header
+   band, black pills with yellow words for the chosen thing, smoke cards, Manrope. Dark
+   follows the device unless chosen. New controls reuse the existing classes.
+
+## 2. Vocabulary
+
+| Thing | Word on the page |
+|---|---|
+| The machine running `crosslister serve` | the server ("server ok", "server off", "Server address") |
+| The text given to the drafter | User note |
+| What a posting costs | postings ("3 free postings left", "Buy postings"); never "credits" |
+| A venue, in a button or chip | lowercase: ebay, craigslist, poshmark |
+| A venue, in a sentence | eBay, Craigslist, Poshmark |
+| The folds in Admin | Settings, Inventory, Feedback, Stats (capitalised); the item's fold is "customize" |
+| Leaving an account on this phone | Sign out (the current account) / Remove from this phone (another account) |
+| Deleting the account on the server | Delete account / Keep my account |
+| The ship-from address | Address where you ship from |
+| Going back | "← Back" plus where to |
+
+## 3. The top bar
+
+Always present. Left: the camera mark and the "$nap" wordmark, as today. After the
+wordmark: **the current account's name** (`/me` `user`; there is no one signing up without
+an account since 2026-10-25, 4.3), muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
+"wrong key" red, "checking server...", "server not set"), then the Admin link, which reads
+"Snap" while Admin is open and takes the person back. The server word appears here only;
+nowhere else on the page repeats it.
+
+## 4. The screens
+
+### 4.1 Landing (first open, or no account on this phone)
+
+Top to bottom: "← Back" (only while adding an account); the big mark; "Snap", "a
+crosslisting app"; one sentence of what it does, naming no venue ("Photograph it, and it
+is listed on your venues with a price and a description."); "Three postings free, then
+prepaid."; **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
+key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only
+when another usable account is kept on this phone); the help line under the buttons; the
+status line ("Signing you in...", "Your sign-in expired; send yourself a new link", "Your
+account was deleted."). Footer: "About and privacy", the version.
+
+### 4.2 Sign in
+
+"← Back"; "Sign in"; the sentence; Email; "Keep me signed in" (ticked); **Send me a
+link**; status; "I already have a code" opening the six-digit code field and **Sign in
+with the code**; the iPhone note (Safari only).
+
+### 4.3 A new account, before eBay is connected
+
+The first code makes the account (Michal, 2026-10-25: "create the account EVEN if they
+don't create a venue"). There is no "pending" person: from the first code on, the person
+is an ordinary account with a name in the top bar, an empty inventory and the whole of
+Admin. In place of the posting screens, until eBay is connected and the address saved:
+"Two steps, once, and Snap lists for you." Step 1 as a card: **Connect eBay**, which
+becomes "eBay connected: name" in green. Step 2 as a card: the address where you ship
+from, prefilled from eBay once connected, **Looks right** or **Save address**. The same
+two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
+posting".
+
+### 4.4 Posting screens (goods and book)
+
+The mode chips (goods, book); the install banner (until added or dismissed); the offline
+banner; the photos with the AI mark and delete; the User note; the **▸ customize** fold
+(Quantity, Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
+asking, Compare with marketplace listings, Fix dark photos for goods); the title and price
+line once drafted, "See in inventory"; **one block per venue, in the same shape**: the
+button, "reset" while paused, the status line, "Buy postings" after a 402, the posting's
+link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
+tapped, says it is not available for this account yet and points to Feedback. The book
+screen has the same venue blocks as the goods screen, not eBay alone.
+
+The customize fold holds this item's values. Its starting values come from Settings,
+Posting defaults (4.5). "Save as default" has left the fold; the defaults are edited in
+Settings (decided 2026-10-26, section 6).
+
+### 4.5 Admin
+
+Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
+settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only);
+**Close**. The sticky sync bar is gone: its buttons live in each venue's block (decided
+2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
+new account sees the whole of Admin, 4.3).
+
+**Settings** has five parts, each a fold of its own inside Settings (Michal, 2026-10-25:
+a two-level fold), its heading larger than its contents, indented one step in from the
+Inventory / Settings / Feedback level with its tiles indented the same so the edges line
+up, in this order. The first is named **Snap Account** (Michal, 2026-10-25). Settings opens as
+the five closed headings; the one the person needs opens by itself (Account after a new
+sign-in, Venues while eBay is not yet connected, Server for "I have a key" before a key is
+saved), and the phone remembers which were left open.
+
+1. **Snap Account.** One card per account kept on this phone, the current one outlined (no
+   sentence saying so: the outline, the missing "Switch to" and the top bar's name already
+   say it; Michal, 2026-10-25). A card shows the name, "by key" only on a key account
+   (every new account is by email, so that is not said), for the current account its
+   postings ("2 free postings left", on the same line as **Buy postings**, Michal
+   2026-10-25; nothing for the admin) with the packs under it, its status line directly
+   under those buttons, and on the other cards **Switch to this account** and **Remove
+   from this phone**, or "Sign in again" on an expired one. The last line of the current
+   card is right-aligned (Michal, 2026-10-25): **Delete account** in quiet red, then
+   **Sign out** at the bottom right. Delete account opens the confirmation view (the
+   three sentences, **Delete account** in red, **Keep my account**). Under the cards:
+   **Add account**, which returns to the landing without dropping the others.
+
+   On the current card, for the owner, the invite box: one label "Invite someone to this
+   account" in the field-label style, one box with "email" as its placeholder, one
+   **Invite** button, nothing else (Michal, 2026-10-25/26: "the invite someone section
+   should return here, above the people on this account", "don't ask for their name. just
+   email is fine … simple", "less is more"); the person's name starts as the first part of their email and
+   **Change name** alters it; then, for everyone, one link:
+   **People on this account ›** with the count ("2 people", "just you"). It opens the
+   **People page** (Michal, 2026-10-25: "let it be a
+   simple separate page"), its own screen in Admin's place with **← Back to settings** at
+   the top in the inventory card's shape, then the heading, then one card per person,
+   the owner first. **People are shown by their chosen name, never by email** (Michal,
+   2026-10-25). A person's card: the name, "owner" or "member", "you" on yourself,
+   "invited, not signed in yet" until their first sign-in, **Change name** on your own,
+   **Remove** on a member (owner only); under it their signed-in **devices**: the device
+   as the browser names it ("iPhone, Safari"), "this device" or "last used …", **Sign
+   out** per device (this device's is a sign-out); on your own card **Sign out all other
+   devices** while there is another device of yours (a key has no sessions). A member sees only
+   their own devices; the owner sees everyone's. The invited person gets a mail with a
+   link and a code that sign them into this account, not a new one, and can change their
+   name afterwards. For a member the page ends with **Leave this account**, and the
+   member's account card shows neither the invite box nor Delete account. Rules: ten
+   devices per person, the oldest sign-in dropped quietly by the eleventh; every new
+   sign-in is announced by mail ("Snap was opened on a new device …; if this was not
+   you, open Settings and sign out all other devices"); removing a member ends their
+   sessions, leaving ends your own, deleting the account ends all. Keys stay for the
+   admin and scripts only; a family member is a member by email.
+2. **Venues.** One block per venue, same shape: the venue's name; its status line
+   ("Connected as name · policies ready", "Signed in on the server", "Not available for
+   your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
+   start posting"); one muted line "Ships from …" showing the address that venue uses;
+   its actions (eBay: **Connect eBay** while not connected, **Reconnect** once it is, the
+   status line then saying "Connected as …"; Craigslist and Poshmark: "Ask for it in
+   Feedback" when not available); its two sync buttons, always both, **Sync from
+   <venue> ↻** and **Sync to <venue> ↻** with the venue lowercase as on every button
+   ("Sync from ebay ↻"; Michal, 2026-10-26), the inventory's small green button with the
+   round arrow after the words, greyed out where the function does not exist yet or the
+   account lacks the venue (Michal, 2026-10-26: "even if function does not exist, there
+   should be sync from and to buttons for each venue, gray if function is still not
+   working"), with one muted line of reason under them ("Craigslist cannot be read back
+   yet.", "Poshmark sync is not built yet."), and none where the status line says it
+   already ("Not available for your account yet.", "Not connected"). The same green
+   button and arrow everywhere a sync button appears.
+   Last, after the venue blocks, the **Address where you ship from** card (Michal,
+   2026-10-26: "the address box should be at the end of venues"): a checkbox **Same
+   address for every venue**, ticked by default, above one address block (street, city,
+   state, ZIP) and **Save address**. Unticked, the block splits into one per venue that
+   uses an address, each prefilled from the shared one: eBay the full address, Craigslist
+   the ZIP and the neighbourhood, Poshmark a line saying it uses none. Ticking it again
+   keeps the eBay address as the shared one (it is the one eBay prefilled). The page
+   reads and writes `GET`/`PATCH /me/address` (`same`, `shared`, `venues`, `uses`).
+3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). One line
+   first: "The defaults every posting starts with. Each can be adjusted for one posting
+   at the time of posting, through the customize menu on the Snap page." Then the
+   defaults: Quantity, Pickup only, the Price
+   slider, Post without asking, Compare with marketplace listings, Fix dark photos, each
+   saved as it changes; kept on this phone for now (the server has no place for them yet,
+   so they do not follow to a new phone: rule 6's exception until it does). Then
+   **Header and footer on every listing** as one card: Header on/off, and only once it is
+   ticked its text box and one pill per venue the account has under it (Michal,
+   2026-10-26: "choice of venue only makes sense after"); Footer the same; **Save**, and
+   one **Apply to all existing <venue> listings** per ticked venue. Turning one off keeps
+   its text and hides its box and pills.
+4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
+   check**, its status line. An email account has no Server part.
+5. **This phone.** Appearance (Dark / Light / Sync with device) and Install on the home
+   screen (or "Installed on the home screen"). "Show photos" is an inventory setting and
+   stays at the top of the Inventory fold (Michal, 2026-10-26).
+
+**Inventory.** Search; **▸ Options** (venue chips, status chips including Archived, sort
+chips, Show photos); the list, with swipe to archive and **Undo**. A row opens the
+listing's page: "← Back to inventory", the heading and photos, **▾ customize** with
+Quantity, Pickup only, the Price slider, **Save** and one **Sync to <venue>** per venue,
+then one card per venue with its status and actions (push, end, refresh, add the venue),
+the same set for every venue that offers them.
+
+**Feedback.** The admin's inbox with a count (admin only); the Feedback box, "Include my
+last job", **Send**, "Thanks, sent."
+
+**Stats** (admin only). 7d / 30d / all chips, the table, the note.
+
+### 4.6 About and privacy
+
+The mark; "← Back to Snap"; what Snap is, naming venues only as examples; Privacy (what the
+server keeps, Stripe, and that an account is deleted from Settings); Terms (three free
+postings, then prepaid); the version.
+
+## 5. Who sees what
+
+| | Admin (key) | Owner by email | Member by email | New account, no eBay yet |
+|---|---|---|---|---|
+| Top bar name | michal | the account's name | the account's name | the account's name |
+| Posting screens | yes | yes | yes | no, the two steps |
+| Venue buttons | all live | ebay live, others grey | as the owner | ebay says connect first |
+| Settings, Account | card, no postings count, no Delete; people and devices | card, postings, Buy, Delete; people and devices | card, postings; own devices; Leave this account | card, postings; people and devices; Delete |
+| Settings, Venues | all three with sync | ebay with sync, others "not available" | as the owner | ebay "Connect eBay to start posting" |
+| Settings, Posting | yes | yes | yes | yes |
+| Settings, Server | yes | no | no | no |
+| Settings, This phone | yes | yes | yes | yes |
+| Inventory | yes | yes | yes | yes, empty |
+| Feedback | box and inbox | box | box | box |
+| Stats | yes | no | no | no |
+| About | yes | yes | yes | yes |
+
+A family member who still has a key (today: one shared key on two phones) is the same as
+the admin's or owner's column until moved to a member by email, which is the plan.
+
+States that change any screen: **no server set** (Admin opens on Server, the venue hint
+says to set it); **server off / offline** (the banner, photos wait, the buttons hold);
+**wrong key** (the red word, Admin opens on Server); **a job running** (the item's
+controls disabled, the row edits refused with the server's words); **an expired session**
+(the landing's line, the card reads "signed out" with "Sign in again").
+
+## 6. Decisions (asked 2026-10-22, decided 2026-10-26, Michal's)
+
+1. **Decided:** the sync buttons live in each venue's block; the sticky bar is gone.
+2. **Decided:** "Save as default" leaves the customize box; the defaults live in Settings,
+   Posting defaults, and the box on an item starts from them.
+3. **Decided:** header and footer under Posting defaults, with a pill per venue.
+4. **Decided:** the admin's card shows no Delete account.
+5. **Decided:** the wording changes: "Pickup only, no shipping"; "Compare with marketplace
+   listings"; the landing names no venue; cancel notes say "postings"; About says an
+   account is deleted from Settings.
+6. **Decided:** both ways to close Admin stay (the top bar's "Snap" and the bottom "Close").
+
+## 7. Changes to this document
+
+- 2026-10-22: first draft, from the audit of v2.24.2 and the Settings mock.
+- 2026-10-25: Inventory before Settings, no Admin title, Sign out bottom right beside
+  Delete account, the five parts of Settings as folds; the account made at the first code;
+  people on an account and devices with sign-out (Michal's decisions of the day).
+- 2026-10-26: section 6 decided; built in v2.25.0 (the Settings lane). Where the build
+  settled what the text left open: no reason line under the sync buttons where the status
+  line already says why; eBay's Connect eBay pill only while it is not connected (the
+  status line says "Connected as …" after); Inventory and Feedback shown to a new account
+  (4.3 and section 5 over the older line in 4.5); Sign out all other devices only while
+  there is another device; the Posting defaults kept on the phone until the server keeps
+  them.

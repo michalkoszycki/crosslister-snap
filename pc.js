@@ -129,13 +129,7 @@
 // Many sellers (Michal, 2026-10-08: "What else do we need for the multi tenant? Let's continue."):
 //   GET    <pc>/auth/signup           no key, no session, on the landing -> {"open": bool}: anyone
 //                                      with an email may make an account by asking for a link
-//   GET    <pc>/me/seller             Settings opened -> {"address": {"line1", "city", "state",
-//                                      "postal_code"}, "complete": bool, "ebay": {"connected",
-//                                      "user", "policies": "ready"|"pending"|"failed: <why>"|"none"}}
-//   PATCH  <pc>/me/seller             Save address: {"address": {"line1", "city", "state",
-//                                      "postal_code"}} -> the same body; 400 names a bad field,
-//                                      409 for the admin (his address is in the server's .env)
-//   (404 from a server without them: no change to the words, no Seller address foldout)
+//   (the address: GET/PATCH /me/address, at the end of this file, since 2026-10-25)
 // A header and a footer on every listing (Michal, 2026-10-17):
 //   GET    <pc>/me/wrap               Settings opened -> {"header": {"on", "text", "venues": [...]},
 //                                      "footer": {...}, "available": ["ebay"] | ["ebay", "craigslist"]}
@@ -155,19 +149,17 @@
 //                                      "action", "venue", "state", "step", "error", "summary"} |
 //                                      null, "reviewed"}]}, newest first; 403 for anyone else
 //   PATCH  <pc>/feedback/<id>         Reviewed: {"reviewed": true} (an admin's only)
-//   GET /me adds "pending" and "registered" (and "email" while pending): a pending account
-//                                      (signed in by email, eBay not connected) is answered 403
-//                                      {"detail": "Connect eBay to finish signing up."} on every
-//                                      keyed route but /me, GET /ebay/connect and DELETE
-//                                      /auth/session; GET /ebay/connect answers 503 with its detail
-//                                      while the server cannot connect eBay yet
+//   GET /me adds "registered" (false until eBay is connected and the address saved: the two
+//                                      steps in place of the posting screens), "email", "name"
+//                                      and "owner" (since 2026-10-25); GET /ebay/connect answers
+//                                      503 with its detail while the server cannot connect eBay yet
 //   (404 from a server without them: not available)
 //
 // Every call carries the key in the X-Crosslister-Key header, or, on a phone signed in
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.24.2";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.25.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -599,23 +591,141 @@ export function getSignup(pc) {
     return call(`${pc}/auth/signup`, {});
 }
 
+// --- the ship-from address (Michal, 2026-10-25: under Settings, Posting, "Same address for
+// every venue" or one per venue), and the people on an account: every call in one place.
+//   GET    <pc>/me/address            -> {"same": bool, "shared": {"line1", "city", "state", "zip",
+//                                         "neighborhood"}, "venues": {"ebay": {...}, "craigslist":
+//                                         {"zip", "neighborhood"}}, "uses": {"ebay": [...],
+//                                         "craigslist": [...], "poshmark": []}, "editable": bool}
+//   PATCH  <pc>/me/address            Save address: any subset of {"same", "shared", "venues"}
+//                                      -> the same shape; 400 {"detail"} naming the venue for a bad
+//                                      value, 422 for a key it does not take, 409 while a job runs
+//   PATCH  <pc>/me/seller             step 2 of Finish setting up, as ever: {"address": {"line1",
+//                                      "city", "state", "postal_code"}} -> the old shape; it starts
+//                                      the eBay policy setup and writes the shared address too
+//   GET    <pc>/me/people             -> {"you", "owner": {"email", "name", "you"}, "members":
+//                                         [{"email", "name", "added", "signed_in", "you"}]}
+//   POST   <pc>/me/people             Invite: {"email"} -> 202; 403 / 409 {"detail"}
+//   DELETE <pc>/me/people/<email>     Remove a member (the owner) -> 204
+//   PATCH  <pc>/me/people/me          Change name: {"name"} -> 200
+//   GET    <pc>/me/devices            own: {"you", "devices": [{"id", "device", "created",
+//                                         "last_seen", "remember", "this"}]}; the owner with ?all=1:
+//                                         {"you", "people": [{"email", "devices": [...]}]}
+//   DELETE <pc>/me/devices/<id>       Sign out a device -> 204
+//   POST   <pc>/me/devices/sign-out-others -> {"signed_out": n}
+//   POST   <pc>/me/leave              Leave this account (a member) -> 204
+
 /**
- * The seller's address and her eBay, for Settings' Seller address.
+ * The ship-from address, shared or per venue, and which fields each venue uses.
  * @param {Settings} settings
  * @returns {Promise<Record<string, unknown>>}
  */
-export function getSeller({ pc, ...auth }) {
-    return call(`${pc}/me/seller`, auth);
+export function getAddress({ pc, ...auth }) {
+    return call(`${pc}/me/address`, auth);
 }
 
 /**
- * Save address: the four fields (addressBody in core.js), answered as getSeller.
+ * Step 2 of Finish setting up: the address through PATCH /me/seller, as ever (addressBody in
+ * core.js), the route that starts the eBay policy setup; answered with the old shape, not needed.
  * @param {Settings} settings
  * @param {{address:{line1:string, city:string, state:string, postal_code:string}}} body
  * @returns {Promise<Record<string, unknown>>}
  */
 export function patchSeller({ pc, ...auth }, body) {
     return call(`${pc}/me/seller`, auth, { method: "PATCH", json: body });
+}
+
+/**
+ * Save address (addressSaveBody in core.js), answered as getAddress.
+ * @param {Settings} settings
+ * @param {{same:boolean, shared?:Record<string, string>, venues?:Record<string, Record<string, string>>}} body
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function patchAddress({ pc, ...auth }, body) {
+    return call(`${pc}/me/address`, auth, { method: "PATCH", json: body });
+}
+
+/** A request that answers with no body (a 204, a 202): refused when not ok, nothing otherwise. */
+async function expectOk(url, auth, options) {
+    const res = await request(url, auth, options);
+    if (!res.ok) throw await refused(res);
+}
+
+/**
+ * The people on this account: the owner and the members (peopleOf in core.js).
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function getPeople({ pc, ...auth }) {
+    return call(`${pc}/me/people`, auth);
+}
+
+/**
+ * Invite someone to this account by email (inviteBody in core.js): 202.
+ * @param {Settings} settings
+ * @param {{email:string}} body
+ * @returns {Promise<void>}
+ */
+export function inviteMember({ pc, ...auth }, body) {
+    return expectOk(`${pc}/me/people`, auth, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+/**
+ * Remove a member (the owner's): their sessions end with them (204, no body).
+ * @param {Settings} settings
+ * @param {string} email
+ * @returns {Promise<void>}
+ */
+export function removeMember({ pc, ...auth }, email) {
+    return expectOk(`${pc}/me/people/${encodeURIComponent(email)}`, auth, { method: "DELETE" });
+}
+
+/**
+ * Change name: your own name on the account (nameBody in core.js) -> 200.
+ * @param {Settings} settings
+ * @param {{name:string}} body
+ * @returns {Promise<void>}
+ */
+export function renameMe({ pc, ...auth }, body) {
+    return expectOk(`${pc}/me/people/me`, auth, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+/**
+ * The signed-in devices: your own, or everyone's for the owner (`all`), devicesOf in core.js.
+ * @param {Settings} settings
+ * @param {boolean} all
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export function getDevices({ pc, ...auth }, all) {
+    return call(`${pc}/me/devices${all ? "?all=1" : ""}`, auth);
+}
+
+/**
+ * Sign out one device (its session ends; this one's drops the account from the phone) -> 204.
+ * @param {Settings} settings
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export function signOutDevice({ pc, ...auth }, id) {
+    return expectOk(`${pc}/me/devices/${encodeURIComponent(id)}`, auth, { method: "DELETE" });
+}
+
+/**
+ * Sign out all other devices -> {"signed_out": n}.
+ * @param {Settings} settings
+ * @returns {Promise<{signed_out?:unknown}>}
+ */
+export function signOutOthers({ pc, ...auth }) {
+    return call(`${pc}/me/devices/sign-out-others`, auth, { method: "POST" });
+}
+
+/**
+ * Leave this account (a member's): your own sessions end (204, no body).
+ * @param {Settings} settings
+ * @returns {Promise<void>}
+ */
+export function leaveAccount({ pc, ...auth }) {
+    return expectOk(`${pc}/me/leave`, auth, { method: "POST" });
 }
 
 /**
