@@ -10044,26 +10044,27 @@ const NO_WRAP = {
     available: ["ebay"],
 };
 
-/** One row of the header and footer as the screen shows it. */
-function wrapRow(nodes, part) {
+/** One part of the header-and-footer card as the screen shows it: its tick, its box and its venue pills (drawn by app.js). */
+function wrapPart(nodes, part) {
     const n = (id) => nodes.get(`wrap-${part}${id}`);
-    const pill = (v) => {
-        const node = n(`-${v}`);
-        if (node.hidden) return null;
+    const pills = n("-venues").children.map((node) => {
         const ticked = node.attrs["aria-pressed"] === "true";
         assert.equal(node.children.some((c) => c.tag === "svg"), ticked, "a tick only when ticked");
         return ticked ? `${wordOf(node)} ✓` : wordOf(node);
-    };
-    const apply = (v) => (n(`-apply-${v}`).hidden ? null : buttonSays(n(`-apply-${v}`)));
+    });
     return {
         on: n("-on").checked,
         open: !n("").hidden,
         text: n("-text").value,
         count: n("-count").textContent,
-        pills: [pill("ebay"), pill("craigslist")],
-        status: n("-status").textContent,
-        applies: n("-apply").hidden ? null : [apply("ebay"), apply("craigslist")],
+        pills,
     };
+}
+
+/** The card's one Save line, and its Apply to all existing <venue> listings, one per venue ticked (null: none). */
+function wrapApplies(nodes) {
+    const row = nodes.get("wrap-apply");
+    return row.hidden ? null : row.children.filter((k) => k.id && /^wrap-apply-\w+$/.test(k.id)).map(buttonSays);
 }
 
 function tickRow(nodes, part, on) {
@@ -10071,34 +10072,38 @@ function tickRow(nodes, part, on) {
     nodes.get(`wrap-${part}-on`).fire("change");
 }
 
-test("header and footer: two rows under the Account block, each its foldout with the box, Apply to:, Save and the apply buttons", () => {
-    const settingsCard = /<div id="settings" class="card" hidden>([\s\S]*?)<p id="settings-server"/.exec(html)[1];
-    assert.match(settingsCard, /<p id="account-status"[^>]*><\/p>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="wrap" class="wrap" hidden>/);
-    const block = /<div id="wrap" class="wrap" hidden>([\s\S]*)$/.exec(settingsCard)[1];
+/** Admin, Settings and its Posting defaults fold open: where the header-and-footer card is. */
+async function openPosting(nodes) {
+    await openSettings(nodes);
+    if (nodes.get("fold-posting").hidden) nodes.get("fold-posting-toggle").fire("click");
+    await settle();
+}
+
+test("header and footer: one card under Posting defaults, each part's tick, its box and venue pills under it, one Save, the apply buttons", () => {
+    const fold = /<div id="fold-posting" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-server-toggle"/.exec(html)[1];
+    assert.match(fold, /<div id="posting-defaults" class="card posting-defaults">[\s\S]*?<\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="wrap" class="card wrap" hidden>/, "after the defaults");
+    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<div id="wrap-apply"/.exec(fold)[1];
+    assert.match(card, /^\s*<p class="card-name">Header and footer on every listing<\/p>/);
     for (const [part, word, where] of [
         ["header", "Header", "above"],
         ["footer", "Footer", "below"],
     ]) {
-        // pickup only's pill row, its foldout folded under it
-        assert.match(block, new RegExp(`<label class="pickup">\\s*<input id="wrap-${part}-on" type="checkbox">\\s*<span>${word} on every listing</span>\\s*</label>\\s*<div id="wrap-${part}" class="wrap-fold" hidden>`));
-        assert.match(block, new RegExp(`<textarea id="wrap-${part}-text"[^>]*maxlength="2000"[^>]*aria-label="${word}"\\s+placeholder="Text added ${where} the description"></textarea>`));
-        assert.match(block, new RegExp(`<p id="wrap-${part}-count" class="small wrap-count">0 / 2000</p>\\s*<p class="small wrap-note">Added with a blank line between it and the description.</p>\\s*<p class="field-label wrap-to">Apply to:</p>`));
-        for (const v of ["ebay", "craigslist"]) {
-            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-${v}" class="pill pill-small wrap-venue" aria-pressed="false" hidden>${v}</button>`));
-            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-apply-${v}" class="pill pill-small" hidden>Apply to all existing ${v} listings</button>`));
-            assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-apply-${v}-reset" class="reset-call" aria-label="reset Apply to all existing ${v} listings" hidden>reset</button>`));
-        }
-        assert.match(block, new RegExp(`<button type="button" id="wrap-${part}-save" class="pill pill-ink pill-small wrap-save">Save</button>\\s*<p id="wrap-${part}-status"[^>]*aria-live="polite"></p>`));
+        // pickup only's pill row; its box and its venue pills only under it, while it is ticked
+        // (Michal, 2026-10-26: "choice of venue only makes sense after")
+        assert.match(card, new RegExp(`<label class="pickup">\\s*<input id="wrap-${part}-on" type="checkbox">\\s*<span>${word}</span>\\s*</label>\\s*<div id="wrap-${part}" class="wrap-fold" hidden>`));
+        assert.match(card, new RegExp(`<textarea id="wrap-${part}-text"[^>]*maxlength="2000"[^>]*aria-label="${word}"\\s+placeholder="Text added ${where} the description"></textarea>\\s*<p id="wrap-${part}-count" class="small wrap-count">0 / 2000</p>\\s*<div id="wrap-${part}-venues" class="wrap-venues" role="group" aria-label="${word}: apply to"></div>\\s*</div>`));
     }
-    // one push carries both parts, from either row: said under the apply buttons, in each row
-    assert.equal(block.match(/<p class="small wrap-note">Pushes the header and footer as set now to every listing on that venue<\/p>\s*<\/div>/g).length, 2);
+    // one Save for both; less is more (Michal, 2026-10-26): no line of text the person does not need
+    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-save">Save<\/button>\s*<p id="wrap-status"[^>]*aria-live="polite"><\/p>\s*$/);
+    assert.ok(!/wrap-note|Apply to:/.test(card), "no notes, no Apply to: label");
+    assert.match(fold, /<div id="wrap-apply" class="wrap-apply" hidden><\/div>/);
     const css = readFileSync(join(root, "styles.css"), "utf8");
     // on: the posted green, as eBay connected and a listed badge; off: outlined in ink
     assert.match(css, /\.pill\.wrap-venue \{[^}]*background: none; border-color: var\(--ink\);/);
     assert.match(css, /\.pill\.wrap-venue\[aria-pressed="true"\] \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/);
 });
 
-test("header and footer: a row ticked opens its foldout, eBay ticked with it for one venue; Save, untick keeps the text, a pill toggles; every body as sent", async (t) => {
+test("header and footer: a part ticked opens its box and pills, eBay ticked with it for one venue; one Save for both; untick keeps the text; every body as sent", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
     pc.wrap = structuredClone(NO_WRAP);
@@ -10106,26 +10111,19 @@ test("header and footer: a row ticked opens its foldout, eBay ticked with it for
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     assert.equal(nodes.get("wrap").hidden, true, "nothing before the server answers");
     assert.deepEqual(pc.wrapAsks, [], "not asked before Settings opens");
-    await openSettings(nodes);
-    await settle();
+    await openPosting(nodes);
     assert.deepEqual(pc.wrapAsks, ["key test-key-0123456789"]);
     assert.equal(nodes.get("wrap").hidden, false);
     for (const part of ["header", "footer"]) {
-        assert.equal(wrapRow(nodes, part).on, false);
-        assert.equal(wrapRow(nodes, part).open, false, "folded while unticked");
+        assert.equal(wrapPart(nodes, part).on, false);
+        assert.equal(wrapPart(nodes, part).open, false, "box and pills out of sight while unticked");
     }
+    assert.equal(wrapApplies(nodes), null);
 
-    // ticked: the foldout opens, and eBay, the only venue, is ticked in the same PATCH
+    // ticked: the box and the pills, and eBay, the only venue, ticked in the same PATCH
     tickRow(nodes, "header", true);
-    assert.deepEqual(wrapRow(nodes, "header"), {
-        on: true,
-        open: true,
-        text: "",
-        count: "0 / 2000",
-        pills: ["ebay ✓", null],
-        status: "",
-        applies: ["Apply to all existing ebay listings", null],
-    });
+    assert.deepEqual(wrapPart(nodes, "header"), { on: true, open: true, text: "", count: "0 / 2000", pills: ["ebay ✓"] });
+    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"]);
     await settle();
     assert.deepEqual(pc.wrapSaves, [
         { body: { header: { on: true, venues: ["ebay"] } }, auth: "key test-key-0123456789", type: "application/json" },
@@ -10134,52 +10132,66 @@ test("header and footer: a row ticked opens its foldout, eBay ticked with it for
     // typed, counted, saved: trimmed, the box as the server keeps it
     nodes.get("wrap-header-text").value = "  Free local pickup in Chicago.\r\n";
     nodes.get("wrap-header-text").fire("input");
-    assert.equal(wrapRow(nodes, "header").count, "33 / 2000");
-    nodes.get("wrap-header-save").fire("click");
-    assert.equal(wrapRow(nodes, "header").status, "Saving...");
-    assert.equal(nodes.get("wrap-header-save").disabled, true, "one Save at a time");
+    assert.equal(wrapPart(nodes, "header").count, "33 / 2000");
+    nodes.get("wrap-save").fire("click");
+    assert.equal(nodes.get("wrap-status").textContent, "Saving...");
+    assert.equal(nodes.get("wrap-save").disabled, true, "one Save at a time");
     await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Free local pickup in Chicago." } });
-    assert.equal(wrapRow(nodes, "header").status, "saved");
-    assert.equal(wrapRow(nodes, "header").text, "Free local pickup in Chicago.");
-    assert.equal(wrapRow(nodes, "header").count, "29 / 2000");
-    assert.equal(nodes.get("wrap-header-save").disabled, false);
-    // typing again: "saved" no longer speaks for the box
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Free local pickup in Chicago." } }, "only what changed");
+    assert.equal(nodes.get("wrap-status").textContent, "saved");
+    assert.equal(wrapPart(nodes, "header").text, "Free local pickup in Chicago.");
+    assert.equal(wrapPart(nodes, "header").count, "29 / 2000");
+    assert.equal(nodes.get("wrap-save").disabled, false);
+    // typing again: "saved" no longer speaks for the box; nothing changed, nothing sent
     nodes.get("wrap-header-text").fire("input");
-    assert.equal(wrapRow(nodes, "header").status, "");
+    assert.equal(nodes.get("wrap-status").textContent, "");
+    const sent = pc.wrapSaves.length;
+    nodes.get("wrap-save").fire("click");
+    await settle();
+    assert.equal(pc.wrapSaves.length, sent);
+    assert.equal(nodes.get("wrap-status").textContent, "saved");
 
-    // unticked: {"on": false} alone, folded, the text kept; ticked again: the server's text, eBay as it was
+    // unticked: {"on": false} alone, box and pills hidden, the text kept; ticked again: the server's text, eBay as it was
     tickRow(nodes, "header", false);
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: false } });
-    assert.equal(wrapRow(nodes, "header").open, false);
+    assert.equal(wrapPart(nodes, "header").open, false);
+    assert.equal(wrapApplies(nodes), null, "no part ticked, nothing to apply");
     assert.equal(pc.wrap.header.text, "Free local pickup in Chicago.", "the server keeps it");
     nodes.get("wrap-header-text").value = "typed but never saved";
     tickRow(nodes, "header", true);
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: true } }, "eBay ticked already: not sent again");
-    assert.equal(wrapRow(nodes, "header").text, "Free local pickup in Chicago.", "the text the server has");
-    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay ✓", null]);
+    assert.equal(wrapPart(nodes, "header").text, "Free local pickup in Chicago.", "the text the server has");
+    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay ✓"]);
 
     // the pill: off at once, outlined, the apply button gone; on again
-    nodes.get("wrap-header-ebay").fire("click");
-    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay", null]);
-    assert.equal(wrapRow(nodes, "header").applies, null);
+    findIn(nodes.get("wrap-header-venues"), "wrap-header-ebay").fire("click");
+    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay"]);
+    assert.equal(wrapApplies(nodes), null);
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: [] } });
-    nodes.get("wrap-header-ebay").fire("click");
+    findIn(nodes.get("wrap-header-venues"), "wrap-header-ebay").fire("click");
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: ["ebay"] } });
-    assert.deepEqual(wrapRow(nodes, "header").pills, ["ebay ✓", null]);
+    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay ✓"]);
 
     // the footer is its own: off with its text kept on the server, ticked it opens on that text
     tickRow(nodes, "footer", true);
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { on: true, venues: ["ebay"] } });
-    assert.equal(wrapRow(nodes, "footer").text, "Thanks for looking!");
-    assert.equal(wrapRow(nodes, "footer").count, "19 / 2000");
-    assert.equal(wrapRow(nodes, "header").on, true, "the header untouched");
-    assert.equal(pc.wrapSaves.length, 7);
+    assert.equal(wrapPart(nodes, "footer").text, "Thanks for looking!");
+    assert.equal(wrapPart(nodes, "footer").count, "19 / 2000");
+    assert.equal(wrapPart(nodes, "header").on, true, "the header untouched");
+    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"], "one per venue, for both parts");
+
+    // both boxes typed: the one Save sends both in one PATCH
+    nodes.get("wrap-header-text").value = "Hello";
+    nodes.get("wrap-footer-text").value = "Bye";
+    nodes.get("wrap-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Hello" }, footer: { text: "Bye" } });
+    assert.equal(pc.wrapSaves.length, 8);
     assert.ok(pc.wrapSaves.every((s) => s.auth === "key test-key-0123456789" && s.type === "application/json"));
     assert.ok(!pc.calls.some((c) => c.includes("/me/wrap")), "counted apart");
 });
@@ -10189,53 +10201,53 @@ test("header and footer: two venues tick none by themselves; a refusal puts the 
     const pc = fakePc();
     pc.wrap = { ...structuredClone(NO_WRAP), available: ["ebay", "craigslist"] };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    await openSettings(nodes);
-    await settle();
+    await openPosting(nodes);
     tickRow(nodes, "footer", true);
     await settle();
     assert.deepEqual(pc.wrapSaves.map((s) => s.body), [{ footer: { on: true } }], "two venues: he chooses");
-    assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay", "craigslist"]);
-    assert.equal(wrapRow(nodes, "footer").applies, null, "no venue ticked, nothing to apply");
-    nodes.get("wrap-footer-craigslist").fire("click");
+    assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay", "craigslist"]);
+    assert.equal(wrapApplies(nodes), null, "no venue ticked, nothing to apply");
+    findIn(nodes.get("wrap-footer-venues"), "wrap-footer-craigslist").fire("click");
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["craigslist"] } });
-    assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay", "craigslist ✓"]);
-    assert.deepEqual(wrapRow(nodes, "footer").applies, [null, "Apply to all existing craigslist listings"]);
-    nodes.get("wrap-footer-ebay").fire("click");
+    assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay", "craigslist ✓"]);
+    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing craigslist listings"]);
+    findIn(nodes.get("wrap-footer-venues"), "wrap-footer-ebay").fire("click");
     await settle();
     assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["ebay", "craigslist"] } }, "both, in the page's venue order");
     assert.deepEqual(pc.wrap.footer.venues, ["ebay", "craigslist"]);
+    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings", "Apply to all existing craigslist listings"]);
 
-    // refused: the pill as it was, and why on the row's line
+    // refused: the pill as it was, and why on the card's line
     for (const [status, detail, said] of [
         [400, "footer.venues: craigslist is not connected", "footer.venues: craigslist is not connected"],
         [404, "Not Found", "The header and footer are not available yet."],
         [500, "boom", "Could not save: boom."],
     ]) {
         pc.wrapRefuse = { status, detail };
-        nodes.get("wrap-footer-craigslist").fire("click");
-        assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay ✓", "craigslist"], "at once");
+        findIn(nodes.get("wrap-footer-venues"), "wrap-footer-craigslist").fire("click");
+        assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay ✓", "craigslist"], "at once");
         await settle();
-        assert.deepEqual(wrapRow(nodes, "footer").pills, ["ebay ✓", "craigslist ✓"], `answered ${status}: back`);
-        assert.equal(wrapRow(nodes, "footer").status, said);
+        assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay ✓", "craigslist ✓"], `answered ${status}: back`);
+        assert.equal(nodes.get("wrap-status").textContent, said);
     }
     pc.wrapRefuse = null;
 
     // more than 2000 characters (pasted past the box's own limit): named, nothing sent
     const sent = pc.wrapSaves.length;
     nodes.get("wrap-footer-text").value = "x".repeat(2001);
-    nodes.get("wrap-footer-save").fire("click");
+    nodes.get("wrap-save").fire("click");
     await settle();
-    assert.equal(wrapRow(nodes, "footer").status, "At most 2000 characters; this is 2001.");
+    assert.equal(nodes.get("wrap-status").textContent, "Footer: At most 2000 characters; this is 2001.");
     assert.equal(pc.wrapSaves.length, sent);
     nodes.get("wrap-footer-text").value = "x".repeat(2000);
-    nodes.get("wrap-footer-save").fire("click");
+    nodes.get("wrap-save").fire("click");
     await settle();
     assert.equal(pc.wrapSaves.at(-1).body.footer.text.length, 2000);
-    assert.equal(wrapRow(nodes, "footer").status, "saved");
+    assert.equal(nodes.get("wrap-status").textContent, "saved");
 });
 
-test("Apply to all existing listings: a job button as the sync bar's, one task for both rows; its summary under it; paused, reset; refused", async (t) => {
+test("Apply to all existing listings: one job button per venue ticked, as a venue block's sync is; its summary under it; paused, reset; refused", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     let applying = { state: "running", step: "updating eBay listings" };
     const pc = fakePc({ jobs: { "w-ebay": () => applying } });
@@ -10245,46 +10257,38 @@ test("Apply to all existing listings: a job button as the sync bar's, one task f
         available: ["ebay"],
     };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    await openSettings(nodes);
-    await settle();
-    assert.deepEqual(wrapRow(nodes, "header").applies, ["Apply to all existing ebay listings", null]);
-    assert.equal(wrapRow(nodes, "header").text, "Free local pickup.");
-    assert.equal(wrapRow(nodes, "footer").text, "Thanks!");
-    const btn = nodes.get("wrap-header-apply-ebay");
-    const line = nodes.get("wrap-header-apply-ebay-status");
+    await openPosting(nodes);
+    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"]);
+    assert.equal(wrapPart(nodes, "header").text, "Free local pickup.");
+    assert.equal(wrapPart(nodes, "footer").text, "Thanks!");
+    const btn = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay");
+    const line = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay-status");
+    const reset = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay-reset");
+    assert.equal(reset.attrs["aria-label"], "reset Apply to all existing ebay listings");
 
-    // the press: its ring and "tap again to cancel" at once, in both rows; the job after the second
+    // the press: its ring and "tap again to cancel" at once; the job after the second
     btn.fire("click");
     assert.equal(line.textContent, "sending");
     assert.equal(btn.classList.contains("busy"), true);
     assert.equal(buttonSays(btn), "Apply to all existing ebay listings / tap again to cancel");
-    assert.equal(buttonSays(nodes.get("wrap-footer-apply-ebay")), "Apply to all existing ebay listings / tap again to cancel", "one push for both");
-    assert.equal(nodes.get("wrap-footer-apply-ebay-status").textContent, "sending");
     await settle();
     assert.deepEqual(pc.wrapApplies, []);
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
     assert.deepEqual(pc.wrapApplies, [{ body: { venue: "ebay" }, auth: "key test-key-0123456789", type: "application/json" }]);
     assert.equal(line.textContent, "queued");
-    // the footer's button, tapped now, is the same task: nothing new is sent
-    nodes.get("wrap-footer-apply-ebay").fire("click");
-    await settle();
-    assert.equal(pc.wrapApplies.length, 1);
-    nodes.get("wrap-footer-apply-ebay").fire("click");
-    await settle();
     t.mock.timers.tick(POLL_MS);
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/w-ebay");
     assert.equal(line.textContent, "updating eBay listings");
     assert.equal(line.className, "venue-status busy");
 
-    // done: the summary under both, the buttons their word again
+    // done: the summary under it, the button its word again
     applying = { state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" };
     t.mock.timers.tick(POLL_MS);
     await settle();
     assert.equal(line.textContent, "3 listings updated, 10 unchanged, 0 failed");
     assert.equal(line.className, "venue-status ok");
-    assert.equal(nodes.get("wrap-footer-apply-ebay-status").textContent, "3 listings updated, 10 unchanged, 0 failed");
     assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
     assert.equal(btn.classList.contains("busy"), false);
     const polled = pc.calls.length;
@@ -10299,17 +10303,16 @@ test("Apply to all existing listings: a job button as the sync bar's, one task f
     await settle();
     assert.equal(line.textContent, "paused");
     assert.equal(buttonSays(btn), "continue");
-    assert.equal(nodes.get("wrap-header-apply-ebay-reset").hidden, false);
-    assert.equal(nodes.get("wrap-footer-apply-ebay-reset").hidden, false);
+    assert.equal(reset.hidden, false);
     t.mock.timers.tick(SEND_DELAY_MS * 3);
     await settle();
     assert.equal(pc.wrapApplies.length, 1, "held: nothing leaves the phone");
-    nodes.get("wrap-footer-apply-ebay-reset").fire("click");
+    reset.fire("click");
     await settle();
     assert.equal(line.textContent, "cancelled");
     assert.equal(line.className, "venue-status bad");
     assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
-    assert.equal(nodes.get("wrap-header-apply-ebay-reset").hidden, true);
+    assert.equal(reset.hidden, true);
     t.mock.timers.tick(SEND_DELAY_MS * 3);
     await settle();
     assert.equal(pc.wrapApplies.length, 1, "the dropped press never goes");
@@ -10325,22 +10328,21 @@ test("Apply to all existing listings: a job button as the sync bar's, one task f
     assert.equal(btn.disabled, false);
 });
 
-test("header and footer: an older server (404) has no rows; signing out takes them away with the rest", async (t) => {
+test("header and footer: an older server (404) has no card; signing out takes it away with the rest", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const old = fakePc();
     const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
-    await openSettings(before.nodes);
-    await settle();
+    await openPosting(before.nodes);
     assert.equal(old.wrapAsks.length, 1);
     assert.equal(before.nodes.get("wrap").hidden, true);
+    assert.equal(before.nodes.get("posting-defaults").hidden, false, "the defaults are the phone's: there all the same");
 
     const pc = fakePc();
     pc.wrap = { ...structuredClone(NO_WRAP), header: { on: true, text: "Hello", venues: ["ebay"] } };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    await openSettings(nodes);
-    await settle();
+    await openPosting(nodes);
     assert.equal(nodes.get("wrap").hidden, false);
-    assert.equal(wrapRow(nodes, "header").text, "Hello");
+    assert.equal(wrapPart(nodes, "header").text, "Hello");
     nodes.get("settings-signout").fire("click");
     assert.equal(nodes.get("wrap").hidden, true);
     assert.equal(nodes.get("wrap-header-text").value, "", "nothing of hers left on the phone's screen");
@@ -10349,7 +10351,8 @@ test("header and footer: an older server (404) has no rows; signing out takes th
 // --- several accounts on one phone (Michal, 2026-10-18: "mostly i want to make sure there is a
 // logout somewhere. and switch accounts somewhere so i can navigate easy between two logins to
 // this app ... there should be a way to REMOVE account from phone [which is different than
-// deleting an account] - in settings there also needs to be an option to delete your account.") ---
+// deleting an account] - in settings there also needs to be an option to delete your account.";
+// one card per account since 2026-10-25) ---------------------------------------------------------
 
 /** Who the two accounts are, by their key or session, as GET /me answers each. */
 const MICHAL_ME = { user: "michal", admin: false, craigslist: true, venues: ["ebay", "craigslist"] };
@@ -10362,22 +10365,23 @@ function kept(store) {
     return raw ? JSON.parse(raw).map((a) => ({ pc: a.pc, key: a.key, session: a.session, user: a.user, expired: a.expired })) : null;
 }
 
-/** Settings' list as the screen shows it: each row's name (the current one ticked), its state and its actions. */
+/** The other accounts' cards, under the current one's: each its name, what it is ("by key", "signed out", ""), its actions. */
 function accountRows(nodes) {
+    if (nodes.get("accounts-list").hidden) return [];
     return nodes.get("accounts-list").children.map((li) => {
         const kids = li.children;
+        const row = kids.find((k) => k.className === "account-row");
         return {
             name: kids[0].textContent,
-            current: kids[0].attrs["aria-current"] === "true",
-            state: kids.filter((k) => k.className === "account-state").map((k) => k.textContent).join(""),
-            actions: kids.filter((k) => k.className === "link account-action").map((k) => k.textContent),
+            kind: kids.filter((k) => k.className === "small account-kind").map((k) => k.textContent).join(""),
+            actions: row.children.map((k) => k.textContent),
         };
     });
 }
 
-/** One row's action by its word. */
+/** One other account's action by its word, by the card's place in the list. */
 function rowAction(nodes, i, word) {
-    return nodes.get("accounts-list").children[i].children.find((k) => k.textContent === word);
+    return nodes.get("accounts-list").children[i].children.find((k) => k.className === "account-row").children.find((k) => k.textContent === word);
 }
 
 /** A sign-in by the mail's code, from the landing: the way Add account signs in by email. */
@@ -10403,11 +10407,17 @@ test("accounts: a phone from before carries its one key or session into the list
     assert.equal(local.getItem("snap.key"), GOOD["snap.key"]);
     assert.ok(keyed.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `every call with the key: ${keyed.auth}`);
     await openSettings(nodes);
+    // the current account's card, no other card, Add account under it
     assert.equal(nodes.get("accounts").hidden, false);
-    assert.deepEqual(accountRows(nodes), [{ name: "✓ michal", current: true, state: "", actions: ["Remove from this phone"] }]);
+    assert.deepEqual(accountRows(nodes), []);
+    assert.equal(accountOf(nodes).user, "michal");
+    assert.equal(accountOf(nodes).kind, "by key");
     assert.equal(nodes.get("settings-signout").textContent, "Sign out");
+    assert.equal(nodes.get("settings-signout").hidden, false);
     assert.equal(nodes.get("settings-delete").hidden, false);
     assert.equal(nodes.get("delete-confirm").hidden, true, "nothing asked until the link is tapped");
+    // a key account has its Server fold
+    assert.equal(nodes.get("fold-server-toggle").hidden, false);
 
     // a session kept on the phone (snap.session in localStorage)
     const bySession = signinPc({ me: structuredClone(WIFE_ME) });
@@ -10418,7 +10428,11 @@ test("accounts: a phone from before carries its one key or session into the list
     assert.equal(remembered.getItem("snap.session"), "sess-1", "mirrored");
     assert.ok(bySession.auth.every((a) => a === "session sess-1"), `every call with the session: ${bySession.auth}`);
     await openSettings(again.nodes);
-    assert.deepEqual(accountRows(again.nodes).map((r) => r.name), ["✓ wife"]);
+    assert.equal(accountOf(again.nodes).user, "wife");
+    assert.equal(accountOf(again.nodes).kind, null, "by email: not said");
+    // an email account has no Server fold: nothing to type there (docs/UI.md)
+    assert.equal(again.nodes.get("fold-server-toggle").hidden, true);
+    assert.equal(again.nodes.get("fold-server").hidden, true);
 
     // a session for this tab (snap.session in sessionStorage): kept for this tab still
     const tab = memoryStore();
@@ -10435,10 +10449,10 @@ test("accounts: a phone from before carries its one key or session into the list
     const old = signinPc();
     const quiet = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
     await openSettings(quiet.nodes);
-    assert.deepEqual(accountRows(quiet.nodes).map((r) => r.name), ["✓ Key for 127.0.0.1:8765"]);
+    assert.equal(accountOf(quiet.nodes).user, "Key for 127.0.0.1:8765");
 });
 
-test("accounts: Add account signs in beside the one in hand; a tap switches; the calls are the chosen one's; Remove drops one; Sign out the current", async (t) => {
+test("accounts: Add account signs in beside the one in hand; Switch to this account; the calls are the chosen one's; Remove drops one; Sign out the current", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
     pc.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME) };
@@ -10447,7 +10461,8 @@ test("accounts: Add account signs in beside the one in hand; a tap switches; the
     const screens = ["landing", "signin", "modes", "work", "admin"];
     const shown = () => screens.filter((id) => !nodes.get(id).hidden);
     await openSettings(nodes);
-    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal"]);
+    assert.equal(accountOf(nodes).user, "michal");
+    assert.deepEqual(accountRows(nodes), []);
     assert.equal(nodes.get("landing-back").hidden, true);
 
     // Add account: the landing's two ways in, with Back; Back keeps everything as it was
@@ -10455,10 +10470,12 @@ test("accounts: Add account signs in beside the one in hand; a tap switches; the
     assert.deepEqual(shown(), ["landing"]);
     assert.equal(nodes.get("landing-back").hidden, false);
     assert.equal(nodes.get("landing-accounts").hidden, true, "no account to switch to while adding");
+    assert.equal(nodes.get("header-user").hidden, true, "the landing names no account");
     assert.equal(local.getItem("snap.key"), GOOD["snap.key"], "the account in hand stays");
     nodes.get("landing-back").fire("click");
     assert.deepEqual(shown(), ["modes", "work"], "back where he was");
     assert.equal(nodes.get("landing-back").hidden, true);
+    assert.equal(nodes.get("header-user").textContent, "michal");
 
     // Add account, then Sign in by the code: the new account joins the list and is current
     nodes.get("admin-toggle").fire("click");
@@ -10474,6 +10491,7 @@ test("accounts: Add account signs in beside the one in hand; a tap switches; the
     ]);
     assert.equal(local.getItem("snap.session"), "sess-w", "the mirror follows the current account");
     assert.equal(local.getItem("snap.key"), null);
+    assert.equal(nodes.get("header-user").textContent, "wife");
     // the check and /me with the session, nothing with the key
     const keyed = pc.auth.filter((a) => a !== "none");
     assert.ok(keyed.length >= 2 && keyed.every((a) => a === "session sess-w"), `the new account's calls: ${pc.auth}`);
@@ -10483,38 +10501,36 @@ test("accounts: Add account signs in beside the one in hand; a tap switches; the
     assert.ok(pc.calls.includes(`PUT /items/Vase ${TODAY}/photos/1`));
     assert.equal(pc.auth.at(-1), "session sess-w", "a photo goes with the current account's session");
 
-    // Settings: both by name, the new one ticked; a tap on the other makes it current
-    await openSettings(nodes);
-    assert.deepEqual(accountRows(nodes), [
-        { name: "michal", current: false, state: "", actions: ["Remove from this phone"] },
-        { name: "✓ wife", current: true, state: "", actions: ["Remove from this phone"] },
-    ]);
-    assert.equal(accountOf(nodes).user, "Signed in as wife");
+    // Admin after a new sign-in: Settings at Snap Account (docs/UI.md), the new one's card
+    // first, outlined, the other a card of its own with Switch to this account
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("settings").hidden, false);
+    assert.equal(nodes.get("fold-account").hidden, false);
+    assert.equal(nodes.get("inventory").hidden, true);
+    assert.equal(accountOf(nodes).user, "wife");
+    assert.deepEqual(accountRows(nodes), [{ name: "michal", kind: "by key", actions: ["Switch to this account", "Remove from this phone"] }]);
     pc.auth.length = 0;
     const mes = pc.mes;
-    nodes.get("accounts-list").children[0].children[0].fire("click");
+    rowAction(nodes, 0, "Switch to this account").fire("click");
     await settle();
-    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal", "wife"]);
+    assert.equal(accountOf(nodes).user, "michal", "the card is the account's now");
+    assert.deepEqual(accountRows(nodes), [{ name: "wife", kind: "", actions: ["Switch to this account", "Remove from this phone"] }]);
     assert.equal(local.getItem("snap.key"), GOOD["snap.key"], "the mirror follows");
     assert.equal(local.getItem("snap.session"), null);
     assert.ok(pc.auth.length >= 2 && pc.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `the key account's calls: ${pc.auth}`);
     assert.ok(pc.mes > mes, "/me asked again, for this account");
-    assert.equal(accountOf(nodes).user, "Key: michal", "the Account block is the account's now");
+    assert.equal(nodes.get("header-user").textContent, "michal");
     assert.equal(nodes.get("settings").hidden, false, "Settings stay open");
     assert.equal(nodes.get("pc-address").value, GOOD["snap.pc"], "its address and key in the boxes");
     assert.equal(nodes.get("pc-key").value, GOOD["snap.key"]);
-    // the current one tapped again: nothing happens
-    pc.auth.length = 0;
-    nodes.get("accounts-list").children[0].children[0].fire("click");
-    await settle();
-    assert.deepEqual(pc.auth, []);
 
     // Remove from this phone on the other: its session told to the server, with its own
     // session; the account in hand untouched
-    rowAction(nodes, 1, "Remove from this phone").fire("click");
+    rowAction(nodes, 0, "Remove from this phone").fire("click");
     await settle();
     assert.deepEqual(pc.signouts, [{ auth: "sess-w", key: undefined, body: undefined }]);
-    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["✓ michal"]);
+    assert.deepEqual(accountRows(nodes), []);
     assert.deepEqual(kept(local).map((a) => a.user), ["michal"]);
     assert.equal(nodes.get("settings").hidden, false);
     assert.equal(nodes.get("work").hidden, true, "still in Admin");
@@ -10529,7 +10545,7 @@ test("accounts: Add account signs in beside the one in hand; a tap switches; the
     assert.equal(nodes.get("landing-accounts").hidden, true);
 });
 
-test("accounts: the current one removed, the next takes over; the last one removed, the landing; the same person signed in again is one entry", async (t) => {
+test("accounts: Sign out of the current, the next takes over; the last one signed out, the landing; the same person signed in again is one entry", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = signinPc({ made: { session: "sess-w", user: "wife", remember: true } });
     pc.meBy = { [GOOD["snap.key"]]: structuredClone(MICHAL_ME), "sess-w": structuredClone(WIFE_ME), "sess-w2": structuredClone(WIFE_ME) };
@@ -10539,28 +10555,30 @@ test("accounts: the current one removed, the next takes over; the last one remov
     nodes.get("accounts-add").fire("click");
     await signInByCode(nodes, "wife@example.com", "123456");
     await openSettings(nodes);
-    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal", "✓ wife"]);
+    assert.equal(accountOf(nodes).user, "wife");
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal"]);
 
     // wife again (a second code): the one entry, its session the new one
     nodes.get("accounts-add").fire("click");
     pc.made = { session: "sess-w2", user: "wife", remember: true };
     await signInByCode(nodes, "wife@example.com", "654321");
     await openSettings(nodes);
-    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal", "✓ wife"]);
+    assert.equal(accountOf(nodes).user, "wife");
+    assert.deepEqual(accountRows(nodes).map((r) => r.name), ["michal"]);
     assert.deepEqual(kept(local).map((a) => a.session), ["", "sess-w2"]);
 
-    // Remove the current: the server told, the next account taken up, checked with its key
+    // Sign out of the current: the server told, the next account taken up, checked with its key
     pc.auth.length = 0;
-    rowAction(nodes, 1, "Remove from this phone").fire("click");
+    nodes.get("settings-signout").fire("click");
     await settle();
     assert.deepEqual(pc.signouts, [{ auth: "sess-w2", key: undefined, body: undefined }]);
-    assert.deepEqual(accountRows(nodes), [{ name: "✓ michal", current: true, state: "", actions: ["Remove from this phone"] }]);
+    assert.deepEqual(accountRows(nodes), []);
     assert.ok(pc.auth.filter((a) => a !== "sess-w2").every((a) => a === `key ${GOOD["snap.key"]}`), `the next one's calls: ${pc.auth}`);
-    assert.equal(accountOf(nodes).user, "Key: michal");
+    assert.equal(accountOf(nodes).user, "michal");
     assert.equal(nodes.get("landing").hidden, true);
 
-    // the last one removed: the landing, nothing said
-    rowAction(nodes, 0, "Remove from this phone").fire("click");
+    // the last one signed out: the landing, nothing said
+    nodes.get("settings-signout").fire("click");
     await settle();
     assert.equal(pc.signouts.length, 1, "a key is told to no one");
     assert.equal(nodes.get("landing").hidden, false);
@@ -10591,32 +10609,29 @@ test("accounts: a session the server forgot is shown signed out, with Sign in ag
     nodes.get("landing-accounts").fire("mouseenter");
     assert.equal(nodes.get("landing-help").textContent, "Switch account: carry on as another account kept on this phone.");
 
-    // Switch account: Settings' list, wife signed out with her way back in, michal a tap away
+    // Switch account: Settings at Snap Account; wife's card says signed out with its way back
+    // in, michal's card a tap away
     nodes.get("landing-accounts").fire("click");
     await settle();
     assert.equal(nodes.get("settings").hidden, false);
-    assert.deepEqual(accountRows(nodes), [
-        { name: "michal", current: false, state: "", actions: ["Remove from this phone"] },
-        { name: "✓ wife", current: true, state: "signed out", actions: ["Sign in again", "Remove from this phone"] },
-    ]);
+    assert.equal(accountOf(nodes).user, "wife");
+    assert.equal(accountOf(nodes).kind, "signed out");
+    assert.equal(nodes.get("account-signin-again").hidden, false);
+    assert.deepEqual(accountRows(nodes), [{ name: "michal", kind: "by key", actions: ["Switch to this account", "Remove from this phone"] }]);
     assert.equal(nodes.get("settings-signout").hidden, false, "Sign out removes the signed-out one too");
     assert.equal(nodes.get("settings-delete").hidden, true, "nothing to delete with the server not knowing her");
     pc.auth.length = 0;
-    nodes.get("accounts-list").children[0].children[0].fire("click");
+    rowAction(nodes, 0, "Switch to this account").fire("click");
     await settle();
-    assert.deepEqual(accountRows(nodes).map((r) => [r.name, r.state]), [["✓ michal", ""], ["wife", "signed out"]]);
+    assert.equal(accountOf(nodes).user, "michal");
+    assert.equal(nodes.get("account-signin-again").hidden, true);
+    assert.deepEqual(accountRows(nodes), [{ name: "wife", kind: "signed out", actions: ["Sign in again", "Remove from this phone"] }]);
     assert.ok(pc.auth.length >= 2 && pc.auth.every((a) => a === `key ${GOOD["snap.key"]}`), `michal's calls: ${pc.auth}`);
     assert.equal(nodes.get("landing").hidden, true);
-    // a tap on the signed-out one does nothing: Sign in again is the way
-    pc.auth.length = 0;
-    nodes.get("accounts-list").children[1].children[0].fire("click");
-    await settle();
-    assert.deepEqual(pc.auth, []);
-    assert.deepEqual(accountRows(nodes).map((r) => r.current), [true, false]);
 
     // Sign in again: the sign-in screen, the account in hand kept; the new session takes
     // the old entry's place and is current
-    rowAction(nodes, 1, "Sign in again").fire("click");
+    rowAction(nodes, 0, "Sign in again").fire("click");
     assert.equal(nodes.get("signin").hidden, false);
     assert.equal(nodes.get("admin").hidden, true);
     nodes.get("signin-have-code").fire("click");
@@ -10628,7 +10643,9 @@ test("accounts: a session the server forgot is shown signed out, with Sign in ag
     assert.equal(nodes.get("work").hidden, false);
     assert.deepEqual(kept(local).map((a) => [a.user, a.session, a.expired]), [["michal", "", false], ["wife", "sess-w9", false]]);
     await openSettings(nodes);
-    assert.deepEqual(accountRows(nodes).map((r) => [r.name, r.state]), [["michal", ""], ["✓ wife", ""]]);
+    assert.equal(accountOf(nodes).user, "wife");
+    assert.equal(accountOf(nodes).kind, null);
+    assert.deepEqual(accountRows(nodes).map((r) => [r.name, r.kind]), [["michal", "by key"]]);
 
     // the only account forgotten: the landing as before, no Switch account
     const alone = signinPc({ me: structuredClone(WIFE_ME) });
@@ -10642,29 +10659,31 @@ test("accounts: a session the server forgot is shown signed out, with Sign in ag
     assert.deepEqual(kept(one).map((a) => a.expired), [true], "kept, signed out, for Sign in again or Remove");
 });
 
-test("Delete my account: the confirmation view's words; Keep my account sends nothing; the admin is told the server refuses", async (t) => {
+test("Delete account: bottom right of the owner's card beside Sign out; the confirmation view's words; Keep my account sends nothing; none for the admin or a member", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    // the last thing in Settings, the red link, then its view, never a browser dialog
-    const settingsCard = /<div id="settings" class="card" hidden>([\s\S]*?)<\/div>\s*<button type="button" id="inventory-toggle"/.exec(html)[1];
-    assert.match(settingsCard, /<button type="button" id="settings-delete" class="link sign-out delete-link"[^>]*hidden>Delete my account<\/button>\s*<div id="delete-confirm" class="delete-confirm" hidden>/);
-    assert.match(settingsCard, /<p class="delete-words">Your account will be deleted from the server, with its inventory, photos, jobs and settings\.<\/p>/);
-    assert.match(settingsCard, /<p class="delete-words">Listings already on eBay stay there: they are yours on eBay\. Postings you bought and did not use are lost\.<\/p>/);
-    assert.match(settingsCard, /<p class="delete-words">This cannot be undone\.<\/p>/);
-    assert.match(settingsCard, /<p id="delete-admin-note" class="delete-words delete-admin-note" hidden>The admin's account cannot be deleted from the app\.<\/p>/);
-    assert.match(settingsCard, /<button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad">Delete my account<\/button>\s*<button type="button" id="delete-keep" class="link delete-keep">Keep my account<\/button>/);
-    assert.match(settingsCard, /<p id="delete-status" class="small account-status" aria-live="polite"><\/p>\s*$/);
+    // the card's last line, then its view, never a browser dialog
+    const card = /<div id="account" class="card account current" hidden>([\s\S]*?)<div id="accounts"/.exec(html)[1];
+    assert.match(card, /<button type="button" id="settings-delete" class="link delete-link" aria-expanded="false"\s+aria-controls="delete-confirm" hidden>Delete account<\/button>/);
+    assert.match(card, /<div id="delete-confirm" class="delete-confirm" hidden>\s*<p class="delete-words">Your account will be deleted from the server, with its inventory, photos, jobs and settings\.<\/p>/);
+    assert.match(card, /<p class="delete-words">Listings already on your venues stay there: they are yours there\. Postings you bought and did not use are lost\.<\/p>/);
+    assert.match(card, /<p class="delete-words">This cannot be undone\.<\/p>/);
+    assert.ok(!html.includes("delete-admin-note"), "the admin's card offers no Delete account at all (decided 2026-10-26)");
+    assert.match(card, /<button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad">Delete account<\/button>\s*<button type="button" id="delete-keep" class="link delete-keep">Keep my account<\/button>/);
+    assert.match(card, /<p id="delete-status" class="small account-status" aria-live="polite"><\/p>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?$/);
     assert.ok(!/confirm\(/.test(readFileSync(join(root, "app.js"), "utf8")), "no browser dialog");
-    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.link\.delete-link \{[^}]*font-size: 13px;/, "quiet");
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.link\.delete-link \{[^}]*font-size: 13px;[^}]*color: var\(--bad\);/, "quiet red");
+    assert.match(css, /\.account-foot \{ display: flex; justify-content: flex-end;/, "bottom right");
 
     const pc = signinPc({ me: structuredClone(MICHAL_ME) });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
     assert.equal(nodes.get("settings-delete").hidden, false);
+    assert.equal(nodes.get("account-leave").hidden, true, "the owner deletes; a member leaves");
     assert.equal(nodes.get("delete-confirm").hidden, true);
     nodes.get("settings-delete").fire("click");
     assert.equal(nodes.get("delete-confirm").hidden, false);
     assert.equal(nodes.get("settings-delete").attrs["aria-expanded"], "true");
-    assert.equal(nodes.get("delete-admin-note").hidden, true, "not the admin");
     nodes.get("delete-keep").fire("click");
     assert.equal(nodes.get("delete-confirm").hidden, true);
     assert.deepEqual(pc.deletes, [], "nothing sent");
@@ -10678,17 +10697,24 @@ test("Delete my account: the confirmation view's words; Keep my account sends no
     await openSettings(nodes);
     assert.equal(nodes.get("delete-confirm").hidden, true);
 
-    // the admin: the view says the server will refuse, the button still there
+    // the admin: no Delete account (the server refuses it), Sign out alone at the bottom right
     const admin = signinPc({ me: structuredClone(ADMIN_ME) });
     const his = await loadPage({ local: memoryStore(GOOD), fetchImpl: admin.fetch });
     await openSettings(his.nodes);
-    assert.equal(his.nodes.get("settings-delete").hidden, false);
-    his.nodes.get("settings-delete").fire("click");
-    assert.equal(his.nodes.get("delete-admin-note").hidden, false);
-    assert.equal(his.nodes.get("delete-confirm-btn").disabled, false);
+    assert.equal(his.nodes.get("settings-delete").hidden, true);
+    assert.equal(his.nodes.get("account-leave").hidden, true);
+    assert.equal(his.nodes.get("settings-signout").hidden, false);
+    assert.equal(accountOf(his.nodes).credits, null, "no postings count for the admin");
+
+    // a member of someone's account: Leave this account in Delete's place
+    const member = signinPc({ me: { ...WIFE_ME, owner: false, name: "wife", email: "wife@example.com" } });
+    const hers = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: member.fetch });
+    await openSettings(hers.nodes);
+    assert.equal(hers.nodes.get("settings-delete").hidden, true);
+    assert.equal(hers.nodes.get("account-leave").hidden, false);
 });
 
-test("Delete my account: a 204 drops the account from the phone and says so, on the landing or under the next account", async (t) => {
+test("Delete account: a 204 drops the account from the phone and says so, on the landing or under the next account", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     // one account, a session: DELETE /me with it, the server told nothing more, the landing
     const pc = signinPc({ me: structuredClone(WIFE_ME) });
@@ -10718,9 +10744,9 @@ test("Delete my account: a 204 drops the account from the phone and says so, on 
     page.nodes.get("accounts-add").fire("click");
     await signInByCode(page.nodes, "wife@example.com", "123456");
     await openSettings(page.nodes);
-    page.nodes.get("accounts-list").children[0].children[0].fire("click"); // michal
+    rowAction(page.nodes, 0, "Switch to this account").fire("click"); // michal
     await settle();
-    assert.deepEqual(accountRows(page.nodes).map((r) => r.name), ["✓ michal", "wife"]);
+    assert.equal(accountOf(page.nodes).user, "michal");
     page.nodes.get("settings-delete").fire("click");
     two.auth.length = 0;
     page.nodes.get("delete-confirm-btn").fire("click");
@@ -10729,27 +10755,26 @@ test("Delete my account: a 204 drops the account from the phone and says so, on 
     assert.deepEqual(two.signouts, []);
     assert.equal(page.nodes.get("landing").hidden, true);
     assert.equal(page.nodes.get("settings").hidden, false);
-    assert.deepEqual(accountRows(page.nodes).map((r) => r.name), ["✓ wife"]);
+    assert.deepEqual(accountRows(page.nodes), []);
     assert.equal(page.nodes.get("delete-status").textContent, "Your account was deleted.");
     assert.equal(page.nodes.get("delete-confirm").hidden, true);
-    assert.equal(accountOf(page.nodes).user, "Signed in as wife");
+    assert.equal(accountOf(page.nodes).user, "wife");
     assert.ok(two.auth.filter((a) => a !== `key ${GOOD["snap.key"]}`).every((a) => a === "session sess-w"), `wife's calls: ${two.auth}`);
     assert.deepEqual(kept(both).map((a) => a.user), ["wife"]);
     assert.equal(both.getItem("snap.key"), null);
     assert.equal(both.getItem("snap.session"), "sess-w");
 });
 
-test("Delete my account: refused (the admin's, a job of theirs running), a 401 or no answer is said and the account stays", async (t) => {
+test("Delete account: refused (a job of theirs running, a member's 403), a 401 or no answer is said and the account stays", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const cases = [
-        [409, "the admin's account cannot be deleted from the app", "ADMIN_ACCOUNT", "The admin's account cannot be deleted from the app."],
-        [409, "", "ADMIN_ACCOUNT", "The admin's account cannot be deleted from the app."],
         [409, "a job of yours is queued or running (job j1); wait for it, or reset it first", "", "A job of yours is queued or running (job j1); wait for it, or reset it first."],
+        [403, "only the account's owner can delete it", "", "Only the account's owner can delete it."],
         [401, "a valid X-Crosslister-Key header is needed", "", "Could not delete the account: wrong key - check Settings."],
         [0, "", "", "Could not delete the account: cannot reach the server."],
     ];
     for (const [status, detail, code, said] of cases) {
-        const pc = signinPc({ me: structuredClone(status === 409 && code ? ADMIN_ME : WIFE_ME) });
+        const pc = signinPc({ me: structuredClone(WIFE_ME) });
         Object.assign(pc, { deleted: status, deleteDetail: detail, deleteCode: code });
         const local = memoryStore({ "snap.session": "sess-1" });
         const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });

@@ -134,8 +134,6 @@ import {
     customizeLine,
     customizeSaved,
     customizeVenues,
-    syncBarLine,
-    syncButtons,
     syncJob,
     syncVenues,
     syncWord,
@@ -186,7 +184,6 @@ import {
     SELLER_POLL_MS,
     sellerError,
     sellerLine,
-    sellerOf,
     SHIP_FROM,
     addressState,
     ADDRESS_PREFILLED,
@@ -199,13 +196,11 @@ import {
     checkEmail,
     CRAIGSLIST_OFF,
     creditsLine,
-    ebayLine,
     errorText,
     packLabel,
     returnHash,
     returnLine,
     EBAY_TAKEN,
-    userLine,
     cleanCode,
     CODE_NEEDED,
     codeError,
@@ -242,11 +237,42 @@ import {
     inboxHead,
     inboxOf,
     inventorySku,
-    pendingLine,
     refusalLine,
     serverLine,
-    SIGNUP_UNFINISHED,
     signupStep,
+    syncReason,
+    syncNote,
+    CONNECT_FIRST,
+    NOT_AVAILABLE,
+    accountKind,
+    ebayStatusLine,
+    NOT_CONNECTED,
+    CONNECT_TO_POST,
+    venueBlockLine,
+    ON_SERVER,
+    ASK_IN_FEEDBACK,
+    addressOf,
+    addressFor,
+    shipsFromLine,
+    addressSaveBody,
+    ADDRESS_FIELDS,
+    SAME_ADDRESS,
+    noAddressLine,
+    peopleOf,
+    devicesOf,
+    personWords,
+    lastUsedWord,
+    deviceLine,
+    peopleCount,
+    INVITE_SENT,
+    inviteBody,
+    nameBody,
+    peopleError,
+    signedOutOthers,
+    LEFT_ACCOUNT,
+    wrapTextsBody,
+    DEFAULTS_SAVED,
+    DEFAULTS_SAVED_MS,
     SWIPE_MAX_PX,
     SWIPE_SHARE,
     SWIPE_SLOP_PX,
@@ -801,7 +827,7 @@ test("credits will be lost once a press has left the phone; a draft the PC dumpe
     // Michal, 2026-10-17: "When I cancel a run of an AI call the job still posted. If I cancel,
     // that means I want to absolutely stop it, even though we may be getting an answer from the
     // server. Just dump that answer. In the little note say: credits will be lost."
-    assert.equal(TAP_TO_CANCEL, "tap again to cancel: credits will be lost");
+    assert.equal(TAP_TO_CANCEL, "tap again to cancel: the posting will be lost");
     assert.equal(CANCELLED_ON_PC, "cancelled from the phone");
     let s = reduce(sent(1, [1]), { type: "jobSending", venue: "ebay", step: "sending" });
     assert.equal(cancelNote(s.jobs.ebay), TAP_AGAIN, "held on the phone in its second: nothing to lose");
@@ -815,7 +841,7 @@ test("credits will be lost once a press has left the phone; a draft the PC dumpe
     assert.equal(cancelButton(s, "ebay"), true);
 
     // the line once the PC says it stopped: the posting kept (charged) or given back
-    assert.equal(cancelledLine({ charged: true }), "cancelled: the credit is lost");
+    assert.equal(cancelledLine({ charged: true }), "cancelled: the posting is lost");
     assert.equal(cancelledLine({ charged: false }), CANCELLED);
     assert.equal(cancelledLine({}), CANCELLED, "an older server says nothing");
     assert.equal(cancelledLine({ charged: "true" }), CANCELLED, "only a real true");
@@ -829,7 +855,7 @@ test("credits will be lost once a press has left the phone; a draft the PC dumpe
         venue: "ebay",
         status: { state: "failed", error: CANCELLED_ON_PC, charged: true },
     });
-    assert.equal(venueLine(dumped.jobs.ebay).text, "cancelled: the credit is lost");
+    assert.equal(venueLine(dumped.jobs.ebay).text, "cancelled: the posting is lost");
     assert.equal(dumped.sku, "", "the draft is forgotten");
     assert.equal(photosLocked(dumped), false, "the item and its photos stay his");
     // the next press is a fresh draft: the item and its marks, no sku
@@ -3232,14 +3258,10 @@ test("customize's Sync to <venue>: one per venue the account syncs to and the ro
     assert.deepEqual(customizeLine(none, idle, []), { text: "", kind: "" });
 });
 
-test("GET /me's syncable: the venues the sync bar and customize go to and from; eBay alone when it does not say", () => {
+test("GET /me's syncable: the venues the sync buttons and customize go to and from; eBay alone when it does not say", () => {
     // an older server, or none yet: eBay's two, as before 2.20.0
     assert.deepEqual(syncVenues(null, "to"), ["ebay"]);
     assert.deepEqual(syncVenues(meOf({ venues: ["ebay", "craigslist"] }), "to"), ["ebay"]);
-    assert.deepEqual(syncButtons(null), [
-        { direction: "from", venue: "ebay" },
-        { direction: "to", venue: "ebay" },
-    ]);
     assert.equal(meOf({ venues: ["ebay"] }).syncable, null);
 
     // Michal's: to eBay and craigslist, from eBay; in /me's venues order, whatever syncable's
@@ -3247,46 +3269,53 @@ test("GET /me's syncable: the venues the sync bar and customize go to and from; 
     assert.deepEqual(michal.syncable, { to: ["craigslist", "ebay"], from: ["ebay"] });
     assert.deepEqual(syncVenues(michal, "to"), ["ebay", "craigslist"]);
     assert.deepEqual(syncVenues(michal, "from"), ["ebay"]);
-    assert.deepEqual(syncButtons(michal), [
-        { direction: "from", venue: "ebay" },
-        { direction: "to", venue: "ebay" },
-        { direction: "to", venue: "craigslist" },
-    ]);
-    // a plain seller
-    const seller = meOf({ venues: ["ebay"], syncable: { to: ["ebay"], from: ["ebay"] } });
-    assert.deepEqual(syncButtons(seller), [
-        { direction: "from", venue: "ebay" },
-        { direction: "to", venue: "ebay" },
-    ]);
-    // a venue the server adds: its buttons come by themselves, after /me's venues when it is not among them
+    // a venue the server adds comes after /me's venues
     const three = meOf({ venues: ["ebay", "craigslist"], syncable: { to: ["ebay", "poshmark", "craigslist"], from: ["poshmark", "ebay"] } });
-    assert.deepEqual(syncButtons(three), [
-        { direction: "from", venue: "ebay" },
-        { direction: "to", venue: "ebay" },
-        { direction: "to", venue: "craigslist" },
-        { direction: "from", venue: "poshmark" },
-        { direction: "to", venue: "poshmark" },
-    ]);
+    assert.deepEqual(syncVenues(three, "to"), ["ebay", "craigslist", "poshmark"]);
     // read leniently: names trimmed, each once; a list not given (or not a list) is none
     assert.deepEqual(meOf({ syncable: { to: [" ebay", "ebay", 3, ""], from: "ebay" } }).syncable, { to: ["ebay"], from: [] });
     assert.equal(meOf({ syncable: "ebay" }).syncable, null);
-    assert.deepEqual(syncButtons(meOf({ venues: ["ebay"], syncable: {} })), [], "a server that syncs none: no buttons");
 
-    // the words, the bodies, the bar's line
-    assert.equal(syncWord("to", "ebay"), "Sync to eBay");
-    assert.equal(syncWord("from", "ebay"), "Sync from eBay");
+    // the words (the venue lowercase, as on every button: Michal, 2026-10-26), the bodies
+    assert.equal(syncWord("to", "ebay"), "Sync to ebay");
+    assert.equal(syncWord("from", "ebay"), "Sync from ebay");
     assert.equal(syncWord("to", "craigslist"), "Sync to craigslist");
     assert.deepEqual(syncJob(michal, "to", "craigslist"), { action: "sync", direction: "to", venue: "craigslist" });
     assert.deepEqual(syncJob(michal, "from", "ebay"), { action: "sync", direction: "from", venue: "ebay" });
     assert.deepEqual(syncJob(three, "to", "poshmark"), { action: "sync", direction: "to", venue: "poshmark" });
     assert.deepEqual(syncJob(null, "to", "ebay"), { action: "sync", direction: "to" }, "an older server refuses a venue");
     assert.deepEqual(syncJob(meOf({}), "from", "ebay"), { action: "sync", direction: "from" });
-    const done = { text: "3 listings updated, 10 unchanged, 0 failed", kind: "ok" };
-    assert.deepEqual(syncBarLine(done, "craigslist", true), { text: "craigslist: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
-    assert.deepEqual(syncBarLine(done, "ebay", true), { text: "eBay: 3 listings updated, 10 unchanged, 0 failed", kind: "ok" });
-    assert.deepEqual(syncBarLine(done, "ebay", false), done, "one venue: as it is");
-    assert.deepEqual(syncBarLine(done, "", true), done, "no press behind it");
-    assert.equal(syncBarLine(null, "ebay", true), null);
+});
+
+test("a venue block's two sync buttons: grey where the function is missing or the account lacks the venue, with one reason line", () => {
+    // Michal, 2026-10-26: "even if function does not exist, there should be sync from and to
+    // buttons for each venue, gray if function is still not working"
+    const ready = { connected: true, user: "michal_sells", policies: "ready" };
+    const admin = meOf({ user: "michal", admin: true, craigslist: true, poshmark: true, venues: ["ebay", "craigslist", "poshmark"], syncable: { to: ["ebay", "craigslist"], from: ["ebay"] }, ebay: ready });
+    const reasons = (me, ebay) =>
+        ["ebay", "craigslist", "poshmark"].map((v) => [syncReason(v, "from", me, ebay), syncReason(v, "to", me, ebay), syncNote(v, me, ebay)]);
+    assert.deepEqual(reasons(admin, ready), [
+        ["", "", ""],
+        ["Craigslist cannot be read back yet.", "", "Craigslist cannot be read back yet."],
+        ["Poshmark cannot be read back yet.", "Poshmark cannot be written to yet.", "Poshmark sync is not built yet."],
+    ]);
+    // a seller: eBay's two; the others not hers, said by their status line, so no reason line
+    const seller = meOf({ user: "anna", craigslist: false, venues: ["ebay"], syncable: { to: ["ebay"], from: ["ebay"] }, ebay: ready });
+    assert.deepEqual(reasons(seller, ready), [
+        ["", "", ""],
+        [NOT_AVAILABLE, NOT_AVAILABLE, ""],
+        [NOT_AVAILABLE, NOT_AVAILABLE, ""],
+    ]);
+    assert.equal(NOT_AVAILABLE, "Not available for your account yet.");
+    // eBay not connected yet: both grey, the block's "Not connected" says why
+    const fresh = { connected: false, user: "", policies: "none" };
+    assert.deepEqual(reasons(seller, fresh)[0], [CONNECT_FIRST, CONNECT_FIRST, ""]);
+    // an older server (no /me): eBay's two work, craigslist as today (to and from missing), poshmark not his
+    assert.deepEqual(reasons(null, null), [
+        ["", "", ""],
+        ["Craigslist cannot be read back yet.", "Craigslist cannot be written to yet.", "Craigslist sync is not built yet."],
+        [NOT_AVAILABLE, NOT_AVAILABLE, ""],
+    ]);
 });
 
 // --- Admin: a list row's price, dialled on its tile (Michal, 2026-10-07, 2026-10-08) -------
@@ -3481,7 +3510,9 @@ test("sign-in by the mail's code: six digits, spaces allowed; what a refusal say
 test("GET /me read leniently; craigslist off only when it says so", () => {
     assert.deepEqual(meOf({ user: "michal", admin: true, craigslist: false, venues: ["ebay", 3] }), {
         user: "michal",
+        name: "",
         email: "",
+        owner: true,
         admin: true,
         craigslist: false,
         poshmark: false,
@@ -3489,15 +3520,21 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         credits: null,
         packs: [],
         ebay: null,
-        pending: false,
         registered: true,
         syncable: null,
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", email: "", admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, pending: false, registered: true, syncable: null },
-        "silent: as today, an account with nothing left to sign up for"
+        { user: "", name: "", email: "", owner: true, admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, registered: true, syncable: null },
+        "silent: as today, an account with nothing left to set up, its own owner"
     );
+    // since 2026-10-25: the person's name, their email, and whether they own the account; no pending
+    const member = meOf({ user: "anna", name: " Bob ", email: "bob@example.com", owner: false, pending: true });
+    assert.equal(member.name, "Bob");
+    assert.equal(member.email, "bob@example.com");
+    assert.equal(member.owner, false);
+    assert.ok(!("pending" in member), "no pending person any more");
+    assert.equal(meOf({ owner: "no" }).owner, true, "only a real false makes a member");
     assert.equal(meOf(null), null);
     assert.equal(venueAllowed(null, "craigslist"), true, "an older server's 404: as today");
     assert.equal(venueAllowed(meOf({ craigslist: true }), "craigslist"), true);
@@ -3586,10 +3623,12 @@ test("GET /me's credits, packs and eBay, read leniently", () => {
     assert.deepEqual(meOf({ packs: "10" }).packs, []);
 });
 
-test("the Account block's lines: whose it is, the postings left, a pack, the eBay", () => {
-    assert.equal(userLine("anna", true), "Signed in as anna");
-    assert.equal(userLine("michal", false), "Key: michal");
-    assert.equal(userLine("", true), "");
+test("the account card's lines and the venue blocks' status: what it is, the postings left, a pack, the eBay", () => {
+    // "by key" only on a key account: every new account is by email (Michal, 2026-10-25)
+    assert.equal(accountKind({ key: "k-1", expired: false }), "by key");
+    assert.equal(accountKind({ key: "", expired: false }), "");
+    assert.equal(accountKind({ key: "", expired: true }), SIGNED_OUT);
+    assert.equal(accountKind({ key: "k-1", expired: true }), SIGNED_OUT);
 
     const left = (free, bought) => creditsLine({ unlimited: false, free, bought });
     assert.equal(left(3, 0), "3 free postings left");
@@ -3605,18 +3644,26 @@ test("the Account block's lines: whose it is, the postings left, a pack, the eBa
     assert.equal(packLabel({ id: "1", postings: 1, price: "$0.60" }), "1 posting, $0.60");
     assert.equal(packLabel({ id: "10", postings: 10, price: "" }), "10 postings");
 
-    const ebay = (over) => ebayLine({ connected: true, user: "anna_sells", policies: "ready", ...over });
-    assert.equal(ebay({}), "eBay: connected as anna_sells");
-    assert.equal(ebay({ policies: "" }), "eBay: connected as anna_sells", "a server that does not say: ready");
-    assert.equal(ebay({ user: "" }), "eBay: connected");
-    assert.equal(ebay({ policies: "pending" }), "eBay: connected as anna_sells; setting up your policies...");
-    assert.equal(
-        ebay({ policies: "failed: no return policy allowed" }),
-        "eBay: connected as anna_sells; policies failed: no return policy allowed; contact the developer"
-    );
-    assert.equal(ebay({ policies: "failed" }), "eBay: connected as anna_sells; policies failed; contact the developer");
-    assert.equal(ebayLine({ connected: false, user: "", policies: "" }), "eBay: not connected");
-    assert.equal(ebayLine(null), "", "an older server: no eBay line");
+    // the eBay block's status line (the Settings mock, 2026-10-25)
+    const ebay = (over) => ebayStatusLine({ connected: true, user: "anna_sells", policies: "ready", ...over });
+    assert.equal(ebay({}), "Connected as anna_sells");
+    assert.equal(ebay({ policies: "" }), "Connected as anna_sells", "a server that does not say: ready");
+    assert.equal(ebay({ user: "" }), "Connected");
+    assert.equal(ebay({ policies: "pending" }), "Connected as anna_sells · setting up your policies...");
+    assert.equal(ebay({ policies: "failed: no return policy allowed" }), "Connected as anna_sells · policies failed: no return policy allowed; contact the developer");
+    assert.equal(ebay({ policies: "failed" }), "Connected as anna_sells · policies failed; contact the developer");
+    assert.equal(ebayStatusLine({ connected: false, user: "", policies: "" }), NOT_CONNECTED);
+    assert.equal(NOT_CONNECTED, "Not connected");
+    assert.equal(CONNECT_TO_POST, "Connect eBay to start posting");
+    assert.equal(ebayStatusLine(null), "", "an older server: no eBay line");
+    // every venue's block the same shape: eBay by its connection, the others by whether the account has them
+    const seller = meOf({ craigslist: false, venues: ["ebay"] });
+    const admin = meOf({ craigslist: true, poshmark: true, venues: ["ebay", "craigslist", "poshmark"] });
+    const connected = { connected: true, user: "anna_sells", policies: "ready" };
+    assert.deepEqual(["ebay", "craigslist", "poshmark"].map((v) => venueBlockLine(v, seller, connected)), ["Connected as anna_sells", NOT_AVAILABLE, NOT_AVAILABLE]);
+    assert.deepEqual(["ebay", "craigslist", "poshmark"].map((v) => venueBlockLine(v, admin, connected, true)), ["Connected as anna_sells · policies ready", ON_SERVER, ON_SERVER]);
+    assert.equal(ON_SERVER, "Signed in on the server");
+    assert.equal(ASK_IN_FEEDBACK, "Ask for it in Feedback");
 });
 
 test("Connect eBay's word: Connect eBay until it is, then eBay connected on the same button, the user after it when known", () => {
@@ -3684,49 +3731,65 @@ test("the eBay policies' words: setting up, failed with why, ready only the once
     assert.equal(policiesLine("none", true), "");
     assert.equal(policiesLine("", true), "");
     const anna = { connected: true, user: "anna_sells", policies: "ready" };
-    assert.equal(ebayLine(anna, true), "eBay: connected as anna_sells; policies ready");
-    assert.equal(ebayLine(anna), "eBay: connected as anna_sells");
-    assert.equal(ebayLine({ ...anna, connected: false }, true), "eBay: not connected");
+    assert.equal(ebayStatusLine(anna, true), "Connected as anna_sells · policies ready");
+    assert.equal(ebayStatusLine(anna), "Connected as anna_sells");
+    assert.equal(ebayStatusLine({ ...anna, connected: false }, true), "Not connected");
 });
 
-test("GET /me/seller read leniently; the line when the address is needed", () => {
+test("GET /me/address read leniently; where it stands; the line when it is needed", () => {
+    // Michal, 2026-10-25: "Address can be same for all venues, but also if unchecked it would
+    // split into addresses per venue"
     const answer = {
-        address: { line1: " 12 Oak St ", city: "Chicago", state: "IL", postal_code: "60601" },
-        complete: true,
-        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+        same: true,
+        shared: { line1: " 12 Oak St ", city: "Chicago", state: "IL", zip: "60601", neighborhood: "", extra: "x" },
+        venues: { ebay: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" }, craigslist: { zip: "60609", neighborhood: "McKinley Park" } },
+        uses: { ebay: ["line1", "city", "state", "zip"], craigslist: ["zip", "neighborhood", "planet"], poshmark: [], shop: "none" },
+        editable: true,
     };
-    assert.deepEqual(sellerOf(answer), {
-        address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" },
-        complete: true,
-        ebay: { connected: true, user: "anna_sells", policies: "pending" },
+    assert.deepEqual(addressOf(answer), {
+        same: true,
+        shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" },
+        venues: {
+            ebay: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" },
+            craigslist: { line1: "", city: "", state: "", zip: "60609", neighborhood: "McKinley Park" },
+        },
+        uses: { ebay: ["line1", "city", "state", "zip"], craigslist: ["zip", "neighborhood"], poshmark: [], shop: [] },
+        editable: true,
     });
-    // no address yet, no eBay word: blanks, and not complete
-    assert.deepEqual(sellerOf({ complete: false }), {
-        address: { line1: "", city: "", state: "", postal_code: "" },
-        complete: false,
-        ebay: null,
-    });
-    for (const none of [null, undefined, "x", 3, {}, { jobs: [] }]) assert.equal(sellerOf(none), null, JSON.stringify(none));
+    assert.equal(addressOf({ ...answer, same: "no" }).same, true, "only a real false splits it");
+    assert.equal(addressOf({ ...answer, same: false }).same, false);
+    assert.equal(addressOf({ ...answer, editable: false }).editable, false);
+    for (const none of [null, undefined, "x", 3, {}, { jobs: [] }]) assert.equal(addressOf(none), null, JSON.stringify(none));
+    assert.deepEqual(ADDRESS_FIELDS.map(([k]) => k), ["line1", "city", "state", "zip", "neighborhood"]);
 
+    // where the shared address stands: eBay's four all there, some of them (prefilled), none
+    const info = addressOf(answer);
+    assert.equal(addressState(info), "complete");
+    const empty = addressOf({ shared: {}, uses: { ebay: ["line1", "city", "state", "zip"] } });
+    assert.equal(addressState(empty), "empty");
+    const prefilled = addressOf({ shared: { line1: "12 Oak St", city: "Chicago", state: "IL" }, uses: {} });
+    assert.equal(addressState(prefilled), "prefilled");
+    assert.equal(addressState(addressOf({ shared: { city: "Chicago" }, uses: {} })), "prefilled", "a part of it is prefilled too");
+    assert.equal(addressState(null), "empty");
+
+    // its line: only once eBay is connected and the address is not all there
     const connected = { connected: true, user: "anna_sells", policies: "none" };
-    const needed = sellerOf({ complete: false, ebay: connected });
-    assert.equal(sellerLine(needed), ADDRESS_NEEDED);
-    assert.equal(addressState(needed), "empty");
+    assert.equal(sellerLine(empty, connected), ADDRESS_NEEDED);
     // Michal, 2026-10-08: "then your address. what address?"
     assert.equal(
         ADDRESS_NEEDED,
         "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state."
     );
     assert.equal(SHIP_FROM, "Address where you ship from");
+    assert.equal(SAME_ADDRESS, "Same address for every venue");
     // prefilled from her eBay account on connect, to be confirmed (Michal, 2026-10-08)
-    const prefilled = sellerOf({ ...answer, complete: false, ebay: connected });
-    assert.equal(addressState(prefilled), "prefilled");
-    assert.equal(sellerLine(prefilled), "Prefilled from your eBay account; change it if you ship from elsewhere.");
-    assert.equal(sellerLine(prefilled), ADDRESS_PREFILLED);
-    assert.equal(addressState(sellerOf({ address: { city: "Chicago" }, complete: false })), "prefilled", "a part of it is prefilled too");
+    assert.equal(sellerLine(prefilled, connected), "Prefilled from your eBay account; change it if you ship from elsewhere.");
+    assert.equal(sellerLine(prefilled, connected), ADDRESS_PREFILLED);
     assert.equal(CONFIRM_SHIP_FROM, "Confirm the address where you ship from");
-    assert.equal(addressState(sellerOf(answer)), "complete");
-    assert.equal(addressState(null), "empty");
+    assert.equal(sellerLine(info, connected), "", "the address all there");
+    assert.equal(sellerLine(empty, { connected: false, user: "", policies: "none" }), "", "no eBay yet: not the moment");
+    assert.equal(sellerLine(empty, null), "");
+    assert.equal(sellerLine(null, connected), "");
     // what Snap sets up on her eBay, the server's defaults
     assert.deepEqual(POLICY_LINES, [
         "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
@@ -3734,12 +3797,50 @@ test("GET /me/seller read leniently; the line when the address is needed", () =>
         "Local pickup only, for items you mark pickup only",
         "Your ship-from location: the address above",
     ]);
-    assert.equal(sellerLine(sellerOf(answer)), "", "the address all there");
-    assert.equal(sellerLine(sellerOf({ complete: false, ebay: { connected: false } })), "", "no eBay yet: not the moment");
-    assert.equal(sellerLine(sellerOf({ complete: false })), "");
-    assert.equal(sellerLine(null), "");
     assert.equal(SELLER_POLL_MS, 10000);
     assert.equal(SELLER_POLL_MS * SELLER_POLL_MAX, 3 * 60 * 1000, "three minutes at most");
+});
+
+test("a venue's address and its Ships from line: the shared one while it is the same, else its own, the fields it uses", () => {
+    const shared = { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609", neighborhood: "McKinley Park" };
+    const uses = { ebay: ["line1", "city", "state", "zip"], craigslist: ["zip", "neighborhood"], poshmark: [] };
+    const same = addressOf({ same: true, shared, venues: { craigslist: { zip: "60608", neighborhood: "Pilsen" } }, uses });
+    assert.deepEqual(addressFor("ebay", same), { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609" });
+    assert.deepEqual(addressFor("craigslist", same), { zip: "60609", neighborhood: "McKinley Park" }, "the same for every venue: its own kept aside");
+    assert.deepEqual(addressFor("poshmark", same), {});
+    assert.deepEqual(addressFor("ebay", null), {});
+    assert.equal(shipsFromLine("ebay", same), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("craigslist", same), "Ships from 60609, McKinley Park");
+    assert.equal(shipsFromLine("poshmark", same), "", "a venue that uses none");
+    const split = addressOf({ same: false, shared, venues: { craigslist: { zip: "60608", neighborhood: "" } }, uses });
+    assert.equal(shipsFromLine("craigslist", split), "Ships from 60608, McKinley Park", "a field it has not got yet comes from the shared one");
+    assert.equal(shipsFromLine("ebay", split), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("ebay", addressOf({ shared: {}, uses })), "", "nothing there yet");
+    assert.equal(noAddressLine("poshmark"), "Poshmark does not use a ship-from address.");
+});
+
+test("Save address's body for /me/address: the one shared block, or one per venue that uses an address, each checked; a box not right is named", () => {
+    const uses = { ebay: ["line1", "city", "state", "zip"], craigslist: ["zip", "neighborhood"], poshmark: [] };
+    const shared = { line1: " 12  Oak St ", city: " Chicago ", state: "il", zip: "60601-1234", neighborhood: " McKinley  Park " };
+    assert.deepEqual(addressSaveBody({ same: true, shared, uses }), {
+        ok: true,
+        body: { same: true, shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "McKinley Park" } },
+    });
+    assert.deepEqual(addressSaveBody({ same: true, shared: { ...shared, city: "" }, uses }), { ok: false, error: "Enter the city." });
+    // unticked: per venue, the fields each uses, a venue that uses none left out
+    const venues = { ebay: { line1: "1 A St", city: "Chicago", state: "IL", zip: "60601" }, craigslist: { zip: " 60608 ", neighborhood: "Pilsen" } };
+    assert.deepEqual(addressSaveBody({ same: false, venues, uses }), {
+        ok: true,
+        body: { same: false, venues: { ebay: { line1: "1 A St", city: "Chicago", state: "IL", zip: "60601" }, craigslist: { zip: "60608", neighborhood: "Pilsen" } } },
+    });
+    assert.deepEqual(addressSaveBody({ same: false, venues: { ...venues, craigslist: { zip: "M5V", neighborhood: "" } }, uses }), {
+        ok: false,
+        error: "Craigslist: The ZIP is five digits, as 60601.",
+    });
+    assert.deepEqual(addressSaveBody({ same: false, venues: { ...venues, ebay: { ...venues.ebay, state: "Ill" } }, uses }), {
+        ok: false,
+        error: "eBay: The state is two letters, as IL.",
+    });
 });
 
 test("Save address's body: trimmed, the state two letters upper-cased, the ZIP five digits; a box not right is named", () => {
@@ -3878,30 +3979,35 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
     assert.deepEqual(statsTable({ jobs: { total: "x" }, per_user: "no" }).users, []);
 });
 
-test("customize defaults: read leniently, kept without the quantity, a new item starts from them", () => {
-    const plain = { pricing: 1, autoPost: true, comps: true, pickupOnly: false };
+test("Posting defaults: read leniently, the quantity with them; a new item starts from them", () => {
+    // Michal, 2026-10-08: "in case someone wants to change something permanently"; in Settings,
+    // Posting defaults since 2026-10-26, whose list has the quantity first
+    const plain = { quantity: "1", pricing: 1, autoPost: true, comps: true, pickupOnly: false };
     assert.deepEqual(customizeDefaults(null), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults("garbage"), { goods: plain, book: plain });
-    assert.deepEqual(customizeDefaults({ goods: { pricing: 7, autoPost: "no", comps: 0, pickupOnly: true } }), {
-        goods: { pricing: 1, autoPost: true, comps: true, pickupOnly: true },
+    assert.deepEqual(customizeDefaults({ goods: { quantity: "0", pricing: 7, autoPost: "no", comps: 0, pickupOnly: true } }), {
+        goods: { ...plain, pickupOnly: true },
         book: plain,
     });
-    const goods = { pricing: 2, autoPost: false, comps: false, pickupOnly: true };
-    assert.deepEqual(defaultsOf({ quantity: "3", ...goods }), goods, "never the quantity");
+    const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true };
+    assert.deepEqual(defaultsOf({ ...goods, note: "not customize's" }), goods);
+    assert.deepEqual(defaultsOf({ ...goods, quantity: "two" }), { ...goods, quantity: "1" }, "a quantity that is not one is 1");
+    // a phone from before (Save as default kept no quantity): 1
+    assert.deepEqual(customizeDefaults({ goods: { pricing: 2, autoPost: false, comps: false, pickupOnly: true } }).goods, { ...goods, quantity: "1" });
     const saved = customizeDefaults({ goods, book: { pricing: 3 } });
 
     const fresh = applyDefaults(initialState(""), saved);
-    assert.deepEqual(customizeOf(fresh), { quantity: "1", ...goods });
+    assert.deepEqual(customizeOf(fresh), goods);
     const book = applyDefaults(initialState("", "book"), saved);
-    assert.deepEqual(customizeOf(book), { quantity: "1", ...plain, pricing: 3 }, "the book's own");
+    assert.deepEqual(customizeOf(book), { ...plain, pricing: 3 }, "the book's own");
     assert.deepEqual(book.customize, initialState("").customize, "a book's goods slice untouched");
-    // the quantity typed stays; plain defaults change nothing
-    const typed = reduce(initialState("Vase"), { type: "setQuantity", text: "4" });
-    assert.equal(customizeOf(applyDefaults(typed, saved)).quantity, "4");
+    // plain defaults change nothing
     assert.deepEqual(applyDefaults(initialState(""), customizeDefaults(null)), initialState(""));
     // a job on its way fixes customize, defaults or not
     const sending = reduce(initialState("Vase"), { type: "jobSending", venue: "ebay" });
     assert.equal(applyDefaults(sending, saved), sending);
+    assert.equal(DEFAULTS_SAVED, "saved");
+    assert.equal(DEFAULTS_SAVED_MS, 2500);
 });
 
 // --- 2.14.0 (Michal, 2026-10-08): See in inventory, archive by a swipe, the Feedback inbox,
@@ -3985,23 +4091,19 @@ test("the Feedback inbox: its new entries read leniently, each one's first line,
     assert.equal(feedbackWord(0), "Feedback");
 });
 
-test("a sign-up's steps from /me: Connect eBay while pending, then the address, then nothing left", () => {
-    const pending = meOf({ user: "", email: "anna@example.com", pending: true, registered: false, ebay: { connected: false } });
-    assert.equal(pending.pending, true);
-    assert.equal(pending.email, "anna@example.com");
-    assert.equal(signupStep(pending), "ebay");
-    const connected = meOf({ user: "anna", pending: false, registered: false, ebay: { connected: true, user: "anna_sells" } });
+test("a new account's steps from /me: Connect eBay while it is not, then the address, then nothing left", () => {
+    // Michal, 2026-10-25: the account is made at the first code; no pending person
+    const fresh = meOf({ user: "anna", email: "anna@example.com", registered: false, ebay: { connected: false } });
+    assert.equal(fresh.email, "anna@example.com");
+    assert.equal(signupStep(fresh), "ebay");
+    assert.equal(signupStep(meOf({ user: "anna", registered: false })), "ebay", "no eBay word yet: step 1");
+    const connected = meOf({ user: "anna", registered: false, ebay: { connected: true, user: "anna_sells" } });
     assert.equal(signupStep(connected), "address");
-    assert.equal(signupStep(meOf({ user: "anna", pending: false, registered: true })), "");
+    assert.equal(signupStep(meOf({ user: "anna", registered: true })), "");
     assert.equal(signupStep(meOf({ user: "michal" })), "", "a server that does not say: registered");
     assert.equal(signupStep(meOf({ user: "", registered: false })), "", "no account to finish");
     assert.equal(signupStep(null), "", "an older server");
-    assert.equal(pendingLine("anna@example.com"), "Signed in as anna@example.com, not registered yet");
-    assert.equal(pendingLine(""), "Signed in, not registered yet");
-    // the server's refusal while pending, said as it is wherever a refusal is said
-    assert.equal(SIGNUP_UNFINISHED, "Connect eBay to finish signing up.");
-    assert.equal(errorText(403, SIGNUP_UNFINISHED), SIGNUP_UNFINISHED);
-    assert.equal(refusalLine("Could not read the inventory", 403, SIGNUP_UNFINISHED), SIGNUP_UNFINISHED);
+    // a refusal said as what could not be done and why
     assert.equal(refusalLine("Could not read the inventory", 0, "cannot reach the server"), "Could not read the inventory: cannot reach the server.");
     assert.equal(refusalLine("Not sent", 403, "admins only"), "Not sent: admins only.");
     // the server answered, refusing: it is there
@@ -4285,4 +4387,111 @@ test("deleteError: a 409 in the server's words as a sentence, the admin's by its
     assert.equal(deleteError(401, "a valid X-Crosslister-Key header is needed", "wrong key - check Settings"), "Could not delete the account: wrong key - check Settings.");
     assert.equal(deleteError(0, "", "cannot reach the server"), "Could not delete the account: cannot reach the server.");
     assert.equal(deleteError(500, "", "the server answered 500"), "Could not delete the account: the server answered 500.");
+});
+
+// --- the people on an account and their devices (Michal, 2026-10-25: "allow two users to join
+// the same family group"; "log out all other devices") ----------------------------------------
+
+test("GET /me/people read leniently: the owner first, by the name they chose, never by email", () => {
+    const answer = {
+        you: "bob@example.com",
+        owner: { email: "anna@example.com", name: "Anna", you: false },
+        members: [
+            { email: "bob@example.com", name: " Bob ", added: "2026-10-25T10:00:00", signed_in: true, you: true },
+            { email: "carol@example.com", name: "", added: "2026-10-26T10:00:00", signed_in: false, you: false },
+            "junk",
+            null,
+        ],
+    };
+    assert.deepEqual(peopleOf(answer), {
+        owner: false,
+        people: [
+            { name: "Anna", email: "anna@example.com", owner: true, you: false, signedIn: true },
+            { name: "Bob", email: "bob@example.com", owner: false, you: true, signedIn: true },
+            { name: "carol@example.com", email: "carol@example.com", owner: false, you: false, signedIn: false },
+        ],
+    });
+    assert.equal(peopleOf({ ...answer, owner: { ...answer.owner, you: true } }).owner, true, "the person looking owns it");
+    assert.deepEqual(peopleOf({ owner: { email: "a@x", name: "a", you: true } }).people.length, 1, "no members: just the owner");
+    for (const none of [null, undefined, "x", {}, { members: [] }, { owner: "anna" }]) assert.equal(peopleOf(none), null, JSON.stringify(none));
+
+    // the words after a name
+    const [anna, bob, carol] = peopleOf(answer).people;
+    assert.equal(personWords(anna), "owner");
+    assert.equal(personWords(bob), "member · you");
+    assert.equal(personWords(carol), "member · invited, not signed in yet");
+    assert.equal(personWords({ ...anna, you: true }), "owner · you");
+    // the count on the People link
+    assert.equal(peopleCount(1), "just you");
+    assert.equal(peopleCount(2), "2 people");
+    assert.equal(peopleCount(null), "");
+});
+
+test("GET /me/devices read leniently: one's own, or everyone's by email for the owner; a device's line", () => {
+    const now = Date.parse("2026-10-26T12:00:00Z");
+    const own = {
+        you: "anna@example.com",
+        devices: [
+            { id: "3f9a1c0b7e2d", device: "iPhone, Safari", created: "2026-10-25T14:02:00Z", last_seen: "2026-10-26T11:00:00Z", remember: true, this: true },
+            { id: "8c2d", device: "Android, Chrome", last_seen: "2026-10-25T09:00:00Z", this: false },
+            { id: "", device: "no id" },
+            "junk",
+        ],
+    };
+    assert.deepEqual(devicesOf(own), {
+        "anna@example.com": [
+            { id: "3f9a1c0b7e2d", device: "iPhone, Safari", lastSeen: "2026-10-26T11:00:00Z", thisDevice: true },
+            { id: "8c2d", device: "Android, Chrome", lastSeen: "2026-10-25T09:00:00Z", thisDevice: false },
+        ],
+    });
+    const all = { you: "anna@example.com", people: [{ email: "anna@example.com", devices: own.devices.slice(0, 1) }, { email: "bob@example.com", devices: [] }] };
+    assert.deepEqual(Object.keys(devicesOf(all)), ["anna@example.com", "bob@example.com"]);
+    assert.deepEqual(devicesOf(all)["bob@example.com"], []);
+    for (const none of [null, "x", {}, { you: "a" }]) assert.equal(devicesOf(none), null, JSON.stringify(none));
+
+    const [mine, other] = devicesOf(own)["anna@example.com"];
+    assert.equal(deviceLine(mine, now), "iPhone, Safari · this device");
+    assert.equal(deviceLine(other, now), "Android, Chrome · last used yesterday");
+    assert.equal(deviceLine({ ...other, lastSeen: "2026-10-26T08:00:00Z" }, now), "Android, Chrome · last used today");
+    assert.equal(deviceLine({ ...other, lastSeen: "2026-10-14T08:00:00Z" }, now), "Android, Chrome · last used 12 days ago");
+    assert.equal(deviceLine({ ...other, lastSeen: "" }, now), "Android, Chrome", "the server did not say when");
+    assert.equal(deviceLine({ ...other, device: "" , lastSeen: "nonsense" }, now), "a device");
+    assert.equal(lastUsedWord("2026-10-27T08:00:00Z", now), "today", "a clock ahead is today");
+});
+
+test("Invite, Change name, the people actions' lines", () => {
+    // Michal, 2026-10-26: "don't ask for their name. just email is fine"
+    assert.deepEqual(inviteBody({ email: " bob@example.com " }), { ok: true, body: { email: "bob@example.com" } });
+    assert.deepEqual(inviteBody({ email: "" }), { ok: false, error: "Enter their email address." });
+    assert.deepEqual(inviteBody({ email: "bob" }), { ok: false, error: "That is not an email address." });
+    assert.equal(INVITE_SENT, "Invitation sent");
+    assert.deepEqual(nameBody("  Robert   the  Second "), { ok: true, body: { name: "Robert the Second" } });
+    assert.deepEqual(nameBody("   "), { ok: false, error: "Enter a name." });
+    assert.deepEqual(nameBody(3), { ok: false, error: "Enter a name." });
+    // a refusal: the server's own words; a server without the routes; anything else after its lead
+    assert.equal(peopleError("Could not invite", 404, "Not Found"), "People on an account are not available on this server yet.");
+    assert.equal(peopleError("Could not invite", 409, "bob@example.com already belongs to an account"), "bob@example.com already belongs to an account");
+    assert.equal(peopleError("Could not invite", 403, "only the account's owner can invite people"), "only the account's owner can invite people");
+    assert.equal(peopleError("Could not invite", 400, "no"), "no");
+    assert.equal(peopleError("Could not invite", 502, "the server answered 502"), "Could not invite: the server answered 502.");
+    assert.equal(peopleError("Could not invite", 0, "cannot reach the server"), "Could not invite: cannot reach the server.");
+    // Sign out all other devices
+    assert.equal(signedOutOthers(2), "Signed out 2 other devices");
+    assert.equal(signedOutOthers(1), "Signed out 1 other device");
+    assert.equal(signedOutOthers(0), "Signed out 0 other devices");
+    assert.equal(signedOutOthers("x"), "Signed out the other devices");
+    assert.equal(LEFT_ACCOUNT, "You left the account.");
+});
+
+test("the header and footer's one Save: only the parts whose text changed, each checked; nothing changed is nothing to send", () => {
+    const info = wrapOf({ header: { on: true, text: "Hello", venues: ["ebay"] }, footer: { on: false, text: "Bye", venues: [] }, available: ["ebay"] });
+    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "Bye" }, info), { ok: true, body: {} });
+    assert.deepEqual(wrapTextsBody({ header: "  Hello there \r\n", footer: "Bye" }, info), { ok: true, body: { header: { text: "Hello there" } } });
+    assert.deepEqual(wrapTextsBody({ header: "Hi", footer: "So long" }, info), { ok: true, body: { header: { text: "Hi" }, footer: { text: "So long" } } });
+    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "x".repeat(2001) }, info), { ok: false, error: "Footer: At most 2000 characters; this is 2001." });
+});
+
+test("Delete account refused by a member's 403: the server's words, as a sentence", () => {
+    assert.equal(deleteError(403, "only the account's owner can delete it", "only the account's owner can delete it"), "Only the account's owner can delete it.");
+    assert.equal(deleteError(403, "", "the server answered 403"), "Could not delete the account: the server answered 403.");
 });

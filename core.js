@@ -438,23 +438,6 @@ export function syncVenues(me, direction) {
 }
 
 /**
- * The sync bar's buttons, in their order (Michal, 2026-10-17: "add a button push to
- * Craigslist next to it"): venue by venue as syncVenues orders them, its Sync from before its
- * Sync to, so each from sits in the bar's left column and each to in its right.
- * @param {{venues:string[], syncable:Syncable|null} | null} me meOf's
- * @returns {{direction:"from"|"to", venue:string}[]}
- */
-export function syncButtons(me) {
-    const from = syncVenues(me, "from");
-    const to = syncVenues(me, "to");
-    const venues = [...new Set([...(me ? me.venues : []), ...from, ...to])];
-    return venues.flatMap((venue) => [
-        ...(from.includes(venue) ? [{ direction: /** @type {"from"} */ ("from"), venue }] : []),
-        ...(to.includes(venue) ? [{ direction: /** @type {"to"} */ ("to"), venue }] : []),
-    ]);
-}
-
-/**
  * A sync button's word, before its round arrow: "Sync from ebay", "Sync to craigslist" (the
  * venue lowercase, as on every button and chip: Michal, 2026-10-26).
  * @param {"from"|"to"} direction
@@ -676,10 +659,11 @@ export const ADMIN_NO_DELETE = "The admin's account cannot be deleted from the a
 export const ACCOUNT_DELETED = "Your account was deleted.";
 
 /**
- * Delete my account's line when the server refused or did not answer; the account stays
- * either way. A 409 in the server's own words (the admin's account, which cannot be deleted
- * from the app; a job of theirs still queued or running), said as a sentence; else "Could
- * not delete the account: <why>." (a 401's and no answer's usual words).
+ * Delete account's line when the server refused or did not answer; the account stays either
+ * way. A 409 in the server's own words (the admin's account, which cannot be deleted from the
+ * app; a job of theirs still queued or running) and a member's 403 ("only the account's owner
+ * can delete it", since 2026-10-25), said as a sentence; else "Could not delete the account:
+ * <why>." (a 401's and no answer's usual words).
  * @param {number} status the PcError's
  * @param {string} detail the server's own words ("" when none)
  * @param {string} message errorText's words
@@ -687,7 +671,7 @@ export const ACCOUNT_DELETED = "Your account was deleted.";
  * @returns {string}
  */
 export function deleteError(status, detail, message, code = "") {
-    if (status === 409) {
+    if (status === 409 || (status === 403 && detail)) {
         const said = (detail || (code === "ADMIN_ACCOUNT" ? ADMIN_NO_DELETE : message)).trim();
         return `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
     }
