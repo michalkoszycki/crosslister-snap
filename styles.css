@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.2") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -168,12 +168,14 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px
     font-weight: 700;
 }
 header .link { color: var(--head-ink); padding-left: 10px; }
-/* the three dots (Admin closed): a 44 px target, centred on the header's line, not on its baseline */
-header .link:has(> .dots) { align-self: center; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0; }
-header .link > .dots { display: block; }
-.header-right:has(.dots) { align-items: center; }
+/* the Admin button: one 56 x 44 box whatever it holds, the three dots (Admin closed) or "Snap"
+   (open) centred in it, so the header never changes height and the word sits where the dots
+   were (Michal, 2026-10-31: "'Snap' or any other words here shodl be centered exactly where
+   the dots are. and no height changes should should be happening") */
+header #admin-toggle { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 44px; padding: 0; }
+header #admin-toggle > .dots { display: block; }
 
-.header-right { display: flex; align-items: baseline; gap: 4px; margin-left: auto; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
 
 /* "server ok" in green, "server off" / "wrong key" in red, checked by the page itself */
 .server { font-size: 13px; font-weight: 700; color: var(--muted); }
