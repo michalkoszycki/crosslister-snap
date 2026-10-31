@@ -314,39 +314,16 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "fold-venues-toggle",
         "fold-venues",
         "venues",
-        "venue-ebay",
-        "account-ebay",
-        "venue-ebay-ships",
-        "account-connect",
-        "account-reconnect",
-        "venue-ebay-note",
-        "venue-ebay-sync",
-        "sync-ebay-status",
-        "venue-ebay-cannot",
-        ...["craigslist", "poshmark"].flatMap((v) => [
-            `venue-${v}`,
-            `venue-${v}-status`,
-            `venue-${v}-ships`,
-            `venue-${v}-ask`,
-            `venue-${v}-sync`,
-            `sync-${v}-status`,
-            `venue-${v}-cannot`,
-        ]),
-        // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
-        // venues"): the shared block, the venues' blocks
-        "seller",
-        "seller-note",
-        "address-shared",
-        // the one line (Michal, 2026-10-31), or one per venue
-        "seller-line",
-        "address-venues",
-        // what Snap sets up on her eBay, while the address is being given (Michal, 2026-10-08)
-        "seller-policies",
-        "seller-policy-list",
-        // the last row: Save address and the tick
-        "seller-save",
-        "address-same",
-        "seller-status",
+        // one summary card per venue, a tap its own page (Michal, 2026-10-31)
+        "venue-card-ebay",
+        "venue-card-ebay-status",
+        "venue-card-ebay-ships",
+        "venue-card-craigslist",
+        "venue-card-craigslist-status",
+        "venue-card-craigslist-ships",
+        "venue-card-poshmark",
+        "venue-card-poshmark-status",
+        "venue-card-poshmark-ships",
         // 3. Posting defaults (Michal, 2026-10-26: "call this posting defaults"): the customize
         // box's controls, saved on change: Quantity beside the Price slider (2026-10-31), the
         // options one line each, the fifth Add standard text to posts and its card under it
@@ -410,6 +387,45 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // what the counts mean (Michal, 2026-10-08: "I don't understand the jobs count on the stats.")
         "stats-note",
         // the People page, in Admin's place (Michal, 2026-10-25: "let it be a simple separate page")
+        // a venue's own page (Michal, 2026-10-31): Back, the grey card, the venue's block, the address, eBay's policies
+        "venue-back",
+        "venue-page",
+        "venue-page-heading",
+        "venue-full",
+        "venue-ebay",
+        "account-ebay",
+        "venue-ebay-ships",
+        "account-connect",
+        "account-reconnect",
+        "venue-ebay-note",
+        "venue-ebay-sync",
+        "sync-ebay-status",
+        "venue-ebay-cannot",
+        ...["craigslist", "poshmark"].flatMap((v) => [
+            `venue-${v}`,
+            `venue-${v}-status`,
+            `venue-${v}-ships`,
+            `venue-${v}-ask`,
+            `venue-${v}-sync`,
+            `sync-${v}-status`,
+            `venue-${v}-cannot`,
+        ]),
+        // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
+        // venues"): the shared block, the venues' blocks
+        "seller",
+        "seller-note",
+        "address-shared",
+        // the one line (Michal, 2026-10-31), or one per venue
+        "seller-line",
+        "address-venues",
+        // what Snap sets up on her eBay, while the address is being given (Michal, 2026-10-08)
+        "seller-policies",
+        "seller-policy-list",
+        // the last row: Save address and the tick
+        "seller-save",
+        "address-same",
+        "seller-status",
+        "venue-policy-slot",
         "people-back",
         "people",
         "people-status",
@@ -7447,6 +7463,8 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signup-address",
         // step 3: what Snap sets up on eBay (Michal, 2026-10-31)
         "signup-step-policies",
+        "signup-policy-slot",
+        "policy-block",
         "signup-policy-list",
         // its Edit, each choice a menu, Save (Michal, 2026-10-31)
         "policy-editor",
@@ -8390,7 +8408,8 @@ test("the account card is first under Snap Account, outlined; Buy postings under
     assert.match(fold, /<div class="account-row">\s*<button type="button" id="account-buy"[^>]*aria-controls="account-packs" hidden>Buy postings<\/button>\s*<span id="account-credits"/, "the postings on the Buy postings line");
     assert.match(fold, /<div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden><\/div>\s*<p id="account-status"[^>]*aria-live="polite"><\/p>/, "its line right under");
     assert.ok(!/by email/i.test(fold.replace(/<!--[\s\S]*?-->/g, "")), "every new account is by email: not said");
-    const venues = /<div id="fold-venues" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-posting-toggle"/.exec(html)[1];
+    // the venue blocks and the address on a venue's own page since 2026-10-31
+    const venues = /<div id="venue-page" class="card inventory venue-page" hidden>([\s\S]*?)<div id="venue-policy-slot"/.exec(html)[1];
     assert.match(venues, /id="account-connect"[^>]*>Connect eBay</);
     for (const id of ["ebay-buy", "craigslist-buy", "book-ebay-buy"]) {
         assert.match(html, new RegExp(`<button type="button" id="${id}" class="link buy-link" hidden>Buy postings</button>`));
@@ -8797,11 +8816,12 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
     assert.deepEqual([keyed.signups, linked.signups], [[], []]);
 });
 
-test("the address where you ship from is last under Venues, no card, one line, then Save address and the tick on one row; About and privacy in the footer", () => {
+test("the address where you ship from is on a venue's own page after its block, no card, one line, then Save address and the tick on one row; About and privacy in the footer", () => {
     // Michal, 2026-10-26: "the address box should be at the end of venues"; 2026-10-31: no
     // card background, in line with the venue block's inner text, ONE line typed as one line,
     // then one row: Save address and Same address for every venue, last
-    const venues = /<div id="fold-venues" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-posting-toggle"/.exec(html)[1];
+    // the venue blocks and the address on a venue's own page since 2026-10-31
+    const venues = /<div id="venue-page" class="card inventory venue-page" hidden>([\s\S]*?)<div id="venue-policy-slot"/.exec(html)[1];
     const card = /<div id="seller" class="address-card" hidden>([\s\S]*?)<p id="seller-status"/.exec(venues)[1];
     assert.ok(venues.indexOf('id="seller"') > venues.indexOf('id="venue-poshmark-cannot"'), "after the venue blocks");
     assert.match(card, /<p class="card-name">Address where you ship from<\/p>/);
@@ -8911,7 +8931,8 @@ const ANNA_EBAY = { connected: true, user: "anna_sells", policies: "none" };
 function addressCard(nodes) {
     return {
         shown: !nodes.get("seller").hidden,
-        venuesOpen: !nodes.get("fold-venues").hidden,
+        // eBay's own page, where the address is since 2026-10-31
+        venuesOpen: !nodes.get("venue-page").hidden,
         note: nodes.get("seller-note").hidden ? null : nodes.get("seller-note").textContent,
         same: nodes.get("address-same").checked,
         status: nodes.get("seller-status").textContent,
@@ -8956,7 +8977,7 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
         status: "",
         ebay: "Connected as anna_sells",
     });
-    assert.equal(nodes.get("fold-venues-toggle").textContent, "▾ Venues");
+    assert.equal(nodes.get("venue-page-heading").textContent, "ebay", "eBay's own page, where the address is (2026-10-31)");
     // Michal, 2026-10-08: "then your address. what address?": what it is for, and who sees what
     assert.equal(
         ADDRESS_NEEDED,
@@ -9173,7 +9194,10 @@ test("the address card: none from an older server; signing out takes it away wit
     fresh.address = structuredClone(NEW_ADDRESS);
     const page = await loadPage({ local: memoryStore(GOOD), fetchImpl: fresh.fetch });
     await openSettings(page.nodes);
-    assert.deepEqual(addressCard(page.nodes), { shown: true, venuesOpen: false, note: null, same: true, status: "", ebay: "Not connected" });
+    // on eBay's own page: tapped from its card (2026-10-31)
+    assert.equal(addressCard(page.nodes).shown, false, "not under Venues itself");
+    page.nodes.get("venue-card-ebay").fire("click");
+    assert.deepEqual(addressCard(page.nodes), { shown: true, venuesOpen: true, note: null, same: true, status: "", ebay: "Not connected" });
     assert.equal(page.nodes.get("account-connect").hidden, false);
 
     // signed out: the address goes with the account
@@ -9664,12 +9688,15 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     await settle();
     assert.deepEqual(globalThis.location.assigned, [EBAY_CONSENT]);
 
-    // Admin meanwhile: Settings at Venues, the eBay block saying what is next; Inventory and
-    // Feedback there as for anyone (an ordinary account, its inventory empty)
+    // Admin meanwhile: eBay's own page, its block saying what is next (2026-10-31); Back from it,
+    // Settings at Venues, Inventory and Feedback there as for anyone (its inventory empty)
     nodes.get("admin-toggle").fire("click");
     await settle();
+    assert.equal(nodes.get("venue-page").hidden, false, "the page the person needs now");
+    assert.equal(nodes.get("venue-page-heading").textContent, "ebay");
+    nodes.get("venue-back").fire("click");
     assert.equal(nodes.get("settings").hidden, false);
-    assert.equal(nodes.get("fold-venues").hidden, false, "the fold the person needs now");
+    assert.equal(nodes.get("fold-venues").hidden, false);
     assert.equal(nodes.get("fold-account").hidden, true);
     assert.equal(nodes.get("inventory-toggle").hidden, false);
     assert.equal(nodes.get("feedback-toggle").hidden, false);
@@ -9720,7 +9747,9 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     // the eBay policy setup), /me says registered, and the goods screen is hers
     n.get("signup-address").fire("click");
     await settle();
-    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false]);
+    // eBay's own page, its address card (2026-10-31)
+    assert.deepEqual(["admin", "venue-page", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
+    assert.equal(n.get("venue-page-heading").textContent, "ebay");
     pc.me = { ...pc.me, registered: true };
     typeAddress(n, { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
     const asked = pc.addressAsks.length;
@@ -9803,6 +9832,14 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     await settle();
     assert.equal(n.get("policy-editor").hidden, false);
     assert.match(n.get("policy-status").textContent, /a flat rate needs a price/);
+    // calculated again with a cost typed: no cost sent (the server refuses one with calculated shipping)
+    pc.policyRefuse = "";
+    n.get("policy-cost").value = "5";
+    n.get("policy-cost").fire("input");
+    n.get("policy-cost-type").children[0].fire("click");
+    n.get("policy-save").fire("click");
+    await settle();
+    assert.ok(!("shipping_cost" in pc.policySaves.at(-1)), "no cost with calculated shipping");
 
     // the admin's: set on the server, no Edit; an older server: the fixed lines, no Edit
     const admin = fakePc({ me: structuredClone(CONNECTED_ME) });
@@ -9836,10 +9873,10 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
     await settle();
     assert.equal(n.get("signup-steps").hidden, false, "back on Finish setting up (2026-10-31)");
-    // Admin from there opens on the address, at the end of Venues
+    // Admin from there opens on the address, on eBay's own page (2026-10-31)
     n.get("admin-toggle").fire("click");
     await settle();
-    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false], "open by itself");
+    assert.deepEqual(["admin", "venue-page", "seller"].map((id) => n.get(id).hidden), [false, false, false], "open by itself");
     assert.deepEqual(addressCard(n), {
         shown: true,
         venuesOpen: true,
@@ -11192,7 +11229,26 @@ test("Venues: three cards in /me's order, all shown, one size, each its name, no
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
     nodes.get("settings-tab-venues").fire("click");
-    assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-poshmark", "venue-ebay", "venue-craigslist"]);
-    assert.deepEqual(["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden), ["ebay", "craigslist", "poshmark"]);
+    assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-card-poshmark", "venue-card-ebay", "venue-card-craigslist"]);
+    assert.equal(nodes.get("venue-card-ebay-status").textContent, nodes.get("account-ebay").textContent, "the card says what the page says");
+    assert.equal(nodes.get("venue-page").hidden, true);
+    // a card: that venue's own page, Back above it, its block alone, Settings put away (Michal,
+    // 2026-10-31: "when clicking the venue card ... we GET the full venue options ... with a back button")
+    nodes.get("venue-card-craigslist").fire("click");
+    assert.deepEqual(["venue-back", "venue-page"].map((id) => nodes.get(id).hidden), [false, false]);
+    assert.equal(nodes.get("venue-page-heading").textContent, "craigslist");
+    assert.deepEqual(["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden), ["craigslist"]);
+    assert.equal(nodes.get("settings").hidden, true);
+    // eBay's: its policies with Edit, borrowed from Finish setting up
+    nodes.get("venue-back").fire("click");
+    assert.equal(nodes.get("venue-page").hidden, true);
+    assert.equal(nodes.get("settings").hidden, false);
+    nodes.get("venue-card-ebay").fire("click");
+    assert.deepEqual(["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden), ["ebay"]);
+    assert.ok(nodes.get("venue-policy-slot").children.includes(nodes.get("policy-block")));
+    // Admin closed: the page with it
+    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click");
+    assert.equal(nodes.get("venue-page").hidden, true);
 });
 

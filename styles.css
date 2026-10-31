@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.30.2") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.31.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1271,6 +1271,14 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 /* the three cards one size: each row as tall as the tallest (Michal, 2026-10-31) */
 .venue-blocks { display: grid; grid-auto-rows: 1fr; gap: 8px; margin-top: 8px; }
 .venue-block { padding: 12px 14px; }
+/* a venue's summary card under Venues: the whole card the way to its page (Michal, 2026-10-31) */
+.venue-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; font: inherit; color: var(--ink); border: none; cursor: pointer; }
+.venue-card .card-name { margin: 0 0 4px; }
+.venue-page .venue-full { display: grid; gap: 8px; }
+.venue-page .venue-block .venue-name { display: none; } /* the page's heading says it */
+.venue-page .address-card { margin-top: 14px; }
+.venue-page .policy-block { margin-top: 14px; }
+.venue-page .signup-policy-list { margin: 0 0 8px; }
 .venue-line { margin: 0; }
 .venue-line.ok { color: var(--ok); font-weight: 700; }
 /* a connected line that connects again when tapped (Michal, 2026-10-31) */

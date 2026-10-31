@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.30.2";
+import { VERSION } from "./version.js?v=2.31.0";
 import {
     adminLink,
     anyActive,
@@ -253,8 +253,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.30.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.2";
+} from "./core.js?v=2.31.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.31.0";
 import {
     addVenue,
     applyWrap,
@@ -307,8 +307,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.30.2";
-import { shrinkPhoto } from "./shrink.js?v=2.30.2";
+} from "./pc.js?v=2.31.0";
+import { shrinkPhoto } from "./shrink.js?v=2.31.0";
 import {
     bookCard,
     bookPriceValue,
@@ -321,8 +321,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.30.2";
-import { canScan, readIsbn } from "./scan.js?v=2.30.2";
+} from "./book.js?v=2.31.0";
+import { canScan, readIsbn } from "./scan.js?v=2.31.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -496,6 +496,8 @@ let folds = {};
  * an older server's 404, the fixed lines then), whether it was asked, Edit open and its draft.
  */
 const policies = { info: null, asked: false, editing: false, draft: null, busy: false, status: "" };
+/** The venue whose own page is open under Settings ("" none; Michal, 2026-10-31). */
+let venuePage = "";
 /** A sign-in just made on this phone: Admin's first open lands on Settings, Snap Account open. */
 let freshSignin = false;
 /** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
@@ -2543,6 +2545,11 @@ function fold(toggle, word, open) {
  * go on, and Close shows it as it now is.
  */
 function adminShown(open) {
+    // Admin put away: a venue's page with it, its policies back on Finish setting up
+    if (!open && venuePage) {
+        venuePage = "";
+        el.signupPolicySlot.append(el.policyBlock);
+    }
     el.admin.hidden = !open;
     showMessage();
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2610,6 +2617,8 @@ function showAdmin(open, card = "") {
         freshSignin = false;
         showSettings(true);
         showInventory(false);
+        // eBay to connect or the address to give: eBay's own page, where both are (2026-10-31)
+        if (step && !freshSignin) showVenue("ebay");
         return;
     }
     showSettings(false);
@@ -4791,17 +4800,38 @@ function showCard(on) {
  * (docs/UI.md).
  */
 function renderAdminPage() {
-    const page = !el.inventoryDetail.hidden || people.open;
+    const page = !el.inventoryDetail.hidden || people.open || !!venuePage;
     const ok = !!settings() && !adding;
     if (!ok) admin.inventoryOpen = false;
     el.inventoryToggle.hidden = page || !ok;
-    el.inventory.hidden = !admin.inventoryOpen || people.open;
+    el.inventory.hidden = !admin.inventoryOpen || people.open || !!venuePage;
     el.settingsToggle.hidden = page;
     el.settings.hidden = page || !settingsOpen;
     el.people.hidden = !people.open;
     // each page's Back above its card, on the page's ground (Michal, 2026-10-31)
-    el.inventoryBack.hidden = el.inventoryDetail.hidden || people.open;
+    el.inventoryBack.hidden = el.inventoryDetail.hidden || people.open || !!venuePage;
     el.peopleBack.hidden = !people.open;
+    el.venueBack.hidden = !venuePage;
+    el.venuePage.hidden = !venuePage;
+}
+
+/**
+ * A venue's own page (Michal, 2026-10-31), as the People page is: Back above the grey card, the
+ * venue's name, its block (status, Connect, its sync pair), the address where you ship from
+ * where the venue uses one, and on eBay's the policies with their Edit, borrowed from Finish
+ * setting up's step 3. `venue` "" closes it.
+ */
+function showVenue(venue) {
+    venuePage = venue;
+    el.venuePageHeading.textContent = venue;
+    if (venue === "ebay") {
+        el.venuePolicySlot.append(el.policyBlock);
+        loadPolicies().catch(() => {});
+    } else el.signupPolicySlot.append(el.policyBlock);
+    renderExtras();
+    renderVenues();
+    renderSeller();
+    if (venue && typeof globalThis.window.scrollTo === "function") globalThis.window.scrollTo({ top: 0 });
 }
 
 // --- Admin's Feedback and Stats ---------------------------------------------------------
@@ -4814,7 +4844,7 @@ function renderAdminPage() {
  */
 function renderExtras() {
     renderAdminPage();
-    const card = !el.inventoryDetail.hidden || people.open || !settings() || adding;
+    const card = !el.inventoryDetail.hidden || people.open || !!venuePage || !settings() || adding;
     el.feedbackToggle.hidden = card;
     el.feedback.hidden = card || !extras.feedback;
     // an admin's new entries, counted in the toggle and listed above the box
@@ -5267,7 +5297,8 @@ async function loadPolicies() {
  */
 function renderPolicies() {
     const info = policies.info;
-    const connected = signupStep(me) === "address";
+    const ebay = ebayNow();
+    const connected = !!ebay && ebay.connected;
     el.signupPolicyList.replaceChildren(
         ...policyLinesOf(info).map((line) => {
             const li = document.createElement("li");
@@ -5344,6 +5375,8 @@ async function savePolicies() {
     const pc = settings();
     if (!pc || !policies.info || policies.busy) return;
     const changes = policyChanges(policies.info, policies.draft);
+    // a cost only with a flat rate: calculated shipping has none (the server refuses one)
+    if (policies.draft.shipping_cost_type !== "FLAT_RATE") delete changes.shipping_cost;
     if (!Object.keys(changes).length) {
         policies.editing = false;
         policies.status = "";
@@ -5428,6 +5461,8 @@ function paintConnect(btn, connected, user) {
 /** The address card, at the end of Venues, on screen: step 2 of a new account, the way back from eBay. */
 function openSeller() {
     openFold("venues");
+    // the address lives on eBay's own page (2026-10-31)
+    showVenue("ebay");
     renderAccount();
     if (typeof el.seller.scrollIntoView === "function") el.seller.scrollIntoView({ block: "start" });
 }
@@ -5501,17 +5536,25 @@ function renderAccount() {
 function renderVenues() {
     const ebay = ebayNow();
     const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
-    el.venues.replaceChildren(...order.map((v) => el.venueBlocks[v].block));
+    // the Venues part: one summary card per venue, in /me's order; the open venue's page its block
+    el.venues.replaceChildren(...order.map((v) => el.venueCards[v].card));
     for (const venue of VENUES) {
         const block = el.venueBlocks[venue];
+        const card = el.venueCards[venue];
+        block.block.hidden = venue !== venuePage;
         const words = settings() ? venueBlockLine(venue, me, ebay, seller.ready) : "";
-        block.status.textContent = words;
-        block.status.hidden = !words;
-        block.status.classList.toggle("ok", !!words && (venue !== "ebay" ? venueAllowed(me, venue) : !!ebay && ebay.connected));
+        const ok = !!words && (venue !== "ebay" ? venueAllowed(me, venue) : !!ebay && ebay.connected);
+        for (const line of [block.status, card.status]) {
+            line.textContent = words;
+            line.hidden = !words;
+            line.classList.toggle("ok", ok);
+        }
         const allowed = venueAllowed(me, venue);
         const ships = allowed ? shipsFromLine(venue, seller.info) : "";
-        block.ships.textContent = ships;
-        block.ships.hidden = !ships;
+        for (const line of [block.ships, card.ships]) {
+            line.textContent = ships;
+            line.hidden = !ships;
+        }
         if (venue === "ebay") {
             const connected = !!ebay && ebay.connected;
             el.accountConnect.hidden = !ebay || connected;
@@ -5551,7 +5594,8 @@ function renderVenues() {
  */
 function renderSeller() {
     const info = seller.info;
-    el.seller.hidden = !info;
+    // on a venue's own page, for a venue that uses an address (Poshmark uses none)
+    el.seller.hidden = !info || !venuePage || (Array.isArray(info.uses && info.uses[venuePage]) && !info.uses[venuePage].length);
     if (!info) return;
     const note = sellerLine(info, ebayNow());
     el.sellerNote.textContent = note || (info.editable ? "" : ADDRESS_ON_SERVER);
@@ -5685,7 +5729,11 @@ async function loadSeller() {
             seller.same = info.same;
             fillSeller(info);
             if (!info.same) drawAddressVenues(info);
-            if (sellerLine(info, ebayNow())) selectFold("venues");
+            if (sellerLine(info, ebayNow())) {
+                selectFold("venues");
+                // the address it asks for is on eBay's own page (2026-10-31)
+                if (!el.admin.hidden && !venuePage) showVenue("ebay");
+            }
             const ebay = ebayNow();
             if (ebay && ebay.policies === "pending") pollPolicies(true);
             // a new account whose address came all there from eBay: /me again, for the goods screen
@@ -7136,6 +7184,15 @@ function main() {
         accountConnect: $("account-connect"),
         accountReconnect: $("account-reconnect"),
         venues: $("venues"),
+        venueCards: Object.fromEntries(
+            VENUES.map((v) => [v, { card: $(`venue-card-${v}`), status: $(`venue-card-${v}-status`), ships: $(`venue-card-${v}-ships`) }])
+        ),
+        venueBack: $("venue-back"),
+        venuePage: $("venue-page"),
+        venuePageHeading: $("venue-page-heading"),
+        venuePolicySlot: $("venue-policy-slot"),
+        signupPolicySlot: $("signup-policy-slot"),
+        policyBlock: $("policy-block"),
         venueBlocks: Object.fromEntries(
             VENUES.map((v) => [
                 v,
@@ -7531,6 +7588,9 @@ function main() {
     el.venueBlocks.ebay.status.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") again();
     });
+    // a venue's card: its own page; Back: the Venues part again (Michal, 2026-10-31)
+    for (const venue of VENUES) el.venueCards[venue].card.addEventListener("click", () => showVenue(venue));
+    el.venueBack.addEventListener("click", () => showVenue(""));
     // a venue the account lacks: Ask for it in Feedback opens the Feedback fold
     for (const venue of VENUES) {
         const ask = el.venueBlocks[venue].ask;

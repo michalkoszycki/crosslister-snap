@@ -191,7 +191,7 @@ saved), and the phone remembers which were left open.
    you, open Settings and sign out all other devices"); removing a member ends their
    sessions, leaving ends your own, deleting the account ends all. Keys stay for the
    admin and scripts only; a family member is a member by email.
-2. **Venues.** One white card per venue (ebay, craigslist, poshmark, in `/me.venues` order),
+2. **Venues.** A card is tapped to open that venue's own page (Michal, 2026-10-31: "when clicking the venue card ... we GET the full venue options as during signup ... with a back button"): "← Back to settings" above a grey card, the venue's name as its heading, its block (status, Connect, the sync pair), the address where you ship from where the venue uses one, and on eBay's the policies with Edit (the same as Finish setting up's step 3); Admin opens eBay's page by itself while eBay is to be connected or the address given. Under Venues itself: one white card per venue (ebay, craigslist, poshmark, in `/me.venues` order),
    all shown, each as tall as the tallest, no chip row (Michal, 2026-10-31: "eliminate the venue
    buttons at the top. instead provide 3 cards for the venues ... same size with same options").
    Each card the same shape: the venue's name first, then its status line ("Connected" for

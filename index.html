@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.30.2">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.30.2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.31.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.31.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -167,6 +167,8 @@
            setups spelled out here"): POLICY_LINES, the ones Settings lists under the address -->
       <li id="signup-step-policies" class="signup-step">
         <span class="signup-word">Snap sets up on your eBay account</span>
+        <div id="signup-policy-slot">
+        <div id="policy-block" class="policy-block">
         <ul id="signup-policy-list" class="signup-policy-list"></ul>
         <!-- Edit (Michal, 2026-10-31): each choice as a menu, Save back to the list as it was
              (app.js; GET/PATCH /me/policies); none for the admin's, set on the server -->
@@ -207,6 +209,8 @@
         </div>
         <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit</button>
         <p id="policy-status" class="small account-status" aria-live="polite"></p>
+        </div>
+        </div>
       </li>
     </ol>
     <p id="signup-status" class="landing-status" aria-live="polite"></p>
@@ -499,70 +503,22 @@
              (Michal, 2026-10-31: "eliminate the venue buttons at the top. instead provide 3
              cards for the venues") -->
         <div id="venues" class="venue-blocks">
-          <div id="venue-ebay" class="card venue-block">
-            <p class="card-name venue-name">ebay</p>
-            <p id="account-ebay" class="small venue-line" hidden></p>
-            <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
-            <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
-            <!-- connected, the status line above says so and Connect eBay goes; this is the way
-                 to eBay's consent again, for a token eBay let lapse (app.js) -->
-            <button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect</button>
-            <p id="venue-ebay-note" class="small venue-note" hidden></p>
-            <div id="venue-ebay-sync" class="venue-sync"></div>
-            <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
-            <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
-          </div>
-          <div id="venue-craigslist" class="card venue-block">
-            <p class="card-name venue-name">craigslist</p>
-            <p id="venue-craigslist-status" class="small venue-line"></p>
-            <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
-            <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
-            <div id="venue-craigslist-sync" class="venue-sync"></div>
-            <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
-            <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
-          </div>
-          <div id="venue-poshmark" class="card venue-block">
-            <p class="card-name venue-name">poshmark</p>
-            <p id="venue-poshmark-status" class="small venue-line"></p>
-            <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
-            <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
-            <div id="venue-poshmark-sync" class="venue-sync"></div>
-            <p id="sync-poshmark-status" class="sync-status" aria-live="polite"></p>
-            <p id="venue-poshmark-cannot" class="small venue-note" hidden></p>
-          </div>
-        </div>
-        <!-- last under Venues (Michal, 2026-10-26: "the address box should be at the end of
-             venues"), no card of its own, in line with the venue block's inner text (2026-10-31):
-             the address where you ship from, from GET /me/address, typed as ONE line ("1234 W
-             Example St, Chicago, IL 60637", split at the commas by app.js) for every venue or, the
-             tick off, one line per venue that uses an address (Michal, 2026-10-25); then one row,
-             Save address and the Same address for every venue tick, last -->
-        <div id="seller" class="address-card" hidden>
-          <p class="card-name">Address where you ship from</p>
-          <!-- why the fold opened by itself: eBay connected and the address not all there, or
-               where a prefilled one came from (Michal, 2026-10-08) -->
-          <p id="seller-note" class="small seller-note" hidden></p>
-          <div id="address-shared" class="address-block">
-            <input id="seller-line" class="small-input" type="text" autocomplete="off" autocapitalize="words"
-                   spellcheck="false" aria-label="Address where you ship from" placeholder="Street, city, state ZIP">
-          </div>
-          <!-- unticked: one line per venue that uses an address, its name its label, drawn by app.js -->
-          <div id="address-venues" class="address-venues" hidden></div>
-          <!-- what Snap sets up on her eBay once the address is in, while it is being given
-               (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
-               policies, after connecting eBay"); the lines are POLICY_LINES in core.js -->
-          <div id="seller-policies" class="seller-policies" hidden>
-            <p class="seller-policies-head">Snap will set up on your eBay account:</p>
-            <ul id="seller-policy-list" class="seller-policy-list"></ul>
-          </div>
-          <div class="address-row">
-            <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
-            <label class="pickup">
-              <input id="address-same" type="checkbox" checked>
-              <span>Same address for every venue</span>
-            </label>
-          </div>
-          <p id="seller-status" class="small account-status" aria-live="polite"></p>
+          <!-- one card per venue, a tap its own page (Michal, 2026-10-31) -->
+          <button type="button" id="venue-card-ebay" class="card venue-block venue-card">
+            <span class="card-name venue-name">ebay</span>
+            <span id="venue-card-ebay-status" class="small venue-line"></span>
+            <span id="venue-card-ebay-ships" class="small venue-ships"></span>
+          </button>
+          <button type="button" id="venue-card-craigslist" class="card venue-block venue-card">
+            <span class="card-name venue-name">craigslist</span>
+            <span id="venue-card-craigslist-status" class="small venue-line"></span>
+            <span id="venue-card-craigslist-ships" class="small venue-ships"></span>
+          </button>
+          <button type="button" id="venue-card-poshmark" class="card venue-block venue-card">
+            <span class="card-name venue-name">poshmark</span>
+            <span id="venue-card-poshmark-status" class="small venue-line"></span>
+            <span id="venue-card-poshmark-ships" class="small venue-ships"></span>
+          </button>
         </div>
 
       </div>
@@ -720,6 +676,77 @@
       <div id="stats-table" class="stats-table"></div>
       <!-- Michal, 2026-10-08: "I don't understand the jobs count on the stats." -->
       <p id="stats-note" class="small stats-note">Actions: every press that reached the server (a posting per venue, an end, a refresh, a push, a sync). Posted: listings that went up. Drafted: items the model wrote up.</p>
+    </div>
+
+    <!-- a venue's own page (Michal, 2026-10-31: "when clicking the venue card ... we GET the full
+         venue options as during signup. these show again in the style of the invenotry card. and
+         with a back button"): Back on the page's ground, the grey card with the venue's block,
+         the address where it uses one, and eBay's policies with their Edit (app.js) -->
+    <button type="button" id="venue-back" class="link back-link" hidden>← Back to settings</button>
+    <div id="venue-page" class="card inventory venue-page" hidden>
+      <h2 id="venue-page-heading" class="detail-heading"></h2>
+      <div id="venue-full" class="venue-full">
+        <div id="venue-ebay" class="card venue-block">
+          <p class="card-name venue-name">ebay</p>
+          <p id="account-ebay" class="small venue-line" hidden></p>
+          <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
+          <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
+          <!-- connected, the status line above says so and Connect eBay goes; this is the way
+               to eBay's consent again, for a token eBay let lapse (app.js) -->
+          <button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect</button>
+          <p id="venue-ebay-note" class="small venue-note" hidden></p>
+          <div id="venue-ebay-sync" class="venue-sync"></div>
+          <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
+          <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
+        </div>
+        <div id="venue-craigslist" class="card venue-block">
+          <p class="card-name venue-name">craigslist</p>
+          <p id="venue-craigslist-status" class="small venue-line"></p>
+          <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
+          <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
+          <div id="venue-craigslist-sync" class="venue-sync"></div>
+          <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
+          <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
+        </div>
+        <div id="venue-poshmark" class="card venue-block">
+          <p class="card-name venue-name">poshmark</p>
+          <p id="venue-poshmark-status" class="small venue-line"></p>
+          <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
+          <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
+          <div id="venue-poshmark-sync" class="venue-sync"></div>
+          <p id="sync-poshmark-status" class="sync-status" aria-live="polite"></p>
+          <p id="venue-poshmark-cannot" class="small venue-note" hidden></p>
+        </div>
+      </div>
+      <div id="seller" class="address-card" hidden>
+        <p class="card-name">Address where you ship from</p>
+        <!-- why the fold opened by itself: eBay connected and the address not all there, or
+             where a prefilled one came from (Michal, 2026-10-08) -->
+        <p id="seller-note" class="small seller-note" hidden></p>
+        <div id="address-shared" class="address-block">
+          <input id="seller-line" class="small-input" type="text" autocomplete="off" autocapitalize="words"
+                 spellcheck="false" aria-label="Address where you ship from" placeholder="Street, city, state ZIP">
+        </div>
+        <!-- unticked: one line per venue that uses an address, its name its label, drawn by app.js -->
+        <div id="address-venues" class="address-venues" hidden></div>
+        <!-- what Snap sets up on her eBay once the address is in, while it is being given
+             (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
+             policies, after connecting eBay"); the lines are POLICY_LINES in core.js -->
+        <div id="seller-policies" class="seller-policies" hidden>
+          <p class="seller-policies-head">Snap will set up on your eBay account:</p>
+          <ul id="seller-policy-list" class="seller-policy-list"></ul>
+        </div>
+        <div class="address-row">
+          <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+          <label class="pickup">
+            <input id="address-same" type="checkbox" checked>
+            <span>Same address for every venue</span>
+          </label>
+        </div>
+        <p id="seller-status" class="small account-status" aria-live="polite"></p>
+      </div>
+      <!-- eBay's policies, the same block Finish setting up shows as its step 3, moved here -->
+      <div id="venue-policy-slot" class="venue-policy-slot"></div>
     </div>
 
     <!-- The People page (Michal, 2026-10-25: "let it be a simple separate page"), in Admin's
@@ -1039,6 +1066,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.30.2"></script>
+<script type="module" src="app.js?v=2.31.0"></script>
 </body>
 </html>
