@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.42.3";
+import { VERSION } from "./version.js?v=2.42.4";
 import {
     adminLink,
     anyActive,
@@ -260,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.42.3";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.3";
+} from "./core.js?v=2.42.4";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.4";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.42.3";
-import { shrinkPhoto } from "./shrink.js?v=2.42.3";
+} from "./pc.js?v=2.42.4";
+import { shrinkPhoto } from "./shrink.js?v=2.42.4";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.42.3";
-import { canScan, readIsbn } from "./scan.js?v=2.42.3";
+} from "./book.js?v=2.42.4";
+import { canScan, readIsbn } from "./scan.js?v=2.42.4";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5489,6 +5489,8 @@ function renderPolicies() {
     choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
     el.policySave.disabled = policies.busy;
+    el.policyReset.hidden = !(info.defaults && typeof info.defaults === "object");
+    el.policyReset.disabled = policies.busy;
 }
 
 /**
@@ -5633,6 +5635,26 @@ function choiceRow(node, choices, chosen, pick) {
             return chip;
         })
     );
+}
+
+/**
+ * Reset to defaults (Michal, 2026-10-31): the server's defaults (GET /me/policies "defaults") in
+ * the draft, each one it gives; nothing sent until Save.
+ */
+function resetPolicies() {
+    const d = policies.draft;
+    const dft = policies.info && policies.info.defaults;
+    if (!d || !dft || typeof dft !== "object") return;
+    for (const key of ["shipping_cost_type", "handling_days", "return_days", "return_shipping_paid_by", "local_pickup"]) {
+        if (key in dft) d[key] = dft[key];
+    }
+    const ship = Array.isArray(dft.shipping) ? dft.shipping.filter((r) => r && typeof r.service === "string") : [];
+    if (ship.length) {
+        if (Array.isArray(d.shipping)) d.shipping = ship.map((r) => ({ service: r.service, cost: typeof r.cost === "string" ? r.cost : null }));
+        else d.shipping_service = ship[0].service;
+    }
+    policies.status = "";
+    renderPolicies();
 }
 
 /** Edit tapped: the choices as menus, a draft of them as they are. */
@@ -7578,6 +7600,7 @@ function main() {
         policyPayer: $("policy-payer"),
         policyPickup: $("policy-pickup"),
         policySave: $("policy-save"),
+        policyReset: $("policy-reset"),
         policiesOk: $("signup-policies-ok"),
         policyPick: $("policy-pick"),
         policyPartWords: $("policy-part-words"),
@@ -7966,6 +7989,7 @@ function main() {
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
     // step 3's Edit, its menus and Save (Michal, 2026-10-31)
     el.policiesEdit.addEventListener("click", editPolicies);
+    el.policyReset.addEventListener("click", resetPolicies);
     el.policyPick.addEventListener("change", () => {
         policies.part = el.policyPick.value;
         renderPolicies();

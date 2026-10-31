@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.42.3">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.42.3" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.42.4">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.42.4" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -230,6 +230,8 @@
           </div>
           </div>
           <button type="button" id="policy-save" class="secondary policy-save">Save</button>
+          <!-- the server's defaults back in the menus; Save keeps them (Michal, 2026-10-31) -->
+          <button type="button" id="policy-reset" class="secondary" hidden>Reset to defaults</button>
         </div>
         <!-- agreed to as it is (Michal, 2026-10-31: "if someone reads and likes what it is - they
              will just go ahead without editing"): POST /me/policies/confirm, then the goods screen -->
@@ -1143,6 +1145,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.42.3"></script>
+<script type="module" src="app.js?v=2.42.4"></script>
 </body>
 </html>

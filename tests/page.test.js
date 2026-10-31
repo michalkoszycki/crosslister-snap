@@ -7546,6 +7546,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-payer-row",
         "policy-payer",
         "policy-save",
+        "policy-reset",
         "signup-policies-ok",
         "signup-policies-edit",
         "policy-status",
@@ -10082,7 +10083,12 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     await settle();
     assert.deepEqual(pc.policySaves.at(-1), { handling_days: 2 });
     // Free shipping, from a server that offers it (Michal, 2026-10-31): no price boxes, no costs sent
-    pc.policies = { ...pc.policies, cost_types: ["CALCULATED", "FLAT_RATE", "FREE"] };
+    pc.policies = {
+        ...pc.policies,
+        cost_types: ["CALCULATED", "FLAT_RATE", "FREE"],
+        defaults: { shipping: [{ service: "USPSParcel", cost: null }], shipping_cost_type: "CALCULATED", handling_days: 3, return_days: 30, return_shipping_paid_by: "BUYER", local_pickup: true },
+    };
+    assert.equal(n.get("policy-reset").hidden, true, "no Reset from a server without defaults");
     const free = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
     await settle();
     free.nodes.get("signup-policies-edit").fire("click");
@@ -10093,6 +10099,14 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     free.nodes.get("policy-save").fire("click");
     await settle();
     assert.deepEqual(pc.policySaves.at(-1), { shipping_cost_type: "FREE" }, "the costs go with the type");
+    // Reset to defaults: the server's in the menus, Save keeps them (Michal, 2026-10-31)
+    free.nodes.get("signup-policies-edit").fire("click");
+    assert.equal(free.nodes.get("policy-reset").hidden, false);
+    free.nodes.get("policy-reset").fire("click");
+    assert.deepEqual(free.nodes.get("policy-cost-type").children.map((c) => c.attrs["aria-pressed"]), ["true", "false", "false"]);
+    free.nodes.get("policy-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.policySaves.at(-1), { shipping_cost_type: "CALCULATED", handling_days: 3, local_pickup: true });
     // more services than eBay takes: the rest wait greyed, and it says so
     pc.policies = { ...pc.policies, max_services: 1 };
     const one = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
