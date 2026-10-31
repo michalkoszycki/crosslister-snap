@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.25.0";
+import { VERSION } from "./version.js?v=2.26.0";
 import {
     adminLink,
     anyActive,
@@ -241,8 +241,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.25.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.25.0";
+} from "./core.js?v=2.26.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.26.0";
 import {
     addVenue,
     applyWrap,
@@ -293,8 +293,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.25.0";
-import { shrinkPhoto } from "./shrink.js?v=2.25.0";
+} from "./pc.js?v=2.26.0";
+import { shrinkPhoto } from "./shrink.js?v=2.26.0";
 import {
     bookCard,
     bookPriceValue,
@@ -307,8 +307,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.25.0";
-import { canScan, readIsbn } from "./scan.js?v=2.25.0";
+} from "./book.js?v=2.26.0";
+import { canScan, readIsbn } from "./scan.js?v=2.26.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
