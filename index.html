@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.38.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.38.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.39.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.39.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -188,11 +188,11 @@
           <div class="field">
             <span id="policy-ship-label" class="field-label">Shipping</span>
             <select id="policy-service" class="policy-select" aria-labelledby="policy-ship-label"></select>
-            <!-- a row per service the buyer picks from, its own flat rate (Michal, 2026-10-31:
-                 "isnt there a way buyer chooses?"); a server with one service: the menu above -->
+            <!-- Shipping options - buyer picks: Check all, then a box per service, a ticked one's flat
+                 rate beside it (Michal, 2026-10-31: "provide them as a checkbox list. and first
+                 checkbox should be 'check all'"); a server with one service: the menu above -->
             <div id="policy-ship-list" class="policy-ship-list" hidden></div>
-            <p id="policy-ship-note" class="small policy-ship-note" hidden>The buyer picks one at checkout.</p>
-            <button type="button" id="policy-ship-add" class="link policy-ship-add" hidden>Add a service the buyer can pick</button>
+            <p id="policy-ship-note" class="small policy-ship-note" hidden></p>
           </div>
           <div class="field">
             <span class="field-label">Shipping cost</span>
@@ -1123,6 +1123,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.38.0"></script>
+<script type="module" src="app.js?v=2.39.0"></script>
 </body>
 </html>

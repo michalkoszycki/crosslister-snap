@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.38.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.39.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1203,6 +1203,10 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* a row per service the buyer picks from: its menu, its flat rate, its remove (2026-10-31) */
 .policy-ship-list { display: grid; gap: 8px; }
+/* a service's box and, ticked with a flat rate, its price beside it (Michal, 2026-10-31) */
+.ship-check { display: flex; align-items: center; gap: 8px; }
+.ship-check .pickup { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.policy-editor .ship-check input[type="text"].policy-cost { flex: none; width: 6.5em; }
 .ship-row { display: flex; gap: 8px; align-items: center; }
 .ship-row .policy-select { flex: 1 1 auto; width: auto; min-width: 0; }
 .policy-editor .ship-row input[type="text"].policy-cost { flex: none; width: 6.5em; }
