@@ -1526,6 +1526,21 @@ export function venueAllowed(me, venue) {
     return venue !== "craigslist" || !me || me.craigslist !== false;
 }
 
+/**
+ * Whether this account may list books (Michal, 2026-10-31: "for anyone other then me the
+ * admin the book thing should be all grayed out and minimal. with a link to request in
+ * feedback"): the admin's alone. No answer from GET /me (an older server's 404, or before it
+ * comes) is everything as before, as venueAllowed does.
+ * @param {{admin?:boolean} | null} me
+ * @returns {boolean}
+ */
+export function booksAllowed(me) {
+    return !me || me.admin !== false;
+}
+
+/** What Feedback's box holds when the book chip's link opened it. */
+export const BOOKS_ASK = "I would like to list books.";
+
 /** A dismissed home-screen banner stays away this long. */
 export const INSTALL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -2011,7 +2026,11 @@ export function snapWord(state, { earlier = false } = {}) {
  * @returns {{text: string, label: string}}
  */
 export function adminLink(open) {
-    return open ? { text: "Snap", label: "Snap: close Admin and go back to snapping" } : { text: "Admin", label: "" };
+    // closed: three dots in a row, the way apps open their menu, heard as "Admin" (Michal,
+    // 2026-10-31, on the live mock: "make 3 dots typical of apps instead of 'Admin'")
+    return open
+        ? { text: "Snap", label: "Snap: close Admin and go back to snapping", dots: false }
+        : { text: "", label: "Admin", dots: true };
 }
 
 /**
@@ -4071,14 +4090,27 @@ export function inventoryRows(answer) {
 }
 
 /**
- * The line under the search box once the PC answered.
+ * The line under the inventory's heading once the PC answered: only what the count after
+ * the heading cannot say (inventoryHeading), none for an ordinary list.
  * @param {number} n rows in the answer
  * @returns {string}
  */
 export function inventoryCount(n) {
     if (n === 0) return "No listings match.";
     if (n >= INVENTORY_LIMIT) return `The newest ${n} listings; search to narrow them.`;
-    return n === 1 ? "1 listing" : `${n} listings`;
+    return "";
+}
+
+/**
+ * The inventory foldout's word: the number of listings after it once the PC answered
+ * (Michal, 2026-10-31: "put the number of listings after the Inventory on top"), "+" after
+ * a list cut at the limit; the word alone before.
+ * @param {number|null} n rows in the answer, null before one
+ * @returns {string}
+ */
+export function inventoryHeading(n) {
+    if (n === null) return "Inventory";
+    return n >= INVENTORY_LIMIT ? `Inventory ${n}+` : `Inventory ${n}`;
 }
 
 /**

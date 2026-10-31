@@ -64,8 +64,10 @@
   <span id="header-user" class="header-user" hidden></span>
   <div class="header-right">
     <span id="server" class="server" aria-live="polite"></span>
-    <button type="button" id="admin-toggle" class="link" aria-expanded="false"
-            aria-controls="admin">Admin</button>
+    <!-- three dots in a row while Admin is closed, heard as "Admin"; "Snap" while it is
+         open (adminLink in core.js; Michal, 2026-10-31) -->
+    <button type="button" id="admin-toggle" class="link" aria-label="Admin" aria-expanded="false"
+            aria-controls="admin"><svg class="dots" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2.25"/><circle cx="12" cy="12" r="2.25"/><circle cx="19" cy="12" r="2.25"/></svg></button>
   </div>
 </header>
 
@@ -188,6 +190,10 @@
     <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
     <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
   </div>
+  <!-- books are the admin's (Michal, 2026-10-31): anyone else's book chip is grey, and its tap
+       says so here, with the way to ask (app.js) -->
+  <p id="books-off" class="small books-off" hidden>Books are not open for your account yet.
+    <button type="button" id="books-ask" class="link books-ask">Ask for it in Feedback</button></p>
 
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
     You are offline. Photos wait on this page and go to the server when you are back.
@@ -205,20 +211,21 @@
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="inventory">▸ Inventory</button>
     <div id="inventory" class="card inventory" hidden>
-      <!-- the list: the search, then Options (the two filters, the sort, the photos or not),
-           then one row per listing. Michal, 2026-10-08: "Inventory list options need to be all
-           small, and also locked away inside a foldout tab 'Options'": the search stays out,
-           small; the rest folds away, folded until he opens it (app.js remembers which) -->
+      <!-- the list: the line of what the count cannot say, then Filters (the search, the two
+           filters, the sort, the photos or not), then one row per listing. Michal, 2026-10-08:
+           "Inventory list options need to be all small, and also locked away inside a foldout
+           tab 'Options'"; 2026-10-31: "move the search to Options. so it is hidden at first.
+           and change Options to 'Filters'". Folded until he opens it (app.js remembers which) -->
       <div id="inventory-browse">
-        <label class="field field-small">
-          <span class="field-label">Search</span>
-          <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
-                 autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
-        </label>
         <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
         <button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"
-                aria-controls="options">▸ Options</button>
+                aria-controls="options">▸ Filters</button>
         <div id="options" class="options" hidden>
+          <label class="field field-small">
+            <span class="field-label">Search</span>
+            <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
+          </label>
           <div class="field">
             <span class="field-label">Venue</span>
             <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue">
@@ -460,21 +467,6 @@
             <p id="sync-poshmark-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-poshmark-cannot" class="small venue-note" hidden></p>
           </div>
-        </div>
-        <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
-             (Michal, 2026-10-07), the one sync symbol throughout (2026-10-31): copied by app.js
-             after the words of a venue block's Sync from (the from half) and Sync to (the to
-             half), and into an inventory row's sync badge: to the top arc, left to right, its
-             arrow pointing right; from the bottom arc, right to left, its arrow pointing left -->
-        <div class="sync-icons" hidden>
-          <span id="sync-from-icon" class="btn-icon"><svg
-              aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.5"></path><path
-              d="M6 22v-4.5h4.5"></path></svg></span>
-          <span id="sync-to-icon" class="btn-icon"><svg
-              aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.5"></path><path
-              d="M18 2v4.5h-4.5"></path></svg></span>
         </div>
         <!-- last under Venues (Michal, 2026-10-26: "the address box should be at the end of
              venues"), no card of its own, in line with the venue block's inner text (2026-10-31):

@@ -186,7 +186,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     // Michal, 2026-10-06: "Admin which would replace Settings ... settings and inventory
     // would be a foldout in the admin section ... all the cards are different foldouts";
     // docs/UI.md (2026-10-22/25): no title, Inventory first, Settings as five folds of its own
-    assert.match(html, /id="admin-toggle"[^>]*aria-controls="admin">Admin</);
+    // three dots heard as Admin (Michal, 2026-10-31)
+    assert.match(html, /id="admin-toggle"[^>]*aria-label="Admin"[^>]*aria-controls="admin"><svg class="dots"/);
     assert.ok(!html.includes('id="settings-close"'), "Close is Admin's now");
     assert.ok(!html.includes('id="admin-title"'), "Admin has no title (docs/UI.md)");
     const admin = /<section id="admin"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
@@ -196,13 +197,15 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "inventory-toggle",
         "inventory",
         "inventory-browse",
-        "inventory-search",
-        // the status line right under the search box: the count, or the server's trouble
+        // the line under the heading: what the count after "Inventory" cannot say, or the
+        // server's trouble
         "inventory-status",
         // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked
-        // away inside a foldout tab 'Options'": the chips and Show photos, the search left out
+        // away inside a foldout tab 'Options'"; 2026-10-31: "move the search to Options. so it
+        // is hidden at first. and change Options to 'Filters'"
         "options-toggle",
         "options",
+        "inventory-search",
         "inventory-venue",
         "inventory-venue-all",
         "inventory-venue-ebay",
@@ -324,10 +327,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
             `sync-${v}-status`,
             `venue-${v}-cannot`,
         ]),
-        // the two halves of the sync symbol (Michal, 2026-10-07), after a sync button's words
-        // and in a row's sync badge
-        "sync-from-icon",
-        "sync-to-icon",
         // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
         // venues"): the shared block, the venues' blocks
         "seller",
@@ -442,9 +441,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
     // Show photos: on by default, a pill row of its own after the sort chips, the last of Options
     assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
-    // Options folded by default, in customize's pattern; the search small, out of it
-    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Options<\/button>\s*<div id="options" class="options" hidden>/);
-    assert.match(html, /<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
+    // Filters folded by default, in customize's pattern; the search small, first inside it
+    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Filters<\/button>\s*<div id="options" class="options" hidden>\s*<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
     assert.match(html, /<button type="button" id="inventory-back" class="link back-link">← Back to inventory</);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
@@ -457,19 +455,17 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(custom, /<label class="field-label" for="detail-pricing">Price<\/label>/);
     assert.match(custom, /<input id="detail-pricing" class="pricing" type="range" min="1" max="3" step="1"/);
     assert.ok(!/without asking|auto-post|post the item again/i.test(custom), "no post without asking, no read-only grade");
-    // the two halves of the sync symbol on one 24-unit box, hidden from a screen reader, kept
-    // out of sight for app.js to copy into a row's sync badge (Michal, 2026-10-07): to the top
-    // arc, its arrow at the right; from the bottom arc, its arrow at the left
-    const icons = /<div class="sync-icons" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
-    const icon = (id) =>
-        new RegExp(`<span id="${id}" class="btn-icon"><svg\\s+aria-hidden="true" viewBox="0 0 24 24"[^>]*stroke="currentColor"[^>]*>([\\s\\S]*?)</svg></span>`).exec(icons);
-    assert.match(icon("sync-to-icon")[1], /<path d="M4 12a8 8 0 0 1 14-5\.5"><\/path>/);
-    assert.match(icon("sync-from-icon")[1], /<path d="M20 12a8 8 0 0 1-14 5\.5"><\/path>/);
+    // no drawn sync symbol any more: the font's arrows, made by app.js (Michal, 2026-10-31)
+    assert.ok(!html.includes("sync-icons"), "no hidden sync halves to copy");
     // a venue block's sync row: empty in the page, both buttons drawn by app.js
     for (const v of ["ebay", "craigslist", "poshmark"]) assert.match(html, new RegExp(`<div id="venue-${v}-sync" class="venue-sync"></div>`));
-    // the half of the sync symbol after a sync button's words out of sight while its ring turns;
-    // no round arrow any more (Michal, 2026-10-31: the page's own icons, the one sync symbol)
-    assert.match(css, /button\.vbadge\.busy \.btn-icon \{ display: none; \}/);
+    // the arrow after a sync button's words out of sight while its ring turns, and every state
+    // a listed badge's height (Michal, 2026-10-31): no tall minimum, the cancel note on the line
+    assert.match(css, /button\.vbadge\.busy \.sync-dir \{ display: none; \}/);
+    const vbadge = /\nbutton\.vbadge \{([^}]*)\}/.exec(css)[1];
+    assert.ok(!vbadge.includes("min-height"), "no taller than a listed badge");
+    assert.match(css, /button\.vbadge\.busy \{ flex-wrap: nowrap; \}/);
+    assert.match(css, /button\.vbadge \.tap-cancel \{ flex-basis: auto;/);
     assert.ok(!css.includes("sync-arrow"), "no ↻");
     // the sync buttons' green with black words
     assert.match(css, /\.vbadge\.posted\.sync-call \{ color: #0b0b0b; \}/);
@@ -2065,13 +2061,13 @@ test("the header link says Snap while Admin is open, and its tap goes back to sn
     link.fire("click");
     assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("work").hidden, false);
-    assert.deepEqual(says(), ["Admin", null, "false"]);
+    assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
     // Close says the same
     link.fire("click");
     await settle();
     assert.equal(link.textContent, "Snap");
     nodes.get("admin-close").fire("click");
-    assert.deepEqual(says(), ["Admin", null, "false"]);
+    assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
 });
 
 // --- Admin: Settings and the inventory (Michal, 2026-10-06) ------------------------------
@@ -2416,7 +2412,9 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     assert.equal(nodes.get("inventory-status").textContent, "Asking the server...");
     await settle();
     assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
-    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+    // the count after the heading (Michal, 2026-10-31), nothing more under it
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
+    assert.equal(nodes.get("inventory-status").textContent, "");
     const rows = listed(nodes);
     assert.deepEqual(
         rows.map(({ title, line, badges }) => ({ title, line, badges })),
@@ -2550,8 +2548,10 @@ test("a venue block's sync buttons: from and to post their job, show its step an
         const btn = drawn(nodes, `sync-${direction}-ebay`);
         assert.equal(btn.className, `vbadge posted vsync sync-call sync-${direction}`);
         assert.equal(buttonSays(btn), `Sync ${direction} ebay`);
-        assert.equal(btn.children.at(-1).cloneOf, nodes.get(`sync-${direction}-icon`));
-        assert.equal(btn.children.at(-1).id, "", "the copy carries no id");
+        // then the font's arrow (Michal, 2026-10-31): → to the venue, ← from it
+        assert.equal(btn.children.at(-1).className, "sync-dir");
+        assert.equal(btn.children.at(-1).textContent, direction === "to" ? "→" : "←");
+        assert.equal(btn.children.at(-1).attrs["aria-hidden"], "true");
         assert.ok(!btn.textContent.includes("↻"));
     }
     assert.deepEqual(nodes.get("venue-ebay-sync").children.map((n) => n.id), ["sync-from-ebay", "sync-to-ebay", "sync-from-ebay-reset", "sync-to-ebay-reset"]);
@@ -2779,14 +2779,16 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     const badge = ebayBadge(nodes, 0);
     assert.equal(badge.tag, "button");
     assert.equal(badge.className, "vbadge posted vsync", "the same green bubble");
-    assert.equal(badge.children[0].cloneOf, nodes.get("sync-to-icon"), "the sync bar's to-eBay icon, where the tick was");
-    assert.equal(badge.children[0].id, "", "a copy, without the bar's id");
+    // the venue, then → where the tick was (Michal, 2026-10-31: "the symbol shoud be AFTER the text naming the venue")
+    assert.equal(badge.children[0], "ebay");
+    assert.equal(badge.children[1].className, "sync-dir");
+    assert.equal(badge.children[1].textContent, "→");
     assert.equal(wordOf(badge), "ebay");
     assert.ok(!badge.children.some((c) => c.tag === "svg"), "no tick while it is behind");
     assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay");
     // its reset beside it, hidden until a tap pauses it; the other badges as ever
     assert.deepEqual(listed(nodes)[0].badges, [
-        "ebay (vbadge posted vsync)",
+        "ebay→ (vbadge posted vsync)",
         "reset (reset-call)",
         "craigslist draft (vbadge draft)",
     ]);
@@ -3098,9 +3100,9 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     assert.deepEqual(pc.calls.slice(before), [`GET /inventory?q=blue%20lamp&${ALL}`]);
 });
 
-test("the inventory's Options: folded at first, the search out of it; open or folded is remembered on this phone", async (t) => {
+test("the inventory's Filters: folded at first, the search inside; open or folded is remembered on this phone", async (t) => {
     // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked away
-    // inside a foldout tab 'Options'."
+    // inside a foldout tab 'Options'"; 2026-10-31: the search in it, and it called Filters
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     const local = memoryStore(NO_PHOTOS);
@@ -3109,11 +3111,11 @@ test("the inventory's Options: folded at first, the search out of it; open or fo
     await settle();
     assert.equal(nodes.get("inventory-search").hidden, false);
     assert.equal(nodes.get("options").hidden, true);
-    assert.equal(nodes.get("options-toggle").textContent, "▸ Options");
+    assert.equal(nodes.get("options-toggle").textContent, "▸ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "false");
     nodes.get("options-toggle").fire("click");
     assert.equal(nodes.get("options").hidden, false);
-    assert.equal(nodes.get("options-toggle").textContent, "▾ Options");
+    assert.equal(nodes.get("options-toggle").textContent, "▾ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "true");
     assert.equal(local.map.get("snap.inventory.options"), "open");
     // the chips inside ask as ever
@@ -3123,7 +3125,7 @@ test("the inventory's Options: folded at first, the search out of it; open or fo
     // a reload keeps it open; folded again, it stays folded
     const again = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(again.nodes.get("options").hidden, false);
-    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Options");
+    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Filters");
     again.nodes.get("options-toggle").fire("click");
     assert.equal(again.nodes.get("options").hidden, true);
     assert.equal(local.map.get("snap.inventory.options"), "closed");
@@ -3435,7 +3437,7 @@ test("a listing Admin reopens that the PC no longer has is let go; the list says
     assert.equal(nodes.get("inventory-detail").hidden, true);
     assert.equal(nodes.get("inventory-browse").hidden, false);
     assert.equal(nodes.get("inventory-toggle").hidden, false);
-    assert.equal(nodes.get("inventory-status").textContent, "Could not read GONE: no row GONE. 1 listing");
+    assert.equal(nodes.get("inventory-status").textContent, "Could not read GONE: no row GONE.");
     assert.equal(listed(nodes).length, 1);
 
     // a PC that does not answer is not a listing gone: it stays, saying so
@@ -7736,6 +7738,46 @@ test("a desktop browser is not nudged to install: no Install on the landing, no 
 
 // --- the account: GET /me (Michal, 2026-10-08) --------------------------------------------------
 
+test("books are the admin's: anyone else's book chip is grey, its tap says so, and its link asks in Feedback", async (t) => {
+    // Michal, 2026-10-31: "for anyone other then me the admin the book thing should be all
+    // grayed out and minimal. with a link to request in feedback"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    pc.me = { user: "wife", admin: false, craigslist: false, venues: ["ebay"] };
+    const { nodes } = await loadPage({ local: memoryStore({ ...NO_PHOTOS, "snap.mode": "book" }), fetchImpl: pc.fetch });
+    await settle();
+    const book = nodes.get("mode-book");
+    assert.equal(book.classList.contains("mode-off"), true);
+    assert.equal(book.attrs["aria-disabled"], "true");
+    assert.equal(book.attrs["aria-pressed"], "false", "a book chosen before is goods now");
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("book").hidden, true);
+    assert.equal(nodes.get("books-off").hidden, true, "nothing said before the tap");
+
+    book.fire("click");
+    assert.equal(nodes.get("book").hidden, true, "the tap opens nothing");
+    assert.equal(nodes.get("books-off").hidden, false);
+    assert.equal(nodes.get("admin").hidden, true);
+
+    nodes.get("books-ask").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("feedback").hidden, false);
+    assert.equal(nodes.get("feedback-text").value, "I would like to list books.");
+});
+
+test("the admin's book chip is as ever", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    await settle();
+    const book = nodes.get("mode-book");
+    assert.equal(book.classList.contains("mode-off"), false);
+    book.fire("click");
+    assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("books-off").hidden, true);
+});
+
 test("an account without craigslist: its button grey yet tappable, saying why; its empty card says the same", async (t) => {
     // Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write 'contact developer'."
     // Michal, 2026-10-10: and it says where to ask, the page's own Admin, Feedback
@@ -9157,7 +9199,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.deepEqual(pc.patches, [{ archived: true }]);
     assert.equal(pc.calls.filter((c) => c.startsWith("PATCH")).at(-1), "PATCH /inventory/B2");
     assert.deepEqual(titles(), ["Item A1", "Item C3"]);
-    assert.equal(nodes.get("inventory-status").textContent, "2 listings");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 2");
     assert.equal(nodes.get("inventory-undo").hidden, false);
     assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2");
     b2.open.fire("click");
@@ -9172,7 +9214,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.equal(nodes.get("inventory-undo").hidden, true);
     assert.equal(listed(nodes)[1].row.style.transform, "");
     assert.equal(listed(nodes)[1].li.classList.contains("leaving"), false);
-    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
 
     // to the left as well; the bar goes by itself after 6 s
     const c3 = listed(nodes)[2];

@@ -55,7 +55,7 @@
 | What a posting costs | postings ("3 free postings left", "Buy postings"); never "credits" |
 | A venue, in a button or chip | lowercase: ebay, craigslist, poshmark |
 | A venue, in a sentence | eBay, Craigslist, Poshmark |
-| The folds in Admin | Settings, Inventory, Feedback, Stats (capitalised); the item's fold is "customize" |
+| The folds in Admin | Settings, Inventory, Feedback, Stats (capitalised); the item's fold is "customize"; the inventory's own fold is "Filters" |
 | Leaving an account on this phone | Sign out (the current account) / Remove from this phone (another account) |
 | Deleting the account on the server | Delete account / Keep my account |
 | The ship-from address | Address where you ship from |
@@ -66,7 +66,8 @@
 Always present. Left: the camera mark and the "$nap" wordmark, as today. After the
 wordmark: **the current account's name** (`/me` `user`; there is no one signing up without
 an account since 2026-10-25, 4.3), muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
-"wrong key" red, "checking server...", "server not set"), then the Admin link, which reads
+"wrong key" red, "checking server...", "server not set"), then the Admin button: three
+dots in a row, the way apps open their menu, heard as "Admin" (Michal, 2026-10-31); it reads
 "Snap" while Admin is open and takes the person back. The server word appears here only;
 nowhere else on the page repeats it.
 
@@ -111,7 +112,11 @@ line once drafted, "See in inventory"; **one block per venue, in the same shape*
 button, "reset" while paused, the status line, "Buy postings" after a 402, the posting's
 link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
 tapped, says it is not available for this account yet and points to Feedback. The book
-screen has the same venue blocks as the goods screen, not eBay alone.
+screen has the same venue blocks as the goods screen, not eBay alone. Books are the admin's
+alone (Michal, 2026-10-31): for anyone else the book chip is grey, goods stays the screen,
+and a tap shows one line under the chips, "Books are not open for your account yet. **Ask
+for it in Feedback**"; the link opens Admin at Feedback with "I would like to list books."
+in the box.
 
 The customize fold holds this item's values. Its starting values come from Settings,
 Posting defaults (4.5). "Save as default" has left the fold; the defaults are edited in
@@ -188,8 +193,11 @@ saved), and the phone remembers which were left open.
    available); its two sync buttons, **Sync from <venue>** and **Sync to <venue>**, the venue
    lowercase as on every button ("Sync from ebay"; Michal, 2026-10-26). **The sync buttons
    live here and nowhere else** (Michal, 2026-10-31): the inventory's green with **black**
-   words, the page's own half of the sync symbol after the words (`#sync-from-icon` on Sync
-   from, `#sync-to-icon` on Sync to; no ↻, the one sync symbol throughout); shown only once
+   words, then the font's own arrow, ← on Sync from and → on Sync to (Michal, 2026-10-31:
+   "the typical font arrow right (for sync to) and arrow left (for sync from)"; the same → after
+   the venue on an inventory row's sync badge; no other sync symbol), every state exactly a
+   listed badge's height (the ring in the arrow's room, "tap again to cancel" on the word's
+   line); shown only once
    the venue is connected or signed in (none for eBay before Connect eBay, none for a venue
    the account lacks: its status line says why); grey and disabled where a direction does not
    exist (Sync from craigslist, both for poshmark), with one muted line of reason under the
@@ -233,8 +241,12 @@ saved), and the phone remembers which were left open.
    (Michal, 2026-10-31). "Show photos" is an inventory setting and stays at the top of the
    Inventory fold (Michal, 2026-10-26).
 
-**Inventory.** Search; **▸ Options** (venue chips, status chips including Archived, sort
-chips, Show photos); the list, with swipe to archive and **Undo**. A row opens the
+**Inventory.** The fold's heading carries the count once the list is in, "▸ Inventory 99"
+("Inventory 200+" at the limit; Michal, 2026-10-31); the line under it says only what the
+count cannot ("No listings match.", the newest-200 note, the server's trouble); **▸ Filters**,
+folded at first (the search box first, then the venue chips, status chips including
+Archived, sort chips, Show photos; Michal, 2026-10-31: "move the search to Options. so it
+is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**. A row opens the
 listing's page: "← Back to inventory", the heading and photos, **▾ customize** with
 Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in
 each venue's block under Settings, Venues, Michal 2026-10-31), then one card per venue with
@@ -261,6 +273,7 @@ postings, then prepaid); the version.
 |---|---|---|---|---|
 | Top bar name | michal | the account's name | the account's name | the account's name |
 | Posting screens | yes | yes | yes | no, the two steps |
+| Book chip | live | grey, asks in Feedback | grey, asks in Feedback | not shown |
 | Venue buttons | all live | ebay live, others grey | as the owner | ebay says connect first |
 | Settings, Account | card, no postings count, no Delete; people and devices | card, postings, Buy, Delete; people and devices | card, postings; own devices; Leave this account | card, postings; people and devices; Delete |
 | Settings, Venues | all three with sync | ebay with sync, others "not available" | as the owner | ebay "Connect eBay to start posting" |
