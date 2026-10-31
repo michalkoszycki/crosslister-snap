@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.30.0";
+import { VERSION } from "./version.js?v=2.30.1";
 import {
     adminLink,
     anyActive,
@@ -253,8 +253,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.30.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.0";
+} from "./core.js?v=2.30.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.1";
 import {
     addVenue,
     applyWrap,
@@ -307,8 +307,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.30.0";
-import { shrinkPhoto } from "./shrink.js?v=2.30.0";
+} from "./pc.js?v=2.30.1";
+import { shrinkPhoto } from "./shrink.js?v=2.30.1";
 import {
     bookCard,
     bookPriceValue,
@@ -321,8 +321,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.30.0";
-import { canScan, readIsbn } from "./scan.js?v=2.30.0";
+} from "./book.js?v=2.30.1";
+import { canScan, readIsbn } from "./scan.js?v=2.30.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2614,8 +2614,11 @@ function showAdmin(open, card = "") {
     }
     showSettings(false);
     const sku = card || readText("localStorage", CARD_KEY);
+    // Admin opens with Inventory folded at first (Michal, 2026-10-31: "it is no longer necessary for
+    // the inventory to be OPEN when you go to the admin options"), then as it was left this visit;
+    // a listing left open still reopens
     if (!sku) {
-        showInventory(true);
+        showInventory(admin.inventoryOpen);
         return;
     }
     admin.inventoryOpen = true;
@@ -5137,9 +5140,9 @@ function renderSync() {
             block.syncDrawn = true;
             block.sync.replaceChildren(...drawn.map((n) => n.btn), ...drawn.map((n) => n.reset));
         }
-        const note = syncNote(venue, me, ebay);
-        block.cannot.textContent = note;
-        block.cannot.hidden = !note;
+        // no line saying why a button is grey (Michal, 2026-10-31: "no need for this comment")
+        block.cannot.textContent = "";
+        block.cannot.hidden = true;
     }
 }
 
@@ -5505,8 +5508,16 @@ function renderVenues() {
             const connected = !!ebay && ebay.connected;
             el.accountConnect.hidden = !ebay || connected;
             paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
-            el.accountReconnect.hidden = !connected;
-            el.accountReconnect.disabled = account.busy;
+            el.accountReconnect.hidden = true;
+            // connected, its line is the way to eBay's consent again (a token eBay let lapse)
+            block.status.classList.toggle("tap-line", connected);
+            if (connected) {
+                block.status.setAttribute("role", "button");
+                block.status.setAttribute("tabindex", "0");
+                block.status.setAttribute("aria-label", `${words}: tap to connect eBay again`);
+            } else {
+                for (const name of ["role", "tabindex", "aria-label"]) block.status.removeAttribute(name);
+            }
             block.note.textContent = ebay && !connected ? CONNECT_TO_POST : "";
             block.note.hidden = !block.note.textContent;
         } else block.ask.hidden = allowed || !settings();
@@ -7501,6 +7512,15 @@ function main() {
             connectEbay().catch(() => {});
         });
     }
+    // connected, eBay's "Connected" line: its consent again (Michal, 2026-10-31)
+    const again = () => {
+        const ebay = ebayNow();
+        if (ebay && ebay.connected && !account.busy) connectEbay().catch(() => {});
+    };
+    el.venueBlocks.ebay.status.addEventListener("click", again);
+    el.venueBlocks.ebay.status.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") again();
+    });
     // a venue the account lacks: Ask for it in Feedback opens the Feedback fold
     for (const venue of VENUES) {
         const ask = el.venueBlocks[venue].ask;

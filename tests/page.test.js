@@ -2426,7 +2426,7 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     // Show photos unticked on this phone stays unticked
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     assert.equal(nodes.get("inventory-photos").checked, false);
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.equal(nodes.get("settings").hidden, true, "settings are right: folded");
     assert.equal(nodes.get("inventory").hidden, false);
     assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory");
@@ -2499,7 +2499,7 @@ test("Admin hides the posting screens too, the list's and a listing's; Close sho
     await typeName(nodes, "Boots");
     snap(nodes, 2);
     // Admin opened while the photos are still on their way
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, true]);
     await settle();
     // underneath, the uploads carried on: nothing was reset
@@ -2511,16 +2511,16 @@ test("Admin hides the posting screens too, the list's and a listing's; Close sho
     await settle();
     assert.equal(nodes.get("work").hidden, true, "under a listing too");
     // the header's Admin link closes it: the goods screen as it now is
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [false, true]);
     assert.equal(nodes.get("strip").children.length, 2);
     assert.equal(nodes.get("progress").textContent, "2 photos, 0 for the AI, all on the server");
     assert.equal(nodes.get("item-name").value, "Boots");
     // in book mode Close brings the book screen back, not the goods one
     nodes.get("mode-book").fire("click");
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, true]);
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, false]);
 });
 
@@ -2528,7 +2528,7 @@ test("the sort chips: Newest first, and each chip asks again with its sort and o
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.match(html, /id="inventory-sort-newest"[^>]*aria-pressed="true"/);
     assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=&limit=200&sort=age&order=desc");
@@ -2559,7 +2559,7 @@ test("a venue block's sync buttons: from and to post their job, show its step an
     let syncing = { state: "running", step: "reading eBay's listings", action: "sync", direction: "from" };
     const pc = inventoryPc([summary("A1")], {}, { jobs: { a1: () => syncing } });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(nodes.get("sync-ebay-status").textContent, "");
     assert.equal(drawn(nodes, "sync-from-ebay").disabled, false);
@@ -2755,10 +2755,36 @@ function ebayBadge(nodes, i) {
 }
 
 /** A press on a tile's + or −, as a finger makes it: the pointer down, later up. */
+/** Admin opens with Inventory folded since 2026-10-31 (Michal): a test that looks at the list opens it. */
+function openInventory(nodes) {
+    if (!nodes.get("admin").hidden && nodes.get("inventory").hidden && !nodes.get("inventory-toggle").hidden) nodes.get("inventory-toggle").fire("click");
+}
+
 function press(btn) {
     btn.fire("pointerdown", { pointerId: 1 });
     return () => btn.fire("pointerup", { pointerId: 1 });
 }
+
+test("Admin opens with Inventory folded, then as it was left this visit", async (t) => {
+    // Michal, 2026-10-31: "it is no longer necessary for the inventory to be OPEN when you go to
+    // the admin options"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")], { A1: wholeRow("A1") });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory").hidden, true, "folded");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▸ Inventory");
+    assert.ok(!pc.calls.some((c) => c.startsWith("GET /inventory")), "nothing asked while folded");
+    nodes.get("inventory-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory").hidden, false);
+    // closed and opened again: as it was left
+    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(nodes.get("inventory").hidden, false);
+});
 
 test("a row's + and −: a dollar a tap at once, nothing shut; one quiet PATCH after the last tap", async (t) => {
     // Michal, 2026-10-31: "reactions of the price number to the plus and minus clicks needs to be
@@ -2771,7 +2797,7 @@ test("a row's + and −: a dollar a tap at once, nothing shut; one quiet PATCH a
     const pc = inventoryPc([summary("G1"), summary("D1", d1)], { G1: wholeRow("G1"), D1: wholeRow("D1", d1) });
     const local = memoryStore(NO_PHOTOS);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     const before = pc.calls.length;
 
@@ -2884,7 +2910,7 @@ test("a sync tapped before a tile's price has gone sends the price first, then t
     const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") });
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"G1","venues":["ebay"]}]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     const before = pc.calls.length;
     press(stepsOf(nodes, 0).up)();
@@ -2907,7 +2933,7 @@ test("a held + or − is an oven's dial: it repeats and speeds up, the tile live
     const h1 = { price: "250.00", statuses: { ebay: draft, craigslist: draft } };
     const pc = inventoryPc([summary("H1", h1)], { H1: wholeRow("H1", h1) });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     const price = () => listed(nodes)[0].line.split(" ")[0];
 
@@ -2992,7 +3018,7 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     // the price changed on this phone before (as 2.8.0 kept it, a bare sku): the badge offers the sync from the start
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '["G1"]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(ebayBadge(nodes, 0).tag, "button");
 
@@ -3088,7 +3114,7 @@ test("a row's craigslist badge syncs too, once a change left its listing behind;
     const pc = inventoryPc([summary("C1", c1)], { C1: whole }, { jobs: { a1: () => pushing } });
     const local = memoryStore(NO_PHOTOS);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.deepEqual(listed(nodes)[0].badges, ["ebay listed (vbadge posted)", "craigslist listed (vbadge posted)"]);
     press(stepsOf(nodes, 0).up)();
@@ -3121,7 +3147,7 @@ test("the eBay block's Sync to ebay, done, leaves no eBay listing behind its row
     const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => syncing } });
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"G1","venues":["ebay"]},{"sku":"K9","venues":["ebay","craigslist"]}]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(ebayBadge(nodes, 0).tag, "button");
     drawn(nodes, "sync-to-ebay").fire("click");
@@ -3139,7 +3165,7 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(nodes.get("inventory-status").textContent, "No listings match.");
     assert.deepEqual(nodes.get("inventory-list").children, []);
@@ -3227,7 +3253,7 @@ test("Show photos, on by default, puts photo 1 of each row on its left, fetched 
     globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
     globalThis.URL.revokeObjectURL = (url) => revoked.push(url);
     assert.equal(nodes.get("inventory-photos").checked, true, "ticked with nothing stored");
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`, "GET /inventory/A1/photos/1", "GET /inventory/B2/photos/1"]);
     const rows = listed(nodes);
@@ -3253,7 +3279,7 @@ test("a PC that cannot be reached is said under the search box; the list stays",
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("A1")]);
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(listed(nodes).length, 1);
     pc.down = true;
@@ -3270,7 +3296,7 @@ test("a key the PC does not know: the inventory says so and Settings opens to pu
         local: memoryStore(GOOD),
         fetchImpl: async () => new Response(JSON.stringify({ detail: "wrong" }), { status: 401 }),
     });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.equal(nodes.get("settings").hidden, true, "the settings look right on the phone");
     await settle();
     assert.equal(nodes.get("inventory-status").textContent, "Could not read the inventory: wrong key - check Settings.");
@@ -3290,7 +3316,7 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
     win.scrollTo = (to) => scrolled.push(to.top);
     let made = 0;
     globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     // the Admin page: the inventory's line, Settings, Feedback and Close (no title: docs/UI.md)
     const page = ["inventory-toggle", "settings-toggle", "feedback-toggle"];
@@ -3438,19 +3464,19 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     const pc = inventoryPc([summary("R5"), summary("B2")], { R5: wholeRow("R5", { photos: [] }) });
     const local = memoryStore(NO_PHOTOS);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
     nodes.get("detail-ebay-toggle").fire("click");
     // the Admin link closes Admin, the goods screen is back; the listing stays remembered
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("modes").hidden, false);
     assert.equal(local.map.get("snap.admin.card"), "R5");
 
     pc.calls.length = 0;
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     // straight onto it: its page, its sku until the PC answers, no foldout yet, no list asked
     assert.equal(nodes.get("inventory").hidden, false);
     assert.equal(nodes.get("inventory-detail").hidden, false);
@@ -3478,7 +3504,7 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     const again = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(again.nodes.get("admin").hidden, true);
     pc.calls.length = 0;
-    again.nodes.get("admin-toggle").fire("click");
+    again.nodes.get("admin-toggle").fire("click"); openInventory(again.nodes);
     await settle();
     assert.deepEqual(pc.calls, ["GET /inventory/R5"]);
     assert.equal(again.nodes.get("detail-heading").textContent, "Item R5 · $24");
@@ -3491,8 +3517,8 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     await settle();
     assert.deepEqual(pc.calls.slice(1), [`GET /inventory?q=&${ALL}`]);
     assert.equal(listed(again.nodes).length, 2);
-    again.nodes.get("admin-toggle").fire("click");
-    again.nodes.get("admin-toggle").fire("click");
+    again.nodes.get("admin-toggle").fire("click"); openInventory(again.nodes);
+    again.nodes.get("admin-toggle").fire("click"); openInventory(again.nodes);
     await settle();
     assert.equal(again.nodes.get("inventory-detail").hidden, true, "the list, once let go");
 });
@@ -3536,7 +3562,7 @@ test("a venue the row is not on: an empty foldout whose Add puts it there; a row
     });
     const pc = inventoryPc([only, summary("GONE")], { EB1: whole });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -3589,7 +3615,7 @@ test("Edit: the card's fields as inputs; Save sends one PATCH of only the change
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("R5")], { R5: wholeRow("R5") });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -3710,7 +3736,7 @@ test("Edit's Condition: chips of what eBay allows, the row's pressed; Save sends
     };
     const local = memoryStore(GOOD);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -3813,7 +3839,7 @@ test("Post, Refresh and End: each sends its job, its step in the card's line, th
         jobs: { j2: () => posting, a1: () => refreshing, a2: () => ending },
     });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -3934,7 +3960,7 @@ test("an End the PC refuses says why, and its button goes", async (t) => {
     const pc = inventoryPc([summary("R5")], { R5: whole });
     pc.refuse.end = "craigslist cannot be ended from here: delete it on craigslist.org";
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -3980,7 +4006,7 @@ test("a listing's photos: + adds one (shrunk, as snapped), x asks then removes; 
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     let made = 0;
     globalThis.URL.createObjectURL = () => `blob:${(made += 1)}`;
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -4047,7 +4073,7 @@ test("a listing with one photo has no x (the server keeps at least one); one wit
     const pc = inventoryPc([summary("R5"), summary("F2")], { R5: one, F2: full });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     globalThis.URL.createObjectURL = () => "blob:x";
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -4075,7 +4101,7 @@ test("the craigslist card: an Edit leaves its listing behind, said with where it
     const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => ending } });
     const local = memoryStore(GOOD);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -4253,7 +4279,7 @@ function slide(nodes, grade) {
 
 /** Open the first listing of the inventory, and wait for the whole row. */
 async function openFirst(nodes) {
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
 }
@@ -4560,7 +4586,7 @@ test("a venue the server adds (a made-up poshmark) gets its Sync buttons by itse
         ["Sync from poshmark", true, false],
         ["Sync to poshmark", false, false],
     ]);
-    assert.equal(nodes.get("venue-poshmark-cannot").textContent, "Poshmark cannot be read back yet.");
+    assert.equal(nodes.get("venue-poshmark-cannot").hidden, true, "no line saying why (Michal, 2026-10-31)");
     drawn(nodes, "sync-to-poshmark").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
@@ -4580,7 +4606,7 @@ test("the venue blocks: both sync buttons once the venue is connected or signed 
     pc.me = SYMMETRIC_ME;
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"G1","venues":["ebay","craigslist"]}]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     // every block both buttons, then their resets (the one a pause shows sits under the pair)
     for (const v of ["ebay", "craigslist", "poshmark"]) {
@@ -4608,7 +4634,7 @@ test("the venue blocks: both sync buttons once the venue is connected or signed 
         ["ebay", "craigslist", "poshmark"].map((v) => [nodes.get(`venue-${v}-cannot`).hidden, nodes.get(`venue-${v}-cannot`).textContent]),
         [
             [true, ""],
-            [false, "Craigslist cannot be read back yet."],
+            [true, ""],
             [true, ""],
         ]
     );
@@ -4662,7 +4688,7 @@ test("the venue blocks: both sync buttons once the venue is connected or signed 
     const seller = inventoryPc([summary("G1")], { G1: wholeRow("G1") });
     seller.me = { user: "wife", venues: ["ebay"], craigslist: false, syncable: { to: ["ebay"], from: ["ebay"] }, ebay: { connected: false, user: "", policies: "none" } };
     const plain = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: seller.fetch });
-    plain.nodes.get("admin-toggle").fire("click");
+    plain.nodes.get("admin-toggle").fire("click"); openInventory(plain.nodes);
     await settle();
     for (const v of ["ebay", "craigslist", "poshmark"]) {
         for (const d of ["from", "to"]) assert.equal(drawn(plain.nodes, `sync-${d}-${v}`).hidden, true, `${d} ${v}`);
@@ -7456,7 +7482,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     // the code: a box a phone fills from the mail, its word above it, its button under it
     assert.match(html, /<button type="button" id="signin-have-code" class="link have-code">I already have a code</);
     assert.match(html, /<div id="signin-code-form" class="code-form" hidden>/);
-    assert.match(html, /<span class="field-label">Got the mail\? Enter the six-digit code from it<\/span>\s*<input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"/);
+    assert.match(html, /<span class="field-label">Code from the email<\/span>\s*<input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"/);
     assert.match(html, /id="signin-code-send"[^>]*>Sign in with the code</);
     assert.match(html, /<p id="signin-note" class="signin-note" hidden><\/p>/);
     assert.match(html, /<p id="install-words" class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
@@ -7629,7 +7655,7 @@ test("Sign in: a link by email from the product's server, Keep me signed in with
     await settle();
     assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
     assert.deepEqual(pc.origins, [SERVER, SERVER], "the product's own server: whether it takes new accounts, then the link");
-    assert.equal(nodes.get("signin-status").textContent, "Check your email. Open the link on this device, or enter the code from the mail below.");
+    assert.equal(nodes.get("signin-status").textContent, "Check your email. Open the link on this device, or enter the code from the email below.");
     nodes.get("signin-remember").checked = false;
     nodes.get("signin-send").fire("click");
     await settle();
@@ -7733,7 +7759,7 @@ test("the mail's code: shown once the link is sent, it signs in as the link does
     nodes.get("signin-code").value = "4829";
     nodes.get("signin-code-send").fire("click");
     await settle();
-    assert.equal(nodes.get("signin-status").textContent, "Enter the six digits from the mail.");
+    assert.equal(nodes.get("signin-status").textContent, "Enter the six digits from the email.");
     assert.deepEqual(pc.sessions, []);
 
     // a wrong code: the server's words, the box kept for another try
@@ -7753,7 +7779,7 @@ test("the mail's code: shown once the link is sent, it signs in as the link does
     pc.made = 422;
     nodes.get("signin-code-send").fire("click");
     await settle();
-    assert.equal(nodes.get("signin-status").textContent, "Codes are not available on this server yet; use the link in the mail.");
+    assert.equal(nodes.get("signin-status").textContent, "Codes are not available on this server yet; use the link in the email.");
     assert.equal(local.getItem("snap.session"), null, "nothing kept");
 
     // the right one (Enter in the box will do): in, as a #login= link is
@@ -7807,7 +7833,7 @@ test("an iPhone in Safari is told to sign in inside the installed Snap; the inst
     assert.equal(safari.nodes.get("signin-note").hidden, false);
     assert.equal(
         safari.nodes.get("signin-note").textContent,
-        "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail."
+        "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the email."
     );
 
     const pc = signinPc();
@@ -7917,7 +7943,7 @@ test("an account without craigslist: its button grey yet tappable, saying why; i
     assert.equal(cl.classList.contains("busy"), false);
 
     // the inventory: the empty craigslist foldout says it instead of Add
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -7969,7 +7995,7 @@ test("poshmark for anyone but the admin: grey yet tappable, saying the craigslis
     assert.equal(pm.classList.contains("busy"), false);
 
     // the inventory: the empty poshmark foldout says it instead of Add
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -8037,7 +8063,7 @@ test("poshmark for the admin: the button posts the item, its link comes from lin
     assert.equal(nodes.get("ebay-btn").disabled, false, "the other venues may go by the sku");
 
     // a listing not on poshmark: its empty card's Add, then Post alone (no Edit: the server only posts there)
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
@@ -8161,7 +8187,7 @@ test("Feedback: the words, where they were written from, the version and the las
         jobs: { a1: () => ({ state: "running", step: "reading eBay's listings", action: "sync", direction: "from" }) },
     });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.equal(nodes.get("feedback-toggle").textContent, "▸ Feedback");
     assert.equal(nodes.get("feedback").hidden, true);
@@ -8210,9 +8236,9 @@ test("Feedback: the words, where they were written from, the version and the las
     assert.equal(pc.feedback[3].screen, "card");
 
     // Admin opened from the book screen: "book"
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     nodes.get("mode-book").fire("click");
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     await send("Books");
     assert.equal(pc.feedback[4].screen, "book");
@@ -8465,7 +8491,7 @@ test("the account card shows what the server gives: unlimited, no packs, eBay co
         packs: null,
         ebay: "Connected as michal_sells",
         connect: null,
-        reconnect: true,
+        reconnect: false,
         status: "",
     });
     // payments not set up (no packs): the count and Buy postings all the same, for every account
@@ -8509,33 +8535,37 @@ test("the account card shows what the server gives: unlimited, no packs, eBay co
     assert.equal(none.credits, null);
 });
 
-test("eBay connected: the eBay block says Connected as, Connect eBay goes; Reconnect goes to eBay again", async (t) => {
+test("eBay connected: the eBay block says Connected as, Connect eBay goes; its Connected line goes to eBay again", async (t) => {
     // Michal, 2026-10-10: "It better just say eBay connected on the same button, lit in green"
     // (the two steps' button keeps it); under Venues the status line says it (docs/UI.md)
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "irenurmenet0", policies: "ready" } } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
-    const reconnect = nodes.get("account-reconnect");
+    // no Reconnect link: the Connected line itself (Michal, 2026-10-31: "Pressing the 'Connected'
+    // text should give that capability")
+    const reconnect = nodes.get("account-ebay");
+    assert.equal(nodes.get("account-reconnect").hidden, true);
+    assert.equal(reconnect.classList.contains("tap-line"), true);
+    assert.equal(reconnect.attrs.role, "button");
     assert.equal(nodes.get("account-ebay").textContent, "Connected as irenurmenet0");
     assert.equal(nodes.get("account-ebay").classList.contains("ok"), true);
     assert.equal(nodes.get("account-connect").hidden, true);
     assert.equal(nodes.get("venue-ebay-note").hidden, true);
-    assert.equal(reconnect.hidden, false);
     assert.match(html, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect<\/button>/);
     // the green a listed badge has, on the two steps' button, not faded as a disabled button is
     const css = readFileSync(join(root, "styles.css"), "utf8");
     assert.match(css, /button\.connected:disabled \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); opacity: 1; \}/);
     assert.match(css, /\.vbadge\.posted \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/, "the same green");
 
-    // Reconnect: eBay's consent again, for a token eBay let lapse
+    // the Connected line: eBay's consent again, for a token eBay let lapse; a tap while it goes
+    // does nothing more
     reconnect.fire("click");
     assert.equal(accountOf(nodes).status, "Opening eBay...");
-    assert.equal(reconnect.disabled, true, "one at a time");
+    reconnect.fire("click");
     await settle();
-    assert.deepEqual(pc.connects, ["key test-key-0123456789"]);
+    assert.deepEqual(pc.connects, ["key test-key-0123456789"], "one at a time");
     assert.equal(globalThis.location.assigned.at(-1), EBAY_CONSENT);
-    assert.equal(reconnect.disabled, false);
 
     // no name from the server: Connected alone; not connected: Connect eBay, no Reconnect
     const nameless = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "", policies: "ready" } } }).fetch });
@@ -9256,7 +9286,7 @@ test("a row swiped off while live: End listing on the bar ends it on each venue 
     const rows = [summary("A1"), summary("B2", { statuses: live }), summary("C3", { statuses: {} })];
     const pc = inventoryPc(rows, { A1: wholeRow("A1"), B2: wholeRow("B2", { statuses: live }), C3: wholeRow("C3", { statuses: {} }) });
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     let f = finger(listed(nodes)[1].open);
     f.down(100, 50);
@@ -9296,7 +9326,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
         Object.fromEntries(skus.map((s) => [s, wholeRow(s)]))
     );
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     const titles = () => listed(nodes).map((r) => r.title);
     assert.deepEqual(titles(), ["Item A1", "Item B2", "Item C3"]);
@@ -9424,7 +9454,7 @@ test("the Archived chip lists only the archived rows, each with Unarchive in pla
     const pc = inventoryPc([summary("A1"), summary("Z9")], { A1: wholeRow("A1"), Z9: wholeRow("Z9") });
     pc.archived.add("Z9");
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    nodes.get("admin-toggle").fire("click");
+    nodes.get("admin-toggle").fire("click"); openInventory(nodes);
     await settle();
     assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1"], "every other listing leaves it out");
     assert.match(html, /<div id="inventory-state" class="chips chips-six"/);

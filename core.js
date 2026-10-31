@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.30.0";
+import { noteDirty, unsent } from "./queue.js?v=2.30.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.30.0";
+} from "./book.js?v=2.30.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -230,7 +230,7 @@ export function sessionOf(answer) {
  * Said on the sign-in screen once the server has sent the link (Michal, 2026-10-08, reading
  * it on a PC: "it works on this phone" confused him there; the mail carries a code too).
  */
-export const LINK_SENT = "Check your email. Open the link on this device, or enter the code from the mail below.";
+export const LINK_SENT = "Check your email. Open the link on this device, or enter the code from the email below.";
 
 /** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
 export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
@@ -290,7 +290,7 @@ export function cleanCode(raw) {
 }
 
 /** Said when the code box holds no six digits; nothing is sent. */
-export const CODE_NEEDED = "Enter the six digits from the mail.";
+export const CODE_NEEDED = "Enter the six digits from the email.";
 
 /**
  * The sign-in screen's line when the code did not sign him in: a wrong code is the server's
@@ -304,7 +304,7 @@ export function codeError(status, detail) {
     const said = typeof detail === "string" ? detail.trim() : "";
     if (status === 401) return said ? `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}` : "That code is not right.";
     if (status === 410) return "That code was used or has expired; send yourself a new link.";
-    if (status === 400 || status === 422) return "Codes are not available on this server yet; use the link in the mail.";
+    if (status === 400 || status === 422) return "Codes are not available on this server yet; use the link in the email.";
     if (status === 404) return SIGNIN_MISSING;
     return `Could not sign in: ${errorText(status, said)}.`;
 }
@@ -318,7 +318,7 @@ export function codeError(status, detail) {
  */
 export function signinNote({ isIos, standalone }) {
     return isIos && !standalone
-        ? "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail."
+        ? "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the email."
         : "";
 }
 
@@ -922,7 +922,7 @@ export const NOT_CONNECTED = "Not connected";
 export const CONNECT_TO_POST = "Connect eBay to start posting";
 
 /** A venue's status line in its block when the account has it on the server (Craigslist, Poshmark). */
-export const ON_SERVER = "Signed in on the server";
+export const ON_SERVER = "Connected";
 
 /** ... and when it does not: the line, and the way to ask (the link opens Feedback). */
 export const NOT_AVAILABLE = "Not available for your account yet.";

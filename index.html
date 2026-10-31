@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.30.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.30.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.30.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.30.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -135,7 +135,7 @@
     <button type="button" id="signin-have-code" class="link have-code">I already have a code</button>
     <div id="signin-code-form" class="code-form" hidden>
       <label class="field">
-        <span class="field-label">Got the mail? Enter the six-digit code from it</span>
+        <span class="field-label">Code from the email</span>
         <input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"
                autocapitalize="off" spellcheck="false" maxlength="11" placeholder="123456">
       </label>
@@ -1029,6 +1029,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.30.0"></script>
+<script type="module" src="app.js?v=2.30.1"></script>
 </body>
 </html>

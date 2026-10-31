@@ -3475,7 +3475,7 @@ test("sign-in: the email, the link's token, the session it buys, and what a fail
     for (const status of [400, 401, 403, 410]) assert.match(signinError(status, "x"), /expired or was used already/);
     assert.equal(signinError(0, "cannot reach the server"), "Could not sign in: cannot reach the server.");
     // Michal, 2026-10-08, reading it on a PC: the link opens where it is opened, and there is a code too
-    assert.equal(LINK_SENT, "Check your email. Open the link on this device, or enter the code from the mail below.");
+    assert.equal(LINK_SENT, "Check your email. Open the link on this device, or enter the code from the email below.");
 });
 
 test("sign-in by the mail's code: six digits, spaces allowed; what a refusal says; the iPhone's note", () => {
@@ -3485,7 +3485,7 @@ test("sign-in by the mail's code: six digits, spaces allowed; what a refusal say
     for (const bad of ["", "48291", "4829130", "48291a", "482-913", "４８２９１３", null, 482913, undefined]) {
         assert.equal(cleanCode(bad), "", String(bad));
     }
-    assert.equal(CODE_NEEDED, "Enter the six digits from the mail.");
+    assert.equal(CODE_NEEDED, "Enter the six digits from the email.");
     // a wrong code: the server's words, as a sentence; five tries are the server's to count
     assert.equal(codeError(401, "that code is not right"), "That code is not right.");
     assert.equal(codeError(401, "Too many tries!"), "Too many tries!");
@@ -3493,14 +3493,14 @@ test("sign-in by the mail's code: six digits, spaces allowed; what a refusal say
     assert.equal(codeError(410, "gone"), "That code was used or has expired; send yourself a new link.");
     // an older server takes only a link's token: the code's body is malformed to it
     for (const status of [400, 422]) {
-        assert.equal(codeError(status, "x"), "Codes are not available on this server yet; use the link in the mail.");
+        assert.equal(codeError(status, "x"), "Codes are not available on this server yet; use the link in the email.");
     }
     assert.equal(codeError(404, ""), SIGNIN_MISSING);
     assert.equal(codeError(0, ""), "Could not sign in: cannot reach the server.");
     assert.equal(codeError(429, "slow down"), "Could not sign in: slow down.");
     assert.equal(codeError(500, ""), "Could not sign in: the server answered 500.");
 
-    const note = "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the mail.";
+    const note = "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the email.";
     assert.equal(signinNote({ isIos: true, standalone: false }), note, "Safari on an iPhone");
     assert.equal(signinNote({ isIos: true, standalone: true }), "", "the installed app itself");
     assert.equal(signinNote({ isIos: false, standalone: false }), "");
@@ -3662,7 +3662,7 @@ test("the account card's lines and the venue blocks' status: what it is, the pos
     const connected = { connected: true, user: "anna_sells", policies: "ready" };
     assert.deepEqual(["ebay", "craigslist", "poshmark"].map((v) => venueBlockLine(v, seller, connected)), ["Connected as anna_sells", NOT_AVAILABLE, NOT_AVAILABLE]);
     assert.deepEqual(["ebay", "craigslist", "poshmark"].map((v) => venueBlockLine(v, admin, connected, true)), ["Connected as anna_sells · policies ready", ON_SERVER, ON_SERVER]);
-    assert.equal(ON_SERVER, "Signed in on the server");
+    assert.equal(ON_SERVER, "Connected");
     assert.equal(ASK_IN_FEEDBACK, "Ask for it in Feedback");
 });
 

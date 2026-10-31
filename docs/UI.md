@@ -133,7 +133,9 @@ Settings (decided 2026-10-26, section 6).
 Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
 settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only).
 No Close at its foot (Michal, 2026-10-31: "take the exit button out"): the header's button,
-"Snap" while Admin is open, is the way back. The sticky sync bar is gone: its buttons live in each venue's block (decided
+"Snap" while Admin is open, is the way back. Inventory is folded as Admin first opens (Michal,
+2026-10-31: "it is no longer necessary for the inventory to be OPEN"), then as it was left
+during the visit; a listing left open still reopens. The sticky sync bar is gone: its buttons live in each venue's block (decided
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
@@ -192,7 +194,11 @@ saved), and the phone remembers which were left open.
 2. **Venues.** One white card per venue (ebay, craigslist, poshmark, in `/me.venues` order),
    all shown, each as tall as the tallest, no chip row (Michal, 2026-10-31: "eliminate the venue
    buttons at the top. instead provide 3 cards for the venues ... same size with same options").
-   Each card the same shape: the venue's name first, then its status line
+   Each card the same shape: the venue's name first, then its status line ("Connected" for
+   every venue set up, Craigslist and Poshmark included, Michal 2026-10-31; eBay's "Connected"
+   line is tapped to connect again, no Reconnect link: "Pressing the 'Connected' text should
+   give that capability"; no line under a grey sync pair saying why: "no need for this
+   comment")
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
    start posting"); one muted line "Ships from …" showing the address that venue uses, as
