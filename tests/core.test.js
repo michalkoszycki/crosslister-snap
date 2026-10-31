@@ -126,7 +126,6 @@ import {
     EDIT_QUANTITY_HINT,
     NOT_GRADED,
     NO_CACHED,
-    pushClosed,
     cachedPrices,
     canPush,
     customizeButtons,
@@ -178,6 +177,9 @@ import {
     accountError,
     ADDRESS_NEEDED,
     addressBody,
+    addressHint,
+    addressLine,
+    parseAddressLine,
     connectLabel,
     policiesLine,
     SELLER_POLL_MAX,
@@ -242,6 +244,7 @@ import {
     signupStep,
     syncReason,
     syncNote,
+    syncShown,
     CONNECT_FIRST,
     NOT_AVAILABLE,
     accountKind,
@@ -270,7 +273,10 @@ import {
     peopleError,
     signedOutOthers,
     LEFT_ACCOUNT,
-    wrapTextsBody,
+    wrapApplyVenues,
+    wrapDraftBody,
+    wrapOffBody,
+    wrapOn,
     DEFAULTS_SAVED,
     DEFAULTS_SAVED_MS,
     SWIPE_MAX_PX,
@@ -279,7 +285,7 @@ import {
     swipeState,
     UNDO_MS,
 } from "../core.js";
-import { applyLabel, venueTickLabel, WRAP_MAX, WRAP_PARTS, wrapBody, wrapCounter, wrapError, wrapOf } from "../core.js";
+import { WRAP_MAX, WRAP_PARTS, wrapBody, wrapError, wrapOf } from "../core.js";
 import { ACCOUNT_DELETED, accountName, accountsOf, ADMIN_NO_DELETE, deleteError, newAccount, SIGNED_OUT } from "../core.js";
 import {
     NAME_WAIT_HINT,
@@ -2977,9 +2983,9 @@ test("a card's actions: add when not on the venue, post when not listed, open/re
     assert.equal(endQuestion("ebay"), "End this listing on ebay?");
 });
 
-test("a card offers Sync to <venue> while its listing is behind the row, eBay's as craigslist's", () => {
-    // Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-22: "there was no
-    // sync to eBay button after I made the edit ... This goes for each venue"
+test("a card never offers Sync to <venue>: an edit that left its listing behind says where the sync is", () => {
+    // Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-31: the sync
+    // buttons live only in each venue's block under Settings, Venues
     const up = {
         sku: "C1",
         venues: ["ebay", "craigslist"],
@@ -2988,18 +2994,14 @@ test("a card offers Sync to <venue> while its listing is behind the row, eBay's 
             craigslist: { status: "listed", url: "https://chicago.craigslist.org/1.html" },
         },
     };
-    const behind = [{ sku: "C1", venues: ["craigslist"] }];
-    assert.deepEqual(venueActions(up, "craigslist", behind), ["open", "sync", "refresh", "end", "edit"]);
-    assert.deepEqual(venueActions(up, "craigslist"), ["open", "refresh", "end", "edit"], "caught up: no sync");
-    assert.deepEqual(venueActions(up, "craigslist", [{ sku: "OTHER", venues: ["craigslist"] }]), ["open", "refresh", "end", "edit"]);
-    assert.deepEqual(venueActions(up, "ebay", [{ sku: "C1", venues: ["ebay"] }]), ["open", "sync", "refresh", "end", "edit"]);
-    assert.deepEqual(venueActions(up, "ebay", behind), ["open", "refresh", "end", "edit"], "only craigslist is behind");
-    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to ebay puts it on the listing", kind: "ok" });
-    assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; Sync to craigslist puts it on the listing", kind: "ok" });
+    assert.deepEqual(venueActions(up, "craigslist"), ["open", "refresh", "end", "edit"]);
+    assert.deepEqual(venueActions(up, "ebay"), ["open", "refresh", "end", "edit"]);
+    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
+    assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; Sync to craigslist in Settings, Venues puts it on the listing", kind: "ok" });
     assert.equal(editSaved("ebay", ["craigslist"]), null, "its own listing not behind: the status line");
     // a draft has no listing to sync: Post puts the row up whole
     const draft = { ...up, statuses: { ...up.statuses, craigslist: { status: "draft" } } };
-    assert.deepEqual(venueActions(draft, "craigslist", behind), ["post", "edit"]);
+    assert.deepEqual(venueActions(draft, "craigslist"), ["post", "edit"]);
 });
 
 test("the action jobs' bodies: end and refresh carry the sku and venue, a sync its direction", () => {
@@ -3186,42 +3188,33 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     assert.equal(canPush(draft), false);
     assert.equal(canPush({ ...GRADED, venues: ["craigslist"] }), false, "not on eBay");
     const ebay = ["ebay"];
-    assert.deepEqual(customizeButtons(GRADED, same, false, ebay), { save: false, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false, ebay), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false, ebay), { save: true, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true, ebay), { save: false, sync: false }, "busy");
-    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false, ebay), { save: false, sync: false });
-    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false, ebay), { save: true, sync: false });
-    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false, ebay), { save: false, sync: true });
-    assert.deepEqual(customizeButtons(GRADED, same, false, []), { save: false, sync: false }, "an account that syncs to none");
+    // Save alone: the foldout has no Sync of its own (Michal, 2026-10-31)
+    assert.deepEqual(customizeButtons(GRADED, same, false), { save: false });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pricing: 1 }, false), { save: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, false), { save: true });
+    assert.deepEqual(customizeButtons(GRADED, { ...same, pickupOnly: false }, true), { save: false }, "busy");
+    assert.deepEqual(customizeButtons(GRADED, { ...same, quantity: "0" }, false), { save: false });
+    assert.deepEqual(customizeButtons(draft, { ...same, quantity: "3" }, false), { save: true });
+    assert.deepEqual(customizeButtons(ROW, { ...rowCustomize(ROW), pricing: 2 }, false), { save: false });
 
-    // its status line: on its way, the push job, what the PC said; the quantity hint; why Sync is shut
+    // its status line: on its way, what the PC said; the quantity hint; nothing about a Sync
     const idle = { wait: "", job: null, note: null, values: same };
-    assert.deepEqual(customizeLine(GRADED, idle, ebay), { text: "", kind: "" });
-    assert.deepEqual(customizeLine(draft, idle, ebay), { text: "Sync to ebay opens once the listing is up on eBay", kind: "" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, values: { ...same, quantity: "1.5" } }, ebay), {
+    assert.deepEqual(customizeLine(idle), { text: "", kind: "" });
+    assert.deepEqual(customizeLine({ ...idle, values: { ...same, quantity: "1.5" } }), {
         text: EDIT_QUANTITY_HINT,
         kind: "bad",
     });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, wait: "saving" }, ebay), { text: "saving", kind: "busy" });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "running", step: "revising on eBay" } }, ebay), {
-        text: "revising on eBay",
-        kind: "busy",
-    });
-    assert.deepEqual(customizeLine(GRADED, { ...idle, job: { state: "done", summary: "updated" } }, ebay), {
-        text: "updated",
-        kind: "ok",
-    });
+    assert.deepEqual(customizeLine({ ...idle, wait: "saving" }), { text: "saving", kind: "busy" });
     const refused = { text: "no cached fair price for this row: set the price by hand", kind: "bad" };
-    assert.deepEqual(customizeLine(GRADED, { ...idle, note: refused }, ebay), refused);
-    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to ebay puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeLine({ ...idle, note: refused }), refused);
+    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
     assert.deepEqual(customizeSaved(draft, ebay), { text: "saved", kind: "ok" });
 });
 
-test("customize's Sync to <venue>: one per venue the account syncs to and the row is listed on, in /me's order", () => {
-    // Michal, 2026-10-17: "There is a button push to eBay, so add a button push to Craigslist
-    // next to it. All venues need to be represented (if any new get added as well). We are
-    // aiming for venue symmetry."
+test("customize's Save names the Sync under Settings, Venues for each venue the account syncs to and the row is listed on, in /me's order", () => {
+    // Michal, 2026-10-17: "All venues need to be represented (if any new get added as well).
+    // We are aiming for venue symmetry"; 2026-10-31: the sync buttons live only in each venue's
+    // block under Settings, Venues
     const up = { status: "listed", id: "1", url: "", listed_at: null };
     const draft = { status: "draft", id: "", url: "", listed_at: null };
     const both = { ...GRADED, statuses: { ebay: up, craigslist: up } };
@@ -3234,28 +3227,15 @@ test("customize's Sync to <venue>: one per venue the account syncs to and the ro
     // a venue the server adds is drawn as the others, no name of it in the code
     const three = { ...both, venues: ["ebay", "craigslist", "poshmark"], statuses: { ...both.statuses, poshmark: up } };
     assert.deepEqual(customizeVenues(three, ["ebay", "craigslist", "poshmark"]), ["ebay", "craigslist", "poshmark"]);
-    assert.deepEqual(customizeButtons(both, rowCustomize(both), false, ["craigslist"]), { save: false, sync: true });
-    assert.deepEqual(customizeButtons({ ...both, statuses: { ebay: up, craigslist: draft } }, rowCustomize(both), false, ["craigslist"]), {
-        save: false,
-        sync: false,
-    });
 
     // saved: the one Sync by name, or "sync" for more than one
-    assert.deepEqual(customizeSaved(both, all), { text: "saved; sync puts it on the listings", kind: "ok" });
+    assert.deepEqual(customizeSaved(both, all), { text: "saved; sync in Settings, Venues puts it on the listings", kind: "ok" });
     assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: up } }, all), {
-        text: "saved; Sync to craigslist puts it on the listing",
+        text: "saved; Sync to craigslist in Settings, Venues puts it on the listing",
         kind: "ok",
     });
     assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: draft } }, all), { text: "saved", kind: "ok" });
-
-    // nothing listed: what opens a Sync, every venue named
-    const none = { ...both, statuses: { ebay: draft, craigslist: draft } };
-    const idle = { wait: "", job: null, note: null, values: rowCustomize(both) };
-    assert.deepEqual(customizeLine(none, idle, all), { text: "Sync opens once the listing is up on eBay or craigslist", kind: "" });
-    assert.equal(pushClosed(["ebay"]), "Sync to ebay opens once the listing is up on eBay");
-    assert.equal(pushClosed(["ebay", "craigslist", "poshmark"]), "Sync opens once the listing is up on eBay, craigslist or poshmark");
-    assert.equal(pushClosed([]), "", "an account that syncs to none: nothing to open");
-    assert.deepEqual(customizeLine(none, idle, []), { text: "", kind: "" });
+    assert.deepEqual(customizeSaved(both, []), { text: "saved", kind: "ok" }, "an account that syncs to none");
 });
 
 test("GET /me's syncable: the venues the sync buttons and customize go to and from; eBay alone when it does not say", () => {
@@ -3316,6 +3296,14 @@ test("a venue block's two sync buttons: grey where the function is missing or th
         ["Craigslist cannot be read back yet.", "Craigslist cannot be written to yet.", "Craigslist sync is not built yet."],
         [NOT_AVAILABLE, NOT_AVAILABLE, ""],
     ]);
+    // the pair shown only once the venue is connected or signed in (Michal, 2026-10-31): none
+    // for eBay before connect, none for a venue the account lacks; a server that does not say
+    // how eBay stands shows eBay's
+    const shown = (me, ebay) => ["ebay", "craigslist", "poshmark"].map((v) => syncShown(v, me, ebay));
+    assert.deepEqual(shown(admin, ready), [true, true, true]);
+    assert.deepEqual(shown(seller, ready), [true, false, false]);
+    assert.deepEqual(shown(seller, fresh), [false, false, false]);
+    assert.deepEqual(shown(null, null), [true, true, false]);
 });
 
 // --- Admin: a list row's price, dialled on its tile (Michal, 2026-10-07, 2026-10-08) -------
@@ -3411,8 +3399,8 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(photosBehind(both2), []);
     assert.equal(photoQuestion(3), "Remove photo 3 from this item?");
     assert.deepEqual(photoSaved("photo added", []), { text: "photo added", kind: "ok" });
-    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to ebay puts it on the listing", kind: "ok" });
-    assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; sync puts it on the listings", kind: "ok" });
+    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
+    assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; sync in Settings, Venues puts it on the listings", kind: "ok" });
     // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
     // craigslist's when its word for it moved
     const parts = { ...both2, condition: "FOR_PARTS_OR_NOT_WORKING" };
@@ -3809,14 +3797,50 @@ test("a venue's address and its Ships from line: the shared one while it is the 
     assert.deepEqual(addressFor("craigslist", same), { zip: "60609", neighborhood: "McKinley Park" }, "the same for every venue: its own kept aside");
     assert.deepEqual(addressFor("poshmark", same), {});
     assert.deepEqual(addressFor("ebay", null), {});
-    assert.equal(shipsFromLine("ebay", same), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("ebay", same), "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
     assert.equal(shipsFromLine("craigslist", same), "Ships from 60609, McKinley Park");
     assert.equal(shipsFromLine("poshmark", same), "", "a venue that uses none");
     const split = addressOf({ same: false, shared, venues: { craigslist: { zip: "60608", neighborhood: "" } }, uses });
     assert.equal(shipsFromLine("craigslist", split), "Ships from 60608, McKinley Park", "a field it has not got yet comes from the shared one");
-    assert.equal(shipsFromLine("ebay", split), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("ebay", split), "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
     assert.equal(shipsFromLine("ebay", addressOf({ shared: {}, uses })), "", "nothing there yet");
     assert.equal(noAddressLine("poshmark"), "Poshmark does not use a ship-from address.");
+});
+
+test("an address as one line (Michal, 2026-10-31): written with commas, the state and ZIP one part; typed back, split at the commas", () => {
+    const full = ["line1", "city", "state", "zip"];
+    const cl = ["zip", "neighborhood"];
+    const all = [...full, "neighborhood"];
+    const michal = { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609", neighborhood: "McKinley Park" };
+    assert.equal(addressLine(michal, full), "4234 S Wolcott Ave, Chicago, IL 60609");
+    assert.equal(addressLine(michal, cl), "60609, McKinley Park");
+    assert.equal(addressLine(michal, all), "4234 S Wolcott Ave, Chicago, IL 60609, McKinley Park");
+    assert.equal(addressLine({ line1: "12 Oak St", city: "Chicago", state: "IL", zip: "" }, full), "12 Oak St, Chicago, IL", "an empty field left out");
+    assert.equal(addressLine({}, full), "");
+    // typed back: street, city, "ST ZIP"
+    assert.deepEqual(parseAddressLine("1234 W Example St, Chicago, IL 60637", full), { line1: "1234 W Example St", city: "Chicago", state: "IL", zip: "60637" });
+    assert.deepEqual(parseAddressLine(" 12  Oak St , Chicago,il 60601-1234 ", full), { line1: "12 Oak St", city: "Chicago", state: "il", zip: "60601-1234" }, "spaces tidied; checked on Save");
+    // the state and ZIP as two parts; a street of two parts; no comma before the state
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, IL, 60601", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    assert.deepEqual(parseAddressLine("1 Main St, Apt 2, St Louis, MO 63101", full), { line1: "1 Main St, Apt 2", city: "St Louis", state: "MO", zip: "63101" });
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago IL 60601", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    // the neighbourhood after the ZIP, for the shared line of an account with Craigslist
+    assert.deepEqual(parseAddressLine("4234 S Wolcott Ave, Chicago, IL 60609, McKinley Park", all), michal);
+    // Craigslist's: the ZIP, then the neighbourhood
+    assert.deepEqual(parseAddressLine("60609, McKinley Park", cl), { zip: "60609", neighborhood: "McKinley Park" });
+    assert.deepEqual(parseAddressLine("60608", cl), { zip: "60608", neighborhood: "" });
+    // what is missing is "", named when it is saved
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, IL", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "" });
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, Illinois 60601", full), { line1: "12 Oak St", city: "Chicago", state: "Illinois 60601", zip: "" });
+    assert.deepEqual(addressBody(parseAddressLine("12 Oak St, Chicago, Illinois 60601", full)), { ok: false, error: "The state is two letters, as IL." });
+    assert.deepEqual(parseAddressLine("", full), { line1: "", city: "", state: "", zip: "" });
+    assert.deepEqual(parseAddressLine(null, cl), { zip: "", neighborhood: "" });
+    // the line written and typed back is the same address
+    assert.deepEqual(parseAddressLine(addressLine(michal, all), all), michal);
+    // the box's placeholder: what goes in it
+    assert.equal(addressHint(full), "Street, city, state ZIP");
+    assert.equal(addressHint(all), "Street, city, state ZIP, neighborhood");
+    assert.equal(addressHint(cl), "ZIP, neighborhood");
 });
 
 test("Save address's body for /me/address: the one shared block, or one per venue that uses an address, each checked; a box not right is named", () => {
@@ -4318,16 +4342,7 @@ test("wrapBody: only what changed for one part; the text tidied and at most 2000
     assert.throws(() => wrapBody("sidebar", { on: true }), RangeError);
 });
 
-test("the counter, the Apply to: pill's face, the apply button's word, a refusal's line", () => {
-    assert.equal(wrapCounter(""), "0 / 2000");
-    assert.equal(wrapCounter("Thanks!"), "7 / 2000");
-    assert.equal(wrapCounter(undefined), "0 / 2000");
-    // Michal: "once clicked the button changes to green with a check, our typical"
-    assert.deepEqual(venueTickLabel("ebay", true), { text: "ebay", tick: true });
-    assert.deepEqual(venueTickLabel("craigslist", false), { text: "craigslist", tick: false });
-    // "Finally a button 'Apply to all existing listings' (per the venue specified)"
-    assert.equal(applyLabel("ebay"), "Apply to all existing ebay listings");
-    assert.equal(applyLabel("craigslist"), "Apply to all existing craigslist listings");
+test("a header and footer refusal's line", () => {
     assert.equal(wrapError(404, "Not Found"), "The header and footer are not available yet.");
     assert.equal(wrapError(400, "header.text: at most 2000 characters"), "header.text: at most 2000 characters");
     assert.equal(wrapError(0, "cannot reach the server"), "Could not save: cannot reach the server.");
@@ -4483,12 +4498,29 @@ test("Invite, Change name, the people actions' lines", () => {
     assert.equal(LEFT_ACCOUNT, "You left the account.");
 });
 
-test("the header and footer's one Save: only the parts whose text changed, each checked; nothing changed is nothing to send", () => {
-    const info = wrapOf({ header: { on: true, text: "Hello", venues: ["ebay"] }, footer: { on: false, text: "Bye", venues: [] }, available: ["ebay"] });
-    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "Bye" }, info), { ok: true, body: {} });
-    assert.deepEqual(wrapTextsBody({ header: "  Hello there \r\n", footer: "Bye" }, info), { ok: true, body: { header: { text: "Hello there" } } });
-    assert.deepEqual(wrapTextsBody({ header: "Hi", footer: "So long" }, info), { ok: true, body: { header: { text: "Hi" }, footer: { text: "So long" } } });
-    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "x".repeat(2001) }, info), { ok: false, error: "Footer: At most 2000 characters; this is 2001." });
+test("Add standard text to posts (Michal, 2026-10-31): ticked while a part is on with words; the card's body only what differs, a blank box off; unticked, both off", () => {
+    const info = wrapOf({ header: { on: true, text: "Hello", venues: ["ebay"] }, footer: { on: false, text: "Bye", venues: [] }, available: ["ebay", "craigslist"] });
+    const draft = (header, footer, hv = ["ebay"], fv = []) => ({ header: { text: header, venues: hv }, footer: { text: footer, venues: fv } });
+    assert.equal(wrapOn(info), true);
+    assert.equal(wrapOn(wrapOf({ header: { on: false, text: "Hello", venues: [] }, footer: { on: true, text: " ", venues: ["ebay"] } })), false, "off with words, or on with a blank box: unticked");
+    // nothing changed: nothing to send, the two buttons stay dimmed
+    assert.deepEqual(wrapDraftBody(draft("Hello", ""), wrapOf({ ...info, footer: { on: false, text: "", venues: [] } })), { ok: true, body: {} });
+    // the footer's box holds words: on (no checkbox: words mean on); tidied
+    assert.deepEqual(wrapDraftBody(draft("Hello", "Bye"), info), { ok: true, body: { footer: { on: true } } });
+    assert.deepEqual(wrapDraftBody(draft("  Hello there \r\n", "Bye"), info), { ok: true, body: { header: { text: "Hello there" }, footer: { on: true } } });
+    // a blank box means none: off, the text cleared
+    assert.deepEqual(wrapDraftBody(draft("", "Bye"), info), { ok: true, body: { header: { on: false, text: "" }, footer: { on: true } } });
+    // a chip chosen: its venues, in the page's order
+    assert.deepEqual(wrapDraftBody(draft("Hello", "Bye", ["craigslist", "ebay"], ["ebay"]), info), { ok: true, body: { header: { venues: ["ebay", "craigslist"] }, footer: { on: true, venues: ["ebay"] } } });
+    assert.deepEqual(wrapDraftBody(draft("Hello", "x".repeat(2001)), info), { ok: false, error: "Footer: At most 2000 characters; this is 2001." });
+    // unticked: the parts on turned off, their texts kept
+    assert.deepEqual(wrapOffBody(info), { header: { on: false } });
+    assert.deepEqual(wrapOffBody(wrapOf({ header: { on: false }, footer: { on: false } })), {});
+    // Apply to existing postings: every venue a part with words goes on
+    const both = wrapOf({ header: { on: true, text: "Hi", venues: ["craigslist"] }, footer: { on: true, text: "Bye", venues: ["ebay"] }, available: ["ebay", "craigslist"] });
+    assert.deepEqual(wrapApplyVenues(both), ["ebay", "craigslist"]);
+    assert.deepEqual(wrapApplyVenues(info), ["ebay"]);
+    assert.deepEqual(wrapApplyVenues(wrapOf({ header: { on: false, text: "Hi", venues: ["ebay"] } })), []);
 });
 
 test("Delete account refused by a member's 403: the server's words, as a sentence", () => {

@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.25.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.26.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -625,6 +625,24 @@ button.busy::after {
     .chips { grid-template-columns: 1fr 1fr; }
 }
 .chip:focus-visible, .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* Two looks, two meanings (Michal, 2026-10-31): yellow on black, or black on yellow, is "press
+   me", an action; an option (Dark / Light / Sync with device, a venue chip under Venues, a
+   header's or footer's venue) is a bordered chip in the field colour with ink words, the chosen
+   one solid white with black words and a check after the word, its border white so it is its
+   neighbours' size. The same in the dark. */
+.chips.option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.option {
+    min-height: 36px;
+    padding: 4px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--field);
+    color: var(--ink);
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+}
+.chip.option[aria-pressed="true"], .chip.option.chosen { background: #ffffff; color: #0b0b0b; border-color: #ffffff; font-weight: 700; }
+.chip.option[aria-pressed="true"]::after, .chip.option.chosen::after { content: " ✓"; }
 /* paperback | hardcover: two chips, never squeezed */
 .chips.chips-two { grid-template-columns: 1fr 1fr; }
 
@@ -1015,17 +1033,17 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .chips-conditions .chip { min-height: 36px; padding: 4px 6px; font-size: 13px; }
 .choice-note { margin: 4px 2px 0; font-size: 13px; color: var(--muted); }
 
-/* The sync buttons, in each venue's block under Settings, Venues (docs/UI.md, 2026-10-25; the
-   sticky bar under the inventory until then): both always, the inventory's small green badge
-   with the round arrow after the words (Michal, 2026-10-26), grey where the function or the
-   venue is missing; a venue's from before its to, the resets after both so a paused one's
-   sits under the pair; the job's line under the row, in that venue's block alone. */
+/* The sync buttons, in each venue's block under Settings, Venues, the one place they live
+   (Michal, 2026-10-31; the sticky bar under the inventory until 2026-10-25): both, once the
+   venue is connected or signed in, the inventory's green badge with black words and the
+   page's own half of the sync symbol after them, grey where the direction does not exist; a
+   venue's from before its to, the resets after both so a paused one's sits under the pair;
+   the job's line under the row, in that venue's block alone. */
 .venue-sync { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .venue-sync:empty { display: none; }
 .venue-sync .reset-call { flex-basis: 100%; text-align: left; }
 .venue-sync button.vbadge:disabled.muted { opacity: 0.6; }
-.sync-arrow { font-size: 14px; line-height: 1; }
-button.vbadge.busy .sync-arrow { display: none; }
+.vbadge.posted.sync-call { color: #0b0b0b; }
 .sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sync-status:empty { display: none; }
 .sync-status.busy { color: var(--ink); }
@@ -1159,16 +1177,19 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .accounts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .accounts-list .card { padding: 12px 14px; }
 .accounts-list .account-row { margin-top: 6px; }
+/* Add account: in line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) */
+.pill.add-account { margin: 14px 0 0 14px; }
 .link.account-action { padding-left: 0; font-size: 13px; color: var(--muted); text-decoration: underline; }
-/* the invite box on the owner's card, above the People link; the link, with its count */
+/* the invite box on the owner's card, above the People link: one label, one box, one button
+   (Michal, 2026-10-26: "less is more"); the link, with its count */
 .invite { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
-.invite-head { margin: 0; }
 .invite .pill { margin-top: 8px; }
-.invite-note { margin: 6px 0 0; }
 .link.people-link { display: block; min-height: 44px; margin-top: 4px; padding: 10px 0; font-size: 15px; }
 .people-count { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
-/* the People page, in Admin's place (Michal, 2026-10-25): one card per person, their devices under */
+/* the People page, in Admin's place (Michal, 2026-10-25): one bordered card per person in the
+   inventory row's style (2026-10-31), their devices under */
 .people-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.card.person-card { padding: 10px 14px; background: var(--field); border: 2px solid var(--line); }
 .person-name { margin: 0; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
 .person-words { margin: 2px 0 0; }
 .person-actions { display: flex; flex-wrap: wrap; gap: 0 12px; }
@@ -1185,10 +1206,11 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 /* the landing's Back while an account is being added, and Switch account under Install */
 .link.landing-back { display: block; text-align: left; }
 
-/* The venue blocks under Venues (docs/UI.md, 2026-10-25): one card each, the same shape */
-.venue-blocks { display: grid; gap: 8px; }
+/* The venue blocks under Venues (docs/UI.md, 2026-10-25): one card each, the same shape, the
+   chosen venue chip's alone under the chips (Michal, 2026-10-31) */
+.chips.venue-chips { margin: 8px 0 0; }
+.venue-blocks { display: grid; gap: 8px; margin-top: 8px; }
 .venue-block { padding: 12px 14px; }
-.venue-name { margin: 0 0 4px; font-size: 14px; font-weight: 800; }
 .venue-line { margin: 0; }
 .venue-line.ok { color: var(--ok); font-weight: 700; }
 .venue-ships, .venue-note { margin: 4px 0 0; }
@@ -1196,41 +1218,40 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .link.ask-link { display: block; min-height: 40px; padding: 8px 0 0; font-size: 14px; text-decoration: underline; }
 /* Reconnect, under eBay connected: small and underlined, as Buy postings' link is, for a lapsed token */
 .link.reconnect-link { display: block; min-height: 40px; padding: 8px 2px 0; font-size: 14px; text-decoration: underline; }
-/* The address card, first under Posting (Michal, 2026-10-25): the tick, then the boxes small
-   (16 px words, under which a phone zooms in), the state and ZIP side by side; unticked, one
-   block per venue */
+/* The address where you ship from, last under Venues (Michal, 2026-10-26), no card of its own,
+   in line with the venue block's inner text (its 14 px; 2026-10-31): its title, ONE line box
+   (16 px words, under which a phone zooms in), or unticked one per venue under its name; then
+   one row, Save address and the Same address for every venue tick */
+.address-card { margin: 14px 0 0; padding: 0 14px; }
 .seller-note { margin: 2px 0 8px; font-weight: 700; color: var(--ink); }
-.seller-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
-.address-venues { display: grid; gap: 8px; margin-top: 6px; }
-.address-venue { padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1.5px solid var(--line); }
-.address-venue .venue-name { margin-bottom: 0; }
-.address-card .pill { margin-top: 10px; }
+.address-venues .field-small { margin: 6px 0 4px; }
+.address-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.address-row .pickup { margin-top: 0; }
 /* what Snap sets up on her eBay, under the boxes while the address is being given: small, a list of facts */
 .seller-policies { margin: 12px 0 2px; font-size: 13px; }
 .seller-policies[hidden] { display: none; }
 .seller-policies-head { margin: 0 0 4px; font-weight: 800; }
 .seller-policy-list { margin: 0; padding-left: 1.2em; color: var(--muted); line-height: 1.45; }
-/* the defaults every new item starts with: the customize card's controls, as they are there */
-.posting-defaults .field:first-of-type { margin-top: 6px; }
-/* Header and footer on every listing, one card under Posting (Michal, 2026-10-17; one Save
-   since 2026-10-25): two of pickup only's pill rows, each unfolding its box, its counter and
-   the venue pills (outlined off; on, the posted green with a tick, as eBay connected), Save,
-   and the job buttons that push them onto the listings already up */
-.wrap-fold { padding: 10px 2px 4px; }
-.wrap-count { margin: 4px 2px 0; text-align: right; }
-.wrap-note { margin: 4px 2px 0; }
-.wrap-venues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.wrap-venues:empty { display: none; }
-.pill.wrap-venue { gap: 4px; background: none; border-color: var(--ink); color: var(--ink); }
-.pill.wrap-venue[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); }
-.wrap-venue .tick { flex: none; width: 14px; height: 14px; }
-.pill.wrap-save { margin-top: 12px; }
-.wrap-apply { margin-top: 12px; }
-.wrap-apply .pill { display: flex; width: 100%; margin-top: 8px; }
-.wrap-apply .venue-status:empty { display: none; }
-/* This phone: Install on the home screen, as the landing's, with its two taps under it */
-.secondary.phone-install { margin-top: 12px; }
-.phone-installed { margin: 12px 0 0; }
+/* Posting defaults (Michal, 2026-10-31: "less is more"): no card, one muted line, Quantity a
+   box three digits wide with the Price slider beside it filling the line, the options one
+   pill row each with no small print */
+.posting-lead { margin: 6px 0 0; }
+.qty-row { display: flex; align-items: flex-start; gap: 14px; }
+.qty-row .field { margin: 10px 0 0; }
+.qty-row .pricing-field { flex: 1 1 auto; min-width: 0; }
+.qty-row input[type="text"].quantity { width: 3.4em; padding-inline: 8px; text-align: center; }
+/* Add standard text to posts, ticked: the gray card, Header and Footer each a label, its box
+   and its venue option chips (a blank box means none), then the two press-me pills each on a
+   line of its own, dimmed until something changes; the pushes' lines under them */
+.card.wrap { margin-top: 10px; padding: 4px 14px 14px; }
+.wrap-field { margin: 10px 0 0; }
+.chips.wrap-venues { margin-top: 8px; }
+.chips.wrap-venues:empty { display: none; }
+.pill.wrap-button { display: flex; width: 100%; margin-top: 12px; }
+.wrap-jobs .venue-status { margin-top: 6px; }/* This phone: Install on the home screen, the press-me pill, with its two taps under it; once
+   on the home screen, the chosen option chip saying so (Michal, 2026-10-31) */
+.pill.phone-install { margin-top: 12px; }
+.chip.option.phone-installed { display: inline-flex; align-items: center; margin: 12px 0 0; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
 .landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */

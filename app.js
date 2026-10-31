@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.25.0";
+import { VERSION } from "./version.js?v=2.26.0";
 import {
     adminLink,
     anyActive,
@@ -98,7 +98,6 @@ import {
     customizeChanges,
     customizeLine,
     customizeSaved,
-    customizeVenues,
     DERIVED,
     derivedFields,
     EDIT_FIELDS,
@@ -130,6 +129,7 @@ import {
     syncLine,
     syncNote,
     syncReason,
+    syncShown,
     syncVenues,
     syncWord,
     unsyncedList,
@@ -172,9 +172,11 @@ import {
     safeLink,
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
-    ADDRESS_FIELDS,
     ADDRESS_ON_SERVER,
     addressBody,
+    addressHint,
+    addressLine,
+    parseAddressLine,
     addressOf,
     addressSaveBody,
     CONNECT_TO_POST,
@@ -198,7 +200,10 @@ import {
     peopleOf,
     personWords,
     signedOutOthers,
-    wrapTextsBody,
+    wrapDraftBody,
+    wrapOffBody,
+    wrapOn,
+    wrapApplyVenues,
     installState,
     installSteps,
     isDesktopBrowser,
@@ -227,11 +232,7 @@ import {
     inboxOf,
     refusalLine,
     signupStep,
-    applyLabel,
-    venueTickLabel,
     WRAP_PARTS,
-    wrapBody,
-    wrapCounter,
     wrapError,
     wrapOf,
     ACCOUNT_DELETED,
@@ -240,8 +241,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.25.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.25.0";
+} from "./core.js?v=2.26.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.26.0";
 import {
     addVenue,
     applyWrap,
@@ -292,8 +293,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.25.0";
-import { shrinkPhoto } from "./shrink.js?v=2.25.0";
+} from "./pc.js?v=2.26.0";
+import { shrinkPhoto } from "./shrink.js?v=2.26.0";
 import {
     bookCard,
     bookPriceValue,
@@ -306,8 +307,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.25.0";
-import { canScan, readIsbn } from "./scan.js?v=2.25.0";
+} from "./book.js?v=2.26.0";
+import { canScan, readIsbn } from "./scan.js?v=2.26.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -436,27 +437,31 @@ const account = { packs: false, busy: false, status: "" };
  * is no card), the Same address for every venue tick as on screen, a Save on its way, its line,
  * "policies ready" to be said (once), the poll's timer while eBay's policies are being set up
  * and how many times it has asked, and `asked`, bumped per ask so a late answer for an older
- * one is dropped. `venueBoxes`: venue -> field -> its input, drawn while the tick is off.
+ * one is dropped. `venueBoxes`: venue -> its one line and the fields it uses, drawn while the tick is off.
  */
 const seller = { info: null, same: true, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0, venueBoxes: {} };
 /**
- * The header and footer on every listing (GET /me/wrap), one card under Posting defaults, as the screen
+ * The header and footer on every listing (GET /me/wrap), under Posting defaults, as the screen
  * has it: the server's answer (wrapOf; null until asked, and from an older server's 404, which
- * is no card), its line, its one Save on its way, `asked`, bumped per ask so a late answer for
- * an older one is dropped, per venue the job task (jobTask) of Apply to all existing listings
- * (one push carries both parts), and the pills and apply buttons as drawn, by venue.
+ * is no tick and no card), Add standard text to posts ticked (`open`), each part's venue chips
+ * as chosen (`draft`; its words are its box's), the card's line, a PATCH on its way, `asked`,
+ * bumped per ask so a late answer for an older one is dropped, per venue the job task (jobTask)
+ * of Apply to existing postings (one push carries both parts), and the chips as drawn.
  */
 const wrap = {
     info: null,
+    open: false,
+    /** @type {{header:string[], footer:string[]}} */
+    draft: { header: [], footer: [] },
     status: "",
     busy: false,
     asked: 0,
     /** @type {Record<string, ReturnType<typeof jobTask>>} */
     apply: {},
-    /** @type {Record<string, {pills:Record<string, HTMLButtonElement>, btn:HTMLButtonElement, reset:HTMLButtonElement, line:HTMLElement}>} */
-    drawn: {},
-    /** What each part's pill row and the apply row hold now, so each is redrawn only when that changes. */
-    shown: { header: "", footer: "", apply: "" },
+    /** @type {Record<string, HTMLButtonElement>} "<part> <venue>" -> its chip */
+    chips: {},
+    /** What each part's chip row holds now, so it is redrawn only when that changes. */
+    shown: { header: "", footer: "" },
 };
 /**
  * The people on this account (GET /me/people, /me/devices; Michal, 2026-10-25), as the screen
@@ -475,6 +480,11 @@ let folds = {};
 let freshSignin = false;
 /** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
 let settingsOpen = false;
+/**
+ * The venue whose block shows under Venues' chips, one at a time (Michal, 2026-10-31): eBay's
+ * as Admin opens, the chip tapped since.
+ */
+let venueOpen = "ebay";
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -602,15 +612,10 @@ const undo = { entry: null, timer: null };
  */
 const sync = { ...jobTask(), venue: "" };
 /**
- * The venue blocks' sync buttons as drawn, by "<direction> <venue>": the button, its round
- * arrow, its reset; made once per venue and direction (every block has both).
+ * The venue blocks' sync buttons as drawn, by "<direction> <venue>": the button, its half of
+ * the sync symbol, its reset; made once per venue and direction.
  */
 const syncDrawn = { nodes: new Map() };
-/**
- * customize's Sync to <venue> buttons as drawn (customizeVenues), by venue: the button and
- * its reset; `shown`, the venues in the row of buttons now.
- */
-const customDrawn = { nodes: new Map(), shown: "" };
 
 /** Resolved on every state change: how an async step waits for the queue. */
 const waiters = [];
@@ -1430,7 +1435,6 @@ function renderPosting() {
     el.postingPricing.value = String(grade.grade);
     el.postingPricing.setAttribute("aria-valuetext", grade.word);
     PRICING.forEach((p, i) => el.postingPricingWords[i].classList.toggle("on", p.grade === grade.grade));
-    el.postingPricingNote.textContent = grade.note;
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
     el.postingFixDark.checked = savedFixDark();
@@ -2496,8 +2500,10 @@ function showAdmin(open, card = "") {
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
-        // the account card starts folded and quiet on the next visit, Delete account too
+        // the account card starts folded and quiet on the next visit, Delete account too, and
+        // Venues on eBay's block
         Object.assign(account, { packs: false, status: "" });
+        venueOpen = "ebay";
         Object.assign(deleting, { open: false, status: "" });
         quietSeller();
         showPeople(false);
@@ -3237,18 +3243,6 @@ function syncIcon(direction = "to") {
 }
 
 /**
- * The round arrow after a sync button's words ("Sync from ebay ↻": Michal, 2026-10-26), out of
- * a screen reader's way and out of sight while the button's ring turns (styles.css).
- */
-function syncArrow() {
-    const arrow = document.createElement("span");
-    arrow.className = "sync-arrow";
-    arrow.setAttribute("aria-hidden", "true");
-    arrow.textContent = "↻";
-    return arrow;
-}
-
-/**
  * A sync badge tapped: after the second a job button waits, the push job puts the row as
  * saved on its listing on that venue ({"action": "push", "sku", "venue"}), asked about every
  * POLL_MS. Done, the venue has the row and the badge is the plain listed one again, a link.
@@ -3516,8 +3510,8 @@ function blankCard() {
 /**
  * The listing's customize, for the row on screen: open (each listing opens on it),
  * its two boxes and the slider as he left them (`values`, from the row until
- * changed), and, as a card's, its job task ("push <venue>" for Sync to <venue>: one push at a
- * time, the row's other buttons waiting).
+ * changed), and, as a card's, its task (Save's PATCH on its way, the row's other buttons
+ * waiting).
  */
 function blankCustomize() {
     return { open: true, values: rowCustomize({}), ...jobTask() };
@@ -3556,8 +3550,7 @@ function renderCards() {
  * The listing's customize, as the goods card: open or folded; the quantity box (not
  * rewritten while it holds what was typed), pickup only and the Price slider with
  * each grade's cached price beside its word (sliderWords), locked while the row is
- * busy; Save, and a Sync to <venue> per venue the row is listed on that /me syncs to
- * (customizeVenues), as customizeButtons says; its status line.
+ * busy; Save, as customizeButtons says; its status line.
  */
 function renderRowCustomize() {
     const c = admin.custom;
@@ -3580,77 +3573,24 @@ function renderRowCustomize() {
         el.detailPricingWords[i].classList.toggle("on", p.grade === slider.bold);
     });
     el.detailPricingNote.textContent = slider.note;
-    const to = syncVenues(me, "to");
-    const can = customizeButtons(row, c.values, busy, to);
-    el.detailCustomizeSave.disabled = !can.save;
-    // after Save, a Sync to <venue> per venue the row is listed on (Michal, 2026-10-17: "There is
-    // a button push to eBay, so add a button push to Craigslist next to it"), each a job button:
-    // pressed, its ring and "tap again to cancel", paused its continue and its own reset
-    const venues = customizeVenues(row, to);
-    const kids = venues.flatMap((venue) => {
-        const { btn, reset, arrow } = customSyncNodes(venue);
-        const pushing = pressed(c, `push ${venue}`);
-        btn.disabled = pushing ? !taskTap(c) : !can.sync;
-        paintJobButton(btn, actionWord("sync", venue), {
-            busy: pushing,
-            cancel: pushing && taskCancel(c),
-            paused: pushing && c.paused,
-            trail: [arrow],
-            reset,
-        });
-        return [btn, reset];
-    });
-    if (customDrawn.shown !== venues.join(" ")) {
-        customDrawn.shown = venues.join(" ");
-        el.detailCustomizeActions.replaceChildren(el.detailCustomizeSave, ...kids);
-    }
+    // Save alone: the sync buttons live only in each venue's block under Settings, Venues
+    // (Michal, 2026-10-31), whose Sync to <venue> puts the saved row on its listing
+    el.detailCustomizeSave.disabled = !customizeButtons(row, c.values, busy).save;
     paintCustomizeLine();
 }
 
-/**
- * A venue's Sync to <venue> in customize and its reset, made the first time it is drawn: the
- * inventory's small green badge with the round arrow after the word, as every sync button
- * (docs/UI.md, Michal 2026-10-26).
- */
-function customSyncNodes(venue) {
-    if (!customDrawn.nodes.has(venue)) {
-        const word = actionWord("sync", venue);
-        const btn = actionButton(word, "vbadge posted vsync", true, () => {
-            if (pressed(admin.custom, `push ${venue}`)) onTaskTap(admin.custom, customizePaint());
-            else pushRow(venue).catch(() => {});
-        });
-        btn.id = `detail-customize-sync-${venue}`;
-        const reset = actionButton(RESET, "reset-call", false, () => {
-            resetTask(admin.custom, customizePaint()).catch(() => {});
-        });
-        reset.id = `detail-customize-reset-${venue}`;
-        reset.hidden = true;
-        reset.setAttribute("aria-label", `${RESET} ${word}`);
-        customDrawn.nodes.set(venue, { btn, reset, arrow: syncArrow() });
-    }
-    return customDrawn.nodes.get(venue);
-}
-
-/** customize's task on screen again, unless the listing has changed meanwhile. */
-function customizePaint() {
-    const mine = admin.shown;
-    return () => {
-        if (mine === admin.shown) renderCards();
-    };
-}
-
-/** customize's status line, rewritten in place: a poll changes it and nothing else. */
+/** customize's status line, rewritten in place. */
 function paintCustomizeLine() {
     if (!admin.row) return;
-    const line = customizeLine(admin.row, admin.custom, syncVenues(me, "to"));
+    const line = customizeLine(admin.custom);
     el.detailCustomizeStatus.textContent = line.text;
     el.detailCustomizeStatus.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
 }
 
 /**
  * A box typed or ticked, or the slider moved: the state takes it, and what the last
- * Save or push said gives way to what the foldout now is (Save opens, or the
- * quantity hint shows, or the slider's line says there is no cached price to set).
+ * Save said gives way to what the foldout now is (Save opens, or the quantity hint
+ * shows, or the slider's line says there is no cached price to set).
  */
 function onCustomizeInput(values) {
     const c = admin.custom;
@@ -3666,16 +3606,16 @@ function onCustomizeInput(values) {
  * grade changed (customizeChanges); the PC sets the price to the grade's cached one
  * and the row it answers is shown, its new price in the heading and the eBay card.
  * A refusal (no cached price for that grade) is said in the status line, the
- * foldout as he left it. true once the row holds what the foldout says (nothing to
- * send counts), so a Sync to <venue> can follow.
+ * foldout as he left it. Saved, the line says where the change goes on to a listing
+ * up (customizeSaved: Sync to <venue> under Settings, Venues).
  */
 async function saveRowCustomize() {
     const c = admin.custom;
     const row = admin.row;
     const pc = settings();
-    if (!row || !pc || rowBusy() || !quantityValue(c.values.quantity)) return false;
+    if (!row || !pc || rowBusy() || !quantityValue(c.values.quantity)) return;
     const body = customizeChanges(row, c.values);
-    if (!body) return true;
+    if (!body) return;
     const mine = admin.shown;
     c.note = null;
     c.job = null;
@@ -3685,81 +3625,20 @@ async function saveRowCustomize() {
     try {
         whole = await patchRow(pc, row.sku, body);
     } catch (e) {
-        if (mine !== admin.shown) return false;
+        if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
         c.wait = "";
         c.note = { text: e.message, kind: "bad" };
         renderCards();
-        return false;
+        return;
     }
-    if (mine !== admin.shown) return false;
+    if (mine !== admin.shown) return;
     heard(200);
     c.wait = "";
     c.note = customizeSaved(whole, syncVenues(me, "to"));
     markBehind(row.sku, row, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
-    return true;
-}
-
-/**
- * Sync to <venue> (Michal, 2026-10-07: "click pickup only and sync to eBay, and that
- * detail of that listing should update"; 2026-10-17: "add a button push to Craigslist next
- * to it"): the second a job button waits, then a change not yet saved is saved, then the
- * push job puts the row as saved on its listing on `venue`. Its line is customize's status
- * line, polled every POLL_MS, "updated" or "unchanged" once done (that venue's unsynced mark
- * let go: askJob), and the row is read again. A push the PC refuses says why. A tap on it
- * pauses it (onTaskTap), and its reset calls it off.
- */
-async function pushRow(venue) {
-    const c = admin.custom;
-    const to = syncVenues(me, "to");
-    if (!admin.row || !customizeButtons(admin.row, c.values, rowBusy(), to).sync) return;
-    if (!customizeVenues(admin.row, to).includes(venue)) return;
-    const mine = admin.shown;
-    c.action = `push ${venue}`;
-    c.note = null;
-    c.job = null;
-    c.stopping = false;
-    c.wait = "sending";
-    const waited = pressWait(c);
-    renderCards();
-    if (!(await waited) || mine !== admin.shown) return;
-    c.wait = "";
-    const saved = await saveRowCustomize();
-    if (mine !== admin.shown) return;
-    const row = admin.row;
-    const pc = settings();
-    if (!saved || !row || !pc || rowBusy()) {
-        c.action = "";
-        renderCards();
-        return;
-    }
-    c.job = null;
-    c.wait = "sending";
-    renderCards();
-    let answer;
-    try {
-        answer = await sendJob(pc, actionJob("push", { sku: row.sku, venue }));
-    } catch (e) {
-        if (mine !== admin.shown) return;
-        if (e.status === 0 || e.status === 401) heard(e.status);
-        c.action = "";
-        c.wait = "";
-        c.note = { text: e.message, kind: "bad" };
-        renderCards();
-        return;
-    }
-    if (mine !== admin.shown) return;
-    heard(200);
-    c.wait = "";
-    c.note = null;
-    c.job = { action: "push", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
-    c.ask = () => {
-        askJob(c, mine, renderRowCustomize).catch(() => {});
-    };
-    renderCards();
-    later(c);
 }
 
 /**
@@ -3907,13 +3786,12 @@ function actionsNode(venue, busy) {
         );
         return box;
     }
-    for (const action of venueActions(row, venue, readUnsynced())) {
+    for (const action of venueActions(row, venue)) {
         if (action === "end" && c.noEnd) continue;
         const word = actionWord(action, venue);
-        // a Sync to <venue> is the green badge with its arrow, as every sync button (docs/UI.md),
-        // so a listing left behind by an edit is plain to see
-        const look = action === "post" ? "big venue-btn" : action === "sync" ? "vbadge posted vsync" : "pill";
-        const trail = action === "sync" ? [syncArrow()] : [];
+        // no Sync to <venue> here: the sync buttons live only in each venue's block under
+        // Settings, Venues (Michal, 2026-10-31)
+        const look = action === "post" ? "big venue-btn" : "pill";
         if (action === "open") {
             box.append(linkNode(venueStatus(row, venue).url, "pill", word));
             continue;
@@ -3929,14 +3807,12 @@ function actionsNode(venue, busy) {
                 resetTask(c, paint).catch(() => {});
             });
             reset.setAttribute("aria-label", `${RESET} ${word}`);
-            c.button = { node, word, reset, trail };
+            c.button = { node, word, reset };
             paintTaskButton(c, c.button);
             box.append(node, reset);
             continue;
         }
-        const node = actionButton(word, look, busy, () => onAction(venue, action));
-        if (trail.length) node.replaceChildren(word, ...trail);
-        box.append(node);
+        box.append(actionButton(word, look, busy, () => onAction(venue, action)));
     }
     return box;
 }
@@ -4201,7 +4077,7 @@ async function runAction(venue, action) {
     const body =
         action === "post"
             ? jobRequest({ venue, sku: row.sku })
-            : actionJob(action === "sync" ? "push" : action, { sku: row.sku, venue });
+            : actionJob(action, { sku: row.sku, venue });
     let answer;
     try {
         answer = await sendJob(pc, body);
@@ -4386,9 +4262,6 @@ async function askJob(c, mine, paint) {
         renderCards();
         return;
     }
-    // a push (customize's Sync to <venue>, the card's Sync to craigslist): that venue has the row
-    // now, and its list badge is plain again
-    if (c.job.action === "push") markUnsynced(admin.row.sku, c.job.venue, false);
     admin.changed = true;
     const pc = settings();
     let whole;
@@ -5015,13 +4888,13 @@ async function askSync() {
 }
 
 /**
- * The sync buttons in each venue's block under Settings, Venues (Michal, 2026-10-26: every
- * block shows both, Sync from and Sync to, the inventory's small green button with the round
- * arrow after the words): one whose function does not exist, or whose venue the account lacks,
- * is grey and disabled (syncReason), the one muted reason line under the pair where the
- * block's status line does not say it already (syncNote); the others are job buttons, the
- * pressed one its ring (continue while paused) and, while it is paused, its reset, the job's
- * line under that venue's pair; one sync at a time locks the rest.
+ * The sync buttons in each venue's block under Settings, Venues, the one place they live
+ * (Michal, 2026-10-31): both, Sync from and Sync to, the inventory's green with black words and
+ * the page's own half of the sync symbol after them (syncIcon), shown only once the venue is
+ * connected or signed in (syncShown); one whose direction does not exist is grey and disabled
+ * (syncReason), the one muted reason line under the pair (syncNote); the others are job
+ * buttons, the pressed one its ring (continue while paused) and, while it is paused, its
+ * reset, the job's line under that venue's pair; one sync at a time locks the rest.
  */
 function renderSync() {
     const line = busyLine(sync);
@@ -5032,10 +4905,12 @@ function renderSync() {
         const said = sync.venue === venue ? line : null;
         block.syncStatus.textContent = said ? said.text : "";
         block.syncStatus.className = said && said.kind ? `sync-status ${said.kind}` : "sync-status";
+        const shown = syncShown(venue, me, ebay);
         const drawn = ["from", "to"].map((direction) => {
             const nodes = syncNodes(/** @type {"from"|"to"} */ (direction), venue);
             const busy = pressed(sync, `${direction} ${venue}`);
             const grey = !busy && !!syncReason(venue, /** @type {"from"|"to"} */ (direction), me, ebay);
+            nodes.btn.hidden = !shown && !busy;
             nodes.btn.classList.toggle("posted", !grey);
             nodes.btn.classList.toggle("muted", grey);
             nodes.btn.disabled = grey || (locked && !(busy && taskTap(sync)));
@@ -5043,7 +4918,7 @@ function renderSync() {
                 busy,
                 cancel: busy && taskCancel(sync),
                 paused: busy && sync.paused,
-                trail: [nodes.arrow],
+                trail: [nodes.icon],
                 reset: nodes.reset,
             });
             return nodes;
@@ -5061,13 +4936,15 @@ function renderSync() {
 
 /**
  * A venue block's sync button and its reset, made once: `sync-<direction>-<venue>`, the
- * inventory's small green badge (Michal, 2026-10-26) with the round arrow "↻" after the word,
- * and its reset `sync-<direction>-<venue>-reset` (drawn after both buttons).
+ * inventory's small green badge (Michal, 2026-10-26) with black words (`sync-call`) and the
+ * page's own half of the sync symbol after them, the "from" half on Sync from, the "to" half
+ * on Sync to (Michal, 2026-10-31: the one sync symbol throughout), and its reset
+ * `sync-<direction>-<venue>-reset` (drawn after both buttons).
  */
 function syncNodes(direction, venue) {
     const key = `${direction} ${venue}`;
     if (!syncDrawn.nodes.has(key)) {
-        const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-${direction}`, false, () => {
+        const btn = actionButton(syncWord(direction, venue), `vbadge posted vsync sync-call sync-${direction}`, false, () => {
             // a grey one is disabled; should a tap reach it all the same, it does nothing
             if (!pressed(sync, key) && syncReason(venue, direction, me, ebayNow())) return;
             startSync(direction, venue).catch(() => {});
@@ -5079,7 +4956,7 @@ function syncNodes(direction, venue) {
         reset.id = `sync-${direction}-${venue}-reset`;
         reset.hidden = true;
         reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
-        syncDrawn.nodes.set(key, { btn, arrow: syncArrow(), reset });
+        syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
     }
     return syncDrawn.nodes.get(key);
 }
@@ -5224,8 +5101,9 @@ function renderAccount() {
     const a = currentAccount();
     const credits = me ? me.credits : null;
     const packs = me ? me.packs : [];
-    // an unlimited key has nothing to buy
-    const canBuy = !!settings() && packs.length > 0 && !(credits && credits.unlimited);
+    // Buy postings for every account whose postings are counted, however many are left
+    // (Michal, 2026-10-31); an unlimited key, the admin's, has nothing to buy
+    const canBuy = !!settings() && !!credits && !credits.unlimited;
     const left = settings() ? creditsLine(credits) : "";
     el.account.hidden = !a;
     el.accountUser.textContent = a ? accountName(a) : "";
@@ -5238,7 +5116,7 @@ function renderAccount() {
     el.accountBuy.hidden = !canBuy;
     el.accountBuy.disabled = account.busy;
     el.accountBuy.setAttribute("aria-expanded", canBuy && account.packs ? "true" : "false");
-    el.accountPacks.hidden = !canBuy || !account.packs;
+    el.accountPacks.hidden = !canBuy || !account.packs || !packs.length;
     el.accountPacks.replaceChildren(
         ...packs.map((pack) => {
             const pill = document.createElement("button");
@@ -5265,7 +5143,8 @@ function renderAccount() {
 // symmetry") ----------------------------------------------------------------------------
 
 /**
- * The venue blocks, in /me's order: each its status line (venueBlockLine), its Ships from
+ * The venue chips and the venue blocks, in /me's order, the chosen chip's block alone shown
+ * (venueOpen): each its status line (venueBlockLine), its Ships from
  * line (shipsFromLine), eBay's Connect eBay and "Connect eBay to start posting" while it is
  * not connected, Reconnect once it is (the status line says "Connected as ...", so the green
  * button is the two steps' alone), the other venues' "Ask for it in Feedback" while the
@@ -5275,6 +5154,12 @@ function renderVenues() {
     const ebay = ebayNow();
     const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
     el.venues.replaceChildren(...order.map((v) => el.venueBlocks[v].block));
+    // the venue chips in the same order, the chosen one's block alone under them (Michal, 2026-10-31)
+    el.venueChipRow.replaceChildren(...order.map((v) => el.venueChips[v]));
+    for (const venue of VENUES) {
+        el.venueChips[venue].setAttribute("aria-pressed", venue === venueOpen ? "true" : "false");
+        el.venueBlocks[venue].block.hidden = venue !== venueOpen;
+    }
     for (const venue of VENUES) {
         const block = el.venueBlocks[venue];
         const words = settings() ? venueBlockLine(venue, me, ebay, seller.ready) : "";
@@ -5306,12 +5191,13 @@ function renderVenues() {
 // per venue") and sets up her eBay business policies from it.
 
 /**
- * The address card: shown once the server gave an answer; its line (why the fold opened by
- * itself, or where a prefilled address came from); the Same address for every venue tick;
- * the one block, or one per venue that uses an address (addressVenueBlocks), a venue that uses
- * none saying so; what Snap sets up on her eBay while the address is still to be given after
- * eBay connected; Save address (Looks right for one prefilled from eBay: Michal, 2026-10-08)
- * and its line. The admin's is the server's own: the boxes read-only, no Save.
+ * The address card, last under Venues with no card of its own (Michal, 2026-10-31): shown
+ * once the server gave an answer; its line (why the fold opened by itself, or where a
+ * prefilled address came from); the one line, or one line per venue that uses an address
+ * (drawAddressVenues), a venue that uses none saying so; what Snap sets up on her eBay while
+ * the address is still to be given after eBay connected; then one row, Save address (Looks
+ * right for one prefilled from eBay: Michal, 2026-10-08) and the Same address for every venue
+ * tick; its line. The admin's is the server's own: the boxes read-only, no Save.
  */
 function renderSeller() {
     const info = seller.info;
@@ -5323,9 +5209,8 @@ function renderSeller() {
     el.addressSame.checked = seller.same;
     el.addressSame.disabled = !info.editable;
     el.addressShared.hidden = !seller.same;
-    const usesNeighborhood = Object.entries(info.uses).some(([v, fields]) => (me ? me.venues : VENUES).includes(v) && fields.includes("neighborhood"));
-    el.sellerNeighborhoodField.hidden = !usesNeighborhood;
-    for (const box of [el.sellerLine1, el.sellerCity, el.sellerState, el.sellerZip, el.sellerNeighborhood]) box.readOnly = !info.editable;
+    el.sellerLine.readOnly = !info.editable;
+    el.sellerLine.setAttribute("placeholder", addressHint(sharedUses(info)));
     el.addressVenues.hidden = seller.same;
     el.sellerPolicies.hidden = !note;
     el.sellerSave.textContent = addressState(info) === "prefilled" ? "Looks right" : "Save address";
@@ -5334,97 +5219,97 @@ function renderSeller() {
     el.sellerStatus.textContent = seller.status;
 }
 
-/** The shared block's boxes as the server has the address (Settings opened, a Save answered). */
-function fillSeller(info) {
-    el.sellerLine1.value = info.shared.line1;
-    el.sellerCity.value = info.shared.city;
-    el.sellerState.value = info.shared.state;
-    el.sellerZip.value = info.shared.zip;
-    el.sellerNeighborhood.value = info.shared.neighborhood;
-}
-
-/** The shared block's boxes, as typed. */
-function sharedBoxes() {
-    return {
-        line1: el.sellerLine1.value,
-        city: el.sellerCity.value,
-        state: el.sellerState.value,
-        zip: el.sellerZip.value,
-        neighborhood: el.sellerNeighborhood.value,
-    };
+/** The venues of the account, in /me's order (every venue while /me does not say). */
+function accountVenues() {
+    return (me ? me.venues : VENUES).filter((v) => VENUES.includes(v));
 }
 
 /**
- * The tick off: one block per venue the account has (in /me's order), each prefilled from the
- * shared block as it stands (or the venue's own, once the server keeps one) with the boxes
- * that venue uses; a venue that uses none gets its muted line. Drawn afresh each time.
+ * The fields the shared line holds: the street, city, state and ZIP, and the neighbourhood
+ * while a venue of the account's uses it (Craigslist's).
+ * @param {Address} info
+ */
+function sharedUses(info) {
+    const venues = accountVenues();
+    const neighborhood = Object.entries(info.uses).some(([v, fields]) => venues.includes(v) && fields.includes("neighborhood"));
+    return ["line1", "city", "state", "zip", ...(neighborhood ? ["neighborhood"] : [])];
+}
+
+/** The shared line as the server has the address (Settings opened, a Save answered). */
+function fillSeller(info) {
+    el.sellerLine.value = addressLine(info.shared, sharedUses(info));
+}
+
+/**
+ * The shared line, as typed, split at its commas into its fields (parseAddressLine); a
+ * neighbourhood no venue of the account uses stays as the server has it.
+ */
+function sharedBoxes() {
+    const info = seller.info;
+    const kept = info ? info.shared.neighborhood : "";
+    return { neighborhood: kept, ...parseAddressLine(el.sellerLine.value, info ? sharedUses(info) : ["line1", "city", "state", "zip"]) };
+}
+
+/**
+ * The tick off: one line per venue the account has (in /me's order), its name its label,
+ * prefilled from the shared line as it stands (or the venue's own, once the server keeps one)
+ * with the fields that venue uses (eBay the full line, Craigslist "60609, McKinley Park"); a
+ * venue that uses none gets its muted line. Drawn afresh each time.
  * @param {Address} info
  */
 function drawAddressVenues(info) {
-    const venues = (me ? me.venues : VENUES).filter((v) => VENUES.includes(v));
     seller.venueBoxes = {};
     const shared = sharedBoxes();
     el.addressVenues.replaceChildren(
-        ...venues.map((venue) => {
-            const block = document.createElement("div");
-            block.className = "address-venue";
-            const name = document.createElement("p");
-            name.className = "venue-name";
-            name.textContent = venue;
-            block.append(name);
+        ...accountVenues().map((venue) => {
             const uses = info.uses[venue] || [];
             if (!uses.length) {
                 const none = document.createElement("p");
                 none.className = "small venue-note";
                 none.textContent = noAddressLine(venue);
-                block.append(none);
-                return block;
+                return none;
             }
             const own = info.same ? {} : info.venues[venue] || {};
-            seller.venueBoxes[venue] = {};
-            for (const [field, label] of ADDRESS_FIELDS) {
-                if (!uses.includes(field)) continue;
-                const wrap = document.createElement("label");
-                wrap.className = "field field-small";
-                const span = document.createElement("span");
-                span.className = "field-label";
-                span.textContent = label;
-                const input = document.createElement("input");
-                input.className = "small-input";
-                input.type = "text";
-                input.id = `address-${venue}-${field}`;
-                input.value = own[field] || shared[field] || "";
-                input.readOnly = !info.editable;
-                wrap.append(span, input);
-                block.append(wrap);
-                seller.venueBoxes[venue][field] = input;
-            }
-            return block;
+            const fields = Object.fromEntries(uses.map((k) => [k, own[k] || shared[k] || ""]));
+            const wrap = document.createElement("label");
+            wrap.className = "field field-small";
+            const span = document.createElement("span");
+            span.className = "field-label";
+            span.textContent = venue;
+            const input = document.createElement("input");
+            input.className = "small-input";
+            input.type = "text";
+            input.id = `address-${venue}-line`;
+            input.value = addressLine(fields, uses);
+            input.setAttribute("placeholder", addressHint(uses));
+            input.readOnly = !info.editable;
+            wrap.append(span, input);
+            seller.venueBoxes[venue] = { input, uses };
+            return wrap;
         })
     );
 }
 
 /**
- * Same address for every venue ticked or unticked: unticked, the venue blocks come up from
+ * Same address for every venue ticked or unticked: unticked, the venue lines come up from
  * the shared one; ticked again, eBay's goes on as the shared one (it is the one eBay
- * prefilled: docs/UI.md). Nothing is sent until Save address.
+ * prefilled: docs/UI.md), with Craigslist's neighbourhood. Nothing is sent until Save address.
  */
 function setSameAddress(on) {
     const info = seller.info;
     if (!info) return;
     if (!on) drawAddressVenues(info);
     else if (seller.venueBoxes.ebay) {
-        for (const [field, input] of Object.entries(seller.venueBoxes.ebay)) {
-            const box = { line1: el.sellerLine1, city: el.sellerCity, state: el.sellerState, zip: el.sellerZip, neighborhood: el.sellerNeighborhood }[field];
-            if (box) box.value = input.value;
-        }
-        if (seller.venueBoxes.craigslist && seller.venueBoxes.craigslist.neighborhood) el.sellerNeighborhood.value = seller.venueBoxes.craigslist.neighborhood.value;
+        const typed = (venue) => (seller.venueBoxes[venue] ? parseAddressLine(seller.venueBoxes[venue].input.value, seller.venueBoxes[venue].uses) : {});
+        const fields = { ...sharedBoxes(), ...typed("ebay") };
+        const cl = typed("craigslist");
+        if (cl.neighborhood !== undefined) fields.neighborhood = cl.neighborhood;
+        el.sellerLine.value = addressLine(fields, sharedUses(info));
     }
     seller.same = on;
     seller.status = "";
     renderSeller();
 }
-
 /** Quiet for the next visit, and no more asking about the policies. */
 function quietSeller() {
     clearTimeout(seller.poll);
@@ -5475,7 +5360,8 @@ async function saveSeller() {
     const pc = settings();
     const info = seller.info;
     if (!pc || !info || seller.busy) return;
-    const venues = Object.fromEntries(Object.entries(seller.venueBoxes).map(([v, boxes]) => [v, Object.fromEntries(Object.entries(boxes).map(([f, input]) => [f, input.value]))]));
+    // each venue's line split at its commas into the fields it uses (eBay's street, city, state and ZIP)
+    const venues = Object.fromEntries(Object.entries(seller.venueBoxes).map(([v, { input, uses }]) => [v, parseAddressLine(input.value, uses)]));
     const uses = Object.fromEntries(Object.entries(info.uses).filter(([v]) => (me ? me.venues : VENUES).includes(v)));
     // step 2 of Finish setting up saves through PATCH /me/seller as ever: the route that starts
     // the eBay policy setup (and writes the shared address too); the card otherwise /me/address
@@ -5554,116 +5440,96 @@ function pollPolicies(fresh) {
     }, SELLER_POLL_MS);
 }
 
-// --- a header and a footer on every listing, one card under Posting defaults --------------
+// --- a header and a footer on every listing, under Posting defaults ----------------------
 // Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts.
 // When you check that, a text area appears ... If you uncheck it, it should not lose what you
-// had ... Below would be the venue buttons; 'Apply to:' above them ... Finally a button 'Apply
-// to all existing listings' (per the venue specified)." The server keeps both (GET/PATCH
-// /me/wrap) and puts them round every description it posts. Since 2026-10-25 one card: the
-// two ticks, each unfolding its box and its pills (one per venue /me/wrap offers), one Save,
-// and Apply to all existing listings per venue ticked.
+// had." The server keeps both (GET/PATCH /me/wrap) and puts them round every description it
+// posts. Since 2026-10-31 one tick, Add standard text to posts, and under it while ticked the
+// gray card: Header and its box and venue chips, Footer the same (a blank box means none),
+// then Save for upcoming postings and Apply to existing postings, dimmed until something
+// changes, dimmed again once pressed.
+
+/** The card's two parts as typed and chosen: each box's words and its venue chips. */
+function wrapDraft() {
+    return Object.fromEntries(WRAP_PARTS.map((part) => [part, { text: el.wrapParts[part].text.value, venues: wrap.draft[part] }]));
+}
 
 /**
- * The card: each part ticked as the server has it, its box and its venue pills (ticked in the
- * posted green) under it while it is; the boxes' counters; Save and its line; and per venue
- * ticked in either part (or still pushing) Apply to all existing listings, a job button, its
- * line under it. No card until the server answered.
+ * The tick and the card: the tick once the server answered, ticked as wrap.open; the card
+ * while it is; per part its venue chips (option chips, one per venue /me/wrap offers, the
+ * chosen white with a check); the two buttons dimmed until the boxes or the chips differ from
+ * the server's (wrapDraftBody), while a Save is on its way, and Apply while one of its pushes
+ * runs; the card's line; under it one line per venue Apply pushed onto, its job's step or summary.
  */
 function renderWrap() {
     const info = wrap.info;
-    el.wrap.hidden = !info;
+    el.wrapRow.hidden = !info;
+    el.wrapOn.checked = !!info && wrap.open;
+    el.wrap.hidden = !info || !wrap.open;
     const venues = info ? info.available : [];
-    for (const venue of venues) wrapNodes(venue);
     for (const part of WRAP_PARTS) {
-        const p = el.wrapParts[part];
-        const now = info ? info[part] : null;
-        p.on.checked = !!now && now.on;
-        p.fold.hidden = !now || !now.on;
-        p.count.textContent = wrapCounter(p.text.value);
-        const pills = venues.map((venue) => {
-            const pill = wrap.drawn[venue].pills[part];
-            const ticked = !!now && now.venues.includes(venue);
-            const face = venueTickLabel(venue, ticked);
-            pill.replaceChildren(...(face.tick ? [face.text, tickIcon()] : [face.text]));
-            pill.setAttribute("aria-pressed", ticked ? "true" : "false");
-            return pill;
+        const chips = venues.map((venue) => {
+            const chip = wrapChip(part, venue);
+            chip.setAttribute("aria-pressed", wrap.draft[part].includes(venue) ? "true" : "false");
+            chip.disabled = wrap.busy;
+            return chip;
         });
         if (wrap.shown[part] !== venues.join(" ")) {
             wrap.shown[part] = venues.join(" ");
-            p.venues.replaceChildren(...pills);
+            el.wrapParts[part].venues.replaceChildren(...chips);
         }
     }
-    el.wrapSave.disabled = wrap.busy;
+    const made = info ? wrapDraftBody(wrapDraft(), info) : { ok: true, body: {} };
+    const changed = !made.ok || Object.keys(made.body).length > 0;
+    const applying = Object.values(wrap.apply).some((task) => !!task.wait || jobRunning(task.job));
+    el.wrapSave.disabled = wrap.busy || !wrap.open || !changed;
+    el.wrapApply.disabled = wrap.busy || !wrap.open || !changed || applying;
     el.wrapStatus.textContent = wrap.status;
-    const applies = [];
-    for (const venue of venues) {
-        const ticked = !!info && WRAP_PARTS.some((part) => info[part].on && info[part].venues.includes(venue));
+    const said = VENUES.flatMap((venue) => {
         const task = wrap.apply[venue];
-        const busy = pressed(task, "apply");
-        const { btn, reset, line } = wrap.drawn[venue];
-        if (!ticked && !busy) continue;
-        btn.disabled = busy && !taskTap(task);
-        paintJobButton(btn, applyLabel(venue), {
-            busy,
-            cancel: busy && taskCancel(task),
-            paused: busy && task.paused,
-            reset,
-        });
-        const said = busyLine(task);
-        line.textContent = said ? said.text : "";
-        line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
-        applies.push(btn, reset, line);
-    }
-    el.wrapApply.hidden = !applies.length;
-    const shown = applies.map((n) => n.id).join(" ");
-    if (wrap.shown.apply !== shown) {
-        wrap.shown.apply = shown;
-        el.wrapApply.replaceChildren(...applies);
-    }
+        const line = task ? busyLine(task) : null;
+        return line ? [{ venue, line }] : [];
+    });
+    el.wrapJobs.hidden = !said.length;
+    el.wrapJobs.replaceChildren(
+        ...said.map(({ venue, line }) => {
+            const p = document.createElement("p");
+            p.id = `wrap-apply-${venue}-status`;
+            p.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
+            // the venue named once there is more than one line
+            p.textContent = said.length > 1 ? `${venue}: ${line.text}` : line.text;
+            return p;
+        })
+    );
 }
 
-/**
- * A venue's pills (one per part, `wrap-<part>-<venue>`), its Apply to all existing listings
- * (`wrap-apply-<venue>`), its reset and its line, made once per venue /me/wrap offers.
- */
-function wrapNodes(venue) {
-    if (!wrap.drawn[venue]) {
-        wrap.apply[venue] = jobTask();
-        const pills = Object.fromEntries(
-            WRAP_PARTS.map((part) => {
-                const pill = actionButton(venue, "pill pill-small wrap-venue", false, () => toggleWrapVenue(part, venue));
-                pill.id = `wrap-${part}-${venue}`;
-                pill.setAttribute("aria-pressed", "false");
-                return [part, pill];
-            })
-        );
-        const btn = actionButton(applyLabel(venue), "pill pill-small", false, () => {
-            startApply(venue).catch(() => {});
+/** A part's venue chip (`wrap-<part>-<venue>`), made once: a tap chooses the venue or lets it go. */
+function wrapChip(part, venue) {
+    const key = `${part} ${venue}`;
+    if (!wrap.chips[key]) {
+        const chip = actionButton(venue, "chip option", false, () => {
+            const now = wrap.draft[part];
+            wrap.draft[part] = now.includes(venue) ? now.filter((v) => v !== venue) : VENUES.filter((v) => v === venue || now.includes(v));
+            wrap.status = "";
+            renderWrap();
         });
-        btn.id = `wrap-apply-${venue}`;
-        const reset = actionButton(RESET, "reset-call", false, () => {
-            resetTask(wrap.apply[venue], renderWrap).catch(() => {});
-        });
-        reset.id = `wrap-apply-${venue}-reset`;
-        reset.hidden = true;
-        reset.setAttribute("aria-label", `${RESET} ${applyLabel(venue)}`);
-        const line = document.createElement("p");
-        line.id = `wrap-apply-${venue}-status`;
-        line.className = "venue-status";
-        line.setAttribute("aria-live", "polite");
-        wrap.drawn[venue] = { pills, btn, reset, line };
+        chip.id = `wrap-${part}-${venue}`;
+        wrap.chips[key] = chip;
     }
-    return wrap.drawn[venue];
+    return wrap.chips[key];
 }
 
-/** Each part's box as the server has its text (Settings opened, a row ticked again, a Save answered). */
+/** The card as the server has it: each box its text, each part's chips its venues (Settings opened, a Save answered). */
 function fillWrap(info, parts) {
-    for (const part of parts) el.wrapParts[part].text.value = info[part].text;
+    for (const part of parts) {
+        el.wrapParts[part].text.value = info[part].text;
+        wrap.draft[part] = [...info[part].venues];
+    }
 }
 
 /**
- * GET /me/wrap, as Settings opens: the two rows, the boxes filled. An older server's 404: no
- * rows. No answer keeps what the last one said.
+ * GET /me/wrap, as Settings opens: the tick as the server has it (wrapOn), the card filled.
+ * An older server's 404: no tick, no card. No answer keeps what the last one said.
  */
 async function loadWrap() {
     const pc = settings();
@@ -5674,7 +5540,10 @@ async function loadWrap() {
         const info = wrapOf(await getWrap(pc));
         if (mine !== wrap.asked) return;
         wrap.info = info;
-        if (info) fillWrap(info, WRAP_PARTS);
+        if (info) {
+            fillWrap(info, WRAP_PARTS);
+            wrap.open = wrapOn(info);
+        }
     } catch (e) {
         if (mine !== wrap.asked) return;
         if (e.status === 404) wrap.info = null;
@@ -5684,107 +5553,46 @@ async function loadWrap() {
 }
 
 /**
- * One PATCH /me/wrap for a part (wrapBody): the screen follows the tap at once, and the
- * server's answer then has the last word; a refusal puts the part back as it was (unless a
- * newer change is on its way) and says why on the part's line. True once the server took it.
+ * A box typed in: the buttons wake once it differs from the server's. A part with words and no
+ * venue chosen, for an account that posts to one venue (Michal: "If there is only one venue
+ * available, as for a typical user, that can be checked right away"), gets that venue chosen.
  * @param {"header"|"footer"} part
- * @param {{on?:boolean, text?:string, venues?:string[]}} changes
- * @returns {Promise<boolean>}
  */
-async function changeWrap(part, changes) {
-    const pc = settings();
-    if (!pc || !wrap.info) return false;
-    const made = wrapBody(part, changes);
-    if (!made.ok) {
-        wrap.status = made.error;
-        renderWrap();
-        return false;
-    }
-    const before = wrap.info;
-    wrap.info = { ...before, [part]: { ...before[part], ...made.body[part] } };
-    wrap.asked += 1;
-    const mine = wrap.asked;
+function onWrapInput(part) {
+    const info = wrap.info;
+    if (!info) return;
+    if (!wrap.busy) wrap.status = "";
+    if (info.available.length === 1 && !wrap.draft[part].length && el.wrapParts[part].text.value.trim()) wrap.draft[part] = [...info.available];
     renderWrap();
-    try {
-        const info = wrapOf(await patchWrap(pc, made.body));
-        if (mine === wrap.asked && info) wrap.info = info;
-        return true;
-    } catch (e) {
-        if (e.status === 0 || e.status === 401) heard(e.status);
-        if (mine === wrap.asked) wrap.info = before;
-        wrap.status = wrapError(e.status, e.message);
-        return false;
-    } finally {
-        renderWrap();
-    }
 }
 
 /**
- * A row ticked or unticked: {"on"} at once. Unticked, the text stays the server's and the
- * box's; ticked again, the foldout opens on the text the server has. The first tick of a row
- * on no venue, for an account that posts to one (Michal: "If there is only one venue
- * available, as for a typical user, that can be checked right away"), ticks that one too, in
- * the same PATCH.
- * @param {"header"|"footer"} part
+ * Add standard text to posts ticked: the card, as it was left, nothing sent. Unticked: the card
+ * goes and both parts are turned off on the server at once (wrapOffBody), their texts and
+ * venues kept; a refusal ticks it again and says why.
  * @param {boolean} on
  */
-function tickWrap(part, on) {
-    const info = wrap.info;
-    if (!info) return;
-    wrap.status = "";
-    /** @type {{on:boolean, venues?:string[]}} */
-    const changes = { on };
-    if (on && info.available.length === 1 && info[part].venues.length === 0) changes.venues = info.available;
-    if (on) fillWrap(info, [part]);
-    changeWrap(part, changes).catch(() => {});
-}
-
-/** A venue pill: that venue in or out of the part's venues, sent at once. */
-function toggleWrapVenue(part, venue) {
-    const info = wrap.info;
-    if (!info) return;
-    wrap.status = "";
-    const now = info[part].venues;
-    const venues = now.includes(venue) ? now.filter((v) => v !== venue) : [...now, venue];
-    changeWrap(part, { venues }).catch(() => {});
-}
-
-/**
- * The one Save: both texts as typed, only what differs from the server's (wrapTextsBody), in
- * one PATCH; its line saying so; the boxes as the server keeps them, unless typed in meanwhile.
- */
-async function saveWrap() {
+async function setWrapOpen(on) {
     const pc = settings();
     const info = wrap.info;
-    if (wrap.busy || !info || !pc) return;
-    const sent = { header: el.wrapParts.header.text.value, footer: el.wrapParts.footer.text.value };
-    const made = wrapTextsBody(sent, info);
-    if (!made.ok) {
-        wrap.status = made.error;
-        renderWrap();
-        return;
-    }
-    if (!Object.keys(made.body).length) {
-        wrap.status = "saved";
-        renderWrap();
-        return;
-    }
+    if (!info || !pc) return;
+    wrap.open = on;
+    wrap.status = "";
+    renderWrap();
+    const body = on ? {} : wrapOffBody(info);
+    if (!Object.keys(body).length) return;
     wrap.busy = true;
-    wrap.status = "Saving...";
     wrap.asked += 1;
     const mine = wrap.asked;
-    renderWrap();
     try {
-        const answer = wrapOf(await patchWrap(pc, made.body));
-        if (mine !== wrap.asked) return;
-        if (answer) wrap.info = answer;
-        wrap.status = "saved";
-        for (const part of WRAP_PARTS) {
-            if (el.wrapParts[part].text.value === sent[part] && wrap.info) fillWrap(wrap.info, [part]);
-        }
+        const answer = wrapOf(await patchWrap(pc, body));
+        if (mine === wrap.asked && answer) wrap.info = answer;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        if (mine === wrap.asked) wrap.status = wrapError(e.status, e.message);
+        if (mine === wrap.asked) {
+            wrap.open = true;
+            wrap.status = wrapError(e.status, e.message);
+        }
     } finally {
         wrap.busy = false;
         renderWrap();
@@ -5792,24 +5600,73 @@ async function saveWrap() {
 }
 
 /**
- * Apply to all existing listings, either row's, for a venue: after the second a job button
- * waits, POST /me/wrap/apply {"venue"}, then the job polled every POLL_MS as the sync bar's,
- * its line under the button (queued, the server's step, its summary or its error); a tap on
- * it pauses, reset calls it off. A refusal shows the server's words.
+ * Save for upcoming postings: the card as it stands, only what differs from the server's
+ * (wrapDraftBody), in one PATCH /me/wrap; its line saying so; the boxes and chips as the
+ * server keeps them, unless typed in meanwhile. True once the server holds what the card says
+ * (nothing to send counts), so Apply can follow.
+ * @returns {Promise<boolean>}
+ */
+async function saveWrap() {
+    const pc = settings();
+    const info = wrap.info;
+    if (wrap.busy || !info || !pc) return false;
+    const sent = wrapDraft();
+    const made = wrapDraftBody(sent, info);
+    if (!made.ok) {
+        wrap.status = made.error;
+        renderWrap();
+        return false;
+    }
+    if (!Object.keys(made.body).length) return true;
+    wrap.busy = true;
+    wrap.status = "Saving...";
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    renderWrap();
+    try {
+        const answer = wrapOf(await patchWrap(pc, made.body));
+        if (mine !== wrap.asked) return false;
+        if (answer) {
+            wrap.info = answer;
+            for (const part of WRAP_PARTS) {
+                if (el.wrapParts[part].text.value === sent[part].text) fillWrap(answer, [part]);
+            }
+        }
+        wrap.status = "saved";
+        return true;
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === wrap.asked) wrap.status = wrapError(e.status, e.message);
+        return false;
+    } finally {
+        wrap.busy = false;
+        renderWrap();
+    }
+}
+
+/**
+ * Apply to existing postings: Save first, then POST /me/wrap/apply for every venue a part now
+ * goes on (wrapApplyVenues), each its own job, polled every POLL_MS as a venue block's sync is,
+ * its line under the card's (queued, the server's step, its summary or its error).
+ */
+async function applyWrapAll() {
+    if (!(await saveWrap()) || !wrap.info) return;
+    for (const venue of wrapApplyVenues(wrap.info)) startApply(venue).catch(() => {});
+}
+
+/**
+ * One venue's push of the header and footer onto its listings already up: POST /me/wrap/apply
+ * {"venue"}, then the job asked about every POLL_MS; a refusal shows the server's words.
  * @param {string} venue
  */
 async function startApply(venue) {
+    if (!wrap.apply[venue]) wrap.apply[venue] = jobTask();
     const task = wrap.apply[venue];
-    if (task.wait || jobRunning(task.job)) {
-        if (pressed(task, "apply")) onTaskTap(task, renderWrap);
-        return;
-    }
+    if (task.wait || jobRunning(task.job)) return;
     const pc = settings();
     if (!pc) return;
     Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: "sending" });
-    const waited = pressWait(task);
     renderWrap();
-    if (!(await waited)) return;
     let answer;
     try {
         answer = await applyWrap(pc, venue);
@@ -5834,25 +5691,20 @@ async function startApply(venue) {
 }
 
 /**
- * Signed out, or other settings saved: the rows and their answers go, any push's press is
- * let go and no longer asked about (the job itself is the server's).
+ * Signed out, or other settings saved: the tick, the card and their answers go, any push no
+ * longer asked about (the job itself is the server's).
  */
 function dropWrap() {
     wrap.asked += 1;
-    wrap.info = null;
-    wrap.status = "";
-    wrap.busy = false;
+    Object.assign(wrap, { info: null, open: false, status: "", busy: false, draft: { header: [], footer: [] } });
     for (const part of WRAP_PARTS) el.wrapParts[part].text.value = "";
-    for (const venue of Object.keys(wrap.apply)) {
-        const task = wrap.apply[venue];
-        takeBack(task);
+    for (const task of Object.values(wrap.apply)) {
         clearTimeout(task.timer);
         clearTimeout(task.lateTimer);
-        wrap.apply[venue] = jobTask();
     }
+    wrap.apply = {};
     renderWrap();
 }
-
 // --- the people on this account (Michal, 2026-10-25: "allow two users to join the same
 // family group") -----------------------------------------------------------------------
 // The owner's card carries the invite box (their email alone); everyone's carries the People
@@ -6901,6 +6753,8 @@ function main() {
         accountConnect: $("account-connect"),
         accountReconnect: $("account-reconnect"),
         venues: $("venues"),
+        venueChipRow: $("venue-chips"),
+        venueChips: Object.fromEntries(VENUES.map((v) => [v, $(`venue-chip-${v}`)])),
         venueBlocks: Object.fromEntries(
             VENUES.map((v) => [
                 v,
@@ -6921,7 +6775,6 @@ function main() {
         postingPickupOnly: $("posting-pickup-only"),
         postingPricing: $("posting-pricing"),
         postingPricingWords: PRICING.map(({ grade }) => $(`posting-pricing-${grade}`)),
-        postingPricingNote: $("posting-pricing-note"),
         postingAutoPost: $("posting-auto-post"),
         postingComps: $("posting-comps"),
         postingFixDark: $("posting-fix-dark"),
@@ -6961,32 +6814,19 @@ function main() {
         addressSame: $("address-same"),
         addressShared: $("address-shared"),
         addressVenues: $("address-venues"),
-        sellerLine1: $("seller-line1"),
-        sellerCity: $("seller-city"),
-        sellerState: $("seller-state"),
-        sellerZip: $("seller-zip"),
-        sellerNeighborhoodField: $("seller-neighborhood-field"),
-        sellerNeighborhood: $("seller-neighborhood"),
+        sellerLine: $("seller-line"),
         sellerPolicies: $("seller-policies"),
         sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),
         sellerStatus: $("seller-status"),
         wrap: $("wrap"),
-        wrapParts: Object.fromEntries(
-            WRAP_PARTS.map((part) => [
-                part,
-                {
-                    on: $(`wrap-${part}-on`),
-                    fold: $(`wrap-${part}`),
-                    text: $(`wrap-${part}-text`),
-                    count: $(`wrap-${part}-count`),
-                    venues: $(`wrap-${part}-venues`),
-                },
-            ])
-        ),
+        wrapRow: $("wrap-row"),
+        wrapOn: $("wrap-on"),
+        wrapParts: Object.fromEntries(WRAP_PARTS.map((part) => [part, { text: $(`wrap-${part}-text`), venues: $(`wrap-${part}-venues`) }])),
         wrapSave: $("wrap-save"),
-        wrapStatus: $("wrap-status"),
         wrapApply: $("wrap-apply"),
+        wrapStatus: $("wrap-status"),
+        wrapJobs: $("wrap-jobs"),
         aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
@@ -7276,6 +7116,9 @@ function main() {
     // the account card: Buy postings unfolds the packs (each pill a checkout)
     el.accountBuy.addEventListener("click", () => {
         account.packs = !account.packs;
+        // no packs offered (payments not set up on the server): said, nothing to unfold
+        const none = !me || !me.packs.length;
+        if (none) account.status = account.packs ? accountError("pay", 404, "") : "";
         renderAccount();
     });
     // the eBay block: Connect eBay, and, connected, Reconnect: eBay's consent again (a token
@@ -7283,6 +7126,13 @@ function main() {
     for (const node of [el.accountConnect, el.accountReconnect]) {
         node.addEventListener("click", () => {
             connectEbay().catch(() => {});
+        });
+    }
+    // a venue chip: that venue's block, one at a time
+    for (const venue of VENUES) {
+        el.venueChips[venue].addEventListener("click", () => {
+            venueOpen = venue;
+            renderVenues();
         });
     }
     // a venue the account lacks: Ask for it in Feedback opens the Feedback fold
@@ -7308,19 +7158,17 @@ function main() {
     el.phoneInstall.addEventListener("click", () => {
         onInstall("phone").catch(() => {});
     });
-    // the header and the footer: each part's tick, its box's counter, the one Save (the pills
-    // and the apply buttons are drawn per venue /me/wrap offers, with their own listeners)
-    for (const [, p] of Object.entries(el.wrapParts)) {
-        const part = /** @type {"header"|"footer"} */ (p.on.id.split("-")[1]);
-        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
-        p.text.addEventListener("input", () => {
-            // "saved" no longer speaks for what is in the box
-            if (!wrap.busy) wrap.status = "";
-            renderWrap();
-        });
-    }
+    // the header and the footer: Add standard text to posts, each part's box, the two buttons
+    // (the venue chips are drawn per venue /me/wrap offers, with their own listeners)
+    el.wrapOn.addEventListener("change", () => {
+        setWrapOpen(el.wrapOn.checked).catch(() => {});
+    });
+    for (const part of WRAP_PARTS) el.wrapParts[part].text.addEventListener("input", () => onWrapInput(/** @type {"header"|"footer"} */ (part)));
     el.wrapSave.addEventListener("click", () => {
         saveWrap().catch(() => {});
+    });
+    el.wrapApply.addEventListener("click", () => {
+        applyWrapAll().catch(() => {});
     });
     renderWrap();
     // a venue button refused for want of postings: its Buy postings opens the account card

@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.25.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.25.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.26.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.26.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -358,10 +358,11 @@
         <div id="account" class="card account current" hidden>
           <p id="account-user" class="account-user"></p>
           <p id="account-kind" class="small account-kind" hidden></p>
-          <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25);
-               the packs open under that line, its status line directly under them -->
+          <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25),
+               Buy postings there for every account whose postings are counted, however many are
+               left (2026-10-31); the packs open under that line, its status line directly under them -->
           <div class="account-row">
-            <button type="button" id="account-buy" class="pill pill-small" aria-expanded="false"
+            <button type="button" id="account-buy" class="pill pill-ink pill-small" aria-expanded="false"
                     aria-controls="account-packs" hidden>Buy postings</button>
             <span id="account-credits" class="small account-line" hidden></span>
           </div>
@@ -404,24 +405,34 @@
         </div>
         <!-- the other accounts kept on this phone (Michal, 2026-10-18: "switch accounts somewhere so i
              can navigate easy between two logins to this app ... there should be a way to REMOVE
-             account from phone"): one card each, by name (app.js); Add account under them -->
+             account from phone"): one card each, by name (app.js); Add account under them, in
+             line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) -->
         <div id="accounts" class="accounts" hidden>
           <ul id="accounts-list" class="accounts-list"></ul>
-          <button type="button" id="accounts-add" class="pill pill-small">Add account</button>
+          <button type="button" id="accounts-add" class="pill pill-small add-account">Add account</button>
         </div>
       </div>
 
-      <!-- 2. Venues (Michal, 2026-10-17 and 2026-10-18: "venue symmetry"): one block per venue,
-           the same shape, in /me's order (app.js): its status line, its Ships from line, its
-           actions, its two sync buttons (the sticky sync bar's until 2026-10-25; both always,
-           grey where /me's "syncable" or the account lacks it, Michal 2026-10-26: drawn by
-           app.js), the job's line, and one muted line saying why one is grey -->
+      <!-- 2. Venues (Michal, 2026-10-17 and 2026-10-18: "venue symmetry"): a row of option chips,
+           one per venue in /me's order (app.js), and under it the one venue's block the chosen
+           chip opens, one at a time, eBay's first (Michal, 2026-10-31). A block, the same shape
+           for every venue: its status line, its Ships from line, its actions, its two sync
+           buttons (the one place they live; shown once the venue is connected or signed in,
+           grey where /me's "syncable" lacks a direction: drawn by app.js), the job's line, and
+           one muted line saying why one is grey -->
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
+        <div id="venue-chips" class="chips option-chips venue-chips" role="group" aria-label="Venue">
+          <button type="button" id="venue-chip-ebay" class="chip option" data-value="ebay"
+                  aria-pressed="true" aria-controls="venue-ebay">ebay</button>
+          <button type="button" id="venue-chip-craigslist" class="chip option" data-value="craigslist"
+                  aria-pressed="false" aria-controls="venue-craigslist">craigslist</button>
+          <button type="button" id="venue-chip-poshmark" class="chip option" data-value="poshmark"
+                  aria-pressed="false" aria-controls="venue-poshmark">poshmark</button>
+        </div>
         <div id="venues" class="venue-blocks">
           <div id="venue-ebay" class="card venue-block">
-            <p class="venue-name">ebay</p>
             <p id="account-ebay" class="small venue-line" hidden></p>
             <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
             <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
@@ -433,8 +444,7 @@
             <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-craigslist" class="card venue-block">
-            <p class="venue-name">craigslist</p>
+          <div id="venue-craigslist" class="card venue-block" hidden>
             <p id="venue-craigslist-status" class="small venue-line"></p>
             <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -442,8 +452,7 @@
             <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-poshmark" class="card venue-block">
-            <p class="venue-name">poshmark</p>
+          <div id="venue-poshmark" class="card venue-block" hidden>
             <p id="venue-poshmark-status" class="small venue-line"></p>
             <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -453,9 +462,10 @@
           </div>
         </div>
         <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
-             (Michal, 2026-10-07), copied into an inventory row's sync badge by app.js: to the top arc, left to
-             right, its arrow pointing right; from the bottom arc, right to left, its arrow
-             pointing left -->
+             (Michal, 2026-10-07), the one sync symbol throughout (2026-10-31): copied by app.js
+             after the words of a venue block's Sync from (the from half) and Sync to (the to
+             half), and into an inventory row's sync badge: to the top arc, left to right, its
+             arrow pointing right; from the bottom arc, right to left, its arrow pointing left -->
         <div class="sync-icons" hidden>
           <span id="sync-from-icon" class="btn-icon"><svg
               aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -467,48 +477,21 @@
               d="M18 2v4.5h-4.5"></path></svg></span>
         </div>
         <!-- last under Venues (Michal, 2026-10-26: "the address box should be at the end of
-             venues"): the address where you ship from, from GET /me/address, one for every venue
-             or, the tick off, one per venue that uses an address (Michal, 2026-10-25) -->
-        <div id="seller" class="card address-card" hidden>
+             venues"), no card of its own, in line with the venue block's inner text (2026-10-31):
+             the address where you ship from, from GET /me/address, typed as ONE line ("1234 W
+             Example St, Chicago, IL 60637", split at the commas by app.js) for every venue or, the
+             tick off, one line per venue that uses an address (Michal, 2026-10-25); then one row,
+             Save address and the Same address for every venue tick, last -->
+        <div id="seller" class="address-card" hidden>
           <p class="card-name">Address where you ship from</p>
           <!-- why the fold opened by itself: eBay connected and the address not all there, or
                where a prefilled one came from (Michal, 2026-10-08) -->
           <p id="seller-note" class="small seller-note" hidden></p>
-          <label class="pickup">
-            <input id="address-same" type="checkbox" checked>
-            <span>Same address for every venue</span>
-          </label>
           <div id="address-shared" class="address-block">
-            <label class="field field-small">
-              <span class="field-label">Street address</span>
-              <input id="seller-line1" class="small-input" type="text" autocomplete="address-line1"
-                     autocapitalize="words" spellcheck="false">
-            </label>
-            <label class="field field-small">
-              <span class="field-label">City</span>
-              <input id="seller-city" class="small-input" type="text" autocomplete="address-level2"
-                     autocapitalize="words" spellcheck="false">
-            </label>
-            <div class="seller-row">
-              <label class="field field-small">
-                <span class="field-label">State</span>
-                <input id="seller-state" class="small-input" type="text" autocomplete="address-level1"
-                       autocapitalize="characters" spellcheck="false" maxlength="2" placeholder="IL">
-              </label>
-              <label class="field field-small">
-                <span class="field-label">ZIP</span>
-                <input id="seller-zip" class="small-input" type="text" inputmode="numeric"
-                       autocomplete="postal-code" spellcheck="false" maxlength="10" placeholder="60601">
-              </label>
-            </div>
-            <!-- Craigslist's, beside the ZIP it uses; shown while a venue of the account's uses it -->
-            <label id="seller-neighborhood-field" class="field field-small" hidden>
-              <span class="field-label">Neighborhood</span>
-              <input id="seller-neighborhood" class="small-input" type="text" autocomplete="off"
-                     autocapitalize="words" spellcheck="false" placeholder="McKinley Park">
-            </label>
+            <input id="seller-line" class="small-input" type="text" autocomplete="off" autocapitalize="words"
+                   spellcheck="false" aria-label="Address where you ship from" placeholder="Street, city, state ZIP">
           </div>
-          <!-- unticked: one block per venue that uses an address, drawn by app.js -->
+          <!-- unticked: one line per venue that uses an address, its name its label, drawn by app.js -->
           <div id="address-venues" class="address-venues" hidden></div>
           <!-- what Snap sets up on her eBay once the address is in, while it is being given
                (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
@@ -517,7 +500,13 @@
             <p class="seller-policies-head">Snap will set up on your eBay account:</p>
             <ul id="seller-policy-list" class="seller-policy-list"></ul>
           </div>
-          <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+          <div class="address-row">
+            <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+            <label class="pickup">
+              <input id="address-same" type="checkbox" checked>
+              <span>Same address for every venue</span>
+            </label>
+          </div>
           <p id="seller-status" class="small account-status" aria-live="polite"></p>
         </div>
 
@@ -525,83 +514,80 @@
 
       <!-- 3. Posting defaults: the defaults every new item starts with (the customize box's,
            Michal 2026-10-08: "in case someone wants to change something permanently"), saved on
-           change; then the header and footer on every listing as one card (Michal, 2026-10-17),
-           from GET /me/wrap -->
+           change, no card, no group labels (Michal, 2026-10-31: "less is more"): one muted line;
+           Quantity, a box three digits wide, with the Price slider beside it filling the line;
+           the options one line each; the fifth, Add standard text to posts, unfolding the header
+           and footer card (GET /me/wrap) while it is ticked -->
       <button type="button" id="fold-posting-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
-        <div id="posting-defaults" class="card posting-defaults">
-          <p class="small posting-lead">The defaults every posting starts with. Each can be adjusted for one posting at the time of posting, through the customize menu on the Snap page.</p>
-          <label class="field">
-            <span class="field-label">Quantity</span>
-            <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
-                   spellcheck="false" value="1">
-          </label>
+        <div id="posting-defaults" class="posting-defaults">
+          <p class="small posting-lead">Changed per posting from the customize menu.</p>
+          <div class="qty-row">
+            <label class="field qty-field">
+              <span class="field-label">Quantity</span>
+              <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+                     spellcheck="false" maxlength="3" value="1">
+            </label>
+            <div class="field pricing-field">
+              <label class="field-label" for="posting-pricing">Price</label>
+              <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+                     aria-valuetext="Quick sale">
+              <div class="pricing-words" aria-hidden="true">
+                <span id="posting-pricing-1" class="on">Quick sale</span>
+                <span id="posting-pricing-2">Fair price</span>
+                <span id="posting-pricing-3">Higher end</span>
+              </div>
+            </div>
+          </div>
           <label class="pickup">
             <input id="posting-pickup-only" type="checkbox">
             <span>Pickup only, no shipping</span>
           </label>
-          <div class="field pricing-field">
-            <label class="field-label" for="posting-pricing">Price</label>
-            <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
-                   aria-valuetext="Quick sale" aria-describedby="posting-pricing-note">
-            <div class="pricing-words" aria-hidden="true">
-              <span id="posting-pricing-1" class="on">Quick sale</span>
-              <span id="posting-pricing-2">Fair price</span>
-              <span id="posting-pricing-3">Higher end</span>
-            </div>
-            <p id="posting-pricing-note" class="pricing-note">sell what we have this week</p>
-          </div>
           <label class="pickup">
             <input id="posting-auto-post" type="checkbox" checked>
-            <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
+            <span>Post without asking</span>
           </label>
           <label class="pickup">
             <input id="posting-comps" type="checkbox" checked>
-            <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
+            <span>Compare with marketplace listings</span>
           </label>
           <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
             <span>Fix dark photos</span>
           </label>
+          <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
+               checkbox for footnote/header for all posts"; 2026-10-31: one tick, "Add standard
+               text to posts", there once the server answered (an older server's 404: none);
+               ticked, the gray card: Header and its box and venue chips, Footer the same (a
+               blank box means none), then Save for upcoming postings and Apply to existing
+               postings, each on its own line, dimmed until the text or a chip changes) -->
+          <label id="wrap-row" class="pickup" hidden>
+            <input id="wrap-on" type="checkbox">
+            <span>Add standard text to posts</span>
+          </label>
+          <div id="wrap" class="card wrap" hidden>
+            <label class="field wrap-field">
+              <span class="field-label">Header</span>
+              <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000"
+                        placeholder="Text added above the description"></textarea>
+            </label>
+            <div id="wrap-header-venues" class="chips option-chips wrap-venues" role="group" aria-label="Header: venues"></div>
+            <label class="field wrap-field">
+              <span class="field-label">Footer</span>
+              <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000"
+                        placeholder="Text added below the description"></textarea>
+            </label>
+            <div id="wrap-footer-venues" class="chips option-chips wrap-venues" role="group" aria-label="Footer: venues"></div>
+            <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings</button>
+            <button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings</button>
+            <p id="wrap-status" class="small account-status" aria-live="polite"></p>
+            <!-- one line per venue Apply pushes onto, its job's step and summary (app.js) -->
+            <div id="wrap-jobs" class="wrap-jobs" hidden></div>
+          </div>
           <p id="posting-status" class="small account-status" aria-live="polite"></p>
         </div>
-
-        <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
-             checkbox for footnote/header for all posts ... once you check header you get a header
-             foldout with all these options"; one card with one Save since 2026-10-25): each part's
-             tick, and only under a ticked one its box, counter and a pill per venue /me/wrap
-             offers (Michal, 2026-10-26: "choice of venue only makes sense after"; drawn by
-             app.js), Save, then Apply to all existing listings per venue ticked. An older
-             server's 404: no card -->
-        <div id="wrap" class="card wrap" hidden>
-          <p class="card-name">Header and footer on every listing</p>
-          <label class="pickup">
-            <input id="wrap-header-on" type="checkbox">
-            <span>Header</span>
-          </label>
-          <div id="wrap-header" class="wrap-fold" hidden>
-            <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Header"
-                      placeholder="Text added above the description"></textarea>
-            <p id="wrap-header-count" class="small wrap-count">0 / 2000</p>
-            <div id="wrap-header-venues" class="wrap-venues" role="group" aria-label="Header: apply to"></div>
-          </div>
-          <label class="pickup">
-            <input id="wrap-footer-on" type="checkbox">
-            <span>Footer</span>
-          </label>
-          <div id="wrap-footer" class="wrap-fold" hidden>
-            <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Footer"
-                      placeholder="Text added below the description"></textarea>
-            <p id="wrap-footer-count" class="small wrap-count">0 / 2000</p>
-            <div id="wrap-footer-venues" class="wrap-venues" role="group" aria-label="Footer: apply to"></div>
-          </div>
-          <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-save">Save</button>
-          <p id="wrap-status" class="small account-status" aria-live="polite"></p>
-          <div id="wrap-apply" class="wrap-apply" hidden></div>
-        </div>
       </div>
-
       <!-- 4. Server: only for an account that signed in by key (an email account has no Server
            fold at all), and for I have a key before a key is saved -->
       <button type="button" id="fold-server-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
@@ -622,27 +608,25 @@
       </div>
 
       <!-- 5. This phone: what never leaves the phone. The look (Michal, 2026-10-06: "Dark, light
-           or sync with device"): a tap applies and remembers it at once; Install on the home
-           screen, or that it is there ("Show photos" stays in the inventory's Options) -->
+           or sync with device"), three option chips (2026-10-31: an option is a bordered chip,
+           the chosen one white with a check): a tap applies and remembers it at once; Install on
+           the home screen, the yellow press-me pill, or, once there, the chosen chip saying so
+           ("Show photos" stays in the inventory's Options) -->
       <button type="button" id="fold-phone-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-phone">▸ This phone</button>
       <div id="fold-phone" class="fold-body" hidden>
-        <div class="field">
-          <span class="field-label">Appearance</span>
-          <div id="theme" class="chips chips-three" role="group" aria-label="Appearance">
-            <button type="button" id="theme-dark" class="chip" data-value="dark"
-                    aria-pressed="false">Dark</button>
-            <button type="button" id="theme-light" class="chip" data-value="light"
-                    aria-pressed="false">Light</button>
-            <button type="button" id="theme-device" class="chip" data-value="device"
-                    aria-pressed="true">Sync with device</button>
-          </div>
+        <div id="theme" class="chips option-chips" role="group" aria-label="Appearance">
+          <button type="button" id="theme-dark" class="chip option" data-value="dark"
+                  aria-pressed="false">Dark</button>
+          <button type="button" id="theme-light" class="chip option" data-value="light"
+                  aria-pressed="false">Light</button>
+          <button type="button" id="theme-device" class="chip option" data-value="device"
+                  aria-pressed="true">Sync with device</button>
         </div>
-
-        <button type="button" id="phone-install" class="secondary phone-install" aria-expanded="false"
+        <button type="button" id="phone-install" class="pill pill-ink pill-small phone-install" aria-expanded="false"
                 aria-controls="phone-install-steps" hidden>Install on the home screen</button>
         <p id="phone-install-steps" class="install-steps" hidden></p>
-        <p id="phone-installed" class="small phone-installed" hidden>Installed on the home screen.</p>
+        <p id="phone-installed" class="chip option chosen phone-installed" hidden>Installed on home screen</p>
       </div>
     </div>
 
@@ -993,6 +977,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.25.0"></script>
+<script type="module" src="app.js?v=2.26.0"></script>
 </body>
 </html>

@@ -5,7 +5,8 @@
 > Decisions carry Michal's date; a section marked *proposed* is not yet agreed.
 >
 > Draft 2026-10-22. The Settings part follows the mock Michal reviewed that day; its
-> decisions, listed at the end, were decided on 2026-10-26 and built in v2.25.0.
+> decisions, listed at the end, were decided on 2026-10-26 and built in v2.25.0; his 26
+> comments on the mock (2026-10-26 to 2026-10-31) were built in the minor after it.
 
 ## 1. Rules that shape every screen
 
@@ -37,8 +38,13 @@
 6. **Phone-local things live under "This phone".** Appearance, show photos, install, the
    accounts kept on the phone. Everything else is the server's and survives a new phone.
 7. **The look is the A2 "Signal Yellow" system** (chosen 2026-10-06): the yellow header
-   band, black pills with yellow words for the chosen thing, smoke cards, Manrope. Dark
-   follows the device unless chosen. New controls reuse the existing classes.
+   band, smoke cards, Manrope. Dark follows the device unless chosen. New controls reuse the
+   existing classes. **Two looks, two meanings** (Michal, 2026-10-31): yellow on black, or
+   black on yellow in the dark (`.pill-ink`), is "press me", an action. An **option** (Dark /
+   Light / Sync with device, a venue chip under Venues, a header's or footer's venue) is a
+   bordered chip in the field colour with ink words (`.chip.option`); the chosen one is solid
+   white with black words and a check mark " ✓" after the word, its border white so it is its
+   neighbours' size (no black border, no outline), the same in the dark.
 
 ## 2. Vocabulary
 
@@ -132,13 +138,16 @@ saved), and the phone remembers which were left open.
    say it; Michal, 2026-10-25). A card shows the name, "by key" only on a key account
    (every new account is by email, so that is not said), for the current account its
    postings ("2 free postings left", on the same line as **Buy postings**, Michal
-   2026-10-25; nothing for the admin) with the packs under it, its status line directly
+   2026-10-25; nothing for the admin), Buy postings the press-me pill, there for every
+   account whose postings are counted however many are left (2026-10-31; with no packs on
+   the server its tap says "Buying postings is not available yet."), the packs under it, its status line directly
    under those buttons, and on the other cards **Switch to this account** and **Remove
    from this phone**, or "Sign in again" on an expired one. The last line of the current
    card is right-aligned (Michal, 2026-10-25): **Delete account** in quiet red, then
    **Sign out** at the bottom right. Delete account opens the confirmation view (the
    three sentences, **Delete account** in red, **Keep my account**). Under the cards:
-   **Add account**, which returns to the landing without dropping the others.
+   **Add account**, in line with the cards' inner text edge, a gap above it (Michal,
+   2026-10-31), which returns to the landing without dropping the others.
 
    On the current card, for the owner, the invite box: one label "Invite someone to this
    account" in the field-label style, one box with "email" as its placeholder, one
@@ -150,7 +159,7 @@ saved), and the phone remembers which were left open.
    **People page** (Michal, 2026-10-25: "let it be a
    simple separate page"), its own screen in Admin's place with **← Back to settings** at
    the top in the inventory card's shape, then the heading, then one card per person,
-   the owner first. **People are shown by their chosen name, never by email** (Michal,
+   the owner first, each a bordered card in the inventory row's style (Michal, 2026-10-31). **People are shown by their chosen name, never by email** (Michal,
    2026-10-25). A person's card: the name, "owner" or "member", "you" on yourself,
    "invited, not signed in yet" until their first sign-in, **Change name** on your own,
    **Remove** on a member (owner only); under it their signed-in **devices**: the device
@@ -166,54 +175,74 @@ saved), and the phone remembers which were left open.
    you, open Settings and sign out all other devices"); removing a member ends their
    sessions, leaving ends your own, deleting the account ends all. Keys stay for the
    admin and scripts only; a family member is a member by email.
-2. **Venues.** One block per venue, same shape: the venue's name; its status line
+2. **Venues.** First a row of option chips, one per venue (ebay, craigslist, poshmark, in
+   `/me.venues` order); a chip opens that venue's block beneath it, one at a time, eBay's as
+   Admin opens (Michal, 2026-10-31). The chip names the venue; the block, the same shape for
+   every venue: its status line
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
-   start posting"); one muted line "Ships from …" showing the address that venue uses;
-   its actions (eBay: **Connect eBay** while not connected, **Reconnect** once it is, the
-   status line then saying "Connected as …"; Craigslist and Poshmark: "Ask for it in
-   Feedback" when not available); its two sync buttons, always both, **Sync from
-   <venue> ↻** and **Sync to <venue> ↻** with the venue lowercase as on every button
-   ("Sync from ebay ↻"; Michal, 2026-10-26), the inventory's small green button with the
-   round arrow after the words, greyed out where the function does not exist yet or the
-   account lacks the venue (Michal, 2026-10-26: "even if function does not exist, there
-   should be sync from and to buttons for each venue, gray if function is still not
-   working"), with one muted line of reason under them ("Craigslist cannot be read back
-   yet.", "Poshmark sync is not built yet."), and none where the status line says it
-   already ("Not available for your account yet.", "Not connected"). The same green
-   button and arrow everywhere a sync button appears.
-   Last, after the venue blocks, the **Address where you ship from** card (Michal,
-   2026-10-26: "the address box should be at the end of venues"): a checkbox **Same
-   address for every venue**, ticked by default, above one address block (street, city,
-   state, ZIP) and **Save address**. Unticked, the block splits into one per venue that
-   uses an address, each prefilled from the shared one: eBay the full address, Craigslist
-   the ZIP and the neighbourhood, Poshmark a line saying it uses none. Ticking it again
-   keeps the eBay address as the shared one (it is the one eBay prefilled). The page
-   reads and writes `GET`/`PATCH /me/address` (`same`, `shared`, `venues`, `uses`).
-3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). One line
-   first: "The defaults every posting starts with. Each can be adjusted for one posting
-   at the time of posting, through the customize menu on the Snap page." Then the
-   defaults: Quantity, Pickup only, the Price
-   slider, Post without asking, Compare with marketplace listings, Fix dark photos, each
-   saved as it changes; kept on this phone for now (the server has no place for them yet,
-   so they do not follow to a new phone: rule 6's exception until it does). Then
-   **Header and footer on every listing** as one card: Header on/off, and only once it is
-   ticked its text box and one pill per venue the account has under it (Michal,
-   2026-10-26: "choice of venue only makes sense after"); Footer the same; **Save**, and
-   one **Apply to all existing <venue> listings** per ticked venue. Turning one off keeps
-   its text and hides its box and pills.
-4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
+   start posting"); one muted line "Ships from …" showing the address that venue uses, as
+   its line is typed ("Ships from 1234 W Example St, Chicago, IL 60637"); its actions (eBay:
+   **Connect eBay** while not connected, **Reconnect** once it is, the status line then
+   saying "Connected as …"; Craigslist and Poshmark: "Ask for it in Feedback" when not
+   available); its two sync buttons, **Sync from <venue>** and **Sync to <venue>**, the venue
+   lowercase as on every button ("Sync from ebay"; Michal, 2026-10-26). **The sync buttons
+   live here and nowhere else** (Michal, 2026-10-31): the inventory's green with **black**
+   words, the page's own half of the sync symbol after the words (`#sync-from-icon` on Sync
+   from, `#sync-to-icon` on Sync to; no ↻, the one sync symbol throughout); shown only once
+   the venue is connected or signed in (none for eBay before Connect eBay, none for a venue
+   the account lacks: its status line says why); grey and disabled where a direction does not
+   exist (Sync from craigslist, both for poshmark), with one muted line of reason under the
+   pair ("Craigslist cannot be read back yet.", "Poshmark sync is not built yet.").
+   Last, after the venue blocks, the **Address where you ship from** (Michal, 2026-10-26:
+   "the address box should be at the end of venues"), with no card background, in line with
+   the venue block's inner text edge (2026-10-31): the title, then ONE line, "1234 W Example
+   St, Chicago, IL 60637", typed as one line and split at the commas into street, city,
+   state and ZIP for `PATCH /me/address` (the state and ZIP one part or two; the
+   neighbourhood after the ZIP while Craigslist uses it); then one row, **Save address** and
+   the **Same address for every venue** checkbox on the same line, last, ticked by default.
+   Unticked, one line per venue that uses an address, its name its label, each prefilled from
+   the shared one and split the same way: eBay the full line, Craigslist "60609, McKinley
+   Park", Poshmark a muted line saying it uses none. Ticking it again keeps the eBay address
+   as the shared one (it is the one eBay prefilled). The page reads and writes `GET`/`PATCH
+   /me/address` (`same`, `shared`, `venues`, `uses`).
+3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). No card, no
+   group labels, one muted line under the fold head: "Changed per posting from the customize
+   menu." (Michal, 2026-10-31). Then **Quantity**, a small box three digits wide, with the
+   **Price** slider to its right filling the line (its three words under it, no line under
+   them); then the options, one line each, no small print: Pickup only, no shipping / Post
+   without asking / Compare with marketplace listings / Fix dark photos, each saved as it
+   changes and kept on this phone for now (the server has no place for them yet, so they do
+   not follow to a new phone: rule 6's exception until it does) / **Add standard text to
+   posts**. That fifth is the header and footer (`GET`/`PATCH /me/wrap`): unticked, just its
+   line; ticked, the gray card under it: "Header" (field label) and its text box, its venue
+   chips (option chips, one per venue `/me/wrap` offers), "Footer" and its box and chips; no
+   checkboxes on Header or Footer, a blank box means none; then two press-me pills, each on a
+   line of its own: **Save for upcoming postings** (`PATCH /me/wrap`) and **Apply to existing
+   postings** (the same save, then `POST /me/wrap/apply` for every venue a part goes on, one
+   line per push under the card), both dimmed until the text or a chip changes and dimmed
+   again after a press, as the page's main buttons are. The tick follows the server: ticked
+   while a part is on with words in it; Save turns a part on when its box holds words and off
+   when it is blank; unticking turns both parts off at once and keeps their texts and venues,
+   so ticking it again brings them back. A part with words and no venue, on an account that
+   posts to one venue, gets that venue chosen.4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
    check**, its status line. An email account has no Server part.
-5. **This phone.** Appearance (Dark / Light / Sync with device) and Install on the home
-   screen (or "Installed on the home screen"). "Show photos" is an inventory setting and
-   stays at the top of the Inventory fold (Michal, 2026-10-26).
+5. **This phone.** Dark / Light / Sync with device, three option chips with no label over
+   them, and **Install on the home screen**, the press-me pill, where the app is not
+   installed; where it is, the chosen chip with its check, "Installed on home screen"
+   (Michal, 2026-10-31). "Show photos" is an inventory setting and stays at the top of the
+   Inventory fold (Michal, 2026-10-26).
 
 **Inventory.** Search; **▸ Options** (venue chips, status chips including Archived, sort
 chips, Show photos); the list, with swipe to archive and **Undo**. A row opens the
 listing's page: "← Back to inventory", the heading and photos, **▾ customize** with
-Quantity, Pickup only, the Price slider, **Save** and one **Sync to <venue>** per venue,
-then one card per venue with its status and actions (push, end, refresh, add the venue),
-the same set for every venue that offers them.
+Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in
+each venue's block under Settings, Venues, Michal 2026-10-31), then one card per venue with
+its status and actions (post, open, refresh, end, edit, add the venue; no Sync to <venue>),
+the same set for every venue that offers them. A save, an edit or a photo that leaves a
+listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues puts it on
+the listing"). A list row's listed badge still wears the sync-to half while its listing is
+behind and pushes that row when tapped.
 
 **Feedback.** The admin's inbox with a count (admin only); the Feedback box, "Include my
 last job", **Send**, "Thanks, sent."
@@ -263,6 +292,10 @@ controls disabled, the row edits refused with the server's words); **an expired 
    listings"; the landing names no venue; cancel notes say "postings"; About says an
    account is deleted from Settings.
 6. **Decided:** both ways to close Admin stay (the top bar's "Snap" and the bottom "Close").
+7. **Decided (2026-10-31):** two looks for two meanings: yellow and black is an action, an
+   option is a bordered chip, the chosen one white with a check (rule 7).
+8. **Decided (2026-10-31):** the sync buttons live only in each venue's block under
+   Settings, Venues; the listing page has none.
 
 ## 7. Changes to this document
 
@@ -277,3 +310,22 @@ controls disabled, the row edits refused with the server's words); **an expired 
   (4.3 and section 5 over the older line in 4.5); Sign out all other devices only while
   there is another device; the Posting defaults kept on the phone until the server keeps
   them.
+- 2026-10-31: Michal's 26 comments on the mock (2026-10-26 to 2026-10-31), built in the
+  minor after v2.25.0: two looks, two meanings (rule 7: `.pill-ink` an action, `.chip.option`
+  an option, the chosen white with a check); Buy postings for every counted account; Add
+  account indented; the People page's cards bordered; Venues as a row of option chips, one
+  block at a time, eBay's first; the sync buttons only in the venue blocks (decision 8),
+  black on green with the page's half-arrows after the words, shown once the venue is
+  connected or signed in; the ship-from address with no card, one line split at the
+  commas, Save address and the tick on one row; Posting defaults as one muted line,
+  Quantity beside the slider, five one-line options, the fifth Add standard text to posts
+  with its card (Header and Footer, venue chips, Save for upcoming postings and Apply to
+  existing postings); This phone's Install as press-me, or the chosen chip once installed.
+  Where the build settled what the mock left open: the tick of Add standard text to posts
+  follows a part that is on with words (a part off with words kept is unticked), and
+  unticking sends both parts off at once (the card and its buttons go with the tick);
+  Apply to existing postings saves first, then pushes each venue a part goes on; the
+  inventory list's sync badge stays (only the listing page lost its Sync buttons); the
+  option look is the Settings chips' (the inventory's filter, sort and Stats chips keep
+  theirs); Poshmark's address line keeps its capital ("Poshmark does not use a ship-from
+  address.", the vocabulary's sentence form).

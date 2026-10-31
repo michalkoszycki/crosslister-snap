@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.25.0";
+import { noteDirty, unsent } from "./queue.js?v=2.26.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.25.0";
+} from "./book.js?v=2.26.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -438,8 +438,8 @@ export function syncVenues(me, direction) {
 }
 
 /**
- * A sync button's word, before its round arrow: "Sync from ebay", "Sync to craigslist" (the
- * venue lowercase, as on every button and chip: Michal, 2026-10-26).
+ * A sync button's word, before its half of the sync symbol: "Sync from ebay", "Sync to
+ * craigslist" (the venue lowercase, as on every button and chip: Michal, 2026-10-26).
  * @param {"from"|"to"} direction
  * @param {string} venue
  * @returns {string}
@@ -488,17 +488,32 @@ function sentenceVenue(venue) {
 export const CONNECT_FIRST = "Connect eBay first";
 
 /**
+ * Whether a venue block shows its pair of sync buttons at all (Michal, 2026-10-31): only once
+ * the venue is connected or signed in; none for eBay before it is connected, none for a venue
+ * the account lacks (its status line says so). A server that does not say how eBay stands
+ * shows them, as before.
+ * @param {string} venue
+ * @param {{craigslist:boolean, poshmark?:boolean} | null} me meOf's
+ * @param {Ebay|null} ebay /me's
+ * @returns {boolean}
+ */
+export function syncShown(venue, me, ebay) {
+    if (!venueAllowed(me, venue)) return false;
+    return !(venue === "ebay" && ebay && !ebay.connected);
+}
+
+/**
  * The one muted line under a venue block's pair of sync buttons where one is grey: its reason
  * (syncReason), or "<Venue> sync is not built yet." where both are; "" when both work, and ""
- * where the block's own status line says it already (a venue the account lacks, an eBay not
- * connected: the spec's "less is more", Michal 2026-10-26).
+ * where the pair is not shown (syncShown: the block's own status line says why, the spec's
+ * "less is more", Michal 2026-10-26).
  * @param {string} venue
  * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
  * @param {Ebay|null} ebay
  * @returns {string}
  */
 export function syncNote(venue, me, ebay) {
-    if (!venueAllowed(me, venue) || (venue === "ebay" && ebay && !ebay.connected)) return "";
+    if (!syncShown(venue, me, ebay)) return "";
     const from = syncReason(venue, "from", me, ebay);
     const to = syncReason(venue, "to", me, ebay);
     if (from && to) return `${sentenceVenue(venue)} sync is not built yet.`;
@@ -1105,22 +1120,90 @@ export function addressFor(venue, info) {
 }
 
 /**
+ * An address as the one line it is typed in (Michal, 2026-10-31: "1234 W Example St, Chicago,
+ * IL 60637"): the fields `uses` names, in ADDRESS_FIELDS' order, a comma between them, the
+ * state and the ZIP one part ("IL 60637"); Craigslist's "60609, McKinley Park". Empty fields
+ * are left out.
+ * @param {Record<string, unknown>} fields
+ * @param {string[]} uses
+ * @returns {string}
+ */
+export function addressLine(fields, uses) {
+    const has = (k) => (uses.includes(k) && typeof fields[k] === "string" ? fields[k].trim() : "");
+    const stateZip = [has("state"), has("zip")].filter(Boolean).join(" ");
+    return [has("line1"), has("city"), stateZip, has("neighborhood")].filter(Boolean).join(", ");
+}
+
+/** A part that is the state and the ZIP together ("IL 60637"), or the city, state and ZIP with no comma ("Chicago IL 60637"). */
+const STATE_ZIP = /^([A-Za-z]{2})\s+(\d[\d -]*)$/;
+const TOWN_STATE_ZIP = /^(.*\S)\s+([A-Za-z]{2})\s+(\d[\d -]*)$/;
+
+/**
+ * The one line typed back into its fields, split at the commas (Michal, 2026-10-31), for the
+ * fields `uses` names: with a street (eBay's, the shared one) the first parts are the street,
+ * then the city, then the state and ZIP ("IL 60637", or "IL" and "60637" as two parts, or
+ * "Chicago IL 60637" with no comma), and what follows is the neighbourhood; without one
+ * (Craigslist's) the ZIP, then the neighbourhood. Leniently, unchecked: a part missing is "",
+ * and checkFields names it when it is saved.
+ * @param {unknown} text
+ * @param {string[]} uses
+ * @returns {AddressFields}
+ */
+export function parseAddressLine(text, uses) {
+    const parts = (typeof text === "string" ? text : "")
+        .split(",")
+        .map((s) => s.trim().replace(/\s+/g, " "))
+        .filter(Boolean);
+    /** @type {AddressFields} */
+    const f = { line1: "", city: "", state: "", zip: "", neighborhood: "" };
+    if (!uses.includes("line1")) {
+        if (uses.includes("zip")) f.zip = parts.shift() || "";
+        f.neighborhood = parts.join(", ");
+    } else {
+        // the state and ZIP part, from the third part on (a street of two parts, "Apt 2", allowed)
+        let at = -1;
+        for (let i = 2; i < parts.length && at < 0; i += 1) if (STATE_ZIP.test(parts[i]) || /^[A-Za-z]{2}$/.test(parts[i])) at = i;
+        if (at >= 0) {
+            f.line1 = parts.slice(0, at - 1).join(", ");
+            f.city = parts[at - 1];
+            const both = STATE_ZIP.exec(parts[at]);
+            f.state = both ? both[1] : parts[at];
+            f.zip = both ? both[2] : parts[at + 1] || "";
+            f.neighborhood = parts.slice(at + (both ? 1 : 2)).join(", ");
+        } else {
+            const town = parts.length === 2 ? TOWN_STATE_ZIP.exec(parts[1]) : null;
+            const [city, state, zip] = town ? town.slice(1) : parts.slice(1, 4);
+            f.line1 = parts[0] || "";
+            f.city = city || "";
+            f.state = state || "";
+            f.zip = zip || "";
+            f.neighborhood = parts.slice(town ? 2 : 4).join(", ");
+        }
+    }
+    return Object.fromEntries(uses.map((k) => [k, f[k]]));
+}
+
+/**
+ * The placeholder in an address's one box: what goes in it, in its order.
+ * @param {string[]} uses
+ * @returns {string}
+ */
+export function addressHint(uses) {
+    if (!uses.includes("line1")) return uses.includes("neighborhood") ? "ZIP, neighborhood" : "ZIP";
+    return uses.includes("neighborhood") ? "Street, city, state ZIP, neighborhood" : "Street, city, state ZIP";
+}
+
+/**
  * The muted "Ships from ..." line in a venue's block under Venues (Michal, 2026-10-25): the
- * fields that venue uses, as "12 Oak St, Chicago IL 60601" or "60609, McKinley Park"; "" for a
- * venue that uses none, or whose fields are still empty.
+ * fields that venue uses, as its one line is typed (addressLine: "12 Oak St, Chicago, IL
+ * 60601", "60609, McKinley Park"); "" for a venue that uses none, or whose fields are still empty.
  * @param {string} venue
  * @param {Address|null} info
  * @returns {string}
  */
 export function shipsFromLine(venue, info) {
-    const f = addressFor(venue, info);
-    const parts = [];
-    if (f.line1) parts.push(f.line1);
-    const town = [f.city, [f.state, f.zip].filter(Boolean).join(" ")].filter(Boolean).join(" ");
-    if (town && (f.city || f.state)) parts.push(town);
-    else if (f.zip) parts.push(f.zip);
-    if (f.neighborhood) parts.push(f.neighborhood);
-    return parts.length ? `Ships from ${parts.join(", ")}` : "";
+    const line = addressLine(addressFor(venue, info), info ? info.uses[venue] || [] : []);
+    return line ? `Ships from ${line}` : "";
 }
 
 /** One address's boxes checked: each trimmed (inner spaces one), the state two letters upper-cased, the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */
@@ -1288,55 +1371,64 @@ export function wrapBody(part, { on, text, venues } = {}) {
 }
 
 /**
- * The one Save's body (Michal, 2026-10-25: one card, one Save): each part's text as typed,
- * only where it differs from what the server has (`info`); each tidied and checked as
- * wrapBody does, a part too long named. `{}` when nothing changed: nothing to send.
- * @param {{header:unknown, footer:unknown}} texts the two boxes
+ * Add standard text to posts, ticked as the server has it (Michal, 2026-10-31): while a part
+ * is on with words in it (a part on with a blank box adds nothing to a listing).
+ * @param {Wrap} info
+ * @returns {boolean}
+ */
+export function wrapOn(info) {
+    return WRAP_PARTS.some((part) => info[part].on && info[part].text.trim() !== "");
+}
+
+/**
+ * The header and footer as the card has them (each part's box and its venue chips), as one
+ * PATCH /me/wrap body against what the server has (`info`): each part on while its box holds
+ * words, off while it is blank (a blank box means none: Michal, 2026-10-31), its text tidied
+ * and checked as wrapBody does, its venues; only what differs. `{}` when nothing changed: the
+ * two buttons stay dimmed. A part too long is named and nothing is sent.
+ * @param {{header:{text:unknown, venues:unknown}, footer:{text:unknown, venues:unknown}}} draft
  * @param {Wrap} info the server's
  * @returns {{ok:true, body:Record<string, Partial<WrapPart>>} | {ok:false, error:string}}
  */
-export function wrapTextsBody(texts, info) {
+export function wrapDraftBody(draft, info) {
     /** @type {Record<string, Partial<WrapPart>>} */
     const body = {};
     for (const part of WRAP_PARTS) {
-        const made = wrapBody(part, { text: texts[part] });
+        const made = wrapBody(part, { text: draft[part].text, venues: draft[part].venues });
         if (!made.ok) return { ok: false, error: `${part === "header" ? "Header" : "Footer"}: ${made.error}` };
-        if (made.body[part].text !== info[part].text) body[part] = made.body[part];
+        const want = made.body[part];
+        const now = info[part];
+        /** @type {Partial<WrapPart>} */
+        const change = {};
+        const on = want.text !== "";
+        if (on !== now.on) change.on = on;
+        if (want.text !== now.text) change.text = want.text;
+        if ((want.venues || []).join(" ") !== now.venues.join(" ")) change.venues = want.venues;
+        if (Object.keys(change).length) body[part] = change;
     }
     return { ok: true, body };
 }
 
 /**
- * The counter under a part's box: "120 / 2000".
- * @param {string} text
- * @returns {string}
+ * Add standard text to posts unticked: both parts off at once, their texts and venues kept on
+ * the server (Michal, 2026-10-31: "saving with the box unticked turns both on false but keeps
+ * the texts"); only the parts that are on. `{}`: nothing to send.
+ * @param {Wrap} info
+ * @returns {Record<string, {on:false}>}
  */
-export function wrapCounter(text) {
-    return `${typeof text === "string" ? text.length : 0} / ${WRAP_MAX}`;
+export function wrapOffBody(info) {
+    return Object.fromEntries(WRAP_PARTS.filter((part) => info[part].on).map((part) => [part, { on: false }]));
 }
 
 /**
- * An Apply to: button's face: the venue as the venue buttons say it, and, ticked, the tick
- * after it in the posted green (Michal, 2026-10-17: "once clicked the button changes to green
- * with a check, our typical"), drawn by app.js as a listed badge's.
- * @param {string} venue
- * @param {boolean} on
- * @returns {{text:string, tick:boolean}}
+ * The venues Apply to existing postings pushes onto (POST /me/wrap/apply, one each): every
+ * venue a part that is on, with words, goes on, in VENUES' order.
+ * @param {Wrap} info
+ * @returns {string[]}
  */
-export function venueTickLabel(venue, on) {
-    return { text: venue, tick: !!on };
+export function wrapApplyVenues(info) {
+    return VENUES.filter((v) => WRAP_PARTS.some((part) => info[part].on && info[part].text !== "" && info[part].venues.includes(v)));
 }
-
-/**
- * The job button under a part, per venue ticked (Michal, 2026-10-17: "Finally a button 'Apply
- * to all existing listings' (per the venue specified)").
- * @param {string} venue
- * @returns {string}
- */
-export function applyLabel(venue) {
-    return `Apply to all existing ${venue} listings`;
-}
-
 /**
  * A part's line when its change did not go: a server without the route (404) has it not
  * available yet; a refusal (400: a bad value, a text too long) is the server's own words;
@@ -4429,29 +4521,23 @@ export function venueFacts(row, venue) {
  *   "add"     the row is not on this venue: its empty card puts it there
  *   "post"    on the venue and not listed (a draft; an ended or sold row goes up again)
  *   "open"    listed, with a link: the listing in a new tab
- *   "sync"    listed, and a change since the last sync left this listing behind
- *             (unsyncedList, leftUnsynced): the push job puts the row on the listing
- *             (Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-22, for
- *             eBay too: "there was no sync to eBay button after I made the edit ... This goes
- *             for each venue")
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * customize keeps its Sync to <venue> for every venue listed, behind or not. Poshmark
- * (2026-10-11) is add, post and open alone: the server only posts there, it cannot yet
- * refresh, end, push or edit a listing, so nothing leaves it behind.
+ * No sync: the sync buttons live only in each venue's block under Settings, Venues (Michal,
+ * 2026-10-31); a listing an edit left behind is put right by that block's Sync to <venue>.
+ * Poshmark (2026-10-11) is add, post and open alone: the server only posts there, it cannot
+ * yet refresh, end, push or edit a listing.
  * @param {Record<string, any>} row
  * @param {string} venue
- * @param {Unsynced[]} [unsynced] unsyncedList's
  * @returns {string[]}
  */
-export function venueActions(row, venue, unsynced = []) {
+export function venueActions(row, venue) {
     if (!rowVenues(row).includes(venue)) return ["add"];
     const s = venueStatus(row, venue);
     if (POST_ONLY.includes(venue)) return s.status !== "listed" ? ["post"] : s.url ? ["open"] : [];
     if (s.status !== "listed") return ["post", "edit"];
-    const behind = isUnsynced(unsynced, row.sku, venue);
-    return [...(s.url ? ["open"] : []), ...(behind ? ["sync"] : []), "refresh", "end", "edit"];
+    return [...(s.url ? ["open"] : []), "refresh", "end", "edit"];
 }
 
 /**
@@ -4685,21 +4771,6 @@ export function patchBody(venue, before, after) {
 // PC sets the price to that grade's cached one. No model call, no job. Post without
 // asking is not shown any more.
 
-/**
- * Said under Save while the listing is up on none of the venues the account syncs to: there is
- * nothing to push to ("Sync to ebay opens once the listing is up on eBay": the button by its
- * word; with more venues, "Sync opens once the listing is up on eBay or craigslist");
- * nothing when it syncs to none.
- * @param {string[]} to syncVenues' "to"
- * @returns {string}
- */
-export function pushClosed(to) {
-    if (!to.length) return "";
-    const names = to.map(venueName);
-    if (names.length === 1) return `${actionWord("sync", to[0])} opens once the listing is up on ${names[0]}`;
-    return `Sync opens once the listing is up on ${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-}
-
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
 
@@ -4829,10 +4900,9 @@ function listedOn(row, venue) {
 }
 
 /**
- * The venues customize offers a Sync to <venue> for (Michal, 2026-10-17: "There is a button
- * push to eBay, so add a button push to Craigslist next to it. All venues need to be
- * represented"): each the account syncs to (syncVenues' "to", in its order) that the row is
- * listed on. A venue it is not listed on has no listing to update, so no button.
+ * The venues a saved row's listing is up on that the account syncs to (syncVenues' "to", in its
+ * order): where a Sync to <venue>, under Settings, Venues, puts the change. A venue it is not
+ * listed on has no listing to update.
  * @param {Record<string, any>} row
  * @param {string[]} to syncVenues' "to"
  * @returns {string[]}
@@ -4842,42 +4912,40 @@ export function customizeVenues(row, to) {
 }
 
 /**
- * Which of the foldout's buttons can be pressed. Save: something to send, the box
- * a quantity. Each Sync to <venue> (customizeVenues draws one per venue listed): the box a
- * quantity (what is not yet saved is saved first). Neither while the row is busy (one job
- * per row at a time).
+ * Whether the foldout's Save can be pressed: something to send, the box a quantity, the row
+ * not busy (one job per row at a time). The foldout has no Sync of its own: the sync buttons
+ * live only in each venue's block under Settings, Venues (Michal, 2026-10-31).
  * @param {Record<string, any>} row
  * @param {RowCustomize} values
  * @param {boolean} busy
- * @param {string[]} to syncVenues' "to"
- * @returns {{save:boolean, sync:boolean}}
+ * @returns {{save:boolean}}
  */
-export function customizeButtons(row, values, busy, to) {
+export function customizeButtons(row, values, busy) {
     const ok = !busy && quantityValue(values.quantity) > 0;
-    return { save: ok && customizeChanges(row, values) !== null, sync: ok && customizeVenues(row, to).length > 0 };
+    return { save: ok && customizeChanges(row, values) !== null };
 }
 
 /**
- * The foldout's status line: what is on its way, the push job (its step, then
- * "updated" or "unchanged", or its error), what the PC refused or said; then the
- * quantity box that holds no quantity, then why there is no Sync to press (pushClosed).
- * @param {Record<string, any>} row
+ * The foldout's status line: what is on its way, what the PC refused or said; then the
+ * quantity box that holds no quantity.
  * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, values:{quantity:string}}} card
- * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeLine(row, card, to) {
+export function customizeLine(card) {
     const said = busyLine(card);
     if (said) return said;
     if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
-    if (!customizeVenues(row, to).length) return { text: pushClosed(to), kind: "" };
     return { text: "", kind: "" };
 }
 
+/** Where a sync button is, said after a change that left a listing behind (Michal, 2026-10-31: only there). */
+const IN_VENUES = "in Settings, Venues";
+
 /**
  * Said once Save is through: the PC holds it, and on a listing up on a venue it syncs to, the
- * Sync that puts it there: the one by name ("saved; Sync to eBay puts it on the listing"),
- * or, with more than one button, "saved; sync puts it on the listings".
+ * Sync that puts it there, under Settings, Venues: the one by name ("saved; Sync to ebay in
+ * Settings, Venues puts it on the listing"), or, with more than one, "saved; sync in Settings,
+ * Venues puts it on the listings".
  * @param {Record<string, any>} row the row the PC answered
  * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
@@ -4885,20 +4953,21 @@ export function customizeLine(row, card, to) {
 export function customizeSaved(row, to) {
     const venues = customizeVenues(row, to);
     if (!venues.length) return { text: "saved", kind: "ok" };
-    if (venues.length > 1) return { text: "saved; sync puts it on the listings", kind: "ok" };
-    return { text: `saved; ${actionWord("sync", venues[0])} puts it on the listing`, kind: "ok" };
+    if (venues.length > 1) return { text: `saved; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
+    return { text: `saved; ${actionWord("sync", venues[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
 }
 
 /**
  * Said on a card once its Edit is saved and the change left its own listing behind: the Sync
- * that puts it there, by name ("saved; Sync to eBay puts it on the listing"). null when the
- * listing is not behind (a draft, or nothing it shows changed): the card's status line then.
+ * that puts it there, by name, and where it is ("saved; Sync to ebay in Settings, Venues puts
+ * it on the listing"). null when the listing is not behind (a draft, or nothing it shows
+ * changed): the card's status line then.
  * @param {string} venue
  * @param {string[]} behind leftUnsynced's
  * @returns {{text:string, kind:string} | null}
  */
 export function editSaved(venue, behind) {
-    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} puts it on the listing`, kind: "ok" } : null;
+    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} ${IN_VENUES} puts it on the listing`, kind: "ok" } : null;
 }
 
 /**
@@ -4913,16 +4982,17 @@ export function photoQuestion(n) {
 
 /**
  * Said under the strip once a photo is added or removed (`done`: "photo added", "2 photos
- * added", "photo removed"), then the Sync that puts the photos on a listing up somewhere:
- * by name with one ("photo added; Sync to eBay puts it on the listing"), "sync" with more.
+ * added", "photo removed"), then the Sync under Settings, Venues that puts the photos on a
+ * listing up somewhere: by name with one ("photo added; Sync to ebay in Settings, Venues puts
+ * it on the listing"), "sync" with more.
  * @param {string} done
  * @param {string[]} behind photosBehind's
  * @returns {{text:string, kind:string}}
  */
 export function photoSaved(done, behind) {
     if (!behind.length) return { text: done, kind: "ok" };
-    if (behind.length > 1) return { text: `${done}; sync puts it on the listings`, kind: "ok" };
-    return { text: `${done}; ${actionWord("sync", behind[0])} puts it on the listing`, kind: "ok" };
+    if (behind.length > 1) return { text: `${done}; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
+    return { text: `${done}; ${actionWord("sync", behind[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
 }
 
 // --- Admin: a list row's price, dialled on its tile -------------------------------------
