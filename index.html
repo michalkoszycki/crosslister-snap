@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.35.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.35.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.36.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.36.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -422,6 +422,8 @@
          larger than its contents and one step in from this level, closed except the one needed
          (app.js: Snap Account after a new sign-in, Venues while eBay is not connected, Server for
          I have a key before a key is saved), which ones are open remembered on this phone -->
+    <!-- no one signed in: the way back to the landing's Sign in, above Settings (Michal, 2026-10-31) -->
+    <button type="button" id="settings-back" class="link back-link" hidden>← Back to sign-in</button>
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="settings">▸ Settings</button>
     <div id="settings" class="settings" hidden>
@@ -544,6 +546,7 @@
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
         <div id="posting-defaults" class="posting-defaults">
+          <p id="posting-lead" class="small posting-lead">These will be your default settings. You can customize them per posting on the Snap page.</p>
           <!-- the Snap page's customize as it is, field for field, its small print too (Michal,
                2026-10-31: "make this card look like the customize menu on the snap page"); its
                extra, Add standard text to posts, after -->
@@ -589,9 +592,11 @@
                ticked, the gray card: Header and its box and venue chips, Footer the same (a
                blank box means none), then Save for upcoming postings and Apply to existing
                postings, each on its own line, dimmed until the text or a chip changes) -->
-          <label id="wrap-row" class="pickup" hidden>
+          <!-- always there (Michal, 2026-10-31: "we lost the entire header / footer setup"):
+               greyed, its reason under it, while the server has not given it -->
+          <label id="wrap-row" class="pickup">
             <input id="wrap-on" type="checkbox">
-            <span>Add standard text to posts</span>
+            <span>Add standard text to posts<small id="wrap-why" hidden></small></span>
           </label>
           <div id="wrap" class="card wrap" hidden>
             <label class="field wrap-field">
@@ -1095,6 +1100,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.35.0"></script>
+<script type="module" src="app.js?v=2.36.0"></script>
 </body>
 </html>

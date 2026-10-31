@@ -139,7 +139,7 @@ during the visit; a listing left open still reopens. The sticky sync bar is gone
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
-**Settings** opens as its five parts as a row of chips on the page's ground (Michal,
+**Settings**, while no one is signed in, has "← Back to sign-in" above it, back to the landing (Michal, 2026-10-31). It opens as its five parts as a row of chips on the page's ground (Michal,
 2026-10-31: "put the submenu items OUT of the gray background"), the chosen part in a grey
 card under them as the inventory's, the inventory filters' look; the pressed chip's part is the one shown
 under them, one at a time (Michal, 2026-10-31: "words in pill shaped buttons with the
@@ -231,7 +231,7 @@ saved), and the phone remembers which were left open.
    /me/address` (`same`, `shared`, `venues`, `uses`).
 3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). The Snap page's
    customize field for field, its words and small print too (Michal, 2026-10-31: "make this card
-   look like the customize menu on the snap page"): **Quantity**; Pickup only, no shipping; the
+   look like the customize menu on the snap page"), under one muted line at the top, "These will be your default settings. You can customize them per posting on the Snap page." (2026-10-31): **Quantity**; Pickup only, no shipping; the
    **Price** slider, its three words and its line under them; Post without asking / Compare with
    marketplace listings / Fix dark photos, each with customize's small print, each saved as it
    changes and kept on this phone for now (the server has no place for them yet, so they do
@@ -276,7 +276,7 @@ listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues 
 the listing"). A list row's listed badge still wears the sync-to half while its listing is
 behind and pushes that row when tapped.
 
-**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else, as a chat, what they sent above the Feedback box, oldest first, each in a white card with "Reviewed" in plain black words under the ones the admin marked (GET /me/feedback; no replies, no email: Michal, 2026-10-31: "should look more like a chat"), a white dot with a thin dark edge on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"; "red was too alerty"), the dots tapped while it is lit opening Admin on Feedback itself, the dot gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
+**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else, as a chat, what they sent above the Feedback box, oldest first, each in a white card with "Reviewed" in plain black words under the ones the admin marked (GET /me/feedback; no replies, no email: Michal, 2026-10-31: "should look more like a chat"), a green dot on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"; "red was too alerty", "just change it to a green dot then"), the dots tapped while it is lit opening Admin on Feedback itself, the dot gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
 last job", **Send**, "Thanks, sent."
 
 **Stats** (admin only). 7d / 30d / all chips, the table, the note.
@@ -351,7 +351,7 @@ controls disabled, the row edits refused with the server's words); **an expired 
   black on green with the page's half-arrows after the words, shown once the venue is
   connected or signed in; the ship-from address with no card, one line split at the
   commas, Save address and the tick on one row; Posting defaults as one muted line,
-  Quantity beside the slider, five one-line options, the fifth Add standard text to posts
+  Quantity beside the slider, five one-line options, the fifth Add standard text to posts Always there at the bottom (Michal, 2026-10-31: "we lost the entire header / footer setup"): greyed until the server gives it, "Sign in to add a header and footer to your posts." under it while signed out, "Your server does not offer this yet." from an older server.
   with its card (Header and Footer, venue chips, Save for upcoming postings and Apply to
   existing postings); This phone's Install as press-me, or the chosen chip once installed.
   Where the build settled what the mock left open: the tick of Add standard text to posts

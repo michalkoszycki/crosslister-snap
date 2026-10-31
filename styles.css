@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.35.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.36.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -186,7 +186,7 @@ header #admin-toggle { display: inline-flex; align-items: center; justify-conten
 header #admin-toggle > .dots { display: block; }
 /* a Reviewed mark on their feedback not yet seen: a dot on the dots (Michal, 2026-10-31) */
 header #admin-toggle { position: relative; }
-header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px #111; }
+header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
 .feedback-mine { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .feedback-mine li { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
 .feedback-mine .mine-text { padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1.5px solid var(--line); color: var(--ink); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -744,6 +744,7 @@ input[type="text"]:disabled { color: var(--muted); }
 /* a row with small print under its words (post without asking): a rounded sheet, not a pill */
 .pickup:has(small) { border-radius: var(--radius); }
 .pickup:has(small[hidden]) { border-radius: 999px; }
+.posting-lead { margin: 0 0 4px; color: var(--muted); }
 .pickup small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); line-height: 1.35; }
 /* the price grade (Michal, 2026-10-06: "a slider for price preference (3 grade)"): three
    steps on a 44 px tall touch area with the yellow thumb, its three words under the track

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.35.0";
+import { VERSION } from "./version.js?v=2.36.0";
 import {
     adminLink,
     anyActive,
@@ -257,8 +257,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.35.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.35.0";
+} from "./core.js?v=2.36.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.36.0";
 import {
     addVenue,
     applyWrap,
@@ -313,8 +313,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.35.0";
-import { shrinkPhoto } from "./shrink.js?v=2.35.0";
+} from "./pc.js?v=2.36.0";
+import { shrinkPhoto } from "./shrink.js?v=2.36.0";
 import {
     bookCard,
     bookPriceValue,
@@ -327,8 +327,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.35.0";
-import { canScan, readIsbn } from "./scan.js?v=2.35.0";
+} from "./book.js?v=2.36.0";
+import { canScan, readIsbn } from "./scan.js?v=2.36.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -471,6 +471,8 @@ const seller = { info: null, same: true, busy: false, status: "", ready: false, 
  */
 const wrap = {
     info: null,
+    /** The server said it has no header and footer (an older one's 404). */
+    missing: false,
     open: false,
     /** @type {{header:string[], footer:string[]}} */
     draft: { header: [], footer: [] },
@@ -502,6 +504,9 @@ let folds = {};
  * an older server's 404, the fixed lines then), whether it was asked, Edit open and its draft.
  */
 const policies = { info: null, asked: false, editing: false, draft: null, busy: false, status: "" };
+/** Add standard text to posts, greyed: signed out, or a server without it (Michal, 2026-10-31). */
+const WRAP_SIGN_IN = "Sign in to add a header and footer to your posts.";
+const WRAP_MISSING = "Your server does not offer this yet.";
 /** A sender's own feedback as GET /me/feedback last said (null: not asked, or an older server). */
 let mine = null;
 /** The venue whose own page is open under Settings ("" none; Michal, 2026-10-31). */
@@ -4829,6 +4834,8 @@ function renderAdminPage() {
     el.peopleBack.hidden = !people.open;
     el.venueBack.hidden = !venuePage;
     el.venuePage.hidden = !venuePage;
+    // no one signed in: Back to sign-in above Settings (Michal, 2026-10-31)
+    el.settingsBack.hidden = page || !!settings();
 }
 
 /**
@@ -6038,7 +6045,11 @@ function wrapDraft() {
  */
 function renderWrap() {
     const info = wrap.info;
-    el.wrapRow.hidden = !info;
+    // always there, greyed with its reason until the server gives it (Michal, 2026-10-31)
+    el.wrapOn.disabled = !info;
+    const why = info ? "" : !settings() ? WRAP_SIGN_IN : wrap.missing ? WRAP_MISSING : "";
+    el.wrapWhy.textContent = why;
+    el.wrapWhy.hidden = !why;
     el.wrapOn.checked = !!info && wrap.open;
     el.wrap.hidden = !info || !wrap.open;
     const venues = info ? info.available : [];
@@ -6115,13 +6126,14 @@ async function loadWrap() {
         const info = wrapOf(await getWrap(pc));
         if (mine !== wrap.asked) return;
         wrap.info = info;
+        wrap.missing = !info;
         if (info) {
             fillWrap(info, WRAP_PARTS);
             wrap.open = wrapOn(info);
         }
     } catch (e) {
         if (mine !== wrap.asked) return;
-        if (e.status === 404) wrap.info = null;
+        if (e.status === 404) Object.assign(wrap, { info: null, missing: true });
         if (e.status === 0 || e.status === 401) heard(e.status);
     }
     renderWrap();
@@ -7319,6 +7331,7 @@ function main() {
         adminToggle: $("admin-toggle"),
         admin: $("admin"),
         headerUser: $("header-user"),
+        settingsBack: $("settings-back"),
         settingsToggle: $("settings-toggle"),
         settings: $("settings"),
         folds: Object.fromEntries(
@@ -7457,6 +7470,7 @@ function main() {
         wrap: $("wrap"),
         wrapRow: $("wrap-row"),
         wrapOn: $("wrap-on"),
+        wrapWhy: $("wrap-why"),
         wrapParts: Object.fromEntries(WRAP_PARTS.map((part) => [part, { text: $(`wrap-${part}-text`), venues: $(`wrap-${part}-venues`) }])),
         wrapSave: $("wrap-save"),
         wrapApply: $("wrap-apply"),
@@ -7879,6 +7893,7 @@ function main() {
         }
     }
     el.settingsToggle.addEventListener("click", toggleSettings);
+    el.settingsBack.addEventListener("click", () => showAdmin(false));
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});
     });

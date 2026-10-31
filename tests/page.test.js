@@ -269,6 +269,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "detail-poshmark-toggle",
         "detail-poshmark",
         // Settings (Michal, 2026-10-25: "a two-level fold"): five folds of its own
+        "settings-back",
         "settings-toggle",
         "settings",
         // the parts as a row of chips, the pressed one's part under them (Michal, 2026-10-31)
@@ -334,6 +335,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "fold-posting-toggle",
         "fold-posting",
         "posting-defaults",
+        "posting-lead",
         // as the Snap page's customize (Michal, 2026-10-31)
         "posting-quantity-less",
         "posting-quantity",
@@ -349,6 +351,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "posting-fix-dark",
         "wrap-row",
         "wrap-on",
+        "wrap-why",
         "wrap",
         ...["header", "footer"].flatMap((part) => [`wrap-${part}-text`, `wrap-${part}-venues`]),
         "wrap-save",
@@ -465,7 +468,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     // the People page in the inventory card's shape, its way back at the top
     assert.match(html, /<button type="button" id="people-back" class="link back-link" hidden>← Back to settings<\/button>\s*<div id="people" class="card inventory people" hidden>/);
     // the Posting defaults as the Snap page's customize, Quantity first (Michal, 2026-10-31)
-    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*(<!--[\s\S]*?-->\s*)?<div class="field">\s*<label class="field-label" for="posting-quantity">Quantity<\/label>/);
+    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*<p id="posting-lead" class="small posting-lead">These will be your default settings\. You can customize them per posting on the Snap page\.<\/p>\s*(<!--[\s\S]*?-->\s*)?<div class="field">\s*<label class="field-label" for="posting-quantity">Quantity<\/label>/);
     // the header and footer card under Add standard text to posts: Header's box, then its chips
     assert.match(html, /<span class="field-label">Header<\/span>\s*<textarea id="wrap-header-text"[\s\S]*?<\/label>\s*<div id="wrap-header-venues" class="chips option-chips wrap-venues"/);
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
@@ -10381,7 +10384,8 @@ function wrapCard(nodes) {
     const words = { "wrap-save": "Save for upcoming postings", "wrap-apply": "Apply to existing postings" };
     const btn = (id) => `${words[id]}${nodes.get(id).disabled ? " (off)" : ""}`;
     return {
-        row: !nodes.get("wrap-row").hidden,
+        // the tick there to use: always shown since 2026-10-31, greyed until the server gives it
+        row: !nodes.get("wrap-row").hidden && !nodes.get("wrap-on").disabled,
         on: nodes.get("wrap-on").checked === true,
         card: !nodes.get("wrap").hidden,
         buttons: [btn("wrap-save"), btn("wrap-apply")],
@@ -10420,10 +10424,13 @@ test("Posting defaults: the Snap page's customize field for field, its small pri
         [...part.matchAll(/<(label|div|p|span|input)\b[^>]*?(?:id="([\w-]+)")?[^>]*>([^<]*)/g)]
             .map((m) => [m[1], (m[2] || "").replace(prefix, ""), m[3].trim()])
             .filter(([, id, text]) => id || text);
-    const posting = shape(words, /^posting-/);
+    // the lead line first, its own (Michal, 2026-10-31: "at the top do say - these will be your default settings"), then the fields
+    const lead = /<p id="posting-lead" class="small posting-lead">([^<]*)<\/p>/.exec(words);
+    assert.equal(lead[1], "These will be your default settings. You can customize them per posting on the Snap page.");
+    const posting = shape(words.replace(lead[0], ""), /^posting-/);
     const customize = shape(custom, /^/);
     assert.deepEqual(posting.slice(0, customize.length), customize);
-    assert.ok(!/posting-lead|qty-row/.test(words), "no line of its own, no Quantity beside the slider");
+    assert.ok(!/qty-row/.test(words), "no Quantity beside the slider");
     // its extra after them
     const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)/g)].map((m) => [m[1], m[2]]);
     assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-fix-dark", "wrap-on"]);
@@ -10449,7 +10456,8 @@ test("Add standard text to posts: unticked just its line; ticked the card; the b
     pc.wrap = structuredClone(NO_WRAP);
     pc.wrap.footer.text = "Thanks for looking!";
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    assert.equal(nodes.get("wrap-row").hidden, true, "nothing before the server answers");
+    assert.equal(nodes.get("wrap-on").disabled, true, "greyed before the server answers");
+    assert.equal(nodes.get("wrap-why").hidden, true, "no reason while it is being asked");
     assert.deepEqual(pc.wrapAsks, [], "not asked before Settings opens");
     await openPosting(nodes);
     assert.deepEqual(pc.wrapAsks, ["key test-key-0123456789"]);
@@ -10632,7 +10640,10 @@ test("header and footer: an older server (404) has no tick and no card; signing 
     const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
     await openPosting(before.nodes);
     assert.equal(old.wrapAsks.length, 1);
-    assert.equal(before.nodes.get("wrap-row").hidden, true);
+    // there, greyed, its reason under it (Michal, 2026-10-31: "we lost the entire header / footer setup")
+    assert.equal(before.nodes.get("wrap-row").hidden, false);
+    assert.equal(before.nodes.get("wrap-on").disabled, true);
+    assert.equal(before.nodes.get("wrap-why").textContent, "Your server does not offer this yet.");
     assert.equal(before.nodes.get("wrap").hidden, true);
     assert.equal(before.nodes.get("posting-defaults").hidden, false, "the defaults are the phone's: there all the same");
 
@@ -10644,7 +10655,8 @@ test("header and footer: an older server (404) has no tick and no card; signing 
     assert.equal(wrapPart(nodes, "header").text, "Hello");
     nodes.get("settings-signout").fire("click");
     assert.equal(nodes.get("wrap").hidden, true);
-    assert.equal(nodes.get("wrap-row").hidden, true);
+    assert.equal(nodes.get("wrap-on").disabled, true);
+    assert.equal(nodes.get("wrap-why").textContent, "Sign in to add a header and footer to your posts.");
     assert.equal(nodes.get("wrap-header-text").value, "", "nothing of hers left on the phone's screen");
 });
 // --- several accounts on one phone (Michal, 2026-10-18: "mostly i want to make sure there is a
@@ -11387,3 +11399,20 @@ test("Venues: three cards in /me's order, all shown, one size, each its name, no
     assert.equal(nodes.get("venue-page").hidden, true);
 });
 
+test("no one signed in: Back to sign-in above Settings takes them to the landing; signed in, none", async (t) => {
+    // Michal, 2026-10-31: "when someone did not sign in yet- there shoudl be a back to sign-in at top of the settings"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc();
+    const { nodes } = await loadPage({ local: memoryStore({}), fetchImpl: pc.fetch });
+    await settle();
+    nodes.get("landing-key").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("settings-back").hidden, false);
+    nodes.get("settings-back").fire("click");
+    assert.equal(nodes.get("admin").hidden, true);
+    assert.equal(nodes.get("landing").hidden, false);
+    const signed = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
+    await settle();
+    signed.nodes.get("admin-toggle").fire("click");
+    assert.equal(signed.nodes.get("settings-back").hidden, true);
+});
