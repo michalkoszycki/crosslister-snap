@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.40.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.40.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.41.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.41.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -226,12 +226,6 @@
             <span class="field-label">Return shipping paid by</span>
             <div id="policy-payer" class="chips policy-chips" role="group" aria-label="Return shipping paid by"></div>
           </div>
-          </div>
-          <div id="policy-part-listing" hidden>
-          <label class="pickup">
-            <input id="policy-best-offer" type="checkbox">
-            <span>Allow best offers<small id="policy-best-offer-tip" hidden>You will be able to review the offers before finalizing.</small></span>
-          </label>
           </div>
           <button type="button" id="policy-save" class="secondary policy-save">Save</button>
         </div>
@@ -622,6 +616,10 @@
             <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
           </label>
           <label class="pickup">
+            <input id="posting-best-offer" type="checkbox" checked>
+            <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+          </label>
+          <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
             <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
           </label>
@@ -899,6 +897,11 @@
         <input id="comps" type="checkbox">
         <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
+      <!-- a posting choice, not a policy (Michal, 2026-10-31): each item's, Posting defaults' too -->
+      <label class="pickup">
+        <input id="best-offer" type="checkbox" checked>
+        <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+      </label>
       <!-- Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
            of mine are quite dark." On by default; the phone's, for every photo taken. This item's
            values start from Settings, Posting (2026-10-25: Save as default left this box) -->
@@ -1099,6 +1102,10 @@
         <input id="book-comps" type="checkbox">
         <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
+      <label class="pickup">
+        <input id="book-best-offer" type="checkbox" checked>
+        <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+      </label>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
@@ -1134,6 +1141,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.40.0"></script>
+<script type="module" src="app.js?v=2.41.0"></script>
 </body>
 </html>

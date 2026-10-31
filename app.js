@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.40.0";
+import { VERSION } from "./version.js?v=2.41.0";
 import {
     adminLink,
     anyActive,
@@ -260,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.40.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.40.0";
+} from "./core.js?v=2.41.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.41.0";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.40.0";
-import { shrinkPhoto } from "./shrink.js?v=2.40.0";
+} from "./pc.js?v=2.41.0";
+import { shrinkPhoto } from "./shrink.js?v=2.41.0";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.40.0";
-import { canScan, readIsbn } from "./scan.js?v=2.40.0";
+} from "./book.js?v=2.41.0";
+import { canScan, readIsbn } from "./scan.js?v=2.41.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -561,6 +561,8 @@ const stepsOpen = { landing: false, banner: false, phone: false };
 let defaultsTimer = null;
 /** Step 2's address box typed in since the server's address was last put there. */
 let signupAddressDirty = false;
+/** Step 2's box saved and not typed in since: Saved on its button, the address light grey. */
+let signupAddressSaved = false;
 /** customize's Save as default, and its word a moment after a press. */
 const SAVE_AS_DEFAULT = "Save as default";
 const SAVED_AS_DEFAULT = "Saved as default";
@@ -1460,6 +1462,7 @@ function customizeNodes(m) {
               pricingNote: el.bookPricingNote,
               autoPost: el.bookAutoPost,
               comps: el.bookComps,
+              bestOffer: el.bookBestOffer,
           }
         : {
               toggle: el.customizeToggle,
@@ -1471,6 +1474,7 @@ function customizeNodes(m) {
               pricingNote: el.pricingNote,
               autoPost: el.autoPost,
               comps: el.comps,
+              bestOffer: el.bestOffer,
           };
 }
 
@@ -1506,6 +1510,7 @@ function renderPosting() {
     el.postingPricingNote.textContent = grade.note;
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
+    el.postingBestOffer.checked = d.bestOffer !== false;
     el.postingFixDark.checked = savedFixDark();
 }
 
@@ -1521,6 +1526,7 @@ function savePostingDefaults() {
         pricing: pricingGrade(el.postingPricing.value),
         autoPost: el.postingAutoPost.checked,
         comps: el.postingComps.checked,
+        bestOffer: el.postingBestOffer.checked,
     });
     writeJson("localStorage", DEFAULTS_KEY, { goods: d, book: d });
     writeText("localStorage", FIXDARK_KEY, el.postingFixDark.checked ? "on" : "off");
@@ -1566,6 +1572,8 @@ function renderCustomize(m) {
     nodes.autoPost.checked = c.autoPost;
     nodes.comps.disabled = fixed;
     nodes.comps.checked = c.comps;
+    nodes.bestOffer.disabled = fixed;
+    nodes.bestOffer.checked = c.bestOffer !== false;
 }
 
 /** The customize boxes show what the state holds (after a reload or a DONE). */
@@ -5448,7 +5456,6 @@ function renderPolicies() {
     el.policyPick.value = part.value;
     el.policyPartShipping.hidden = part.value !== "shipping";
     el.policyPartReturns.hidden = part.value !== "returns";
-    el.policyPartListing.hidden = part.value !== "listing";
     el.policyPartWords.textContent = part.words || "";
     el.policyPartWords.hidden = !part.words;
     const d = policies.draft;
@@ -5480,8 +5487,6 @@ function renderPolicies() {
     el.policyPayerRow.hidden = d.return_days === 0;
     choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
-    el.policyBestOffer.checked = !!d.best_offer;
-    el.policyBestOfferTip.hidden = !d.best_offer;
     el.policySave.disabled = policies.busy;
 }
 
@@ -5561,7 +5566,10 @@ const POLICY_EXTRAS = ["Payment: paid through eBay's own checkout", "Books: a se
 
 /** Step 3's summary: the server's lines, POLICY_EXTRAS before the ship-from one. */
 function policySummary(info) {
-    const lines = policyRowsOf(info).map((r) => r.line);
+    // no Best offer line from an older server: a posting choice now (Michal, 2026-10-31)
+    const lines = policyRowsOf(info)
+        .map((r) => r.line)
+        .filter((l) => !l.startsWith("Best offer"));
     const at = lines.findIndex((l) => l.startsWith("Your ship-from"));
     const cut = at < 0 ? lines.length : at;
     return [...lines.slice(0, cut), ...POLICY_EXTRAS, ...lines.slice(cut)];
@@ -5580,7 +5588,6 @@ const POLICY_PARTS = [
     { value: "books", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing to set here." },
     { value: "location", label: "Ship-from location", words: "Your address where you ship from. eBay shows buyers its city and state." },
     { value: "business", label: "Business policies", words: "Turned on for your account: eBay needs them before Snap can post for you." },
-    { value: "listing", label: "Every listing", words: "" },
 ];
 
 /**
@@ -5712,10 +5719,13 @@ function renderSignup() {
         if (!signupAddressDirty) el.signupAddressLine.value = addressLine(info.shared, sharedUses(info));
     }
     el.signupAddressLine.disabled = !connected || !info || !info.editable;
-    el.signupAddress.textContent = !signupAddressDirty && address === "prefilled" ? "Looks right" : "Save";
-    el.signupAddress.hidden = !signupAddressDirty && address !== "prefilled";
-    el.signupAddress.disabled = !connected || seller.busy;
-    el.signupAddressStatus.textContent = connected ? seller.status : "";
+    const saved = signupAddressSaved && !signupAddressDirty;
+    el.signupAddress.textContent = saved ? "Saved" : !signupAddressDirty && address === "prefilled" ? "Looks right" : "Save";
+    el.signupAddress.hidden = !saved && !signupAddressDirty && address !== "prefilled";
+    el.signupAddress.disabled = saved || !connected || seller.busy;
+    el.signupAddressLine.classList.toggle("saved", saved);
+    // the button says it once saved; the line keeps what went wrong
+    el.signupAddressStatus.textContent = connected && !saved ? seller.status : "";
     el.signupStatus.textContent = step ? account.status : "";
 }
 
@@ -5723,7 +5733,10 @@ function renderSignup() {
 async function saveSignupAddress() {
     el.sellerLine.value = el.signupAddressLine.value;
     await saveSeller();
-    if (seller.status === "saved") signupAddressDirty = false;
+    if (seller.status === "saved") {
+        signupAddressDirty = false;
+        signupAddressSaved = true;
+    }
     renderSignup();
 }
 
@@ -7515,6 +7528,7 @@ function main() {
         postingPricingNote: $("posting-pricing-note"),
         postingAutoPost: $("posting-auto-post"),
         postingComps: $("posting-comps"),
+        postingBestOffer: $("posting-best-offer"),
         postingFixDark: $("posting-fix-dark"),
         postingStatus: $("posting-status"),
         phoneInstall: $("phone-install"),
@@ -7558,15 +7572,12 @@ function main() {
         policyPayerRow: $("policy-payer-row"),
         policyPayer: $("policy-payer"),
         policyPickup: $("policy-pickup"),
-        policyBestOffer: $("policy-best-offer"),
-        policyBestOfferTip: $("policy-best-offer-tip"),
         policySave: $("policy-save"),
         policiesOk: $("signup-policies-ok"),
         policyPick: $("policy-pick"),
         policyPartWords: $("policy-part-words"),
         policyPartShipping: $("policy-part-shipping"),
         policyPartReturns: $("policy-part-returns"),
-        policyPartListing: $("policy-part-listing"),
         policyLead: $("policy-lead"),
         policyAfter: $("policy-after"),
         policyShipList: $("policy-ship-list"),
@@ -7706,6 +7717,7 @@ function main() {
         pricingNote: $("pricing-note"),
         autoPost: $("auto-post"),
         comps: $("comps"),
+        bestOffer: $("best-offer"),
         fixDark: $("fix-dark"),
         customizeSaveDefault: $("customize-save-default"),
         venueHint: $("venue-hint"),
@@ -7751,6 +7763,7 @@ function main() {
         bookPricingNote: $("book-pricing-note"),
         bookAutoPost: $("book-auto-post"),
         bookComps: $("book-comps"),
+        bookBestOffer: $("book-best-offer"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
         bookSeeInventory: $("book-see-inventory"),
@@ -7917,7 +7930,7 @@ function main() {
         saveSeller().catch(() => {});
     });
     // the Posting defaults: every box saved as it changes
-    for (const node of [el.postingPickupOnly, el.postingAutoPost, el.postingComps, el.postingFixDark]) node.addEventListener("change", savePostingDefaults);
+    for (const node of [el.postingPickupOnly, el.postingAutoPost, el.postingComps, el.postingBestOffer, el.postingFixDark]) node.addEventListener("change", savePostingDefaults);
     for (const node of [el.postingQuantity, el.postingPricing]) node.addEventListener("input", savePostingDefaults);
     // This phone: Install on the home screen, as the landing's
     el.phoneInstall.addEventListener("click", () => {
@@ -7967,10 +7980,6 @@ function main() {
     el.policyPickup.addEventListener("change", () => {
         if (policies.draft) policies.draft.local_pickup = el.policyPickup.checked;
     });
-    el.policyBestOffer.addEventListener("change", () => {
-        if (policies.draft) policies.draft.best_offer = el.policyBestOffer.checked;
-        el.policyBestOfferTip.hidden = !el.policyBestOffer.checked;
-    });
     el.signupConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});
     });
@@ -7979,6 +7988,7 @@ function main() {
     });
     el.signupAddressLine.addEventListener("input", () => {
         signupAddressDirty = true;
+        signupAddressSaved = false;
         seller.status = "";
         renderSignup();
     });
@@ -8170,6 +8180,9 @@ function main() {
         );
         nodes.comps.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setComps", on: nodes.comps.checked }))
+        );
+        nodes.bestOffer.addEventListener("change", () =>
+            setState(m, reduce(slots[m], { type: "setBestOffer", on: nodes.bestOffer.checked }))
         );
     }
 

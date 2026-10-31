@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.40.0";
+import { noteDirty, unsent } from "./queue.js?v=2.41.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.40.0";
+} from "./book.js?v=2.41.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2266,11 +2266,13 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
  *                               button posts it on the next press
  * @property {boolean} comps     eBay's similar listings go to the AI for the first draft; on
  *                               by default since 2026-10-10 (off from 2026-10-07)
+ * @property {boolean} bestOffer  eBay's Best Offer on the listing; on by default (Michal,
+ *                               2026-10-31: a posting choice, not a policy)
  */
 
 /**
  * What customize adds to a job's body, each key only when it is not the default.
- * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:false}} CustomizeBody
+ * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:false, best_offer?:false}} CustomizeBody
  */
 
 /**
@@ -2288,7 +2290,7 @@ export const DEFAULT_PRICING = 1;
 
 /** @returns {Customize} */
 export function initialCustomize() {
-    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: true };
+    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: true, bestOffer: true };
 }
 
 /**
@@ -2350,6 +2352,9 @@ export const QUANTITY_HINT = "Quantity (under customize) must be a whole number,
 /** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
 export const PICKUP_NOTE = "pickup only";
 
+/** Under ebay, before the press, once Allow best offers is unticked. */
+export const NO_OFFERS_NOTE = "no best offers";
+
 /** Under both buttons, before the press, once Compare with eBay listings is unticked. */
 export const COMPS_NOTE = "without marketplace comparisons";
 
@@ -2382,6 +2387,8 @@ export function customizeBody(customize) {
     if (grade > DEFAULT_PRICING) out.pricing = /** @type {2|3} */ (grade);
     if (customize.autoPost === false) out.auto_post = false;
     if (customize.comps === false) out.comps = false;
+    // only when unticked, as comps (Michal, 2026-10-31)
+    if (customize.bestOffer === false) out.best_offer = false;
     return out;
 }
 
@@ -2402,6 +2409,7 @@ export function venueIdleNote(state, venue) {
     if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
     if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
     if (c.comps === false) said.push(COMPS_NOTE);
+    if (venue === "ebay" && c.bestOffer === false) said.push(NO_OFFERS_NOTE);
     return said.join(" · ");
 }
 
@@ -2415,6 +2423,7 @@ function recoveredCustomize(saved) {
     c.pricing = pricingGrade(saved.pricing) || DEFAULT_PRICING;
     c.autoPost = saved.autoPost !== false;
     c.comps = saved.comps !== false;
+    c.bestOffer = saved.bestOffer !== false;
     return c;
 }
 
@@ -2426,7 +2435,7 @@ function recoveredCustomize(saved) {
 function savedCustomize(c) {
     const grade = pricingGrade(c.pricing) || DEFAULT_PRICING;
     const plainly = c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false;
-    if (plainly && c.comps !== false) return {};
+    if (plainly && c.comps !== false && c.bestOffer !== false) return {};
     return {
         customize: {
             quantity: c.quantity,
@@ -2434,6 +2443,7 @@ function savedCustomize(c) {
             ...(grade === DEFAULT_PRICING ? {} : { pricing: grade }),
             ...(c.autoPost === false ? { autoPost: false } : {}),
             ...(c.comps === false ? { comps: false } : {}),
+            ...(c.bestOffer === false ? { bestOffer: false } : {}),
         },
     };
 }
@@ -2446,7 +2456,7 @@ function savedCustomize(c) {
 
 /**
  * What the Posting fold keeps of a customize, and what a new item starts from.
- * @typedef {{quantity:string, pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean}} CustomizeDefaults
+ * @typedef {{quantity:string, pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean, bestOffer:boolean}} CustomizeDefaults
  */
 
 /** Said beside the Posting fold's defaults for a moment after a change. */
@@ -2464,7 +2474,7 @@ export const DEFAULTS_SAVED_MS = 2500;
 export function defaultsOf(c) {
     const r = recoveredCustomize(c);
     const quantity = quantityValue(r.quantity);
-    return { quantity: quantity ? String(quantity) : "1", pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly };
+    return { quantity: quantity ? String(quantity) : "1", pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly, bestOffer: r.bestOffer };
 }
 
 /**
@@ -3036,6 +3046,8 @@ export function reduce(state, action) {
             return withCustomize(state, (c) => ({ ...c, autoPost: action.on !== false }));
         case "setComps":
             return withCustomize(state, (c) => ({ ...c, comps: action.on !== false }));
+        case "setBestOffer":
+            return withCustomize(state, (c) => ({ ...c, bestOffer: action.on !== false }));
 
         case "setMode":
             return MODES.includes(action.mode) ? { ...state, mode: action.mode } : state;

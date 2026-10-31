@@ -2185,7 +2185,7 @@ test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => 
 // to edit the quantity and tick pickup only ("a pickup only item on eBay then").
 
 test("customize starts at one, shipped, a quick sale, posted, with comparisons, for goods and books alike", () => {
-    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: true });
+    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: true, bestOffer: true });
     assert.deepEqual(initialState("x").customize, initialCustomize());
     assert.deepEqual(bookState().book.customize, initialCustomize());
     const goods = initialState("x");
@@ -2494,7 +2494,7 @@ test("the price grade and auto-post are kept for a reload only when not the defa
         // the PC saved the row unposted before the reload
         answer: { photos: [1, 2], sku: "B-1", jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", links: {} }] },
     });
-    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: true });
+    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: true, bestOffer: true });
     assert.equal(venueLine(back.jobs.ebay).text, "saved, not posted");
     assert.equal(venueButton(back, "ebay", true).enabled, true);
     // anything odd is the default
@@ -2530,6 +2530,9 @@ test("Compare with eBay listings: on by default; unticked, comps: false in every
     assert.equal(COMPS_NOTE, "without marketplace comparisons");
     assert.equal(customizeBody({ ...initialCustomize(), comps: true }).comps, undefined, "never comps: true");
     assert.deepEqual(customizeBody({ ...initialCustomize(), comps: false }), { comps: false });
+    // best offers: a posting choice, sent only when unticked (Michal, 2026-10-31)
+    assert.deepEqual(customizeBody({ ...initialCustomize(), bestOffer: false }), { best_offer: false });
+    assert.equal(customizeBody(initialCustomize()).best_offer, undefined, "never best_offer: true");
     assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "no" }), {}, "only false is false");
 
     let s = sent(2, [2]);
@@ -4080,14 +4083,14 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
 test("Posting defaults: read leniently, the quantity with them; a new item starts from them", () => {
     // Michal, 2026-10-08: "in case someone wants to change something permanently"; in Settings,
     // Posting defaults since 2026-10-26, whose list has the quantity first
-    const plain = { quantity: "1", pricing: 1, autoPost: true, comps: true, pickupOnly: false };
+    const plain = { quantity: "1", pricing: 1, autoPost: true, comps: true, pickupOnly: false, bestOffer: true };
     assert.deepEqual(customizeDefaults(null), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults("garbage"), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults({ goods: { quantity: "0", pricing: 7, autoPost: "no", comps: 0, pickupOnly: true } }), {
         goods: { ...plain, pickupOnly: true },
         book: plain,
     });
-    const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true };
+    const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true };
     assert.deepEqual(defaultsOf({ ...goods, note: "not customize's" }), goods);
     assert.deepEqual(defaultsOf({ ...goods, quantity: "two" }), { ...goods, quantity: "1" }, "a quantity that is not one is 1");
     // a phone from before (Save as default kept no quantity): 1

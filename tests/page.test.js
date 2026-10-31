@@ -129,6 +129,7 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
         // that toggle default off, in customization"
         "comps",
+        "best-offer",
         // Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
         // of mine are quite dark."
         "fix-dark",
@@ -361,6 +362,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "posting-pricing-note",
         "posting-auto-post",
         "posting-comps",
+        "posting-best-offer",
         "posting-fix-dark",
         "wrap-row",
         "wrap-on",
@@ -5002,6 +5004,7 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-auto-post",
         // Michal, 2026-10-07: the eBay comparisons toggle, off by default, in both customize cards
         "book-comps",
+        "book-best-offer",
         "book-title-line",
         "book-price-line",
         // once eBay has the book up, as on the goods screen (Michal, 2026-10-08)
@@ -7542,9 +7545,6 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-returns",
         "policy-payer-row",
         "policy-payer",
-        "policy-part-listing",
-        "policy-best-offer",
-        "policy-best-offer-tip",
         "policy-save",
         "signup-policies-ok",
         "signup-policies-edit",
@@ -8225,7 +8225,7 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     }
     nodes.get("posting-quantity").value = "3";
     nodes.get("posting-quantity").fire("input");
-    const d = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true };
+    const d = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true };
     assert.deepEqual(JSON.parse(local.getItem("snap.customize.defaults")), { goods: d, book: d }, "one set, for goods and books alike");
     assert.equal(local.getItem("snap.photos.fixdark"), "off");
 
@@ -9929,14 +9929,9 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     assert.equal(n.get("policy-payer-row").hidden, true);
     n.get("policy-service").value = "USPSPriority";
     n.get("policy-service").fire("change");
-    assert.equal(n.get("policy-best-offer-tip").hidden, true, "no tip while unticked");
-    n.get("policy-best-offer").checked = true;
-    n.get("policy-best-offer").fire("change");
-    // ticked: each offer waits for them (Michal, 2026-10-31)
-    assert.equal(n.get("policy-best-offer-tip").hidden, false);
     n.get("policy-save").fire("click");
     await settle();
-    assert.deepEqual(pc.policySaves, [{ shipping_service: "USPSPriority", return_days: 0, best_offer: true }], "only what changed");
+    assert.deepEqual(pc.policySaves, [{ shipping_service: "USPSPriority", return_days: 0 }], "only what changed");
     assert.equal(n.get("policy-editor").hidden, true, "back to the list");
     assert.deepEqual(list(), ["Shipping: USPSPriority", "Returns: not accepted", ...EXTRAS]);
 
@@ -10011,9 +10006,8 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
         "Snap books",
         "Ship-from location",
         "Business policies",
-        "Every listing",
     ]);
-    const parts = () => ["shipping", "returns", "listing"].filter((p) => !n.get(`policy-part-${p}`).hidden);
+    const parts = () => ["shipping", "returns"].filter((p) => !n.get(`policy-part-${p}`).hidden);
     assert.deepEqual(parts(), ["shipping"]);
     assert.equal(n.get("policy-part-words").hidden, true);
     n.get("policy-pick").value = "payment";
@@ -10079,13 +10073,10 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     assert.deepEqual(pc.policySaves.at(-1), { shipping: [{ service: "USPSParcel", cost: "5" }] });
     // nothing changed: nothing of it sent
     n.get("signup-policies-edit").fire("click");
-    n.get("policy-pick").value = "listing";
-    n.get("policy-pick").fire("change");
-    n.get("policy-best-offer").checked = true;
-    n.get("policy-best-offer").fire("change");
+    n.get("policy-handling").children[2].fire("click");
     n.get("policy-save").fire("click");
     await settle();
-    assert.deepEqual(pc.policySaves.at(-1), { best_offer: true });
+    assert.deepEqual(pc.policySaves.at(-1), { handling_days: 2 });
     // more services than eBay takes: the rest wait greyed, and it says so
     pc.policies = { ...pc.policies, max_services: 1 };
     const one = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
@@ -10114,6 +10105,13 @@ test("step 3's Looks good: the setup agreed to as it is, then the goods screen; 
     n.get("signup-address").fire("click");
     await settle();
     assert.equal(n.get("signup-steps").hidden, false, "step 3 still to agree to");
+    // saved: the button says so, the address light grey; typing wakes Save (Michal, 2026-10-31)
+    assert.equal(n.get("signup-address").textContent, "Saved");
+    assert.equal(n.get("signup-address").disabled, true);
+    assert.equal(n.get("signup-address-line").classList.contains("saved"), true);
+    n.get("signup-address-line").fire("input");
+    assert.equal(n.get("signup-address").textContent, "Save");
+    assert.equal(n.get("signup-address-line").classList.contains("saved"), false);
     assert.equal(ok.disabled, false);
     // Edit open: no Looks good beside the menus
     n.get("signup-policies-edit").fire("click");
@@ -10585,7 +10583,7 @@ test("Posting defaults: the Snap page's customize field for field, its small pri
     assert.ok(!/qty-row/.test(words), "no Quantity beside the slider");
     // its extra after them
     const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)/g)].map((m) => [m[1], m[2]]);
-    assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-fix-dark", "wrap-on"]);
+    assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-best-offer", "posting-fix-dark", "wrap-on"]);
     const css = readFileSync(join(root, "styles.css"), "utf8");
     // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
     // then the two press-me pills on their own lines, dimmed at first
