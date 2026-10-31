@@ -7526,7 +7526,9 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-after",
         // its Edit, each choice a menu, Save (Michal, 2026-10-31); the eBay names there only
         "policy-editor",
-        "policy-names",
+        "policy-pick",
+        "policy-part-words",
+        "policy-part-shipping",
         "policy-ship-label",
         "policy-service",
         "policy-ship-list",
@@ -7535,10 +7537,12 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-cost-row",
         "policy-cost",
         "policy-handling",
+        "policy-pickup",
+        "policy-part-returns",
         "policy-returns",
         "policy-payer-row",
         "policy-payer",
-        "policy-pickup",
+        "policy-part-listing",
         "policy-best-offer",
         "policy-best-offer-tip",
         "policy-save",
@@ -9975,54 +9979,87 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     assert.equal(first.nodes.get("signup-policies-edit").disabled, true);
 });
 
-test("step 3's Edit, Shipping options - buyer picks: Check all, then a box per service, a ticked one's flat rate beside it; the list whole when it changed; the names in Edit only", async (t) => {
-    // Michal, 2026-10-31: "isnt there a way buyer chooses?"; "provide them as a checkbox list.
-    // and first checkbox should be 'check all'"; "no need to mention the policy names in this
-    // summary . ONLY at edit"
+test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks, a box per service cheapest first, Media Mail last 'for media only', a ticked one's flat rate beside it; the list whole when it changed", async (t) => {
+    // Michal, 2026-10-31: "isnt there a way buyer chooses?"; "provide them as a checkbox list";
+    // "eliminate check all. order the options from cheapest down. (keep media mail at the end and
+    // write for media only in thinner font after it.)"; "put all policies in the picker"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
     pc.address = structuredClone(NEW_ADDRESS);
-    pc.policies = { ...structuredClone(POLICIES), shipping: [{ service: "USPSParcel", cost: null }], max_services: 4, line_names: ["crosslister default", null] };
+    pc.policies = {
+        ...structuredClone(POLICIES),
+        shipping_services: [
+            { code: "USPSMedia", name: "USPS Media Mail" },
+            { code: "USPSPriority", name: "USPS Priority Mail" },
+            { code: "USPSParcel", name: "USPS Ground Advantage" },
+        ],
+        shipping: [{ service: "USPSParcel", cost: null }],
+        max_services: 4,
+        line_names: ["Snap shipping", null],
+    };
     const { nodes: n } = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
     await settle();
     assert.deepEqual(n.get("signup-policy-list").children.map((li) => li.children.length), [0, 0, 0, 0], "no names in the summary");
 
     n.get("signup-policies-edit").fire("click");
-    assert.equal(n.get("policy-names").textContent, "On eBay these are named “crosslister default”.");
+    // the picker: everything Snap adds, by its name on eBay, shipping first
+    assert.deepEqual(n.get("policy-pick").children.map((o) => o.textContent), [
+        "Snap shipping",
+        "Snap pickup",
+        "Snap returns",
+        "Snap payment",
+        "Snap books",
+        "Ship-from location",
+        "Business policies",
+        "Every listing",
+    ]);
+    const parts = () => ["shipping", "returns", "listing"].filter((p) => !n.get(`policy-part-${p}`).hidden);
+    assert.deepEqual(parts(), ["shipping"]);
+    assert.equal(n.get("policy-part-words").hidden, true);
+    n.get("policy-pick").value = "payment";
+    n.get("policy-pick").fire("change");
+    assert.deepEqual(parts(), [], "nothing to set");
+    assert.match(n.get("policy-part-words").textContent, /eBay's own checkout/);
+    n.get("policy-pick").value = "returns";
+    n.get("policy-pick").fire("change");
+    assert.deepEqual(parts(), ["returns"]);
+    n.get("policy-pick").value = "shipping";
+    n.get("policy-pick").fire("change");
+
     assert.equal(n.get("policy-ship-label").textContent, "Shipping options - buyer picks");
     assert.deepEqual(["policy-lead", "policy-after"].map((id) => n.get(id).hidden), [true, true], "the step's words with the list only");
     assert.equal(n.get("policy-service").hidden, true, "the boxes in the one menu's place");
     const rows = () => n.get("policy-ship-list").children;
     const box = (i) => rows()[i].children[0].children[0];
-    const words = () => rows().map((r) => [r.children[0].children[1].textContent, box(rows().indexOf(r)).checked]);
+    const words = () => rows().map((r) => [r.children[0].children[1].textContent, r.children[0].children[0].checked]);
+    // cheapest first, Media Mail last with "for media only" thinner; no Check all
     assert.deepEqual(words(), [
-        ["Check all", false],
         ["USPS Ground Advantage", true],
         ["USPS Priority Mail", false],
+        ["USPS Media Mail for media only", false],
     ]);
-    // a second ticked: Check all is too
-    box(2).checked = true;
-    box(2).fire("change");
-    assert.deepEqual(words().map(([, on]) => on), [true, true, true]);
+    assert.equal(rows()[2].children[0].children[1].children[2].className, "ship-thin");
+    // a second ticked
+    box(1).checked = true;
+    box(1).fire("change");
+    assert.deepEqual(words().map(([, on]) => on), [true, true, false]);
     // the last one never unticked
+    box(0).checked = false;
+    box(0).fire("change");
     box(1).checked = false;
     box(1).fire("change");
-    box(2).checked = false;
-    box(2).fire("change");
-    assert.deepEqual(words().map(([, on]) => on), [false, false, true], "at least one stays");
-    // Check all: every service
+    assert.deepEqual(words().map(([, on]) => on), [false, true, false], "at least one stays");
     box(0).checked = true;
     box(0).fire("change");
-    assert.deepEqual(words().map(([, on]) => on), [true, true, true]);
     // a flat rate: a price beside each ticked one
     n.get("policy-cost-type").children[1].fire("click");
     assert.equal(n.get("policy-cost-row").hidden, true, "no single cost box");
     const cost = (i) => rows()[i].children[1];
-    assert.equal(cost(1).id, "policy-ship-USPSParcel-cost");
-    cost(1).value = "5";
+    assert.equal(cost(0).id, "policy-ship-USPSParcel-cost");
+    cost(0).value = "5";
+    cost(0).fire("input");
+    cost(1).value = "9.50";
     cost(1).fire("input");
-    cost(2).value = "9.50";
-    cost(2).fire("input");
     n.get("policy-save").fire("click");
     await settle();
     assert.deepEqual(pc.policySaves.at(-1), {
@@ -10033,16 +10070,17 @@ test("step 3's Edit, Shipping options - buyer picks: Check all, then a box per s
         ],
     });
     assert.equal(n.get("policy-editor").hidden, true, "back to the list");
-    // Check all unticked: the first one alone, its price kept
+    // one unticked: the list whole again
     n.get("signup-policies-edit").fire("click");
-    box(0).checked = false;
-    box(0).fire("change");
-    assert.deepEqual(words().map(([, on]) => on), [false, true, false]);
+    box(1).checked = false;
+    box(1).fire("change");
     n.get("policy-save").fire("click");
     await settle();
     assert.deepEqual(pc.policySaves.at(-1), { shipping: [{ service: "USPSParcel", cost: "5" }] });
     // nothing changed: nothing of it sent
     n.get("signup-policies-edit").fire("click");
+    n.get("policy-pick").value = "listing";
+    n.get("policy-pick").fire("change");
     n.get("policy-best-offer").checked = true;
     n.get("policy-best-offer").fire("change");
     n.get("policy-save").fire("click");
@@ -10054,7 +10092,7 @@ test("step 3's Edit, Shipping options - buyer picks: Check all, then a box per s
     await settle();
     one.nodes.get("signup-policies-edit").fire("click");
     const r = one.nodes.get("policy-ship-list").children;
-    assert.equal(r[2].children[0].children[0].disabled, true);
+    assert.equal(r[1].children[0].children[0].disabled, true);
     assert.equal(one.nodes.get("policy-ship-note").textContent, "eBay takes up to 1.");
 });
 

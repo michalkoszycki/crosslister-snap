@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.39.0";
+import { VERSION } from "./version.js?v=2.40.0";
 import {
     adminLink,
     anyActive,
@@ -199,6 +199,8 @@ import {
     policyLinesOf,
     policyRowsOf,
     shippingOf,
+    shipOrder,
+    MEDIA_MAIL,
     policyChanges,
     returnsWord,
     handlingWord,
@@ -258,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.39.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.39.0";
+} from "./core.js?v=2.40.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.40.0";
 import {
     addVenue,
     applyWrap,
@@ -315,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.39.0";
-import { shrinkPhoto } from "./shrink.js?v=2.39.0";
+} from "./pc.js?v=2.40.0";
+import { shrinkPhoto } from "./shrink.js?v=2.40.0";
 import {
     bookCard,
     bookPriceValue,
@@ -329,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.39.0";
-import { canScan, readIsbn } from "./scan.js?v=2.39.0";
+} from "./book.js?v=2.40.0";
+import { canScan, readIsbn } from "./scan.js?v=2.40.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5432,10 +5434,23 @@ function renderPolicies() {
     el.policiesOk.disabled = policies.busy || !connected || addressState(seller.info) !== "complete";
     el.policyStatus.textContent = policies.status;
     if (!open) return;
-    // the names they have on eBay, in Edit only
-    const names = [...new Set((info && Array.isArray(info.line_names) ? info.line_names : []).filter((n) => typeof n === "string" && n))];
-    el.policyNames.hidden = !names.length;
-    el.policyNames.textContent = names.length ? `On eBay these are named ${namesWord(names)}.` : "";
+    // one part at a time, picked (Michal, 2026-10-31): its choices, or what it is
+    const part = POLICY_PARTS.find((p) => p.value === policies.part) || POLICY_PARTS[0];
+    el.policyPick.replaceChildren(
+        ...POLICY_PARTS.map((p) => {
+            const option = document.createElement("option");
+            option.value = p.value;
+            option.textContent = p.label;
+            if (p.value === part.value) option.setAttribute("selected", "");
+            return option;
+        })
+    );
+    el.policyPick.value = part.value;
+    el.policyPartShipping.hidden = part.value !== "shipping";
+    el.policyPartReturns.hidden = part.value !== "returns";
+    el.policyPartListing.hidden = part.value !== "listing";
+    el.policyPartWords.textContent = part.words || "";
+    el.policyPartWords.hidden = !part.words;
     const d = policies.draft;
     const services = Array.isArray(info.shipping_services) ? info.shipping_services : [];
     el.policyService.replaceChildren(
@@ -5471,52 +5486,50 @@ function renderPolicies() {
 }
 
 /**
- * Edit's Shipping options - buyer picks (Michal, 2026-10-31: "provide them as a checkbox list. and
- * first checkbox should be 'check all'"): Check all, then a box per service in the server's
- * order, a ticked one's flat rate beside it when the shipping is flat; at least one stays
- * ticked; eBay's most (max_services) ticked, the rest wait greyed, Check all ticking the first
- * ones up to it.
+ * Edit's Shipping options - buyer picks (Michal, 2026-10-31: "provide them as a checkbox list";
+ * "eliminate check all. order the options from cheapest down. (keep media mail at the end and
+ * write for media only in thinner font after it.)"): a box per service, cheapest first
+ * (shipOrder), Media Mail last with "for media only" after it in a thinner font, a ticked one's
+ * flat rate beside it when the shipping is flat; at least one stays ticked; eBay's most
+ * (max_services) ticked, the rest wait greyed.
  */
 function renderShipRows(info, d, services) {
     const flat = d.shipping_cost_type === "FLAT_RATE";
     const most = typeof info.max_services === "number" && info.max_services > 0 ? info.max_services : 4;
+    const listed = shipOrder(services);
     const ticked = new Map(d.shipping.map((r) => [r.service, r]));
-    const allOn = services.slice(0, most).every((sv) => ticked.has(sv.code));
-    /** Rows ticked: the services in the server's order, each its cost kept. */
+    /** Rows ticked: the services in the list's order, each its cost kept. */
     const pick = (codes) => {
-        d.shipping = services.filter((sv) => codes.has(sv.code)).map((sv) => ticked.get(sv.code) || { service: sv.code, cost: null });
+        d.shipping = listed.filter((sv) => codes.has(sv.code)).map((sv) => ticked.get(sv.code) || { service: sv.code, cost: null });
         renderPolicies();
     };
-    const row = (id, word, checked, disabled, onChange) => {
-        const line = document.createElement("div");
-        line.className = "ship-check";
-        const label = document.createElement("label");
-        label.className = "pickup";
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.id = id;
-        box.checked = checked;
-        box.disabled = disabled;
-        box.addEventListener("change", () => onChange(box.checked));
-        const span = document.createElement("span");
-        span.textContent = word;
-        label.replaceChildren(box, span);
-        line.replaceChildren(label);
-        return line;
-    };
-    const rows = [
-        row("policy-ship-all", "Check all", allOn, policies.busy, (on) => {
-            if (on) pick(new Set(services.slice(0, most).map((sv) => sv.code)));
-            else pick(new Set([d.shipping[0].service]));
-        }),
-        ...services.map((sv) => {
+    el.policyShipList.replaceChildren(
+        ...listed.map((sv) => {
             const on = ticked.has(sv.code);
-            const line = row(`policy-ship-${sv.code}`, sv.name, on, policies.busy || (!on && ticked.size >= most), (now) => {
+            const line = document.createElement("div");
+            line.className = "ship-check";
+            const label = document.createElement("label");
+            label.className = "pickup";
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.id = `policy-ship-${sv.code}`;
+            box.checked = on;
+            box.disabled = policies.busy || (!on && ticked.size >= most);
+            box.addEventListener("change", () => {
                 const codes = new Set(ticked.keys());
-                if (now) codes.add(sv.code);
+                if (box.checked) codes.add(sv.code);
                 else if (codes.size > 1) codes.delete(sv.code);
                 pick(codes);
             });
+            const word = document.createElement("span");
+            if (sv.code === MEDIA_MAIL) {
+                const thin = document.createElement("span");
+                thin.className = "ship-thin";
+                thin.textContent = "for media only";
+                word.replaceChildren(sv.name, " ", thin);
+            } else word.textContent = sv.name;
+            label.replaceChildren(box, word);
+            line.replaceChildren(label);
             if (on && flat) {
                 const cost = document.createElement("input");
                 cost.type = "text";
@@ -5534,9 +5547,8 @@ function renderShipRows(info, d, services) {
                 line.append(cost);
             }
             return line;
-        }),
-    ];
-    el.policyShipList.replaceChildren(...rows);
+        })
+    );
     // more services than eBay takes: say so
     el.policyShipNote.textContent = services.length > most ? `eBay takes up to ${most}.` : "";
     el.policyShipNote.hidden = services.length <= most;
@@ -5555,11 +5567,21 @@ function policySummary(info) {
     return [...lines.slice(0, cut), ...POLICY_EXTRAS, ...lines.slice(cut)];
 }
 
-/** “a”, “a” and “b”, “a”, “b” and “c”. */
-function namesWord(names) {
-    const q = names.map((n) => `“${n}”`);
-    return q.length < 2 ? q.join("") : `${q.slice(0, -1).join(", ")} and ${q.at(-1)}`;
-}
+/**
+ * Edit's picker (Michal, 2026-10-31: "put all policies in the picker ... bascially everyginth you
+ * need to add to an account"): each by its name on eBay; the ones with nothing to set say what
+ * they are (ebay/seller_setup.py, ebay/account.py).
+ */
+const POLICY_PARTS = [
+    { value: "shipping", label: "Snap shipping", words: "" },
+    { value: "pickup", label: "Snap pickup", words: "For items you mark pickup only: local pickup, no shipping. Nothing to set here." },
+    { value: "returns", label: "Snap returns", words: "" },
+    { value: "payment", label: "Snap payment", words: "Buyers pay through eBay's own checkout. eBay asks for this policy; nothing to set here." },
+    { value: "books", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing to set here." },
+    { value: "location", label: "Ship-from location", words: "Your address where you ship from. eBay shows buyers its city and state." },
+    { value: "business", label: "Business policies", words: "Turned on for your account: eBay needs them before Snap can post for you." },
+    { value: "listing", label: "Every listing", words: "" },
+];
 
 /**
  * Looks good: the choices agreed to as they are (POST /me/policies/confirm), the server sets
@@ -5606,6 +5628,7 @@ function editPolicies() {
     if (!policies.info) return;
     // its own copy of the services, so a row changed and not saved leaves the list as it was
     policies.draft = { ...policies.info, shipping: shippingOf(policies.info) };
+    policies.part = "shipping";
     policies.editing = true;
     policies.status = "";
     renderPolicies();
@@ -7539,7 +7562,11 @@ function main() {
         policyBestOfferTip: $("policy-best-offer-tip"),
         policySave: $("policy-save"),
         policiesOk: $("signup-policies-ok"),
-        policyNames: $("policy-names"),
+        policyPick: $("policy-pick"),
+        policyPartWords: $("policy-part-words"),
+        policyPartShipping: $("policy-part-shipping"),
+        policyPartReturns: $("policy-part-returns"),
+        policyPartListing: $("policy-part-listing"),
         policyLead: $("policy-lead"),
         policyAfter: $("policy-after"),
         policyShipList: $("policy-ship-list"),
@@ -7921,6 +7948,10 @@ function main() {
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
     // step 3's Edit, its menus and Save (Michal, 2026-10-31)
     el.policiesEdit.addEventListener("click", editPolicies);
+    el.policyPick.addEventListener("change", () => {
+        policies.part = el.policyPick.value;
+        renderPolicies();
+    });
     el.policiesOk.addEventListener("click", () => {
         confirmPoliciesNow().catch(() => {});
     });

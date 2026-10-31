@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.39.0";
+import { noteDirty, unsent } from "./queue.js?v=2.40.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.39.0";
+} from "./book.js?v=2.40.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1040,6 +1040,27 @@ export function shippingOf(info) {
         .filter((r) => r && typeof r === "object" && typeof r.service === "string" && r.service)
         .map((r) => ({ service: r.service, cost: typeof r.cost === "string" && r.cost ? r.cost : null }));
     return rows.length ? rows : null;
+}
+
+/** The shipping services cheapest first for a typical small parcel (Michal, 2026-10-31: "order the options from cheapest down"); Media Mail apart, last. */
+export const SHIP_ORDER = ["USPSParcel", "USPSPriority", "UPSGround", "FedExHomeDelivery", "USPSPriorityMailExpress"];
+
+/** USPS Media Mail: books and media only, listed last with that said after it. */
+export const MEDIA_MAIL = "USPSMedia";
+
+/**
+ * The server's services in SHIP_ORDER, one it does not know after them in its own order,
+ * Media Mail last.
+ * @template {{code: string}} T
+ * @param {T[]} services
+ * @returns {T[]}
+ */
+export function shipOrder(services) {
+    const rank = (code) => (code === MEDIA_MAIL ? 1000 : SHIP_ORDER.includes(code) ? SHIP_ORDER.indexOf(code) : 500);
+    return services
+        .map((sv, i) => ({ sv, i }))
+        .sort((a, b) => rank(a.sv.code) - rank(b.sv.code) || a.i - b.i)
+        .map((x) => x.sv);
 }
 
 /** The choices Edit changes, as GET/PATCH /me/policies names them. */

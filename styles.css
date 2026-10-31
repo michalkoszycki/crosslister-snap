@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.39.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.40.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1195,17 +1195,20 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* step 3's Edit: each choice a menu, in the page's words and chips (Michal, 2026-10-31) */
 .policy-editor { font-size: 15px; font-weight: 500; }
 .policy-editor .field:first-child { margin-top: 0; }
-.policy-names { margin: 0 0 10px; color: var(--muted); }
+.policy-part-words { margin: 12px 0 0; color: var(--muted); }
 .big.policies-ok { margin-top: 6px; }
 /* waiting for the address: plain smoke, as NEXT is before a photo, not a faded yellow */
 .big.policies-ok:disabled { background: var(--card); color: var(--muted); opacity: 1; }
 .policy-select, .policy-editor input[type="text"].policy-cost { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; font-size: 15px; }
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* a row per service the buyer picks from: its menu, its flat rate, its remove (2026-10-31) */
-.policy-ship-list { display: grid; gap: 8px; }
+.policy-ship-list { display: grid; gap: 2px; }
 /* a service's box and, ticked with a flat rate, its price beside it (Michal, 2026-10-31) */
 .ship-check { display: flex; align-items: center; gap: 8px; }
-.ship-check .pickup { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.ship-check .pickup { flex: 1 1 auto; min-width: 0; margin-top: 0; min-height: 36px; padding: 4px 12px; gap: 10px; font-size: 14px; background: var(--field); }
+.ship-check .pickup input { width: 18px; height: 18px; }
+/* "for media only" after Media Mail, thinner (Michal, 2026-10-31) */
+.ship-thin { font-weight: 400; color: var(--muted); }
 .policy-editor .ship-check input[type="text"].policy-cost { flex: none; width: 6.5em; }
 .ship-row { display: flex; gap: 8px; align-items: center; }
 .ship-row .policy-select { flex: 1 1 auto; width: auto; min-width: 0; }

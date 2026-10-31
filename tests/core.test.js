@@ -184,6 +184,7 @@ import {
     parseAddressLine,
     connectLabel,
     stepQuantity,
+    shipOrder,
     policyRowsOf,
     shippingOf,
     policyChanges,
@@ -3694,6 +3695,13 @@ test("step 3's rows and services: names beside lines where the server has them; 
     });
     // calculated: no costs sent, and the costs dropping alone is no change of the list
     assert.deepEqual(policyChanges(info, { ...info, shipping_cost_type: "CALCULATED", shipping: [{ service: "USPSParcel", cost: "5.00" }] }), { shipping_cost_type: "CALCULATED" });
+});
+
+test("the shipping services cheapest first, one unknown after them, Media Mail last", () => {
+    // Michal, 2026-10-31: "order the options from cheapest down. (keep media mail at the end"
+    const codes = (list) => shipOrder(list.map((code) => ({ code }))).map((s) => s.code);
+    assert.deepEqual(codes(["USPSMedia", "FedExHomeDelivery", "USPSPriorityMailExpress", "UPSGround", "USPSPriority", "USPSParcel"]), ["USPSParcel", "USPSPriority", "UPSGround", "FedExHomeDelivery", "USPSPriorityMailExpress", "USPSMedia"]);
+    assert.deepEqual(codes(["USPSMedia", "DHLNew", "USPSParcel", "OtherNew"]), ["USPSParcel", "DHLNew", "OtherNew", "USPSMedia"]);
 });
 
 test("a Quantity's − and +: one fewer or one more, never under 1, anything odd counted as 1", () => {

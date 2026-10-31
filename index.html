@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.39.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.39.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.40.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.40.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -182,9 +182,15 @@
         <!-- Edit (Michal, 2026-10-31): each choice as a menu, Save back to the list as it was
              (app.js; GET/PATCH /me/policies); none for the admin's, set on the server -->
         <div id="policy-editor" class="policy-editor" hidden>
-          <!-- the names they have on eBay, here only (Michal, 2026-10-31: "no need to mention the
-               policy names in this summary . ONLY at edit") -->
-          <p id="policy-names" class="small policy-names" hidden></p>
+          <!-- one at a time, picked: everything Snap adds to the account by its name on eBay
+               (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the
+               picker. including returns etc."); the ones with nothing to set say what they are -->
+          <label class="field">
+            <span class="field-label">What Snap adds</span>
+            <select id="policy-pick" class="policy-select"></select>
+          </label>
+          <p id="policy-part-words" class="small policy-part-words" hidden></p>
+          <div id="policy-part-shipping">
           <div class="field">
             <span id="policy-ship-label" class="field-label">Shipping</span>
             <select id="policy-service" class="policy-select" aria-labelledby="policy-ship-label"></select>
@@ -206,6 +212,12 @@
             <span class="field-label">Handling time</span>
             <div id="policy-handling" class="chips policy-chips" role="group" aria-label="Handling time"></div>
           </div>
+          <label class="pickup">
+            <input id="policy-pickup" type="checkbox">
+            <span>Offer local pickup</span>
+          </label>
+          </div>
+          <div id="policy-part-returns" hidden>
           <div class="field">
             <span class="field-label">Returns</span>
             <div id="policy-returns" class="chips policy-chips" role="group" aria-label="Returns"></div>
@@ -214,14 +226,13 @@
             <span class="field-label">Return shipping paid by</span>
             <div id="policy-payer" class="chips policy-chips" role="group" aria-label="Return shipping paid by"></div>
           </div>
-          <label class="pickup">
-            <input id="policy-pickup" type="checkbox">
-            <span>Offer local pickup</span>
-          </label>
+          </div>
+          <div id="policy-part-listing" hidden>
           <label class="pickup">
             <input id="policy-best-offer" type="checkbox">
             <span>Allow best offers<small id="policy-best-offer-tip" hidden>You will be able to review the offers before finalizing.</small></span>
           </label>
+          </div>
           <button type="button" id="policy-save" class="secondary policy-save">Save</button>
         </div>
         <!-- agreed to as it is (Michal, 2026-10-31: "if someone reads and likes what it is - they
@@ -1123,6 +1134,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.39.0"></script>
+<script type="module" src="app.js?v=2.40.0"></script>
 </body>
 </html>
