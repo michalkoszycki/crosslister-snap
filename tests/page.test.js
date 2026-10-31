@@ -7518,6 +7518,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signup-address-word",
         // the address typed in place, Save under it once edited (Michal, 2026-10-31)
         "signup-address-line",
+        "signup-address-ok",
         "signup-address",
         "signup-address-status",
         // step 3: what Snap sets up on eBay (Michal, 2026-10-31), all of it spelled out
@@ -7530,6 +7531,8 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         // its Edit, each choice a menu, Save (Michal, 2026-10-31); the eBay names there only
         "policy-editor",
         "policy-pick",
+        "policy-name-row",
+        "policy-name",
         "policy-part-words",
         "policy-part-shipping",
         "policy-ship-label",
@@ -9998,23 +10001,23 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     assert.deepEqual(n.get("signup-policy-list").children.map((li) => li.children.length), [0, 0, 0, 0], "no names in the summary");
 
     n.get("signup-policies-edit").fire("click");
-    // the picker: everything Snap adds, by its name on eBay, shipping first
+    // the picker: each policy Snap makes with something to see, its eBay type before its name,
+    // shipping first (Michal, 2026-10-31: "specif the policy type: as in 'Returns: Snap Returns'";
+    // payment, business policies and the ship-from out: "no choices", "since above")
     assert.deepEqual(n.get("policy-pick").children.map((o) => o.textContent), [
-        "Snap shipping",
-        "Snap pickup",
-        "Snap returns",
-        "Snap payment",
-        "Snap books",
-        "Ship-from location",
-        "Business policies",
+        "Shipping: Snap shipping",
+        "Shipping: Snap pickup",
+        "Returns: Snap returns",
+        "Shipping: Snap books",
     ]);
+    assert.equal(n.get("policy-name-row").hidden, true, "no Name from a server that keeps no names");
     const parts = () => ["shipping", "returns"].filter((p) => !n.get(`policy-part-${p}`).hidden);
     assert.deepEqual(parts(), ["shipping"]);
     assert.equal(n.get("policy-part-words").hidden, true);
-    n.get("policy-pick").value = "payment";
+    n.get("policy-pick").value = "pickup";
     n.get("policy-pick").fire("change");
     assert.deepEqual(parts(), [], "nothing to set");
-    assert.match(n.get("policy-part-words").textContent, /eBay's own checkout/);
+    assert.match(n.get("policy-part-words").textContent, /pickup only/);
     n.get("policy-pick").value = "returns";
     n.get("policy-pick").fire("change");
     assert.deepEqual(parts(), ["returns"]);
@@ -10115,6 +10118,21 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     const r = one.nodes.get("policy-ship-list").children;
     assert.equal(r[1].children[0].children[0].disabled, true);
     assert.equal(one.nodes.get("policy-ship-note").textContent, "eBay takes up to 1.");
+    // a policy's name first, to rename it, from a server that keeps names (Michal, 2026-10-31:
+    // "the first item of a policy should be NAME so that one can rename it"); only what changed is sent
+    pc.policies = { ...pc.policies, max_services: 4, policy_names: { shipping: "Snap shipping", pickup: "Snap pickup", returns: "Snap returns", payment: "Snap payment", books: "Snap books" } };
+    const named = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
+    await settle();
+    named.nodes.get("signup-policies-edit").fire("click");
+    assert.equal(named.nodes.get("policy-name-row").hidden, false);
+    assert.equal(named.nodes.get("policy-name").value, "Snap shipping");
+    named.nodes.get("policy-name").value = "My shipping";
+    named.nodes.get("policy-name").fire("input");
+    named.nodes.get("policy-name").fire("change");
+    assert.equal(named.nodes.get("policy-pick").children[0].textContent, "Shipping: My shipping");
+    named.nodes.get("policy-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.policySaves.at(-1), { policy_names: { shipping: "My shipping" } });
 });
 
 test("step 3's Looks good: the setup agreed to as it is, then the goods screen; shut until the address is in; none from a server that does not ask", async (t) => {
@@ -10139,7 +10157,9 @@ test("step 3's Looks good: the setup agreed to as it is, then the goods screen; 
     assert.equal(n.get("signup-address").textContent, "Saved");
     assert.equal(n.get("signup-address").disabled, true);
     assert.equal(n.get("signup-address-line").classList.contains("saved"), true);
+    assert.equal(n.get("signup-address-ok").hidden, false, "the tick in the box (Michal, 2026-10-31)");
     n.get("signup-address-line").fire("input");
+    assert.equal(n.get("signup-address-ok").hidden, true, "gone at the first edit");
     assert.equal(n.get("signup-address").textContent, "Save");
     assert.equal(n.get("signup-address-line").classList.contains("saved"), false);
     assert.equal(ok.disabled, false);

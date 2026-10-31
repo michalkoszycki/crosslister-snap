@@ -184,6 +184,7 @@ import {
     parseAddressLine,
     connectLabel,
     stepQuantity,
+    US_ONLY,
     shipOrder,
     policyRowsOf,
     shippingOf,
@@ -3705,6 +3706,15 @@ test("the shipping services cheapest first, one unknown after them, Media Mail l
     const codes = (list) => shipOrder(list.map((code) => ({ code }))).map((s) => s.code);
     assert.deepEqual(codes(["USPSMedia", "FedExHomeDelivery", "USPSPriorityMailExpress", "UPSGround", "USPSPriority", "USPSParcel"]), ["USPSParcel", "USPSPriority", "UPSGround", "FedExHomeDelivery", "USPSPriorityMailExpress", "USPSMedia"]);
     assert.deepEqual(codes(["USPSMedia", "DHLNew", "USPSParcel", "OtherNew"]), ["USPSParcel", "DHLNew", "OtherNew", "USPSMedia"]);
+});
+
+test("US addresses only for now: a state that is not a US one is named and nothing is sent", () => {
+    // Michal, 2026-10-31: "dont allow international addresses. for now."
+    const body = (state) => addressBody({ line1: "1 Main St", city: "Toronto", state, zip: "60601" });
+    assert.deepEqual(body("ON"), { ok: false, error: US_ONLY });
+    assert.deepEqual(body("XX"), { ok: false, error: US_ONLY });
+    assert.equal(body("il").ok, true, "a US one, lower case");
+    assert.equal(body("PR").ok, true, "a territory USPS mails to");
 });
 
 test("a Quantity's − and +: one fewer or one more, never under 1, anything odd counted as 1", () => {

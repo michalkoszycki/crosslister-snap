@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.42.4">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.42.4" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.43.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.43.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -163,8 +163,12 @@
         <!-- Michal, 2026-10-08: "then your address. what address?": what it is for, said -->
         <span id="signup-address-word" class="signup-word">Address where you ship from</span>
         <span class="signup-line">eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
-        <input id="signup-address-line" class="small-input signup-address-line" type="text" autocomplete="street-address"
-               spellcheck="false" placeholder="Street, city, state ZIP" aria-labelledby="signup-address-word">
+        <!-- saved and checked: a tick at its right end, gone at the first edit (Michal, 2026-10-31) -->
+        <span class="field-with-ok">
+          <input id="signup-address-line" class="small-input signup-address-line" type="text" autocomplete="street-address"
+                 spellcheck="false" placeholder="Street, city, state ZIP" aria-labelledby="signup-address-word">
+          <span id="signup-address-ok" class="field-ok" role="img" aria-label="Saved" hidden>✓</span>
+        </span>
         <button type="button" id="signup-address" class="secondary" hidden>Save</button>
         <p id="signup-address-status" class="small account-status" aria-live="polite"></p>
       </li>
@@ -188,6 +192,12 @@
           <label class="field">
             <span class="field-label">Snap creates the following policies</span>
             <select id="policy-pick" class="policy-select"></select>
+          </label>
+          <!-- the picked policy's name first, to rename it (Michal, 2026-10-31: "the first item of
+               a policy should be NAME so that one can rename it"); eBay: 64 characters at most -->
+          <label id="policy-name-row" class="field" hidden>
+            <span class="field-label">Name</span>
+            <input id="policy-name" class="policy-cost" type="text" maxlength="64" autocomplete="off" spellcheck="false">
           </label>
           <p id="policy-part-words" class="small policy-part-words" hidden></p>
           <div id="policy-part-shipping">
@@ -1145,6 +1155,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.42.4"></script>
+<script type="module" src="app.js?v=2.43.0"></script>
 </body>
 </html>

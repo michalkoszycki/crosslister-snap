@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.42.4") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.43.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1190,6 +1190,10 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step.off { opacity: 0.45; }
 .signup-step .signup-address-line { font-weight: 500; }
 .signup-step .signup-address-line.saved { color: var(--muted); }
+/* the tick at a saved box's right end (Michal, 2026-10-31) */
+.field-with-ok { position: relative; display: block; }
+.field-with-ok input[type="text"] { padding-right: 36px; }
+.field-ok { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--ok); font-weight: 800; pointer-events: none; }
 /* step 3's policies in step 2's line's look, one a line, no bullets (Michal, 2026-10-31) */
 .signup-policy-list { list-style: circle; margin: -4px 0 8px; padding: 0 0 0 1.15em; font-size: 14px; font-weight: 500; color: var(--muted); }
 /* step 3's Edit: each choice a menu, in the page's words and chips (Michal, 2026-10-31) */

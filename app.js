@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.42.4";
+import { VERSION } from "./version.js?v=2.43.0";
 import {
     adminLink,
     anyActive,
@@ -260,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.42.4";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.4";
+} from "./core.js?v=2.43.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.43.0";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.42.4";
-import { shrinkPhoto } from "./shrink.js?v=2.42.4";
+} from "./pc.js?v=2.43.0";
+import { shrinkPhoto } from "./shrink.js?v=2.43.0";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.42.4";
-import { canScan, readIsbn } from "./scan.js?v=2.42.4";
+} from "./book.js?v=2.43.0";
+import { canScan, readIsbn } from "./scan.js?v=2.43.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5444,16 +5444,23 @@ function renderPolicies() {
     if (!open) return;
     // one part at a time, picked (Michal, 2026-10-31): its choices, or what it is
     const part = POLICY_PARTS.find((p) => p.value === policies.part) || POLICY_PARTS[0];
+    // each eBay policy by its type and its name ("Returns: Snap returns"), the name its own
+    // (GET /me/policies "policy_names") where the server keeps them
+    const names = policies.draft && policies.draft.policy_names && typeof policies.draft.policy_names === "object" ? policies.draft.policy_names : null;
+    const nameOf = (p) => (names && typeof names[p.value] === "string" && names[p.value].trim()) || p.label;
     el.policyPick.replaceChildren(
         ...POLICY_PARTS.map((p) => {
             const option = document.createElement("option");
             option.value = p.value;
-            option.textContent = p.label;
+            option.textContent = p.type ? `${p.type}: ${nameOf(p)}` : p.label;
             if (p.value === part.value) option.setAttribute("selected", "");
             return option;
         })
     );
     el.policyPick.value = part.value;
+    // a policy's name first, to rename it, where the server keeps the names
+    el.policyNameRow.hidden = !part.type || !names;
+    if (part.type && names && document.activeElement !== el.policyName) el.policyName.value = nameOf(part);
     el.policyPartShipping.hidden = part.value !== "shipping";
     el.policyPartReturns.hidden = part.value !== "returns";
     el.policyPartWords.textContent = part.words || "";
@@ -5486,7 +5493,7 @@ function renderPolicies() {
     const returns = Array.isArray(info.return_choices) ? info.return_choices : [d.return_days];
     choiceRow(el.policyReturns, returns.map((n) => [n, returnsWord(n)]), d.return_days, (v) => (d.return_days = v));
     el.policyPayerRow.hidden = d.return_days === 0;
-    choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
+    choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller - free returns"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
     el.policySave.disabled = policies.busy;
     el.policyReset.hidden = !(info.defaults && typeof info.defaults === "object");
@@ -5588,13 +5595,10 @@ function policySummary(info) {
  * they are (ebay/seller_setup.py, ebay/account.py).
  */
 const POLICY_PARTS = [
-    { value: "shipping", label: "Snap shipping", words: "" },
-    { value: "pickup", label: "Snap pickup", words: "For items you mark pickup only: local pickup, no shipping. Nothing to set here." },
-    { value: "returns", label: "Snap returns", words: "" },
-    { value: "payment", label: "Snap payment", words: "Buyers pay through eBay's own checkout. eBay asks for this policy; nothing to set here." },
-    { value: "books", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing to set here." },
-    { value: "location", label: "Ship-from location", words: "Your address where you ship from. eBay shows buyers its city and state." },
-    { value: "business", label: "Business policies", words: "Turned on for your account: eBay needs them before Snap can post for you." },
+    { value: "shipping", type: "Shipping", label: "Snap shipping", words: "" },
+    { value: "pickup", type: "Shipping", label: "Snap pickup", words: "For items you mark pickup only: local pickup, no shipping. Nothing more to set here." },
+    { value: "returns", type: "Returns", label: "Snap returns", words: "" },
+    { value: "books", type: "Shipping", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing more to set here." },
 ];
 
 /**
@@ -5662,6 +5666,7 @@ function editPolicies() {
     if (!policies.info) return;
     // its own copy of the services, so a row changed and not saved leaves the list as it was
     policies.draft = { ...policies.info, shipping: shippingOf(policies.info) };
+    if (policies.info.policy_names && typeof policies.info.policy_names === "object") policies.draft.policy_names = { ...policies.info.policy_names };
     policies.part = "shipping";
     policies.editing = true;
     policies.status = "";
@@ -5751,6 +5756,8 @@ function renderSignup() {
     el.signupAddress.hidden = !saved && !signupAddressDirty && address !== "prefilled";
     el.signupAddress.disabled = saved || !connected || seller.busy;
     el.signupAddressLine.classList.toggle("saved", saved);
+    // saved and checked, or all there from the server and untouched: the tick in the box
+    el.signupAddressOk.hidden = !(connected && !signupAddressDirty && (saved || address === "complete"));
     // the button says it once saved; the line keeps what went wrong
     el.signupAddressStatus.textContent = connected && !saved ? seller.status : "";
     el.signupStatus.textContent = step ? account.status : "";
@@ -7585,6 +7592,7 @@ function main() {
         signupConnect: $("signup-connect"),
         signupStepAddress: $("signup-step-address"),
         signupAddressLine: $("signup-address-line"),
+        signupAddressOk: $("signup-address-ok"),
         signupAddressStatus: $("signup-address-status"),
         signupStepPolicies: $("signup-step-policies"),
         signupPolicyList: $("signup-policy-list"),
@@ -7603,6 +7611,8 @@ function main() {
         policyReset: $("policy-reset"),
         policiesOk: $("signup-policies-ok"),
         policyPick: $("policy-pick"),
+        policyNameRow: $("policy-name-row"),
+        policyName: $("policy-name"),
         policyPartWords: $("policy-part-words"),
         policyPartShipping: $("policy-part-shipping"),
         policyPartReturns: $("policy-part-returns"),
@@ -7990,6 +8000,11 @@ function main() {
     // step 3's Edit, its menus and Save (Michal, 2026-10-31)
     el.policiesEdit.addEventListener("click", editPolicies);
     el.policyReset.addEventListener("click", resetPolicies);
+    el.policyName.addEventListener("input", () => {
+        const d = policies.draft;
+        if (d && d.policy_names) d.policy_names = { ...d.policy_names, [policies.part]: el.policyName.value };
+    });
+    el.policyName.addEventListener("change", () => renderPolicies());
     el.policyPick.addEventListener("change", () => {
         policies.part = el.policyPick.value;
         renderPolicies();

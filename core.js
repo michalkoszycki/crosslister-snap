@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.42.4";
+import { noteDirty, unsent } from "./queue.js?v=2.43.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.42.4";
+} from "./book.js?v=2.43.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1084,6 +1084,17 @@ export const POLICY_KEYS = [
 export function policyChanges(info, draft) {
     const out = {};
     for (const key of POLICY_KEYS) if (draft[key] !== info[key]) out[key] = draft[key];
+    // renamed policies (2026-10-31): only the names that changed, trimmed, none blank
+    if (draft.policy_names && typeof draft.policy_names === "object") {
+        const before = info.policy_names && typeof info.policy_names === "object" ? info.policy_names : {};
+        const renamed = Object.fromEntries(
+            Object.entries(draft.policy_names)
+                .map(([k, v]) => [k, typeof v === "string" ? v.trim() : ""])
+                .filter(([k, v]) => v && v !== before[k])
+        );
+        delete out.policy_names;
+        if (Object.keys(renamed).length) out.policy_names = renamed;
+    }
     // several services (2026-10-31): the list whole when it changed, in place of the one pair; a
     // cost only with a flat rate
     if (Array.isArray(draft.shipping)) {
@@ -1303,7 +1314,19 @@ export function shipsFromLine(venue, info) {
     return line ? `Ships from ${line}` : "";
 }
 
-/** One address's boxes checked: each trimmed (inner spaces one), the state two letters upper-cased, the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */
+/**
+ * The US states and the places USPS mails to as US addresses (DC, the territories, the
+ * military post): Snap takes US addresses only for now (Michal, 2026-10-31: "dont allow
+ * international addresses. for now.").
+ */
+export const US_STATES = new Set(
+    "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR VI GU AS MP AA AE AP".split(" ")
+);
+
+/** Said when the state is not a US one. */
+export const US_ONLY = "Snap takes US addresses only for now: the state is two letters, as IL.";
+
+/** One address's boxes checked: each trimmed (inner spaces one), the state a US one upper-cased (US_STATES), the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */
 function checkFields(fields, uses) {
     const text = (x) => (typeof x === "string" ? x.trim().replace(/\s+/g, " ") : "");
     /** @type {AddressFields} */
@@ -1315,6 +1338,7 @@ function checkFields(fields, uses) {
         if (k === "state") {
             const st = v.toUpperCase();
             if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
+            if (!US_STATES.has(st)) return { ok: false, error: US_ONLY };
             out[k] = st;
             continue;
         }
