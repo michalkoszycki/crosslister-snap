@@ -358,10 +358,11 @@
         <div id="account" class="card account current" hidden>
           <p id="account-user" class="account-user"></p>
           <p id="account-kind" class="small account-kind" hidden></p>
-          <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25);
-               the packs open under that line, its status line directly under them -->
+          <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25),
+               Buy postings there for every account whose postings are counted, however many are
+               left (2026-10-31); the packs open under that line, its status line directly under them -->
           <div class="account-row">
-            <button type="button" id="account-buy" class="pill pill-small" aria-expanded="false"
+            <button type="button" id="account-buy" class="pill pill-ink pill-small" aria-expanded="false"
                     aria-controls="account-packs" hidden>Buy postings</button>
             <span id="account-credits" class="small account-line" hidden></span>
           </div>
@@ -404,10 +405,11 @@
         </div>
         <!-- the other accounts kept on this phone (Michal, 2026-10-18: "switch accounts somewhere so i
              can navigate easy between two logins to this app ... there should be a way to REMOVE
-             account from phone"): one card each, by name (app.js); Add account under them -->
+             account from phone"): one card each, by name (app.js); Add account under them, in
+             line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) -->
         <div id="accounts" class="accounts" hidden>
           <ul id="accounts-list" class="accounts-list"></ul>
-          <button type="button" id="accounts-add" class="pill pill-small">Add account</button>
+          <button type="button" id="accounts-add" class="pill pill-small add-account">Add account</button>
         </div>
       </div>
 
@@ -622,27 +624,25 @@
       </div>
 
       <!-- 5. This phone: what never leaves the phone. The look (Michal, 2026-10-06: "Dark, light
-           or sync with device"): a tap applies and remembers it at once; Install on the home
-           screen, or that it is there ("Show photos" stays in the inventory's Options) -->
+           or sync with device"), three option chips (2026-10-31: an option is a bordered chip,
+           the chosen one white with a check): a tap applies and remembers it at once; Install on
+           the home screen, the yellow press-me pill, or, once there, the chosen chip saying so
+           ("Show photos" stays in the inventory's Options) -->
       <button type="button" id="fold-phone-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-phone">▸ This phone</button>
       <div id="fold-phone" class="fold-body" hidden>
-        <div class="field">
-          <span class="field-label">Appearance</span>
-          <div id="theme" class="chips chips-three" role="group" aria-label="Appearance">
-            <button type="button" id="theme-dark" class="chip" data-value="dark"
-                    aria-pressed="false">Dark</button>
-            <button type="button" id="theme-light" class="chip" data-value="light"
-                    aria-pressed="false">Light</button>
-            <button type="button" id="theme-device" class="chip" data-value="device"
-                    aria-pressed="true">Sync with device</button>
-          </div>
+        <div id="theme" class="chips option-chips" role="group" aria-label="Appearance">
+          <button type="button" id="theme-dark" class="chip option" data-value="dark"
+                  aria-pressed="false">Dark</button>
+          <button type="button" id="theme-light" class="chip option" data-value="light"
+                  aria-pressed="false">Light</button>
+          <button type="button" id="theme-device" class="chip option" data-value="device"
+                  aria-pressed="true">Sync with device</button>
         </div>
-
-        <button type="button" id="phone-install" class="secondary phone-install" aria-expanded="false"
+        <button type="button" id="phone-install" class="pill pill-ink pill-small phone-install" aria-expanded="false"
                 aria-controls="phone-install-steps" hidden>Install on the home screen</button>
         <p id="phone-install-steps" class="install-steps" hidden></p>
-        <p id="phone-installed" class="small phone-installed" hidden>Installed on the home screen.</p>
+        <p id="phone-installed" class="chip option chosen phone-installed" hidden>Installed on home screen</p>
       </div>
     </div>
 

@@ -496,9 +496,11 @@ test("the app calls the PC the server: no visible PC on the page or in its words
     assert.match(html, /id="pc-address"/);
 });
 
-test("Appearance: three chips in Settings, Sync with device pressed until one is chosen", () => {
-    const group = /<div id="theme" class="chips chips-three" role="group" aria-label="Appearance">([\s\S]*?)<\/div>/.exec(html)[1];
-    const chips = [...group.matchAll(/<button type="button" id="theme-(\w+)" class="chip" data-value="(\w+)"\s+aria-pressed="(\w+)">([^<]+)</g)];
+test("Appearance: three option chips in Settings, Sync with device pressed until one is chosen", () => {
+    // an option is a bordered chip, the chosen one white with a check (Michal, 2026-10-31);
+    // no label over them: the three words say it (docs/UI.md rule 1)
+    const group = /<div id="theme" class="chips option-chips" role="group" aria-label="Appearance">([\s\S]*?)<\/div>/.exec(html)[1];
+    const chips = [...group.matchAll(/<button type="button" id="theme-(\w+)" class="chip option" data-value="(\w+)"\s+aria-pressed="(\w+)">([^<]+)</g)];
     assert.deepEqual(
         chips.map((m) => [m[1], m[2], m[3], m[4]]),
         [
@@ -507,6 +509,13 @@ test("Appearance: three chips in Settings, Sync with device pressed until one is
             ["device", "device", "true", "Sync with device"],
         ]
     );
+    assert.ok(!/<span class="field-label">Appearance<\/span>/.test(html), "no Appearance label");
+    // two looks, two meanings: the option chip bordered in ink on the field colour; chosen,
+    // solid white with black words, a white border and the check after the word
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.chip\.option \{[^}]*background: var\(--field\);[^}]*color: var\(--ink\);[^}]*border: 1\.5px solid var\(--ink\);/);
+    assert.match(css, /\.chip\.option\[aria-pressed="true"\], \.chip\.option\.chosen \{ background: #ffffff; color: #0b0b0b; border-color: #ffffff;/);
+    assert.match(css, /\.chip\.option\[aria-pressed="true"\]::after, \.chip\.option\.chosen::after \{ content: " ✓"; \}/);
     // the status bar's two colours are written once, in the metas app.js reads them from
     assert.match(html, /<meta id="theme-color" name="theme-color" content="#FFFC00">/);
     assert.match(html, /<meta id="theme-color-dark" name="theme-color" media="\(prefers-color-scheme: dark\)" content="#0B0B0B">/);
@@ -8414,6 +8423,12 @@ test("the account card is first under Snap Account, outlined; Buy postings under
     const css = readFileSync(join(root, "styles.css"), "utf8");
     assert.match(css, /\.link\.buy-link\[hidden\] \{ display: none; \}/, "outside Admin, hidden needs saying");
     assert.match(css, /\.card\.current \{ outline: 2px solid var\(--accent\); \}/);
+    // Buy postings is the press-me pill (Michal, 2026-10-31: yellow on black is an action)
+    assert.match(fold, /id="account-buy" class="pill pill-ink pill-small"/);
+    // Add account in line with the cards' inner text (their 14 px), a breath below the last card
+    assert.match(fold, /<button type="button" id="accounts-add" class="pill pill-small add-account">Add account<\/button>/);
+    assert.match(css, /\.pill\.add-account \{ margin: 14px 0 0 14px; \}/);
+    assert.match(css, /\.accounts-list \.card \{ padding: 12px 14px; \}/);
 });
 
 test("the account card: its name, by key, the postings beside Buy postings, the packs to Stripe; the eBay block's Connect eBay to eBay", async (t) => {
@@ -8508,11 +8523,24 @@ test("the account card shows what the server gives: unlimited, no packs, eBay co
         reconnect: true,
         status: "",
     });
-    // payments not set up (no packs): the count, no Buy; the policies still being set up
-    const setting = await open({ ...ACCOUNT_ME, packs: [], ebay: { connected: true, user: "anna_sells", policies: "pending" } });
+    // payments not set up (no packs): the count and Buy postings all the same, for every account
+    // whose postings are counted (Michal, 2026-10-31); its tap says buying is not available yet;
+    // the policies still being set up
+    const nopacks = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: { ...ACCOUNT_ME, packs: [], ebay: { connected: true, user: "anna_sells", policies: "pending" } } }).fetch });
+    await openSettings(nopacks.nodes);
+    const setting = accountOf(nopacks.nodes);
     assert.equal(setting.credits, "2 free + 10 bought postings left");
-    assert.equal(setting.buy, false);
+    assert.equal(setting.buy, true);
     assert.equal(setting.ebay, "Connected as anna_sells · setting up your policies...");
+    nopacks.nodes.get("account-buy").fire("click");
+    assert.equal(accountOf(nopacks.nodes).status, "Buying postings is not available yet.");
+    assert.equal(nopacks.nodes.get("account-packs").hidden, true, "nothing to unfold");
+    nopacks.nodes.get("account-buy").fire("click");
+    assert.equal(accountOf(nopacks.nodes).status, "");
+    // none left: Buy postings beside the count still
+    const none0 = await open({ ...ACCOUNT_ME, credits: { free_left: 0, bought_left: 0 } });
+    assert.equal(none0.credits, "No postings left");
+    assert.equal(none0.buy, true);
     const failed = await open({ ...ACCOUNT_ME, credits: { free_left: 3, bought_left: 0 }, ebay: { connected: true, user: "anna_sells", policies: "failed: no payment policy" } });
     assert.equal(failed.credits, "3 free postings left");
     assert.equal(failed.ebay, "Connected as anna_sells · policies failed: no payment policy; contact the developer");
@@ -10900,6 +10928,11 @@ test("people, the owner's: the invite box (one label, one box, one button), the 
     ]);
     // people by their chosen name, never by email (Michal, 2026-10-25)
     assert.ok(!JSON.stringify(peopleCards(nodes)).includes("@"), "no email on the page");
+    // each person a bordered card in the inventory row's style (Michal, 2026-10-31)
+    assert.ok(nodes.get("people-list").children.every((li) => li.className === "card person-card"));
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.card\.person-card \{ padding: 10px 14px; background: var\(--field\); border: 2px solid var\(--line\); \}/);
+    assert.match(css, /\.inv-row \{[^}]*background: var\(--field\);[^}]*border: 2px solid var\(--line\);/, "the inventory row's look");
     assert.equal(nodes.get("people-leave").hidden, true, "the owner does not leave: Delete account is hers");
 
     // Change name: the box with the name, Save; empty is refused
@@ -11024,7 +11057,11 @@ test("Settings' five folds: closed until one is needed, each remembered on this 
     const again = await loadPage({ local, fetchImpl: pc.fetch });
     await openSettings(again.nodes);
     assert.deepEqual(["account", "venues", "posting", "server", "phone"].filter((k) => !again.nodes.get(`fold-${k}`).hidden), ["phone"]);
-    // from the home screen: Installed on the home screen, no Install
+    // Install, the yellow press-me pill, where it is not installed; there, the chosen option
+    // chip with its check saying so (Michal, 2026-10-31)
+    assert.match(html, /<button type="button" id="phone-install" class="pill pill-ink pill-small phone-install"[^>]*hidden>Install on the home screen<\/button>/);
+    assert.match(html, /<p id="phone-installed" class="chip option chosen phone-installed" hidden>Installed on home screen<\/p>/);
+    // from the home screen: Installed on home screen, no Install
     const home = await loadPage({ local, fetchImpl: pc.fetch, display: "standalone" });
     await openSettings(home.nodes);
     assert.equal(home.nodes.get("phone-installed").hidden, false);

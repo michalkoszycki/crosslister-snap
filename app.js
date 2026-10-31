@@ -5224,8 +5224,9 @@ function renderAccount() {
     const a = currentAccount();
     const credits = me ? me.credits : null;
     const packs = me ? me.packs : [];
-    // an unlimited key has nothing to buy
-    const canBuy = !!settings() && packs.length > 0 && !(credits && credits.unlimited);
+    // Buy postings for every account whose postings are counted, however many are left
+    // (Michal, 2026-10-31); an unlimited key, the admin's, has nothing to buy
+    const canBuy = !!settings() && !!credits && !credits.unlimited;
     const left = settings() ? creditsLine(credits) : "";
     el.account.hidden = !a;
     el.accountUser.textContent = a ? accountName(a) : "";
@@ -5238,7 +5239,7 @@ function renderAccount() {
     el.accountBuy.hidden = !canBuy;
     el.accountBuy.disabled = account.busy;
     el.accountBuy.setAttribute("aria-expanded", canBuy && account.packs ? "true" : "false");
-    el.accountPacks.hidden = !canBuy || !account.packs;
+    el.accountPacks.hidden = !canBuy || !account.packs || !packs.length;
     el.accountPacks.replaceChildren(
         ...packs.map((pack) => {
             const pill = document.createElement("button");
@@ -7276,6 +7277,9 @@ function main() {
     // the account card: Buy postings unfolds the packs (each pill a checkout)
     el.accountBuy.addEventListener("click", () => {
         account.packs = !account.packs;
+        // no packs offered (payments not set up on the server): said, nothing to unfold
+        const none = !me || !me.packs.length;
+        if (none) account.status = account.packs ? accountError("pay", 404, "") : "";
         renderAccount();
     });
     // the eBay block: Connect eBay, and, connected, Reconnect: eBay's consent again (a token

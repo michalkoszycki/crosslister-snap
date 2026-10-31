@@ -625,6 +625,24 @@ button.busy::after {
     .chips { grid-template-columns: 1fr 1fr; }
 }
 .chip:focus-visible, .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+/* Two looks, two meanings (Michal, 2026-10-31): yellow on black, or black on yellow, is "press
+   me", an action; an option (Dark / Light / Sync with device, a venue chip under Venues, a
+   header's or footer's venue) is a bordered chip in the field colour with ink words, the chosen
+   one solid white with black words and a check after the word, its border white so it is its
+   neighbours' size. The same in the dark. */
+.chips.option-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.option {
+    min-height: 36px;
+    padding: 4px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--field);
+    color: var(--ink);
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+}
+.chip.option[aria-pressed="true"], .chip.option.chosen { background: #ffffff; color: #0b0b0b; border-color: #ffffff; font-weight: 700; }
+.chip.option[aria-pressed="true"]::after, .chip.option.chosen::after { content: " ✓"; }
 /* paperback | hardcover: two chips, never squeezed */
 .chips.chips-two { grid-template-columns: 1fr 1fr; }
 
@@ -1159,16 +1177,19 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .accounts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .accounts-list .card { padding: 12px 14px; }
 .accounts-list .account-row { margin-top: 6px; }
+/* Add account: in line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) */
+.pill.add-account { margin: 14px 0 0 14px; }
 .link.account-action { padding-left: 0; font-size: 13px; color: var(--muted); text-decoration: underline; }
-/* the invite box on the owner's card, above the People link; the link, with its count */
+/* the invite box on the owner's card, above the People link: one label, one box, one button
+   (Michal, 2026-10-26: "less is more"); the link, with its count */
 .invite { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
-.invite-head { margin: 0; }
 .invite .pill { margin-top: 8px; }
-.invite-note { margin: 6px 0 0; }
 .link.people-link { display: block; min-height: 44px; margin-top: 4px; padding: 10px 0; font-size: 15px; }
 .people-count { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
-/* the People page, in Admin's place (Michal, 2026-10-25): one card per person, their devices under */
+/* the People page, in Admin's place (Michal, 2026-10-25): one bordered card per person in the
+   inventory row's style (2026-10-31), their devices under */
 .people-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.card.person-card { padding: 10px 14px; background: var(--field); border: 2px solid var(--line); }
 .person-name { margin: 0; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
 .person-words { margin: 2px 0 0; }
 .person-actions { display: flex; flex-wrap: wrap; gap: 0 12px; }
@@ -1228,9 +1249,10 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .wrap-apply { margin-top: 12px; }
 .wrap-apply .pill { display: flex; width: 100%; margin-top: 8px; }
 .wrap-apply .venue-status:empty { display: none; }
-/* This phone: Install on the home screen, as the landing's, with its two taps under it */
-.secondary.phone-install { margin-top: 12px; }
-.phone-installed { margin: 12px 0 0; }
+/* This phone: Install on the home screen, the press-me pill, with its two taps under it; once
+   on the home screen, the chosen option chip saying so (Michal, 2026-10-31) */
+.pill.phone-install { margin-top: 12px; }
+.chip.option.phone-installed { display: inline-flex; align-items: center; margin: 12px 0 0; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
 .landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */
