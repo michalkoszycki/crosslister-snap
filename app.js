@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.36.0";
+import { VERSION } from "./version.js?v=2.37.0";
 import {
     adminLink,
     anyActive,
@@ -257,8 +257,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.36.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.36.0";
+} from "./core.js?v=2.37.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.37.0";
 import {
     addVenue,
     applyWrap,
@@ -298,6 +298,7 @@ import {
     leaveAccount,
     patchAddress,
     patchPolicies,
+    confirmPolicies,
     patchRow,
     patchSeller,
     patchWrap,
@@ -313,8 +314,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.36.0";
-import { shrinkPhoto } from "./shrink.js?v=2.36.0";
+} from "./pc.js?v=2.37.0";
+import { shrinkPhoto } from "./shrink.js?v=2.37.0";
 import {
     bookCard,
     bookPriceValue,
@@ -327,8 +328,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.36.0";
-import { canScan, readIsbn } from "./scan.js?v=2.36.0";
+} from "./book.js?v=2.37.0";
+import { canScan, readIsbn } from "./scan.js?v=2.37.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -555,6 +556,12 @@ const stepsOpen = { landing: false, banner: false, phone: false };
 
 /** The Posting fold's "saved", until its moment is over. */
 let defaultsTimer = null;
+/** Step 2's address box typed in since the server's address was last put there. */
+let signupAddressDirty = false;
+/** customize's Save as default, and its word a moment after a press. */
+const SAVE_AS_DEFAULT = "Save as default";
+const SAVED_AS_DEFAULT = "Saved as default";
+let savedDefaultTimer = null;
 
 /** The last job this page sent (any POST /jobs), for Feedback's Include my last job. */
 let lastJob = "";
@@ -1467,6 +1474,22 @@ function customizeNodes(m) {
 // --- Settings, Posting: the defaults every new item starts with (Michal, 2026-10-08: "in case
 // someone wants to change something permanently"; in Settings since 2026-10-25, Save as
 // default gone from the customize box) ----------------------------------------------------
+
+/**
+ * customize's Save as default (Michal, 2026-10-31): this item's values kept as every new item's,
+ * Fix dark photos beside them, Settings' Posting defaults showing them; the button says so a moment.
+ */
+function saveCustomizeAsDefault() {
+    const d = defaultsOf(customizeOf(slots.goods));
+    writeJson("localStorage", DEFAULTS_KEY, { goods: d, book: d });
+    writeText("localStorage", FIXDARK_KEY, el.fixDark.checked ? "on" : "off");
+    renderPosting();
+    el.customizeSaveDefault.textContent = SAVED_AS_DEFAULT;
+    clearTimeout(savedDefaultTimer);
+    savedDefaultTimer = setTimeout(() => {
+        el.customizeSaveDefault.textContent = SAVE_AS_DEFAULT;
+    }, DEFAULTS_SAVED_MS);
+}
 
 /** The Posting fold's boxes as the phone keeps the defaults (a load, a change saved). */
 function renderPosting() {
@@ -5350,6 +5373,8 @@ async function loadMe() {
     }
     renderMe();
     if (!el.admin.hidden) loadInbox().catch(() => {});
+    // a new account's step 2: the address for its box, asked once
+    if (signupStep(me) === "address" && !seller.info) loadSeller().catch(() => {});
     // a new account's step 3: the policies as the server has them, asked once
     if (signupStep(me) && !policies.asked) {
         policies.asked = true;
@@ -5380,16 +5405,9 @@ function renderPolicies() {
     const ebay = ebayNow();
     const connected = !!ebay && ebay.connected;
     el.signupPolicyList.replaceChildren(
-        ...policyRowsOf(info).map(({ line, name }) => {
+        ...policySummary(info).map((line) => {
             const li = document.createElement("li");
             li.textContent = line;
-            // the eBay policy it comes from, beside it (Michal, 2026-10-31)
-            if (name) {
-                const tag = document.createElement("span");
-                tag.className = "policy-name";
-                tag.textContent = ` · eBay policy “${name}”`;
-                li.append(tag);
-            }
             return li;
         })
     );
@@ -5398,8 +5416,16 @@ function renderPolicies() {
     el.policyEditor.hidden = !open;
     el.policiesEdit.hidden = open || !info || info.editable !== true;
     el.policiesEdit.disabled = !connected || policies.busy;
+    // Looks good: a new account's, from a server that asks for it, once the address is in
+    const asks = !!info && typeof info.confirmed === "boolean" && !info.confirmed && !!signupStep(me);
+    el.policiesOk.hidden = open || !asks;
+    el.policiesOk.disabled = policies.busy || !connected || addressState(seller.info) !== "complete";
     el.policyStatus.textContent = policies.status;
     if (!open) return;
+    // the names they have on eBay, in Edit only
+    const names = [...new Set((info && Array.isArray(info.line_names) ? info.line_names : []).filter((n) => typeof n === "string" && n))];
+    el.policyNames.hidden = !names.length;
+    el.policyNames.textContent = names.length ? `On eBay these are named ${namesWord(names)}.` : "";
     const d = policies.draft;
     const services = Array.isArray(info.shipping_services) ? info.shipping_services : [];
     el.policyService.replaceChildren(
@@ -5516,6 +5542,45 @@ function addShipRow() {
     renderPolicies();
 }
 
+/** What every account gets besides the server's lines (ebay/seller_setup.py). */
+const POLICY_EXTRAS = ["Payment: paid through eBay's own checkout", "Books: a separate USPS Media Mail shipping policy"];
+
+/** Step 3's summary: the server's lines, POLICY_EXTRAS before the ship-from one. */
+function policySummary(info) {
+    const lines = policyRowsOf(info).map((r) => r.line);
+    const at = lines.findIndex((l) => l.startsWith("Your ship-from"));
+    const cut = at < 0 ? lines.length : at;
+    return [...lines.slice(0, cut), ...POLICY_EXTRAS, ...lines.slice(cut)];
+}
+
+/** “a”, “a” and “b”, “a”, “b” and “c”. */
+function namesWord(names) {
+    const q = names.map((n) => `“${n}”`);
+    return q.length < 2 ? q.join("") : `${q.slice(0, -1).join(", ")} and ${q.at(-1)}`;
+}
+
+/**
+ * Looks good: the choices agreed to as they are (POST /me/policies/confirm), the server sets
+ * them up on eBay, /me says registered and the goods screen is theirs.
+ */
+async function confirmPoliciesNow() {
+    const pc = settings();
+    if (!pc || policies.busy) return;
+    policies.busy = true;
+    policies.status = "";
+    renderPolicies();
+    try {
+        policies.info = await confirmPolicies(pc);
+        await loadMe();
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        policies.status = e.message;
+    } finally {
+        policies.busy = false;
+        renderPolicies();
+    }
+}
+
 /** A row of chips, the chosen one pressed; a tap chooses (`pick`) and draws Edit again. */
 function choiceRow(node, choices, chosen, pick) {
     node.replaceChildren(
@@ -5614,8 +5679,27 @@ function renderSignup() {
     const address = connected ? addressState(seller.info) : "empty";
     el.signupAddressWord.textContent = address === "prefilled" ? CONFIRM_SHIP_FROM : SHIP_FROM;
     el.signupStepAddress.classList.toggle("done", address === "complete");
-    el.signupAddress.disabled = !connected;
+    // the box in place, the server's address in it until it is typed in; Save once edited,
+    // Looks right for one prefilled from eBay (Michal, 2026-10-31)
+    const info = seller.info;
+    if (info) {
+        el.signupAddressLine.setAttribute("placeholder", addressHint(sharedUses(info)));
+        if (!signupAddressDirty) el.signupAddressLine.value = addressLine(info.shared, sharedUses(info));
+    }
+    el.signupAddressLine.disabled = !connected || !info || !info.editable;
+    el.signupAddress.textContent = !signupAddressDirty && address === "prefilled" ? "Looks right" : "Save";
+    el.signupAddress.hidden = !signupAddressDirty && address !== "prefilled";
+    el.signupAddress.disabled = !connected || seller.busy;
+    el.signupAddressStatus.textContent = connected ? seller.status : "";
     el.signupStatus.textContent = step ? account.status : "";
+}
+
+/** Step 2's Save: the box's address through the card's own Save (PATCH /me/seller for a new account). */
+async function saveSignupAddress() {
+    el.sellerLine.value = el.signupAddressLine.value;
+    await saveSeller();
+    if (seller.status === "saved") signupAddressDirty = false;
+    renderSignup();
 }
 
 /** The account's eBay, as /me last said (its policies followed while they are being set up: pollPolicies). */
@@ -7434,6 +7518,8 @@ function main() {
         signupSteps: $("signup-steps"),
         signupConnect: $("signup-connect"),
         signupStepAddress: $("signup-step-address"),
+        signupAddressLine: $("signup-address-line"),
+        signupAddressStatus: $("signup-address-status"),
         signupStepPolicies: $("signup-step-policies"),
         signupPolicyList: $("signup-policy-list"),
         policiesEdit: $("signup-policies-edit"),
@@ -7450,6 +7536,8 @@ function main() {
         policyBestOffer: $("policy-best-offer"),
         policyBestOfferTip: $("policy-best-offer-tip"),
         policySave: $("policy-save"),
+        policiesOk: $("signup-policies-ok"),
+        policyNames: $("policy-names"),
         policyShipList: $("policy-ship-list"),
         policyShipNote: $("policy-ship-note"),
         policyShipAdd: $("policy-ship-add"),
@@ -7588,6 +7676,7 @@ function main() {
         autoPost: $("auto-post"),
         comps: $("comps"),
         fixDark: $("fix-dark"),
+        customizeSaveDefault: $("customize-save-default"),
         venueHint: $("venue-hint"),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
@@ -7828,6 +7917,9 @@ function main() {
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
     // step 3's Edit, its menus and Save (Michal, 2026-10-31)
     el.policiesEdit.addEventListener("click", editPolicies);
+    el.policiesOk.addEventListener("click", () => {
+        confirmPoliciesNow().catch(() => {});
+    });
     el.policyShipAdd.addEventListener("click", addShipRow);
     el.policySave.addEventListener("click", () => {
         savePolicies().catch(() => {});
@@ -7849,11 +7941,15 @@ function main() {
         connectEbay().catch(() => {});
     });
     el.signupAddress.addEventListener("click", () => {
-        if (el.admin.hidden) {
-            Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
-            adminShown(true);
-        }
-        openSeller();
+        saveSignupAddress().catch(() => {});
+    });
+    el.signupAddressLine.addEventListener("input", () => {
+        signupAddressDirty = true;
+        seller.status = "";
+        renderSignup();
+    });
+    el.signupAddressLine.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveSignupAddress().catch(() => {});
     });
     el.feedbackToggle.addEventListener("click", () => {
         extras.feedback = !extras.feedback;
@@ -7967,6 +8063,7 @@ function main() {
     el.fixDark.addEventListener("change", () => {
         fixDark = el.fixDark.checked;
     });
+    el.customizeSaveDefault.addEventListener("click", saveCustomizeAsDefault);
     el.note.addEventListener("input", () => onNoteInput("goods"));
     el.note.addEventListener("blur", () => noteDue("goods"));
     el.snapLabel.addEventListener("click", () => onSnapTap("goods"));

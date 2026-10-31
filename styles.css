@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.36.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.37.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -717,7 +717,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
 .customize .field { margin-top: 10px; }
 /* Quantity: the small boxes' size, − and + beside it (Michal, 2026-10-31) */
 .qty-step { display: flex; align-items: center; gap: 8px; }
-input[type="text"].quantity { width: 3.6em; min-height: 36px; padding: 5px 8px; font-size: 16px; border-width: 1.5px; text-align: center; }
+input[type="text"].quantity { width: 3.6em; height: 40px; min-height: 40px; padding: 0 8px; font-size: 16px; border-width: 1.5px; text-align: center; }
 .qty-btn { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; background: var(--field); color: var(--ink); font-size: 22px; font-weight: 700; line-height: 1; }
 .qty-step:has(input:disabled) .qty-btn { opacity: 0.45; pointer-events: none; }
 input[type="text"]:disabled { color: var(--muted); }
@@ -745,6 +745,7 @@ input[type="text"]:disabled { color: var(--muted); }
 .pickup:has(small) { border-radius: var(--radius); }
 .pickup:has(small[hidden]) { border-radius: 999px; }
 .posting-lead { margin: 0 0 4px; color: var(--muted); }
+.customize-more { margin: 6px 0 0; text-align: center; color: var(--muted); }
 .pickup small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); line-height: 1.35; }
 /* the price grade (Michal, 2026-10-06: "a slider for price preference (3 grade)"): three
    steps on a 44 px tall touch area with the yellow thumb, its three words under the track
@@ -1187,11 +1188,16 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* a finished step: muted with its tick, not the yellow of the general .done (a button's) */
 .signup-step.done { background: none; color: var(--muted); letter-spacing: normal; }
 .signup-step.off { opacity: 0.45; }
+.signup-step .signup-address-line { font-weight: 500; }
 /* step 3's policies in step 2's line's look, one a line, no bullets (Michal, 2026-10-31) */
 .signup-policy-list { list-style: none; margin: -4px 0 8px; padding: 0; font-size: 14px; font-weight: 500; color: var(--muted); }
 /* step 3's Edit: each choice a menu, in the page's words and chips (Michal, 2026-10-31) */
 .policy-editor { font-size: 15px; font-weight: 500; }
 .policy-editor .field:first-child { margin-top: 0; }
+.policy-names { margin: 0 0 10px; color: var(--muted); }
+.big.policies-ok { margin-top: 6px; }
+/* waiting for the address: plain smoke, as NEXT is before a photo, not a faded yellow */
+.big.policies-ok:disabled { background: var(--card); color: var(--muted); opacity: 1; }
 .policy-select, .policy-editor input[type="text"].policy-cost { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; font-size: 15px; }
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* a row per service the buyer picks from: its menu, its flat rate, its remove (2026-10-31) */

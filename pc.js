@@ -159,7 +159,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.36.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.37.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -692,6 +692,16 @@ export function getPolicies({ pc, ...auth }) {
  */
 export function patchPolicies({ pc, ...auth }, body) {
     return call(`${pc}/me/policies`, auth, { method: "PATCH", json: body });
+}
+
+/**
+ * Step 3's Looks good (Michal, 2026-10-31): POST <pc>/me/policies/confirm -> the GET's body,
+ * "confirmed" true; the server then sets them up on eBay and /me says registered.
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, any>>}
+ */
+export function confirmPolicies({ pc, ...auth }) {
+    return call(`${pc}/me/policies/confirm`, auth, { method: "POST" });
 }
 
 /** A request that answers with no body (a 204, a 202): refused when not ok, nothing otherwise. */

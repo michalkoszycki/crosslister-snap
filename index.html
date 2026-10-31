@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.36.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.36.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.37.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.37.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -163,18 +163,28 @@
         <!-- Michal, 2026-10-08: "then your address. what address?": what it is for, said -->
         <span id="signup-address-word" class="signup-word">Address where you ship from</span>
         <span class="signup-line">eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
-        <button type="button" id="signup-address" class="secondary">Your address</button>
+        <input id="signup-address-line" class="small-input signup-address-line" type="text" autocomplete="street-address"
+               spellcheck="false" placeholder="Street, city, state ZIP" aria-labelledby="signup-address-word">
+        <button type="button" id="signup-address" class="secondary" hidden>Save</button>
+        <p id="signup-address-status" class="small account-status" aria-live="polite"></p>
       </li>
       <!-- step 3 (Michal, 2026-10-31: "under the address. there shoudl be item 3. the policy
            setups spelled out here"): POLICY_LINES, the ones Settings lists under the address -->
       <li id="signup-step-policies" class="signup-step">
-        <span class="signup-word">Snap sets up on your eBay account</span>
+        <span class="signup-word">Review what Snap adds to your eBay account</span>
         <div id="signup-policy-slot">
         <div id="policy-block" class="policy-block">
+        <!-- all of it, in step 2's words (Michal, 2026-10-31: "what other changes are we making to
+             a user account to make this work. describe all here"): ebay/seller_setup.py -->
+        <span id="policy-lead" class="signup-line">eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:</span>
         <ul id="signup-policy-list" class="signup-policy-list"></ul>
+        <span id="policy-after" class="signup-line">Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub.</span>
         <!-- Edit (Michal, 2026-10-31): each choice as a menu, Save back to the list as it was
              (app.js; GET/PATCH /me/policies); none for the admin's, set on the server -->
         <div id="policy-editor" class="policy-editor" hidden>
+          <!-- the names they have on eBay, here only (Michal, 2026-10-31: "no need to mention the
+               policy names in this summary . ONLY at edit") -->
+          <p id="policy-names" class="small policy-names" hidden></p>
           <div class="field">
             <span id="policy-ship-label" class="field-label">Shipping</span>
             <select id="policy-service" class="policy-select" aria-labelledby="policy-ship-label"></select>
@@ -214,6 +224,9 @@
           </label>
           <button type="button" id="policy-save" class="secondary policy-save">Save</button>
         </div>
+        <!-- agreed to as it is (Michal, 2026-10-31: "if someone reads and likes what it is - they
+             will just go ahead without editing"): POST /me/policies/confirm, then the goods screen -->
+        <button type="button" id="signup-policies-ok" class="big policies-ok" hidden>Looks good</button>
         <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit</button>
         <p id="policy-status" class="small account-status" aria-live="polite"></p>
         </div>
@@ -876,6 +889,10 @@
         <input id="fix-dark" type="checkbox" checked>
         <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
       </label>
+      <!-- this item's values as every new item's (Settings, Posting defaults, its twin: Michal,
+           2026-10-31: "any comments i make on this menu should trickle to its twin in settings") -->
+      <button type="button" id="customize-save-default" class="secondary">Save as default</button>
+      <p class="small customize-more">See Settings for more options.</p>
     </div>
 
     <!-- the row's price, once a press has one, above both buttons -->
@@ -1100,6 +1117,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.36.0"></script>
+<script type="module" src="app.js?v=2.37.0"></script>
 </body>
 </html>

@@ -132,6 +132,7 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
         // of mine are quite dark."
         "fix-dark",
+        "customize-save-default",
         // no Save as default any more: the defaults live in Settings, Posting defaults
         // (docs/UI.md, decided 2026-10-26)
         // Michal, 2026-09-30: the price above the buttons, not on them; 2026-10-02: the title above it
@@ -1281,6 +1282,8 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         // GET/PATCH /me/policies (2026-10-31): null is an older server's 404
         policies: null,
         policySaves: [],
+        // POST /me/policies/confirm (Looks good, 2026-10-31)
+        confirms: 0,
         policyRefuse: "",
         // GET /me/wrap's answer (null: an older server's 404), its PATCHes and applies
         wrapAsks: [],
@@ -1463,6 +1466,13 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json(pc.wrap);
         }
         if (wrapped) return pc.wrap ? json(pc.wrap) : json({ detail: "Not Found" }, 404);
+        if (policied && parts[2] === "confirm" && method === "POST") {
+            pc.confirms += 1;
+            if (!pc.policies) return json({ detail: "Not Found" }, 404);
+            pc.policies = { ...pc.policies, confirmed: true };
+            if (pc.me) pc.me.registered = true;
+            return json(pc.policies);
+        }
         if (policied && method === "PATCH") {
             pc.policySaves.push(body);
             if (!pc.policies) return json({ detail: "Not Found" }, 404);
@@ -7497,14 +7507,20 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signup-step-address",
         // its word, which a prefilled address asks to confirm (Michal, 2026-10-08)
         "signup-address-word",
+        // the address typed in place, Save under it once edited (Michal, 2026-10-31)
+        "signup-address-line",
         "signup-address",
-        // step 3: what Snap sets up on eBay (Michal, 2026-10-31)
+        "signup-address-status",
+        // step 3: what Snap sets up on eBay (Michal, 2026-10-31), all of it spelled out
         "signup-step-policies",
         "signup-policy-slot",
         "policy-block",
+        "policy-lead",
         "signup-policy-list",
-        // its Edit, each choice a menu, Save (Michal, 2026-10-31)
+        "policy-after",
+        // its Edit, each choice a menu, Save (Michal, 2026-10-31); the eBay names there only
         "policy-editor",
+        "policy-names",
         "policy-ship-label",
         "policy-service",
         "policy-ship-list",
@@ -7521,6 +7537,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-best-offer",
         "policy-best-offer-tip",
         "policy-save",
+        "signup-policies-ok",
         "signup-policies-edit",
         "policy-status",
         "signup-status",
@@ -9772,6 +9789,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
             "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
             "Returns: 30 days, buyer pays return shipping",
             "Local pickup only, for items you mark pickup only",
+            ...EXTRAS,
             "Your ship-from location: the address above",
         ]
     );
@@ -9788,30 +9806,34 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.equal(n.get("signup-step-address").classList.contains("off"), false);
     assert.equal(n.get("signup-address").disabled, false);
 
-    // step 2: the address card; saved through PATCH /me/seller as ever (the route that starts
-    // the eBay policy setup), /me says registered, and the goods screen is hers
-    n.get("signup-address").fire("click");
-    await settle();
-    // eBay's own page, its address card (2026-10-31)
-    assert.deepEqual(["admin", "venue-page", "seller"].map((id) => n.get(id).hidden), [false, false, false]);
-    assert.equal(n.get("venue-page-heading").textContent, "ebay");
+    // step 2 in place (Michal, 2026-10-31: "you should just be able to edit the address here.
+    // make this a text box. when one edits. there is a save button below."): saved through PATCH
+    // /me/seller as ever (the route that starts the eBay policy setup), /me says registered, and
+    // the goods screen is hers
+    assert.equal(n.get("signup-address-line").disabled, false);
+    assert.equal(n.get("signup-address").hidden, true, "no Save before an edit");
     pc.me = { ...pc.me, registered: true };
-    typeAddress(n, { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    n.get("signup-address-line").value = "12 Oak St, Chicago, IL 60601";
+    n.get("signup-address-line").fire("input");
+    assert.equal(n.get("signup-address").hidden, false);
+    assert.equal(n.get("signup-address").textContent, "Save");
     const asked = pc.addressAsks.length;
-    n.get("seller-save").fire("click");
+    n.get("signup-address").fire("click");
     await settle();
     assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
     assert.deepEqual(pc.addressSaves, [], "not through /me/address");
     assert.equal(pc.addressAsks.length, asked + 1, "the card read back from /me/address");
     assert.equal(pc.mes, 3, "asked once the address is in");
     assert.equal(n.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago, IL 60601");
-    n.get("admin-toggle").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
 });
 
 /** A new account back from eBay: its address not given yet. */
 const CONNECTED_ME = { ...NEW_ME, ebay: { connected: true, user: "anna_sells", policies: "none" } };
+
+/** What every account gets besides the server's lines, before the ship-from one (Michal, 2026-10-31: "describe all here"). */
+const EXTRAS = ["Payment: paid through eBay's own checkout", "Books: a separate USPS Media Mail shipping policy"];
 
 const POLICIES = {
     editable: true,
@@ -9873,7 +9895,7 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     const { nodes: n } = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
     await settle();
     const list = () => n.get("signup-policy-list").children.map((li) => li.textContent);
-    assert.deepEqual(list(), POLICIES.lines, "the server's lines");
+    assert.deepEqual(list(), [...POLICIES.lines, ...EXTRAS], "the server's lines, then what every account gets");
     assert.equal(n.get("signup-policies-edit").hidden, false);
     assert.equal(n.get("signup-policies-edit").disabled, false);
     assert.equal(n.get("policy-editor").hidden, true);
@@ -9900,7 +9922,7 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     await settle();
     assert.deepEqual(pc.policySaves, [{ shipping_service: "USPSPriority", return_days: 0, best_offer: true }], "only what changed");
     assert.equal(n.get("policy-editor").hidden, true, "back to the list");
-    assert.deepEqual(list(), ["Shipping: USPSPriority", "Returns: not accepted"]);
+    assert.deepEqual(list(), ["Shipping: USPSPriority", "Returns: not accepted", ...EXTRAS]);
 
     // a refusal: its words, the menus stay
     n.get("signup-policies-edit").fire("click");
@@ -9932,7 +9954,7 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     const older = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: old.fetch });
     await settle();
     assert.equal(older.nodes.get("signup-policies-edit").hidden, true);
-    assert.equal(older.nodes.get("signup-policy-list").children.length, 4, "the fixed lines");
+    assert.equal(older.nodes.get("signup-policy-list").children.length, 4 + EXTRAS.length, "the fixed lines");
     // before eBay is connected: Edit there, but shut
     const fresh = fakePc({ me: structuredClone(NEW_ME) });
     fresh.policies = structuredClone(POLICIES);
@@ -9950,10 +9972,13 @@ test("step 3's Edit, several services: the buyer picks one, each its own flat ra
     pc.policies = { ...structuredClone(POLICIES), shipping: [{ service: "USPSParcel", cost: null }], max_services: 2, line_names: ["crosslister default", null] };
     const { nodes: n } = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
     await settle();
-    const tags = n.get("signup-policy-list").children.map((li) => li.children.map((c) => c.textContent));
-    assert.deepEqual(tags, [[" · eBay policy “crosslister default”"], []], "a name where the server has one");
+    // no names in the summary; in Edit only (Michal, 2026-10-31: "no need to mention the policy
+    // names in this summary . ONLY at edit")
+    assert.deepEqual(n.get("signup-policy-list").children.map((li) => li.children.length), [0, 0, 0, 0]);
 
     n.get("signup-policies-edit").fire("click");
+    assert.equal(n.get("policy-names").hidden, false);
+    assert.equal(n.get("policy-names").textContent, "On eBay these are named “crosslister default”.");
     assert.equal(n.get("policy-service").hidden, true, "the rows in the one menu's place");
     const rows = () => n.get("policy-ship-list").children;
     assert.equal(rows().length, 1);
@@ -10000,6 +10025,67 @@ test("step 3's Edit, several services: the buyer picks one, each its own flat ra
     assert.deepEqual(pc.policySaves.at(-1), { best_offer: true });
 });
 
+test("step 3's Looks good: the setup agreed to as it is, then the goods screen; shut until the address is in; none from a server that does not ask", async (t) => {
+    // Michal, 2026-10-31: "At the bottom before Edit. there should be Looks good button. so that
+    // if someone reads and likes what it is - they will just go ahead without editing."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
+    pc.address = structuredClone(NEW_ADDRESS);
+    pc.seller = structuredClone(SELLER_SAVED);
+    pc.policies = { ...structuredClone(POLICIES), confirmed: false };
+    const { nodes: n } = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
+    await settle();
+    const ok = n.get("signup-policies-ok");
+    assert.equal(ok.hidden, false);
+    assert.equal(ok.disabled, true, "the address first");
+    n.get("signup-address-line").value = "12 Oak St, Chicago, IL 60601";
+    n.get("signup-address-line").fire("input");
+    n.get("signup-address").fire("click");
+    await settle();
+    assert.equal(n.get("signup-steps").hidden, false, "step 3 still to agree to");
+    assert.equal(ok.disabled, false);
+    // Edit open: no Looks good beside the menus
+    n.get("signup-policies-edit").fire("click");
+    assert.equal(ok.hidden, true);
+    n.get("policy-save").fire("click");
+    await settle();
+    assert.equal(ok.hidden, false);
+    ok.fire("click");
+    await settle();
+    assert.equal(pc.confirms, 1);
+    assert.equal(n.get("signup-steps").hidden, true);
+    assert.equal(n.get("work").hidden, false, "the goods screen");
+    // a server that does not ask (no "confirmed"): no Looks good, the address alone finishes
+    const old = fakePc({ me: structuredClone(CONNECTED_ME) });
+    old.address = structuredClone(NEW_ADDRESS);
+    old.policies = structuredClone(POLICIES);
+    const older = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: old.fetch });
+    await settle();
+    assert.equal(older.nodes.get("signup-policies-ok").hidden, true);
+});
+
+test("customize's Save as default: this item's values kept as every new item's, Posting defaults showing them", async (t) => {
+    // Michal, 2026-10-31: "at the bottom (only here) provide 'save as default' below the button
+    // add small text- see settings for more options"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const { nodes } = await loadPage({ local, fetchImpl: fakePc().fetch });
+    await settle();
+    nodes.get("customize-toggle").fire("click");
+    nodes.get("quantity-more").fire("click");
+    nodes.get("pickup-only").checked = true;
+    nodes.get("pickup-only").fire("change");
+    nodes.get("customize-save-default").fire("click");
+    const kept = JSON.parse(local.getItem("snap.customize.defaults"));
+    assert.equal(kept.goods.quantity, "2");
+    assert.equal(kept.goods.pickupOnly, true);
+    assert.equal(nodes.get("posting-quantity").value, "2");
+    assert.equal(nodes.get("posting-pickup-only").checked, true);
+    assert.equal(nodes.get("customize-save-default").textContent, "Saved as default");
+    t.mock.timers.tick(2500);
+    assert.equal(nodes.get("customize-save-default").textContent, "Save as default");
+});
+
 test("an address prefilled from eBay: step 2 asks to confirm it, the boxes filled, what Snap sets up listed, Looks right sends them", async (t) => {
     // Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the policies,
     // after connecting eBay"
@@ -10038,27 +10124,27 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     assert.match(html, /<p class="seller-policies-head">Snap will set up on your eBay account:<\/p>/);
     assert.equal(n.get("seller-save").textContent, "Looks right");
 
-    // closed: step 2 asks to confirm it
+    // closed: step 2 asks to confirm it, the address in its own box (Michal, 2026-10-31)
     n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, false);
     assert.equal(n.get("signup-address-word").textContent, "Confirm the address where you ship from");
     assert.equal(n.get("signup-step-address").classList.contains("done"), false);
+    assert.equal(n.get("signup-address-line").value, "12 Oak St, Chicago, IL");
+    assert.equal(n.get("signup-address").hidden, false);
+    assert.equal(n.get("signup-address").textContent, "Looks right");
 
-    // Looks right: the boxes as shown, the one missing named first
+    // Looks right: the box as shown, the one missing named first
     n.get("signup-address").fire("click");
     await settle();
-    n.get("seller-save").fire("click");
-    await settle();
-    assert.equal(addressCard(n).status, "The ZIP is five digits, as 60601.");
+    assert.equal(n.get("signup-address-status").textContent, "The ZIP is five digits, as 60601.");
     assert.deepEqual(pc.sellerSaves, []);
-    n.get("seller-line").value = "12 Oak St, Chicago, IL 60601";
+    n.get("signup-address-line").value = "12 Oak St, Chicago, IL 60601";
+    n.get("signup-address-line").fire("input");
+    assert.equal(n.get("signup-address").textContent, "Save", "typed in: Save");
     pc.me = { ...pc.me, registered: true };
-    n.get("seller-save").fire("click");
+    n.get("signup-address").fire("click");
     await settle();
     assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
-    assert.equal(n.get("seller-save").textContent, "Save address", "all there now");
-    assert.equal(n.get("seller-policies").hidden, true);
-    n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, true);
     assert.equal(n.get("work").hidden, false, "the goods screen is hers");
 });
@@ -10080,19 +10166,12 @@ test("an address that came all there from eBay: step 2 ticked; Settings opened f
     assert.equal(n.get("signup-steps").hidden, false, "/me still says not registered");
     assert.equal(n.get("signup-step-address").classList.contains("done"), true, "step 2 ticked");
     assert.equal(n.get("signup-address-word").textContent, "Address where you ship from");
-    assert.equal(n.get("signup-address").disabled, false, "the card still takes a correction");
-
-    // its button: Settings, whose address all there has /me asked again; registered, the goods screen
-    const mes = pc.mes;
-    pc.me = { ...pc.me, registered: true };
-    n.get("signup-address").fire("click");
-    await settle();
-    assert.equal(pc.mes, mes + 1);
+    // the box still takes a correction; no Save before an edit (Michal, 2026-10-31)
+    assert.equal(n.get("signup-address-line").value, "12 Oak St, Chicago, IL 60601");
+    assert.equal(n.get("signup-address-line").disabled, false);
+    assert.equal(n.get("signup-address").hidden, true);
     assert.deepEqual(pc.sellerSaves, [], "nothing to send");
     assert.deepEqual(pc.addressSaves, []);
-    n.get("admin-toggle").fire("click");
-    assert.equal(n.get("signup-steps").hidden, true);
-    assert.equal(n.get("work").hidden, false);
 });
 // --- the optional item name (Michal, 2026-10-08) ------------------------------------------------
 
@@ -10428,7 +10507,9 @@ test("Posting defaults: the Snap page's customize field for field, its small pri
     const lead = /<p id="posting-lead" class="small posting-lead">([^<]*)<\/p>/.exec(words);
     assert.equal(lead[1], "These will be your default settings. You can customize them per posting on the Snap page.");
     const posting = shape(words.replace(lead[0], ""), /^posting-/);
-    const customize = shape(custom, /^/);
+    // Save as default and its line are customize's alone (Michal, 2026-10-31: "only here")
+    assert.match(custom, /<button type="button" id="customize-save-default" class="secondary">Save as default<\/button>\s*<p class="small customize-more">See Settings for more options\.<\/p>\s*$/);
+    const customize = shape(custom.replace(/<button type="button" id="customize-save-default"[\s\S]*$/, ""), /^/);
     assert.deepEqual(posting.slice(0, customize.length), customize);
     assert.ok(!/qty-row/.test(words), "no Quantity beside the slider");
     // its extra after them
