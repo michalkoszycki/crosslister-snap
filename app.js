@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.0";
+import { VERSION } from "./version.js?v=2.28.1";
 import {
     adminLink,
     anyActive,
@@ -247,8 +247,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.0";
+} from "./core.js?v=2.28.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.1";
 import {
     addVenue,
     applyWrap,
@@ -299,8 +299,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.0";
-import { shrinkPhoto } from "./shrink.js?v=2.28.0";
+} from "./pc.js?v=2.28.1";
+import { shrinkPhoto } from "./shrink.js?v=2.28.1";
 import {
     bookCard,
     bookPriceValue,
@@ -313,8 +313,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.0";
-import { canScan, readIsbn } from "./scan.js?v=2.28.0";
+} from "./book.js?v=2.28.1";
+import { canScan, readIsbn } from "./scan.js?v=2.28.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -4707,7 +4707,6 @@ function renderAdminPage() {
     el.inventory.hidden = !admin.inventoryOpen || people.open;
     el.settingsToggle.hidden = page;
     el.settings.hidden = page || !settingsOpen;
-    el.adminClose.hidden = page;
     el.people.hidden = !people.open;
     // each page's Back above its card, on the page's ground (Michal, 2026-10-31)
     el.inventoryBack.hidden = el.inventoryDetail.hidden || people.open;
@@ -6840,7 +6839,6 @@ function main() {
     Object.assign(el, {
         adminToggle: $("admin-toggle"),
         admin: $("admin"),
-        adminClose: $("admin-close"),
         headerUser: $("header-user"),
         settingsToggle: $("settings-toggle"),
         settings: $("settings"),
@@ -7349,7 +7347,6 @@ function main() {
     }
 
     el.adminToggle.addEventListener("click", toggleAdmin);
-    el.adminClose.addEventListener("click", () => showAdmin(false));
     el.settingsToggle.addEventListener("click", toggleSettings);
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});

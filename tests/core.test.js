@@ -2401,15 +2401,15 @@ test("the body carries pricing only when not 1 and auto_post only when off, in a
 test("the idle line says what customize changed, joined with a middle dot", () => {
     let s = sent(1, [1]);
     assert.equal(venueIdleNote(s, "ebay"), "");
+    // no price grade under the buttons (Michal, 2026-10-31)
     s = reduce(s, { type: "setPricing", grade: 2 });
-    assert.equal(venueIdleNote(s, "ebay"), "fair price");
-    assert.equal(venueIdleNote(s, "craigslist"), "fair price", "the grade goes with both buttons");
+    assert.equal(venueIdleNote(s, "ebay"), "");
     s = reduce(s, { type: "setPickupOnly", on: true });
     s = reduce(s, { type: "setAutoPost", on: false });
-    assert.equal(venueIdleNote(s, "ebay"), "pickup only · fair price · saved, not posted");
-    assert.equal(venueIdleNote(s, "craigslist"), "fair price · saved, not posted", "pickup only stays under ebay");
+    assert.equal(venueIdleNote(s, "ebay"), "pickup only · saved, not posted");
+    assert.equal(venueIdleNote(s, "craigslist"), "saved, not posted", "pickup only stays under ebay");
     s = reduce(s, { type: "setPricing", grade: 3 });
-    assert.equal(venueIdleNote(s, "craigslist"), "higher end · saved, not posted");
+    assert.equal(venueIdleNote(s, "craigslist"), "saved, not posted");
     const book = reduce(foundBook(), { type: "setAutoPost", on: false });
     assert.equal(venueIdleNote(book, "ebay"), "saved, not posted");
 });
@@ -2543,7 +2543,7 @@ test("Compare with eBay listings: on by default; unticked, comps: false in every
     assert.equal(venueIdleNote(s, "ebay"), "without marketplace comparisons");
     assert.equal(venueIdleNote(s, "craigslist"), "without marketplace comparisons");
     const all = reduce(reduce(s, { type: "setPricing", grade: 2 }), { type: "setPickupOnly", on: true });
-    assert.equal(venueIdleNote(all, "ebay"), "pickup only · fair price · without marketplace comparisons");
+    assert.equal(venueIdleNote(all, "ebay"), "pickup only · without marketplace comparisons");
 
     // fixed while a job is on its way, reset by NEXT
     const going = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });

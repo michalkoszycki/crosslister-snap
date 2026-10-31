@@ -183,7 +183,7 @@ test("the work section reads top to bottom the way Michal asked", () => {
     }
 });
 
-test("Admin reads top to bottom: the inventory and a listing's foldouts, Settings in five folds, Feedback, Stats, the People page, Close", () => {
+test("Admin reads top to bottom: the inventory and a listing's foldouts, Settings in five parts, Feedback, Stats, the People page", () => {
     // Michal, 2026-10-06: "Admin which would replace Settings ... settings and inventory
     // would be a foldout in the admin section ... all the cards are different foldouts";
     // docs/UI.md (2026-10-22/25): no title, Inventory first, Settings as five folds of its own
@@ -417,7 +417,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "people-status",
         "people-list",
         "people-leave",
-        "admin-close",
     ]);
     // the sticky sync bar is gone: its buttons live in each venue's block (decided 2026-10-26)
     assert.ok(!html.includes('id="sync-bar"'), "no sync bar");
@@ -2032,13 +2031,13 @@ test("the PC coming back is noticed by the check: waiting photos go without wait
     assert.deepEqual(badges(nodes), ["sent"]);
 });
 
-test("Admin has a Close button at its bottom", async (t) => {
+test("the header button closes Admin and opens it again (no Close at its foot since 2026-10-31)", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const { nodes } = await loadPage();
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("admin").hidden, false);
     assert.equal(nodes.get("admin-toggle").attrs["aria-expanded"], "true");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("admin-toggle").attrs["aria-expanded"], "false");
     // the header link again opens it, and closes it, as Settings' did
@@ -2075,7 +2074,7 @@ test("the header link says Snap while Admin is open, and its tap goes back to sn
     link.fire("click");
     await settle();
     assert.equal(link.textContent, "Snap");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
 });
 
@@ -2472,7 +2471,7 @@ test("Admin hides the goods | book switch while it is open", async (t) => {
     assert.equal(nodes.get("modes").hidden, false);
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("modes").hidden, true);
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("modes").hidden, false);
     nodes.get("admin-toggle").fire("click");
     nodes.get("admin-toggle").fire("click");
@@ -2508,7 +2507,7 @@ test("Admin hides the posting screens too, the list's and a listing's; Close sho
     nodes.get("mode-book").fire("click");
     nodes.get("admin-toggle").fire("click");
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, true]);
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.deepEqual([nodes.get("work").hidden, nodes.get("book").hidden], [true, false]);
 });
 
@@ -3230,7 +3229,7 @@ test("a row tapped: the heading, the photo strip, then only the venue cards; ful
     nodes.get("admin-toggle").fire("click");
     await settle();
     // the Admin page: the inventory's line, Settings, Feedback and Close (no title: docs/UI.md)
-    const page = ["inventory-toggle", "settings-toggle", "feedback-toggle", "admin-close"];
+    const page = ["inventory-toggle", "settings-toggle", "feedback-toggle"];
     assert.deepEqual(page.filter((id) => nodes.get(id).hidden), []);
     listed(nodes)[0].open.fire("click");
     // a page of its own (Michal, 2026-10-07: "when I am on a card I don't want to see admin or
@@ -3395,7 +3394,6 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     assert.equal(nodes.get("inventory-toggle").hidden, true);
     assert.equal(nodes.get("settings-toggle").hidden, true);
     assert.equal(nodes.get("feedback-toggle").hidden, true);
-    assert.equal(nodes.get("admin-close").hidden, true);
     assert.equal(nodes.get("detail-heading").textContent, "R5");
     assert.equal(nodes.get("detail-status").textContent, "Reading R5 from the server...");
     assert.equal(foldOf(nodes, "ebay"), "hidden");
@@ -3426,11 +3424,10 @@ test("Admin opens back onto the listing left open; Back lets it go and asks for 
     assert.equal(local.map.has("snap.admin.card"), false);
     assert.equal(again.nodes.get("inventory-browse").hidden, false);
     assert.equal(again.nodes.get("inventory-toggle").hidden, false);
-    assert.equal(again.nodes.get("admin-close").hidden, false);
     await settle();
     assert.deepEqual(pc.calls.slice(1), [`GET /inventory?q=&${ALL}`]);
     assert.equal(listed(again.nodes).length, 2);
-    again.nodes.get("admin-close").fire("click");
+    again.nodes.get("admin-toggle").fire("click");
     again.nodes.get("admin-toggle").fire("click");
     await settle();
     assert.equal(again.nodes.get("inventory-detail").hidden, true, "the list, once let go");
@@ -6047,11 +6044,12 @@ test("customize, goods: fair price and post without asking off; saved, not poste
         note: "a fair price, a longer wait",
         said: "Fair price",
     });
-    assert.equal(nodes.get("ebay-status").textContent, "fair price");
-    assert.equal(nodes.get("craigslist-status").textContent, "fair price", "the grade goes with both");
+    // no price grade under the buttons (Michal, 2026-10-31)
+    assert.equal(nodes.get("ebay-status").textContent, "");
+    assert.equal(nodes.get("craigslist-status").textContent, "");
     nodes.get("auto-post").checked = false;
     nodes.get("auto-post").fire("change");
-    assert.equal(nodes.get("ebay-status").textContent, "fair price · saved, not posted");
+    assert.equal(nodes.get("ebay-status").textContent, "saved, not posted");
     assert.deepEqual(JSON.parse(local.getItem("snap.item")).customize, {
         quantity: "1",
         pickupOnly: false,
@@ -6129,7 +6127,7 @@ test("customize, goods: the slider alone sends pricing, and Higher end says so u
     nodes.get("pricing").fire("input");
     assert.deepEqual(pricingShown(nodes).bold, [3]);
     assert.equal(nodes.get("pricing-note").textContent, "a higher-end price; cheaper ones exist out there");
-    assert.equal(nodes.get("craigslist-status").textContent, "higher end");
+    assert.equal(nodes.get("craigslist-status").textContent, "", "no price grade under the buttons (2026-10-31)");
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -6166,7 +6164,7 @@ test("customize, book: higher end, saved, not posted, then posted by sku with no
     nodes.get("book-pricing").fire("input");
     nodes.get("book-auto-post").checked = false;
     nodes.get("book-auto-post").fire("change");
-    assert.equal(nodes.get("book-ebay-status").textContent, "higher end · saved, not posted");
+    assert.equal(nodes.get("book-ebay-status").textContent, "saved, not posted");
     assert.equal(pricingShown(nodes).value, "1", "the goods slider is its own");
     assert.deepEqual(JSON.parse(local.getItem("snap.book")).customize, {
         quantity: "1",
@@ -6242,7 +6240,7 @@ test("a reload brings the price grade and post without asking back, and a row sa
     });
     assert.equal(nodes.get("auto-post").checked, false);
     assert.equal(nodes.get("ebay-status").textContent, "saved, not posted");
-    assert.equal(nodes.get("craigslist-status").textContent, "fair price · saved, not posted");
+    assert.equal(nodes.get("craigslist-status").textContent, "saved, not posted");
     assert.equal(nodes.get("ebay-btn").disabled, false);
     nodes.get("ebay-btn").fire("click");
     await settle();
@@ -6912,7 +6910,7 @@ test("Safari's back and forward after the return from eBay's consent (#ebay=conn
     const { nodes, nav } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
     assert.equal(globalThis.location.hash, "");
     assert.deepEqual(nav.entries, [{ state: null, flagged: false }], "the cleared address, no entry made yet");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     await walked(nodes, nav.back, "C", backTo("C"));
     await walked(nodes, nav.back, "B", backTo("B"));
     await walked(nodes, nav.forward, "C", forwardTo("C"));
@@ -7424,7 +7422,7 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     assert.deepEqual(shown(screens), ["admin"]);
     assert.equal(nodes.get("settings").hidden, false);
     assert.equal(nodes.get("settings-signout").hidden, true, "nothing to forget yet");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.deepEqual(shown(screens), ["landing"]);
 
     nodes.get("landing-key").fire("click");
@@ -7436,7 +7434,7 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     assert.equal(pc.mes, 1, "who this key is, asked once it checked");
     assert.equal(nodes.get("settings-signout").hidden, false);
     assert.equal(nodes.get("settings-signout").textContent, "Sign out", "of a key too, since 2.23.0");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.deepEqual(shown(screens), ["install-banner", "modes", "work"], "the goods screen, as today");
 
     // Sign out: the address and key gone, the landing back, the server word unset
@@ -8038,7 +8036,7 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     assert.equal(nodes.get("item-name").value, "", "a new item");
     assert.equal(nodes.get("pricing").value, "2");
     assert.equal(nodes.get("quantity").value, "3");
-    assert.equal(nodes.get("ebay-status").textContent, "pickup only · fair price · saved, not posted · without marketplace comparisons");
+    assert.equal(nodes.get("ebay-status").textContent, "pickup only · saved, not posted · without marketplace comparisons");
 
     // a fresh load starts from them too, and the fold shows them
     const again = await loadPage({ local, fetchImpl: fakePc().fetch });
@@ -8114,7 +8112,7 @@ test("Feedback: the words, where they were written from, the version and the las
     assert.equal(pc.feedback[3].screen, "card");
 
     // Admin opened from the book screen: "book"
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     nodes.get("mode-book").fire("click");
     nodes.get("admin-toggle").fire("click");
     await settle();
@@ -8346,7 +8344,7 @@ test("the account card: its name, by key, the postings beside Buy postings, the 
     assert.equal(accountOf(nodes).status, "Connecting eBay is not available yet.");
 
     // Admin closed and opened again: folded and quiet
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     await openSettings(nodes);
     assert.equal(accountOf(nodes).packs, null);
     assert.equal(accountOf(nodes).status, "");
@@ -8491,7 +8489,7 @@ test("back from Stripe or eBay: the hash gone, Admin on Settings at Snap Account
     const failed = await back("#ebay=failed");
     assert.equal(failed.nodes.get("account-status").textContent, "eBay did not connect; try again or contact the developer");
     // Close: the goods screen, and the line said once
-    failed.nodes.get("admin-close").fire("click");
+    failed.nodes.get("admin-toggle").fire("click");
     assert.equal(failed.nodes.get("work").hidden, false);
     await openSettings(failed.nodes);
     assert.equal(accountOf(failed.nodes).status, "");
@@ -8561,7 +8559,7 @@ test("no postings left (402): the server's words under the button and Buy postin
 
     // postings bought: the press goes; its job done, /me is asked again and the line follows
     pc.broke = "";
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     nodes.get("ebay-btn").fire("click");
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -8697,7 +8695,7 @@ test("About and privacy: under the landing and Admin, not under the posting scre
     nodes.get("admin-toggle").fire("click");
     await settle();
     assert.equal(nodes.get("about-link").hidden, false, "Admin's foot");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("about-link").hidden, true);
 });
 
@@ -8890,7 +8888,7 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
     assert.equal(pc.mes, mes + 3, "nothing more to wait for");
 
     // Admin closed and opened again: "policies ready" was said once; the address all there
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     await openSettings(nodes);
     assert.equal(addressCard(nodes).ebay, "Connected as anna_sells");
     assert.equal(addressCard(nodes).note, null);
@@ -9106,7 +9104,7 @@ test("See in inventory: under the price once a venue has the listing up; Admin o
     assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`);
 
     // NEXT clears it with the rest
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     nodes.get("next-item").fire("click");
     await settle();
     assert.equal(nodes.get("see-inventory").hidden, true);
@@ -9542,7 +9540,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.equal(nodes.get("account-ebay").textContent, "Not connected");
     assert.equal(nodes.get("venue-ebay-note").textContent, "Connect eBay to start posting");
     assert.deepEqual(["sync-from-ebay", "sync-to-ebay"].map((id) => drawn(nodes, id).disabled), [true, true], "nothing to sync yet");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     assert.deepEqual(shown(nodes), ["signup-steps"]);
 
     // back from eBay: Settings opens on the address at the end of Venues, saying why
@@ -9560,7 +9558,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     // closed: step 1's button says eBay connected, in the posted green and done with (Michal,
     // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
     // heading without a tick since the button says it; step 2 open
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.deepEqual(shown(n), ["signup-steps"]);
     const connected = n.get("signup-connect");
     assert.equal(connected.hidden, false, "the button stays");
@@ -9586,7 +9584,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.equal(pc.addressAsks.length, asked + 1, "the card read back from /me/address");
     assert.equal(pc.mes, 3, "asked once the address is in");
     assert.equal(n.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago, IL 60601");
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
 });
@@ -9628,7 +9626,7 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     assert.equal(n.get("seller-save").textContent, "Looks right");
 
     // closed: step 2 asks to confirm it
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, false);
     assert.equal(n.get("signup-address-word").textContent, "Confirm the address where you ship from");
     assert.equal(n.get("signup-step-address").classList.contains("done"), false);
@@ -9647,7 +9645,7 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     assert.deepEqual(pc.sellerSaves.map((s) => s.body), [{ address: { line1: "12 Oak St", city: "Chicago", state: "IL", postal_code: "60601" } }]);
     assert.equal(n.get("seller-save").textContent, "Save address", "all there now");
     assert.equal(n.get("seller-policies").hidden, true);
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, true);
     assert.equal(n.get("work").hidden, false, "the goods screen is hers");
 });
@@ -9661,7 +9659,7 @@ test("an address that came all there from eBay: step 2 ticked; Settings opened f
     assert.equal(addressCard(n).note, null, "nothing to say: it is all there");
     assert.equal(n.get("seller-policies").hidden, true);
     assert.equal(n.get("seller-save").textContent, "Save address", "the card still takes a correction");
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, false, "/me still says not registered");
     assert.equal(n.get("signup-step-address").classList.contains("done"), true, "step 2 ticked");
     assert.equal(n.get("signup-address-word").textContent, "Address where you ship from");
@@ -9675,7 +9673,7 @@ test("an address that came all there from eBay: step 2 ticked; Settings opened f
     assert.equal(pc.mes, mes + 1);
     assert.deepEqual(pc.sellerSaves, [], "nothing to send");
     assert.deepEqual(pc.addressSaves, []);
-    n.get("admin-close").fire("click");
+    n.get("admin-toggle").fire("click");
     assert.equal(n.get("signup-steps").hidden, true);
     assert.equal(n.get("work").hidden, false);
 });
@@ -10582,7 +10580,7 @@ test("Delete account: bottom right of the owner's card beside Sign out; the conf
     nodes.get("settings-delete").fire("click");
     assert.equal(nodes.get("delete-confirm").hidden, true);
     nodes.get("settings-delete").fire("click");
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     await openSettings(nodes);
     assert.equal(nodes.get("delete-confirm").hidden, true);
 
@@ -10776,7 +10774,7 @@ test("people, the owner's: the invite box (one label, one box, one button), the 
     nodes.get("account-people").fire("click");
     await settle();
     assert.equal(nodes.get("people").hidden, false);
-    for (const id of ["inventory-toggle", "settings-toggle", "settings", "feedback-toggle", "admin-close"]) assert.equal(nodes.get(id).hidden, true, id);
+    for (const id of ["inventory-toggle", "settings-toggle", "settings", "feedback-toggle"]) assert.equal(nodes.get(id).hidden, true, id);
     assert.deepEqual(peopleCards(nodes), [
         { name: "anna", words: "owner · you", actions: ["Change name"], devices: ["iPhone, Safari · this device", "Android, Chrome · last used yesterday"], others: true },
         { name: "Bob", words: "member", actions: ["Remove"], devices: ["Mac, Safari · last used 4 days ago"], others: false },
@@ -10834,7 +10832,6 @@ test("people, the owner's: the invite box (one label, one box, one button), the 
     assert.equal(nodes.get("people").hidden, true);
     assert.equal(nodes.get("settings").hidden, false);
     assert.equal(nodes.get("fold-account").hidden, false);
-    assert.equal(nodes.get("admin-close").hidden, false);
 
     // this device's Sign out is a sign-out: the account off the phone, the landing
     nodes.get("account-people").fire("click");
@@ -10971,7 +10968,7 @@ test("Venues: a row of option chips in /me's order; a chip opens that venue's bl
     nodes.get("venue-chip-poshmark").fire("click");
     assert.deepEqual([shown(), pressedChips()], [["poshmark"], ["poshmark"]]);
     // Admin closed and opened again: eBay's again
-    nodes.get("admin-close").fire("click");
+    nodes.get("admin-toggle").fire("click");
     await openSettings(nodes);
     assert.deepEqual([shown(), pressedChips()], [["ebay"], ["ebay"]]);
 });

@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.28.0";
+import { noteDirty, unsent } from "./queue.js?v=2.28.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.28.0";
+} from "./book.js?v=2.28.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2243,9 +2243,10 @@ export function customizeBody(customize) {
 /**
  * The line under a venue button before it is pressed: what customize changed,
  * so he sees it took, joined with " · ": "pickup only" under ebay once ticked
- * (craigslist is pickup anyway), the price grade when it is not a quick sale,
- * "saved, not posted" while auto-post is off, and "without marketplace comparisons" once
- * unticked. Nothing when left alone.
+ * (craigslist is pickup anyway), "saved, not posted" while auto-post is off, and "without
+ * marketplace comparisons" once unticked. Nothing when left alone. No price grade (Michal,
+ * 2026-10-31: "no need to add individual price description per venue button"): the price
+ * line above the buttons says the price.
  * @param {SnapState} state
  * @param {string} venue
  * @returns {string}
@@ -2254,7 +2255,6 @@ export function venueIdleNote(state, venue) {
     const c = customizeOf(state);
     const said = [];
     if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
-    if (pricingGrade(c.pricing) > DEFAULT_PRICING) said.push(pricingOf(c.pricing).word.toLowerCase());
     if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
     if (c.comps === false) said.push(COMPS_NOTE);
     return said.join(" · ");

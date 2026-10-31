@@ -109,8 +109,9 @@ banner; the photos with the AI mark and delete; the User note; the **▸ customi
 (Quantity, Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
 asking, Compare with marketplace listings, Fix dark photos for goods); the title and price
 line once drafted, "See in inventory"; **one block per venue, in the same shape**: the
-button, "reset" while paused, the status line, "Buy postings" after a 402, the posting's
-link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
+button, "reset" while paused, the status line (before a press only what customize changed
+that is not the price: no price grade under the buttons, Michal 2026-10-31), "Buy postings"
+after a 402, the posting's link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
 tapped, says it is not available for this account yet and points to Feedback. The book
 screen has the same venue blocks as the goods screen, not eBay alone. Books are the admin's
 alone (Michal, 2026-10-31): anyone else can switch to book and see its screen, all of it very
@@ -125,8 +126,9 @@ Settings (decided 2026-10-26, section 6).
 ### 4.5 Admin
 
 Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
-settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only);
-**Close**. The sticky sync bar is gone: its buttons live in each venue's block (decided
+settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only).
+No Close at its foot (Michal, 2026-10-31: "take the exit button out"): the header's button,
+"Snap" while Admin is open, is the way back. The sticky sync bar is gone: its buttons live in each venue's block (decided
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
