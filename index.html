@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.27.5">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.27.5" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.27.6">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.27.6" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -90,7 +90,7 @@
             font-weight="800" font-size="34" fill="#0B0B0B">$</text>
       <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
     </svg>
-    <h2 class="landing-name">Snap</h2>
+    <h2 class="landing-name"><span class="sr-only">Snap</span><span aria-hidden="true">$nap</span></h2>
     <p class="landing-tagline">a crosslisting app</p>
     <p class="landing-what">From photo to live listing in seconds</p>
     <button type="button" id="landing-signin" class="big">Sign in</button>
@@ -969,6 +969,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.27.5"></script>
+<script type="module" src="app.js?v=2.27.6"></script>
 </body>
 </html>

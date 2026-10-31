@@ -76,7 +76,7 @@ nowhere else on the page repeats it.
 
 ### 4.1 Landing (first open, or no account on this phone)
 
-Top to bottom: "← Back" (only while adding an account); the big mark; "Snap", "a
+Top to bottom: "← Back" (only while adding an account); the big mark; "$nap" written as the header writes it (Michal, 2026-10-31), "a
 crosslisting app"; one line of what it does, naming no venue ("From photo to live listing in seconds";
 Michal, 2026-10-31, who also took the postings count off the landing); **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
 key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only

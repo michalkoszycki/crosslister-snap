@@ -7351,7 +7351,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     const landing = /<section id="landing"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
     assert.match(
         landing,
-        /<h2 class="landing-name">Snap<\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">From photo to live listing in seconds<\/p>/
+        /<h2 class="landing-name"><span class="sr-only">Snap<\/span><span aria-hidden="true">\$nap<\/span><\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">From photo to live listing in seconds<\/p>/
     );
     // Michal, 2026-10-31: "eliminate the postings count info" from the landing
     assert.ok(!landing.includes("landing-price"), "no postings count on the landing");
