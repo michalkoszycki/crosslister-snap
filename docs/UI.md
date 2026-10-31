@@ -101,7 +101,7 @@ Admin. In place of the posting screens, until eBay is connected and the address 
 becomes "eBay connected: name" in green. Step 2 as a card: the address where you ship
 from, prefilled from eBay once connected, **Looks right** or **Save address**. Step 3 (Michal,
 2026-10-31): "Snap sets up on your eBay account" and the policy lines Settings lists under the
-address, ticked once eBay says they are made. Back from eBay's consent, a new account lands on
+address, ticked once eBay says they are made; in step 2's look, no bullets. **Edit** under them (GET/PATCH /me/policies; not for the admin's, set on the server; shut until eBay is connected): each choice a menu in the list's place (Shipping service, Shipping cost calculated or flat, Handling time, Returns, Return shipping paid by, Offer local pickup, Accept best offers), **Save** sends what changed and the list comes back (Michal, 2026-10-31). Back from eBay's consent, a new account lands on
 this screen again (not Settings), step 1 green, its line saying "eBay connected". The same
 two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
 posting".

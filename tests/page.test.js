@@ -1244,6 +1244,10 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         sellerSaves: [],
         sellerRefuse: null,
         policiesAfterSave: "",
+        // GET/PATCH /me/policies (2026-10-31): null is an older server's 404
+        policies: null,
+        policySaves: [],
+        policyRefuse: "",
         // GET /me/wrap's answer (null: an older server's 404), its PATCHes and applies
         wrapAsks: [],
         wrap: null,
@@ -1298,6 +1302,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const inboxed = parts[0] === "feedback" && ((method === "GET" && !parts[1]) || method === "PATCH");
         const addressed = parts[0] === "me" && parts[1] === "address";
         const peopled = parts[0] === "me" && ["people", "devices", "leave"].includes(parts[1]);
+        const policied = parts[0] === "me" && parts[1] === "policies";
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
         else if (signup) pc.signups.push({ auth, origin: u.origin });
@@ -1307,7 +1312,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         else if (addressed && method === "GET") pc.addressAsks.push(auth);
         else if (peopled && method === "GET" && parts[1] === "people") pc.peopleAsks.push(auth);
         else if (peopled && method === "GET") pc.devicesAsks.push(`${auth} ${u.search}`);
-        else if (!sold && !wrapped && !inboxed && !addressed && !peopled) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (!sold && !wrapped && !inboxed && !addressed && !peopled && !policied) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
@@ -1423,6 +1428,15 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json(pc.wrap);
         }
         if (wrapped) return pc.wrap ? json(pc.wrap) : json({ detail: "Not Found" }, 404);
+        if (policied && method === "PATCH") {
+            pc.policySaves.push(body);
+            if (!pc.policies) return json({ detail: "Not Found" }, 404);
+            if (pc.policyRefuse) return json({ detail: pc.policyRefuse }, 400);
+            const returns = body.return_days ?? pc.policies.return_days;
+            pc.policies = { ...pc.policies, ...body, lines: [`Shipping: ${body.shipping_service ?? pc.policies.shipping_service}`, returns ? `Returns: ${returns} days` : "Returns: not accepted"] };
+            return json(pc.policies);
+        }
+        if (policied) return pc.policies ? json(pc.policies) : json({ detail: "Not Found" }, 404);
         if (parts[0] === "feedback" && method === "POST") {
             pc.feedback.push(body);
             if (pc.refuseFeedback) return json({ detail: pc.refuseFeedback }, 400);
@@ -7400,6 +7414,21 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         // step 3: what Snap sets up on eBay (Michal, 2026-10-31)
         "signup-step-policies",
         "signup-policy-list",
+        // its Edit, each choice a menu, Save (Michal, 2026-10-31)
+        "policy-editor",
+        "policy-service",
+        "policy-cost-type",
+        "policy-cost-row",
+        "policy-cost",
+        "policy-handling",
+        "policy-returns",
+        "policy-payer-row",
+        "policy-payer",
+        "policy-pickup",
+        "policy-best-offer",
+        "policy-save",
+        "signup-policies-edit",
+        "policy-status",
         "signup-status",
         "install-banner",
         "install-words",
@@ -9671,6 +9700,92 @@ test("a new account: Finish setting up in place of the posting screens, the rest
 
 /** A new account back from eBay: its address not given yet. */
 const CONNECTED_ME = { ...NEW_ME, ebay: { connected: true, user: "anna_sells", policies: "none" } };
+
+const POLICIES = {
+    editable: true,
+    shipping_service: "USPSParcel",
+    shipping_services: [
+        { code: "USPSParcel", name: "USPS Ground Advantage" },
+        { code: "USPSPriority", name: "USPS Priority Mail" },
+    ],
+    shipping_cost_type: "CALCULATED",
+    shipping_cost: null,
+    handling_days: 1,
+    handling_choices: [0, 1, 2, 3, 5],
+    return_days: 30,
+    return_choices: [0, 14, 30, 60],
+    return_shipping_paid_by: "BUYER",
+    local_pickup: false,
+    best_offer: false,
+    lines: ["Shipping: USPS Ground Advantage, buyer pays, 1 business day handling", "Returns: 30 days, buyer pays return shipping"],
+};
+
+test("step 3's Edit: each choice a menu, Save sends what changed and the list comes back; none for the admin's, none before eBay", async (t) => {
+    // Michal, 2026-10-31: "at the end of the policies i want an edit button. ... create menus that
+    // allow customizing all the choices. then Save will return it into a small list as is."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
+    pc.address = structuredClone(NEW_ADDRESS);
+    pc.policies = structuredClone(POLICIES);
+    const { nodes: n } = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
+    await settle();
+    const list = () => n.get("signup-policy-list").children.map((li) => li.textContent);
+    assert.deepEqual(list(), POLICIES.lines, "the server's lines");
+    assert.equal(n.get("signup-policies-edit").hidden, false);
+    assert.equal(n.get("signup-policies-edit").disabled, false);
+    assert.equal(n.get("policy-editor").hidden, true);
+
+    n.get("signup-policies-edit").fire("click");
+    assert.equal(n.get("policy-editor").hidden, false);
+    assert.equal(n.get("signup-policy-list").hidden, true, "the menus in the list's place");
+    assert.equal(n.get("signup-policies-edit").hidden, true);
+    const chips = (id) => n.get(id).children.map((c) => [c.textContent, c.attrs["aria-pressed"]]);
+    assert.deepEqual(chips("policy-returns"), [["No returns", "false"], ["14 days", "false"], ["30 days", "true"], ["60 days", "false"]]);
+    assert.deepEqual(chips("policy-handling").map(([w]) => w), ["Same day", "1 day", "2 days", "3 days", "5 days"]);
+    assert.equal(n.get("policy-payer-row").hidden, false);
+    // no returns: who pays for them goes
+    n.get("policy-returns").children[0].fire("click");
+    assert.equal(n.get("policy-payer-row").hidden, true);
+    n.get("policy-service").value = "USPSPriority";
+    n.get("policy-service").fire("change");
+    n.get("policy-best-offer").checked = true;
+    n.get("policy-best-offer").fire("change");
+    n.get("policy-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.policySaves, [{ shipping_service: "USPSPriority", return_days: 0, best_offer: true }], "only what changed");
+    assert.equal(n.get("policy-editor").hidden, true, "back to the list");
+    assert.deepEqual(list(), ["Shipping: USPSPriority", "Returns: not accepted"]);
+
+    // a refusal: its words, the menus stay
+    n.get("signup-policies-edit").fire("click");
+    pc.policyRefuse = "shipping_cost: a flat rate needs a price";
+    n.get("policy-cost-type").children[1].fire("click");
+    assert.equal(n.get("policy-cost-row").hidden, false);
+    n.get("policy-save").fire("click");
+    await settle();
+    assert.equal(n.get("policy-editor").hidden, false);
+    assert.match(n.get("policy-status").textContent, /a flat rate needs a price/);
+
+    // the admin's: set on the server, no Edit; an older server: the fixed lines, no Edit
+    const admin = fakePc({ me: structuredClone(CONNECTED_ME) });
+    admin.address = structuredClone(NEW_ADDRESS);
+    admin.policies = { ...structuredClone(POLICIES), editable: false };
+    const theirs = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: admin.fetch });
+    await settle();
+    assert.equal(theirs.nodes.get("signup-policies-edit").hidden, true);
+    const old = fakePc({ me: structuredClone(CONNECTED_ME) });
+    old.address = structuredClone(NEW_ADDRESS);
+    const older = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: old.fetch });
+    await settle();
+    assert.equal(older.nodes.get("signup-policies-edit").hidden, true);
+    assert.equal(older.nodes.get("signup-policy-list").children.length, 4, "the fixed lines");
+    // before eBay is connected: Edit there, but shut
+    const fresh = fakePc({ me: structuredClone(NEW_ME) });
+    fresh.policies = structuredClone(POLICIES);
+    const first = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: fresh.fetch });
+    await settle();
+    assert.equal(first.nodes.get("signup-policies-edit").disabled, true);
+});
 
 test("an address prefilled from eBay: step 2 asks to confirm it, the boxes filled, what Snap sets up listed, Looks right sends them", async (t) => {
     // Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the policies,

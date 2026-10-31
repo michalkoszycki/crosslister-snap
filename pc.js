@@ -159,7 +159,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.29.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.30.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -643,6 +643,32 @@ export function patchSeller({ pc, ...auth }, body) {
  */
 export function patchAddress({ pc, ...auth }, body) {
     return call(`${pc}/me/address`, auth, { method: "PATCH", json: body });
+}
+
+// The eBay policies Snap sets up (Michal, 2026-10-31, Finish setting up's step 3 and its Edit):
+//   GET    <pc>/me/policies  -> {"editable", "shipping_service", "shipping_services": [{"code", "name"}],
+//                               "shipping_cost_type": "CALCULATED"|"FLAT_RATE", "shipping_cost",
+//                               "handling_days", "handling_choices", "return_days", "return_choices",
+//                               "return_shipping_paid_by": "BUYER"|"SELLER", "local_pickup",
+//                               "best_offer", "lines": [...]}; 404 from an older server
+//   PATCH  <pc>/me/policies  any subset of the choices -> the GET body; 400 {"detail"} names a bad
+//                            one; 403 for the admin's (set in the server's .env)
+
+/**
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, any>>}
+ */
+export function getPolicies({ pc, ...auth }) {
+    return call(`${pc}/me/policies`, auth);
+}
+
+/**
+ * @param {Settings} settings
+ * @param {Record<string, unknown>} body
+ * @returns {Promise<Record<string, any>>}
+ */
+export function patchPolicies({ pc, ...auth }, body) {
+    return call(`${pc}/me/policies`, auth, { method: "PATCH", json: body });
 }
 
 /** A request that answers with no body (a 204, a 202): refused when not ok, nothing otherwise. */

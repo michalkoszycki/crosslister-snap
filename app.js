@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.29.0";
+import { VERSION } from "./version.js?v=2.30.0";
 import {
     adminLink,
     anyActive,
@@ -195,6 +195,10 @@ import {
     SHIP_FROM,
     CONFIRM_SHIP_FROM,
     POLICY_LINES,
+    policyLinesOf,
+    policyChanges,
+    returnsWord,
+    handlingWord,
     addressState,
     deviceLine,
     devicesOf,
@@ -249,8 +253,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.29.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.29.0";
+} from "./core.js?v=2.30.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.0";
 import {
     addVenue,
     applyWrap,
@@ -268,6 +272,7 @@ import {
     ebayConnect,
     endSession,
     getAddress,
+    getPolicies,
     getBook,
     getConditions,
     getDevices,
@@ -286,6 +291,7 @@ import {
     inviteMember,
     leaveAccount,
     patchAddress,
+    patchPolicies,
     patchRow,
     patchSeller,
     patchWrap,
@@ -301,8 +307,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.29.0";
-import { shrinkPhoto } from "./shrink.js?v=2.29.0";
+} from "./pc.js?v=2.30.0";
+import { shrinkPhoto } from "./shrink.js?v=2.30.0";
 import {
     bookCard,
     bookPriceValue,
@@ -315,8 +321,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.29.0";
-import { canScan, readIsbn } from "./scan.js?v=2.29.0";
+} from "./book.js?v=2.30.0";
+import { canScan, readIsbn } from "./scan.js?v=2.30.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -485,6 +491,11 @@ const people = { info: null, devices: null, open: false, busy: false, status: ""
  * @type {Record<string, boolean>}
  */
 let folds = {};
+/**
+ * Finish setting up's step 3 (Michal, 2026-10-31): GET /me/policies' answer (null: none yet, or
+ * an older server's 404, the fixed lines then), whether it was asked, Edit open and its draft.
+ */
+const policies = { info: null, asked: false, editing: false, draft: null, busy: false, status: "" };
 /** A sign-in just made on this phone: Admin's first open lands on Settings, Snap Account open. */
 let freshSignin = false;
 /** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
@@ -5218,6 +5229,130 @@ async function loadMe() {
     }
     renderMe();
     if (!el.admin.hidden) loadInbox().catch(() => {});
+    // a new account's step 3: the policies as the server has them, asked once
+    if (signupStep(me) && !policies.asked) {
+        policies.asked = true;
+        loadPolicies().catch(() => {});
+    }
+}
+
+/** The eBay policies as the server has them (GET /me/policies); none from an older server. */
+async function loadPolicies() {
+    const pc = settings();
+    if (!pc) return;
+    try {
+        policies.info = await getPolicies(pc);
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        policies.info = null;
+    }
+    renderPolicies();
+}
+
+/**
+ * Step 3: the policies as lines (policyLinesOf), Edit under them where the account may change
+ * them (not the admin's: set on the server), once eBay is connected; Edit open, each choice a
+ * menu in the list's place, Save last.
+ */
+function renderPolicies() {
+    const info = policies.info;
+    const connected = signupStep(me) === "address";
+    el.signupPolicyList.replaceChildren(
+        ...policyLinesOf(info).map((line) => {
+            const li = document.createElement("li");
+            li.textContent = line;
+            return li;
+        })
+    );
+    const open = policies.editing && !!info;
+    el.signupPolicyList.hidden = open;
+    el.policyEditor.hidden = !open;
+    el.policiesEdit.hidden = open || !info || info.editable !== true;
+    el.policiesEdit.disabled = !connected || policies.busy;
+    el.policyStatus.textContent = policies.status;
+    if (!open) return;
+    const d = policies.draft;
+    const services = Array.isArray(info.shipping_services) ? info.shipping_services : [];
+    el.policyService.replaceChildren(
+        ...services.map((sv) => {
+            const option = document.createElement("option");
+            option.value = sv.code;
+            option.textContent = sv.name;
+            if (sv.code === d.shipping_service) option.setAttribute("selected", "");
+            return option;
+        })
+    );
+    el.policyService.value = d.shipping_service;
+    choiceRow(el.policyCostType, [["CALCULATED", "Calculated"], ["FLAT_RATE", "Flat rate"]], d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
+    el.policyCostRow.hidden = d.shipping_cost_type !== "FLAT_RATE";
+    if (document.activeElement !== el.policyCost) el.policyCost.value = d.shipping_cost || "";
+    const handling = Array.isArray(info.handling_choices) ? info.handling_choices : [d.handling_days];
+    choiceRow(el.policyHandling, handling.map((n) => [n, handlingWord(n)]), d.handling_days, (v) => (d.handling_days = v));
+    const returns = Array.isArray(info.return_choices) ? info.return_choices : [d.return_days];
+    choiceRow(el.policyReturns, returns.map((n) => [n, returnsWord(n)]), d.return_days, (v) => (d.return_days = v));
+    el.policyPayerRow.hidden = d.return_days === 0;
+    choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
+    el.policyPickup.checked = !!d.local_pickup;
+    el.policyBestOffer.checked = !!d.best_offer;
+    el.policySave.disabled = policies.busy;
+}
+
+/** A row of chips, the chosen one pressed; a tap chooses (`pick`) and draws Edit again. */
+function choiceRow(node, choices, chosen, pick) {
+    node.replaceChildren(
+        ...choices.map(([value, word]) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "chip";
+            chip.textContent = word;
+            chip.setAttribute("aria-pressed", value === chosen ? "true" : "false");
+            chip.addEventListener("click", () => {
+                pick(value);
+                renderPolicies();
+            });
+            return chip;
+        })
+    );
+}
+
+/** Edit tapped: the choices as menus, a draft of them as they are. */
+function editPolicies() {
+    if (!policies.info) return;
+    policies.draft = { ...policies.info };
+    policies.editing = true;
+    policies.status = "";
+    renderPolicies();
+}
+
+/**
+ * Save: only what changed (policyChanges) to PATCH /me/policies; the answer is the list again
+ * (Michal, 2026-10-31: "Save will return it into a small list as is"). Refused, its words under
+ * Save and the menus stay open.
+ */
+async function savePolicies() {
+    const pc = settings();
+    if (!pc || !policies.info || policies.busy) return;
+    const changes = policyChanges(policies.info, policies.draft);
+    if (!Object.keys(changes).length) {
+        policies.editing = false;
+        policies.status = "";
+        renderPolicies();
+        return;
+    }
+    policies.busy = true;
+    policies.status = "saving";
+    renderPolicies();
+    try {
+        policies.info = await patchPolicies(pc, changes);
+        policies.editing = false;
+        policies.status = "";
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        policies.status = e.message;
+    } finally {
+        policies.busy = false;
+        renderPolicies();
+    }
 }
 
 /**
@@ -5250,6 +5385,7 @@ function renderSignup() {
     // step 3 waits with step 2, and is ticked once eBay says the policies are made
     el.signupStepPolicies.classList.toggle("off", !connected);
     el.signupStepPolicies.classList.toggle("done", !!ebay && ebay.policies === "ready");
+    renderPolicies();
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
     // there (ticked; the address card still takes a correction while /me catches up)
     const address = connected ? addressState(seller.info) : "empty";
@@ -7034,6 +7170,20 @@ function main() {
         signupStepAddress: $("signup-step-address"),
         signupStepPolicies: $("signup-step-policies"),
         signupPolicyList: $("signup-policy-list"),
+        policiesEdit: $("signup-policies-edit"),
+        policyEditor: $("policy-editor"),
+        policyService: $("policy-service"),
+        policyCostType: $("policy-cost-type"),
+        policyCostRow: $("policy-cost-row"),
+        policyCost: $("policy-cost"),
+        policyHandling: $("policy-handling"),
+        policyReturns: $("policy-returns"),
+        policyPayerRow: $("policy-payer-row"),
+        policyPayer: $("policy-payer"),
+        policyPickup: $("policy-pickup"),
+        policyBestOffer: $("policy-best-offer"),
+        policySave: $("policy-save"),
+        policyStatus: $("policy-status"),
         signupAddress: $("signup-address"),
         signupAddressWord: $("signup-address-word"),
         signupStatus: $("signup-status"),
@@ -7251,7 +7401,7 @@ function main() {
     renderPosting();
     // what Snap sets up on her eBay, listed under the address boxes and as Finish setting up's
     // step 3 (2026-10-31): fixed, so written once
-    for (const list of [el.sellerPolicyList, el.signupPolicyList]) {
+    for (const list of [el.sellerPolicyList]) {
         list.replaceChildren(
             ...POLICY_LINES.map((line) => {
                 const li = document.createElement("li");
@@ -7397,6 +7547,23 @@ function main() {
         });
     }
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
+    // step 3's Edit, its menus and Save (Michal, 2026-10-31)
+    el.policiesEdit.addEventListener("click", editPolicies);
+    el.policySave.addEventListener("click", () => {
+        savePolicies().catch(() => {});
+    });
+    el.policyService.addEventListener("change", () => {
+        if (policies.draft) policies.draft.shipping_service = el.policyService.value;
+    });
+    el.policyCost.addEventListener("input", () => {
+        if (policies.draft) policies.draft.shipping_cost = el.policyCost.value.trim() || null;
+    });
+    el.policyPickup.addEventListener("change", () => {
+        if (policies.draft) policies.draft.local_pickup = el.policyPickup.checked;
+    });
+    el.policyBestOffer.addEventListener("change", () => {
+        if (policies.draft) policies.draft.best_offer = el.policyBestOffer.checked;
+    });
     el.signupConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});
     });

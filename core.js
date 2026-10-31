@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.29.0";
+import { noteDirty, unsent } from "./queue.js?v=2.30.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.29.0";
+} from "./book.js?v=2.30.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -987,6 +987,52 @@ export const POLICY_LINES = [
     "Local pickup only, for items you mark pickup only",
     "Your ship-from location: the address above",
 ];
+
+/**
+ * Step 3's lines: the server's (GET /me/policies "lines", the choices as they are), else the
+ * fixed ones an older server's defaults make.
+ * @param {{lines?: unknown} | null} info
+ * @returns {string[]}
+ */
+export function policyLinesOf(info) {
+    const lines = info && Array.isArray(info.lines) ? info.lines.filter((l) => typeof l === "string" && l) : [];
+    return lines.length ? lines : POLICY_LINES;
+}
+
+/** The choices Edit changes, as GET/PATCH /me/policies names them. */
+export const POLICY_KEYS = [
+    "shipping_service",
+    "shipping_cost_type",
+    "shipping_cost",
+    "handling_days",
+    "return_days",
+    "return_shipping_paid_by",
+    "local_pickup",
+    "best_offer",
+];
+
+/**
+ * The PATCH body for Edit's Save: only the choices the draft changed.
+ * @param {Record<string, unknown>} info
+ * @param {Record<string, unknown>} draft
+ * @returns {Record<string, unknown>}
+ */
+export function policyChanges(info, draft) {
+    const out = {};
+    for (const key of POLICY_KEYS) if (draft[key] !== info[key]) out[key] = draft[key];
+    return out;
+}
+
+/** A returns chip's word: 0 is none. */
+export function returnsWord(days) {
+    return days === 0 ? "No returns" : `${days} days`;
+}
+
+/** A handling chip's word, in business days. */
+export function handlingWord(days) {
+    if (days === 0) return "Same day";
+    return days === 1 ? "1 day" : `${days} days`;
+}
 
 /**
  * The foldout's line when it opens by itself (eBay is connected and the address is missing),
