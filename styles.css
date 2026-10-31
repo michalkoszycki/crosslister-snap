@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.42.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.42.1") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1191,14 +1191,15 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step .signup-address-line { font-weight: 500; }
 .signup-step .signup-address-line.saved { color: var(--muted); }
 /* step 3's policies in step 2's line's look, one a line, no bullets (Michal, 2026-10-31) */
-.signup-policy-list { list-style: none; margin: -4px 0 8px; padding: 0; font-size: 14px; font-weight: 500; color: var(--muted); }
+.signup-policy-list { list-style: circle; margin: -4px 0 8px; padding: 0 0 0 1.15em; font-size: 14px; font-weight: 500; color: var(--muted); }
 /* step 3's Edit: each choice a menu, in the page's words and chips (Michal, 2026-10-31) */
 .policy-editor { font-size: 15px; font-weight: 500; }
 .policy-editor .field:first-child { margin-top: 0; }
 .policy-part-words { margin: 12px 0 0; color: var(--muted); }
-.big.policies-ok { margin-top: 6px; }
+/* Edit's size, the yellow of the step's go-ahead (Michal, 2026-10-31) */
+.secondary.policies-ok { background: var(--accent); color: var(--accent-ink); }
 /* waiting for the address: plain smoke, as NEXT is before a photo, not a faded yellow */
-.big.policies-ok:disabled { background: var(--card); color: var(--muted); opacity: 1; }
+.secondary.policies-ok:disabled { background: var(--card); color: var(--muted); opacity: 1; }
 .policy-select, .policy-editor input[type="text"].policy-cost { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; font-size: 15px; }
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* a row per service the buyer picks from: its menu, its flat rate, its remove (2026-10-31) */
