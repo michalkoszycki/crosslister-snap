@@ -475,6 +475,11 @@ let folds = {};
 let freshSignin = false;
 /** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
 let settingsOpen = false;
+/**
+ * The venue whose block shows under Venues' chips, one at a time (Michal, 2026-10-31): eBay's
+ * as Admin opens, the chip tapped since.
+ */
+let venueOpen = "ebay";
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -2491,8 +2496,10 @@ function showAdmin(open, card = "") {
     if (open && el.admin.hidden) Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
     adminShown(open);
     if (!open) {
-        // the account card starts folded and quiet on the next visit, Delete account too
+        // the account card starts folded and quiet on the next visit, Delete account too, and
+        // Venues on eBay's block
         Object.assign(account, { packs: false, status: "" });
+        venueOpen = "ebay";
         Object.assign(deleting, { open: false, status: "" });
         quietSeller();
         showPeople(false);
@@ -5132,7 +5139,8 @@ function renderAccount() {
 // symmetry") ----------------------------------------------------------------------------
 
 /**
- * The venue blocks, in /me's order: each its status line (venueBlockLine), its Ships from
+ * The venue chips and the venue blocks, in /me's order, the chosen chip's block alone shown
+ * (venueOpen): each its status line (venueBlockLine), its Ships from
  * line (shipsFromLine), eBay's Connect eBay and "Connect eBay to start posting" while it is
  * not connected, Reconnect once it is (the status line says "Connected as ...", so the green
  * button is the two steps' alone), the other venues' "Ask for it in Feedback" while the
@@ -5142,6 +5150,12 @@ function renderVenues() {
     const ebay = ebayNow();
     const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
     el.venues.replaceChildren(...order.map((v) => el.venueBlocks[v].block));
+    // the venue chips in the same order, the chosen one's block alone under them (Michal, 2026-10-31)
+    el.venueChipRow.replaceChildren(...order.map((v) => el.venueChips[v]));
+    for (const venue of VENUES) {
+        el.venueChips[venue].setAttribute("aria-pressed", venue === venueOpen ? "true" : "false");
+        el.venueBlocks[venue].block.hidden = venue !== venueOpen;
+    }
     for (const venue of VENUES) {
         const block = el.venueBlocks[venue];
         const words = settings() ? venueBlockLine(venue, me, ebay, seller.ready) : "";
@@ -6768,6 +6782,8 @@ function main() {
         accountConnect: $("account-connect"),
         accountReconnect: $("account-reconnect"),
         venues: $("venues"),
+        venueChipRow: $("venue-chips"),
+        venueChips: Object.fromEntries(VENUES.map((v) => [v, $(`venue-chip-${v}`)])),
         venueBlocks: Object.fromEntries(
             VENUES.map((v) => [
                 v,
@@ -7153,6 +7169,13 @@ function main() {
     for (const node of [el.accountConnect, el.accountReconnect]) {
         node.addEventListener("click", () => {
             connectEbay().catch(() => {});
+        });
+    }
+    // a venue chip: that venue's block, one at a time
+    for (const venue of VENUES) {
+        el.venueChips[venue].addEventListener("click", () => {
+            venueOpen = venue;
+            renderVenues();
         });
     }
     // a venue the account lacks: Ask for it in Feedback opens the Feedback fold

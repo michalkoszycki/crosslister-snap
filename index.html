@@ -413,17 +413,26 @@
         </div>
       </div>
 
-      <!-- 2. Venues (Michal, 2026-10-17 and 2026-10-18: "venue symmetry"): one block per venue,
-           the same shape, in /me's order (app.js): its status line, its Ships from line, its
-           actions, its two sync buttons (the sticky sync bar's until 2026-10-25; both always,
-           grey where /me's "syncable" or the account lacks it, Michal 2026-10-26: drawn by
-           app.js), the job's line, and one muted line saying why one is grey -->
+      <!-- 2. Venues (Michal, 2026-10-17 and 2026-10-18: "venue symmetry"): a row of option chips,
+           one per venue in /me's order (app.js), and under it the one venue's block the chosen
+           chip opens, one at a time, eBay's first (Michal, 2026-10-31). A block, the same shape
+           for every venue: its status line, its Ships from line, its actions, its two sync
+           buttons (the one place they live; shown once the venue is connected or signed in,
+           grey where /me's "syncable" lacks a direction: drawn by app.js), the job's line, and
+           one muted line saying why one is grey -->
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
+        <div id="venue-chips" class="chips option-chips venue-chips" role="group" aria-label="Venue">
+          <button type="button" id="venue-chip-ebay" class="chip option" data-value="ebay"
+                  aria-pressed="true" aria-controls="venue-ebay">ebay</button>
+          <button type="button" id="venue-chip-craigslist" class="chip option" data-value="craigslist"
+                  aria-pressed="false" aria-controls="venue-craigslist">craigslist</button>
+          <button type="button" id="venue-chip-poshmark" class="chip option" data-value="poshmark"
+                  aria-pressed="false" aria-controls="venue-poshmark">poshmark</button>
+        </div>
         <div id="venues" class="venue-blocks">
           <div id="venue-ebay" class="card venue-block">
-            <p class="venue-name">ebay</p>
             <p id="account-ebay" class="small venue-line" hidden></p>
             <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
             <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
@@ -435,8 +444,7 @@
             <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-craigslist" class="card venue-block">
-            <p class="venue-name">craigslist</p>
+          <div id="venue-craigslist" class="card venue-block" hidden>
             <p id="venue-craigslist-status" class="small venue-line"></p>
             <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -444,8 +452,7 @@
             <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-poshmark" class="card venue-block">
-            <p class="venue-name">poshmark</p>
+          <div id="venue-poshmark" class="card venue-block" hidden>
             <p id="venue-poshmark-status" class="small venue-line"></p>
             <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -455,9 +462,10 @@
           </div>
         </div>
         <!-- the two halves of the sync symbol, on one 24-unit box so the two read as one circle
-             (Michal, 2026-10-07), copied into an inventory row's sync badge by app.js: to the top arc, left to
-             right, its arrow pointing right; from the bottom arc, right to left, its arrow
-             pointing left -->
+             (Michal, 2026-10-07), the one sync symbol throughout (2026-10-31): copied by app.js
+             after the words of a venue block's Sync from (the from half) and Sync to (the to
+             half), and into an inventory row's sync badge: to the top arc, left to right, its
+             arrow pointing right; from the bottom arc, right to left, its arrow pointing left -->
         <div class="sync-icons" hidden>
           <span id="sync-from-icon" class="btn-icon"><svg
               aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"

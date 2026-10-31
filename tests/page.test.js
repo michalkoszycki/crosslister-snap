@@ -295,11 +295,16 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "accounts",
         "accounts-list",
         "accounts-add",
-        // 2. Venues (Michal, 2026-10-17: "venue symmetry"): one block per venue, the same shape:
+        // 2. Venues (Michal, 2026-10-17: "venue symmetry"): a row of option chips, one per venue,
+        // the chosen one's block under them (2026-10-31); one block per venue, the same shape:
         // its status line, Ships from, its actions, its two sync buttons (drawn by app.js), the
         // job's line and the reason one is grey
         "fold-venues-toggle",
         "fold-venues",
+        "venue-chips",
+        "venue-chip-ebay",
+        "venue-chip-craigslist",
+        "venue-chip-poshmark",
         "venues",
         "venue-ebay",
         "account-ebay",
@@ -10859,4 +10864,39 @@ test("Settings' five folds: closed until one is needed, each remembered on this 
     assert.equal(hers.nodes.get("feedback").hidden, true);
     hers.nodes.get("venue-craigslist-ask").fire("click");
     assert.equal(hers.nodes.get("feedback").hidden, false);
+});
+
+test("Venues: a row of option chips in /me's order; a chip opens that venue's block beneath, one at a time, eBay's first", async (t) => {
+    // Michal, 2026-10-31: the venue pills under Venues are options; tapping one opens its block
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const group = /<div id="venue-chips" class="chips option-chips venue-chips" role="group" aria-label="Venue">([\s\S]*?)<\/div>/.exec(html)[1];
+    const chips = [...group.matchAll(/<button type="button" id="venue-chip-(\w+)" class="chip option" data-value="(\w+)"\s+aria-pressed="(\w+)" aria-controls="venue-\1">([^<]+)</g)];
+    assert.deepEqual(chips.map((m) => [m[1], m[3], m[4]]), [
+        ["ebay", "true", "ebay"],
+        ["craigslist", "false", "craigslist"],
+        ["poshmark", "false", "poshmark"],
+    ]);
+    // the chip names the venue: no name inside its block
+    assert.ok(!/<p class="venue-name">/.test(html), "the chip says it");
+    const pc = fakePc({ me: { ...ACCOUNT_ME, poshmark: true, venues: ["poshmark", "ebay", "craigslist"] } });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openSettings(nodes);
+    nodes.get("fold-venues-toggle").fire("click");
+    const shown = () => ["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden);
+    const pressedChips = () => ["ebay", "craigslist", "poshmark"].filter((v) => nodes.get(`venue-chip-${v}`).attrs["aria-pressed"] === "true");
+    // in /me's order, the chips as the blocks
+    assert.deepEqual(nodes.get("venue-chips").children.map((c) => c.id), ["venue-chip-poshmark", "venue-chip-ebay", "venue-chip-craigslist"]);
+    assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-poshmark", "venue-ebay", "venue-craigslist"]);
+    // eBay's block first, alone
+    assert.deepEqual([shown(), pressedChips()], [["ebay"], ["ebay"]]);
+    nodes.get("venue-chip-craigslist").fire("click");
+    assert.deepEqual([shown(), pressedChips()], [["craigslist"], ["craigslist"]]);
+    nodes.get("venue-chip-craigslist").fire("click");
+    assert.deepEqual(shown(), ["craigslist"], "the chosen chip again keeps it open");
+    nodes.get("venue-chip-poshmark").fire("click");
+    assert.deepEqual([shown(), pressedChips()], [["poshmark"], ["poshmark"]]);
+    // Admin closed and opened again: eBay's again
+    nodes.get("admin-close").fire("click");
+    await openSettings(nodes);
+    assert.deepEqual([shown(), pressedChips()], [["ebay"], ["ebay"]]);
 });
