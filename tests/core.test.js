@@ -183,6 +183,7 @@ import {
     addressLine,
     parseAddressLine,
     connectLabel,
+    stepQuantity,
     policyRowsOf,
     shippingOf,
     policyChanges,
@@ -3695,6 +3696,17 @@ test("step 3's rows and services: names beside lines where the server has them; 
     assert.deepEqual(policyChanges(info, { ...info, shipping_cost_type: "CALCULATED", shipping: [{ service: "USPSParcel", cost: "5.00" }] }), { shipping_cost_type: "CALCULATED" });
 });
 
+test("a Quantity's − and +: one fewer or one more, never under 1, anything odd counted as 1", () => {
+    // Michal, 2026-10-31: "add a minus and plus button ... (obviously cant go lower than 1.)"
+    assert.equal(stepQuantity("2", 1), "3");
+    assert.equal(stepQuantity("2", -1), "1");
+    assert.equal(stepQuantity("1", -1), "1");
+    assert.equal(stepQuantity("0", -1), "1");
+    assert.equal(stepQuantity("two", 1), "2");
+    assert.equal(stepQuantity("", 1), "2");
+    assert.equal(stepQuantity(" 5 ", -1), "4");
+});
+
 test("Connect eBay's word: Connect eBay until it is, then eBay connected on the same button, the user after it when known", () => {
     // Michal, 2026-10-10: "It better just say eBay connected on the same button, lit in green."
     assert.equal(connectLabel(false, ""), "Connect eBay");
@@ -3746,7 +3758,7 @@ test("sign-ups open: the landing says the link makes the account; anything else,
     }
     assert.deepEqual(signinWords(true), {
         button: "Sign in or create an account",
-        what: "We email you a link. New here? The same link creates your account; your first three postings are free.",
+        what: "New here? Create an account",
     });
     assert.deepEqual(signinWords(false), { button: "Sign in", what: "We email you a link. Open it on this phone and you are in." });
 });

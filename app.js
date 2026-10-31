@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.34.0";
+import { VERSION } from "./version.js?v=2.35.0";
 import {
     adminLink,
     anyActive,
@@ -173,6 +173,7 @@ import {
     accountKind,
     creditsLine,
     connectLabel,
+    stepQuantity,
     packLabel,
     returnHash,
     returnLine,
@@ -256,8 +257,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.34.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.34.0";
+} from "./core.js?v=2.35.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.35.0";
 import {
     addVenue,
     applyWrap,
@@ -312,8 +313,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.34.0";
-import { shrinkPhoto } from "./shrink.js?v=2.34.0";
+} from "./pc.js?v=2.35.0";
+import { shrinkPhoto } from "./shrink.js?v=2.35.0";
 import {
     bookCard,
     bookPriceValue,
@@ -326,8 +327,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.34.0";
-import { canScan, readIsbn } from "./scan.js?v=2.34.0";
+} from "./book.js?v=2.35.0";
+import { canScan, readIsbn } from "./scan.js?v=2.35.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2644,7 +2645,15 @@ function showAdmin(open, card = "") {
 }
 
 function toggleAdmin() {
-    showAdmin(el.admin.hidden);
+    const opening = el.admin.hidden;
+    showAdmin(opening);
+    // the dot lit: straight to Feedback, its Reviewed mark seen there (Michal, 2026-10-31)
+    if (opening && me && me.feedbackUnseen > 0) {
+        extras.feedback = true;
+        renderExtras();
+        loadMine().catch(() => {});
+        if (typeof el.feedback.scrollIntoView === "function") el.feedback.scrollIntoView({ block: "start" });
+    }
 }
 
 /**
@@ -4861,7 +4870,8 @@ function renderExtras() {
     fold(el.feedbackToggle, feedbackWord(entries.length, isAdmin), extras.feedback);
     el.feedbackBox.hidden = isAdmin;
     // what they sent, Reviewed beside each the admin marked
-    const sent = mine || [];
+    // oldest first, the newest nearest the box, as a chat reads
+    const sent = (mine || []).slice().reverse();
     el.feedbackMine.hidden = isAdmin || !sent.length;
     el.feedbackMine.replaceChildren(
         ...sent.map((e) => {
@@ -7857,6 +7867,17 @@ function main() {
     }
 
     el.adminToggle.addEventListener("click", toggleAdmin);
+    // each Quantity's − and +: the box changed as if typed (Michal, 2026-10-31)
+    for (const id of ["quantity", "detail-quantity", "posting-quantity", "book-quantity"]) {
+        const box = $(id);
+        for (const [side, by] of /** @type {[string, number][]} */ ([["less", -1], ["more", 1]])) {
+            $(`${id}-${side}`).addEventListener("click", () => {
+                if (box.disabled) return;
+                box.value = stepQuantity(box.value, by);
+                box.dispatchEvent(new Event("input", { bubbles: true }));
+            });
+        }
+    }
     el.settingsToggle.addEventListener("click", toggleSettings);
     el.settingsSave.addEventListener("click", () => {
         saveSettings().catch(() => {});

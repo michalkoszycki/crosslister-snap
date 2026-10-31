@@ -111,7 +111,7 @@ posting".
 The mode chips (goods, book); the install banner (until added; its x puts it away for a day, and from the third close it
 asks "Do not show this again?": Yes, never on this phone; No, a day; Michal 2026-10-31); the offline
 banner; the photos with the AI mark and delete; the User note; the **▸ customize** fold
-(Quantity, Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
+(Quantity, a small box between − and +, never under 1, the same in every Quantity: Michal, 2026-10-31; Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
 asking, Compare with marketplace listings, Fix dark photos for goods); the title and price
 line once drafted, "See in inventory"; **one block per venue, in the same shape**: the
 button, "reset" while paused, the status line (before a press only what customize changed
@@ -257,7 +257,7 @@ saved), and the phone remembers which were left open.
 
 **Inventory.** The fold's heading carries the count once the list is in, "▸ Inventory (99)"
 ("Inventory (200+)" at the limit, the number grey and the word's size; Michal, 2026-10-31); the line under it says only what the
-count cannot ("No listings match.", the newest-200 note, the server's trouble); two round icons at the card's top right (Michal, 2026-10-31: "an icon in the right top corner of the gray area ... the accepted filters icon ... next to it a search icon"), a magnifying glass opening the search box and three sliders opening the filters, each its own menu, pressed while open (earlier **▸ Filters**),
+count cannot ("No listings match.", the newest-200 note, the server's trouble); two round icons at the card's top right (Michal, 2026-10-31: "an icon in the right top corner of the gray area ... the accepted filters icon ... next to it a search icon"), straight on the grey with no background of their own ("should be on gray"), a magnifying glass opening the search box and three sliders opening the filters, each its own menu, yellow while open (earlier **▸ Filters**),
 folded at first (the search box first, then the venue chips, status chips including
 Archived, sort chips, Show photos; no tip under the status chips: a row swiped off while it is live on a
 venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it there?" with
@@ -276,7 +276,7 @@ listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues 
 the listing"). A list row's listed badge still wears the sync-to half while its listing is
 behind and pushes that row when tapped.
 
-**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else the Feedback box and, under it, what they sent, "Reviewed" beside each the admin marked (GET /me/feedback; no replies, no email: Michal, 2026-10-31), a red dot on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"), gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
+**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else, as a chat, what they sent above the Feedback box, oldest first, each in a white card with "Reviewed" in plain black words under the ones the admin marked (GET /me/feedback; no replies, no email: Michal, 2026-10-31: "should look more like a chat"), a white dot with a thin dark edge on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"; "red was too alerty"), the dots tapped while it is lit opening Admin on Feedback itself, the dot gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
 last job", **Send**, "Thanks, sent."
 
 **Stats** (admin only). 7d / 30d / all chips, the table, the note.

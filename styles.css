@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.34.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.35.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -186,11 +186,11 @@ header #admin-toggle { display: inline-flex; align-items: center; justify-conten
 header #admin-toggle > .dots { display: block; }
 /* a Reviewed mark on their feedback not yet seen: a dot on the dots (Michal, 2026-10-31) */
 header #admin-toggle { position: relative; }
-header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
-.feedback-mine { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: 14px; }
-.feedback-mine li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.feedback-mine .mine-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.feedback-mine .mine-reviewed { flex: none; font-size: 12px; font-weight: 700; color: var(--ok); }
+header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px #111; }
+.feedback-mine { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.feedback-mine li { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.feedback-mine .mine-text { padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1.5px solid var(--line); color: var(--ink); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-mine .mine-reviewed { padding: 0 4px; font-size: 13px; font-weight: 700; color: var(--ink); }
 
 .header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
 
@@ -715,7 +715,11 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
 }
 .customize { padding: 2px 14px 14px; margin-bottom: 4px; }
 .customize .field { margin-top: 10px; }
-input[type="text"].quantity { width: 7em; }
+/* Quantity: the small boxes' size, − and + beside it (Michal, 2026-10-31) */
+.qty-step { display: flex; align-items: center; gap: 8px; }
+input[type="text"].quantity { width: 3.6em; min-height: 36px; padding: 5px 8px; font-size: 16px; border-width: 1.5px; text-align: center; }
+.qty-btn { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; background: var(--field); color: var(--ink); font-size: 22px; font-weight: 700; line-height: 1; }
+.qty-step:has(input:disabled) .qty-btn { opacity: 0.45; pointer-events: none; }
 input[type="text"]:disabled { color: var(--muted); }
 /* a checkbox row (Pickup only and every other tick): the box and its words on the smoke grey,
    no outline in any state, the whole row the target (Michal, 2026-10-31: "a style for a
@@ -780,7 +784,7 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
    13 px chips 36 px tall (a thumb's target still, with their padding) */
 /* the inventory card's tools, top right: round icon buttons, the open one pressed (Michal, 2026-10-31) */
 .inv-tools { display: flex; justify-content: flex-end; gap: 6px; margin: 6px 0 2px; }
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: none; border-radius: 999px; background: var(--field); color: var(--ink); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: none; border-radius: 999px; background: none; color: var(--ink); }
 .icon-btn svg { display: block; }
 .icon-btn[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); }
 .search-panel .field { margin: 4px 0; }

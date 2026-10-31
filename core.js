@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.34.0";
+import { noteDirty, unsent } from "./queue.js?v=2.35.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.34.0";
+} from "./book.js?v=2.35.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -259,7 +259,7 @@ export function signinWords(open) {
     return open
         ? {
               button: "Sign in or create an account",
-              what: "We email you a link. New here? The same link creates your account; your first three postings are free.",
+              what: "New here? Create an account",
           }
         : { button: "Sign in", what: "We email you a link. Open it on this phone and you are in." };
 }
@@ -953,6 +953,18 @@ export function venueBlockLine(venue, me, ebay, justReady = false) {
  * @param {string} user
  * @returns {string}
  */
+/**
+ * A Quantity box's − or + (Michal, 2026-10-31): one fewer or one more, never under 1; what is
+ * not a whole number counts as 1.
+ * @param {string} text the box's
+ * @param {number} by -1 or 1
+ * @returns {string}
+ */
+export function stepQuantity(text, by) {
+    const n = /^\s*\d+\s*$/.test(String(text)) ? Number.parseInt(String(text), 10) : 1;
+    return String(Math.max(1, Math.max(1, n) + by));
+}
+
 export function connectLabel(connected, user) {
     if (!connected) return "Connect eBay";
     return user ? `eBay connected: ${user}` : "eBay connected";

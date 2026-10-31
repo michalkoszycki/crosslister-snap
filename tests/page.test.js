@@ -114,7 +114,9 @@ test("the work section reads top to bottom the way Michal asked", () => {
         // Michal, 2026-09-28: "Before the eBay and Craigslist buttons ... a little arrow with the word customize"
         "customize-toggle",
         "customize",
+        "quantity-less",
         "quantity",
+        "quantity-more",
         "pickup-only",
         // Michal, 2026-10-06: "a slider for price preference (3 grade)", its three words and
         // its line; then "a checkbox for post without asking"
@@ -248,7 +250,9 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // app.js after it, a Sync to <venue> per venue listed, each with its reset
         "detail-customize-toggle",
         "detail-customize",
+        "detail-quantity-less",
         "detail-quantity",
+        "detail-quantity-more",
         "detail-pickup-only",
         "detail-pricing",
         "detail-pricing-1",
@@ -331,7 +335,9 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "fold-posting",
         "posting-defaults",
         // as the Snap page's customize (Michal, 2026-10-31)
+        "posting-quantity-less",
         "posting-quantity",
+        "posting-quantity-more",
         "posting-pickup-only",
         "posting-pricing",
         "posting-pricing-1",
@@ -373,11 +379,11 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // an admin's inbox of new feedback, above the box (Michal, 2026-10-08)
         "feedback-inbox",
         "feedback-box",
+        "feedback-mine",
         "feedback-text",
         "feedback-job",
         "feedback-send",
         "feedback-status",
-        "feedback-mine",
         "stats-toggle",
         "stats",
         "stats-since",
@@ -459,7 +465,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     // the People page in the inventory card's shape, its way back at the top
     assert.match(html, /<button type="button" id="people-back" class="link back-link" hidden>← Back to settings<\/button>\s*<div id="people" class="card inventory people" hidden>/);
     // the Posting defaults as the Snap page's customize, Quantity first (Michal, 2026-10-31)
-    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*(<!--[\s\S]*?-->\s*)?<label class="field">\s*<span class="field-label">Quantity<\/span>/);
+    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*(<!--[\s\S]*?-->\s*)?<div class="field">\s*<label class="field-label" for="posting-quantity">Quantity<\/label>/);
     // the header and footer card under Add standard text to posts: Header's box, then its chips
     assert.match(html, /<span class="field-label">Header<\/span>\s*<textarea id="wrap-header-text"[\s\S]*?<\/label>\s*<div id="wrap-header-venues" class="chips option-chips wrap-venues"/);
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
@@ -709,6 +715,10 @@ function fakeElement(id = "", tag = "") {
                 win.fire(type, { target: this, ...event });
             }
             for (const fn of this.listeners[type] || []) fn({ target: this, ...event });
+        },
+        dispatchEvent(event) {
+            this.fire(event.type);
+            return true;
         },
         append(...kids) {
             this.children.push(...kids);
@@ -4960,7 +4970,9 @@ test("the book section is its own, beside the goods one, and reads top to bottom
         "book-flaws",
         "book-customize-toggle",
         "book-customize",
+        "book-quantity-less",
         "book-quantity",
+        "book-quantity-more",
         "book-pickup-only",
         // Michal, 2026-10-06: the price grade slider and post without asking
         "book-pricing",
@@ -5975,6 +5987,15 @@ test("customize, goods: open it, 2 and pickup only, ebay carries both, craigslis
     nodes.get("quantity").fire("input");
     assert.equal(nodes.get("ebay-btn").disabled, false);
     assert.equal(nodes.get("venue-hint").hidden, true);
+    // − and + beside it (Michal, 2026-10-31): one more, one fewer, never under 1
+    nodes.get("quantity-more").fire("click");
+    assert.equal(nodes.get("quantity").value, "3");
+    nodes.get("quantity-less").fire("click");
+    nodes.get("quantity-less").fire("click");
+    nodes.get("quantity-less").fire("click");
+    assert.equal(nodes.get("quantity").value, "1", "never under 1");
+    nodes.get("quantity-more").fire("click");
+    assert.equal(nodes.get("quantity").value, "2");
 
     // pickup only: a quiet word under ebay, before the press, so he sees it took
     nodes.get("pickup-only").checked = true;
@@ -8808,7 +8829,7 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
     nodes.get("landing-signin").fire("click");
     assert.equal(
         nodes.get("signin-what").textContent,
-        "We email you a link. New here? The same link creates your account; your first three postings are free."
+        "New here? Create an account"
     );
     // the link is asked for as ever
     nodes.get("signin-email").value = "anna@example.com";
@@ -9584,7 +9605,7 @@ test("Incoming feedback, for an admin: the new entries, counted in its toggle, n
     assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback (2)");
     assert.equal(nodes.get("feedback-box").hidden, true, "the admin does not send themselves feedback (Michal, 2026-10-31)");
     assert.equal(nodes.get("feedback-inbox").hidden, false);
-    assert.match(html, /<div id="feedback" class="card" hidden>\s*<div id="feedback-inbox" class="feedback-inbox"[^>]*hidden><\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="feedback-box">\s*<label class="field">/);
+    assert.match(html, /<div id="feedback" class="card" hidden>\s*<div id="feedback-inbox" class="feedback-inbox"[^>]*hidden><\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="feedback-box">\s*(<!--[\s\S]*?-->\s*)?<ul id="feedback-mine" class="feedback-mine" hidden><\/ul>\s*<label class="field">/);
     const entries = () => nodes.get("feedback-inbox").children.map((box) => box.children.map((c) => c.textContent));
     const [first, second] = entries();
     // who, when (in the phone's own time), from where; the words; the job's error; Reviewed
@@ -9822,11 +9843,13 @@ test("a sender's Feedback: what they sent, Reviewed beside each marked; a dot on
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await settle();
     assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), true, "the dot on top");
+    // the dot lit: the dots open Admin on Feedback itself (Michal, 2026-10-31)
     nodes.get("admin-toggle").fire("click");
-    nodes.get("feedback-toggle").fire("click");
+    assert.equal(nodes.get("feedback").hidden, false, "Feedback open");
     await settle();
     const lines = nodes.get("feedback-mine").children.map((li) => li.children.map((c) => c.textContent));
-    assert.deepEqual(lines, [["Craigslist stopped again"], ["The lamp price looked low", "Reviewed"]]);
+    // a chat: oldest first, Reviewed under the one marked (Michal, 2026-10-31)
+    assert.deepEqual(lines, [["The lamp price looked low", "Reviewed"], ["Craigslist stopped again"]]);
     assert.equal(nodes.get("feedback-mine").hidden, false);
     assert.equal(pc.seenPosts, 1, "seen once opened");
     assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), false, "the dot gone");

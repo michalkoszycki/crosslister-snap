@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.34.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.34.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.35.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.35.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -374,11 +374,15 @@
         <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
                 aria-controls="detail-customize">▾ customize</button>
         <div id="detail-customize" class="card customize fold">
-          <label class="field">
-            <span class="field-label">Quantity</span>
-            <input id="detail-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+          <div class="field">
+            <label class="field-label" for="detail-quantity">Quantity</label>
+            <span class="qty-step">
+              <button type="button" id="detail-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+              <input id="detail-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                    spellcheck="false" value="1">
-          </label>
+              <button type="button" id="detail-quantity-more" class="qty-btn" aria-label="One more">+</button>
+            </span>
+          </div>
           <label class="pickup">
             <input id="detail-pickup-only" type="checkbox">
             <span>Pickup only, no shipping</span>
@@ -543,11 +547,15 @@
           <!-- the Snap page's customize as it is, field for field, its small print too (Michal,
                2026-10-31: "make this card look like the customize menu on the snap page"); its
                extra, Add standard text to posts, after -->
-          <label class="field">
-            <span class="field-label">Quantity</span>
-            <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+          <div class="field">
+            <label class="field-label" for="posting-quantity">Quantity</label>
+            <span class="qty-step">
+              <button type="button" id="posting-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+              <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                    spellcheck="false" value="1">
-          </label>
+              <button type="button" id="posting-quantity-more" class="qty-btn" aria-label="One more">+</button>
+            </span>
+          </div>
           <label class="pickup">
             <input id="posting-pickup-only" type="checkbox">
             <span>Pickup only, no shipping</span>
@@ -659,6 +667,9 @@
       <div id="feedback-inbox" class="feedback-inbox" aria-label="New feedback" hidden></div>
       <!-- the box, for anyone but the admin, who does not send themselves feedback (2026-10-31) -->
       <div id="feedback-box">
+      <!-- what they sent, oldest first, as a chat: each a white card, Reviewed under it in plain
+           words (Michal, 2026-10-31: "should look more like a chat") -->
+      <ul id="feedback-mine" class="feedback-mine" hidden></ul>
       <label class="field">
         <span class="field-label">Feedback</span>
         <textarea id="feedback-text" rows="4" autocomplete="off" autocapitalize="sentences"
@@ -670,8 +681,6 @@
       </label>
       <button type="button" id="feedback-send" class="secondary">Send</button>
       <p id="feedback-status" class="small" aria-live="polite"></p>
-      <!-- what they sent, Reviewed beside each the admin marked (Michal, 2026-10-31) -->
-      <ul id="feedback-mine" class="feedback-mine" hidden></ul>
       </div>
     </div>
 
@@ -818,11 +827,15 @@
     <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="customize">▸ customize</button>
     <div id="customize" class="card customize" hidden>
-      <label class="field">
-        <span class="field-label">Quantity</span>
-        <input id="quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+      <div class="field">
+        <label class="field-label" for="quantity">Quantity</label>
+        <span class="qty-step">
+          <button type="button" id="quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+          <input id="quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                spellcheck="false" value="1">
-      </label>
+          <button type="button" id="quantity-more" class="qty-btn" aria-label="One more">+</button>
+        </span>
+      </div>
       <label class="pickup">
         <input id="pickup-only" type="checkbox">
         <span>Pickup only, no shipping</span>
@@ -1015,11 +1028,15 @@
     <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="book-customize">▸ customize</button>
     <div id="book-customize" class="card customize" hidden>
-      <label class="field">
-        <span class="field-label">Quantity</span>
-        <input id="book-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+      <div class="field">
+        <label class="field-label" for="book-quantity">Quantity</label>
+        <span class="qty-step">
+          <button type="button" id="book-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+          <input id="book-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                spellcheck="false" value="1">
-      </label>
+          <button type="button" id="book-quantity-more" class="qty-btn" aria-label="One more">+</button>
+        </span>
+      </div>
       <label class="pickup">
         <input id="book-pickup-only" type="checkbox">
         <span>Pickup only, no shipping</span>
@@ -1078,6 +1095,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.34.0"></script>
+<script type="module" src="app.js?v=2.35.0"></script>
 </body>
 </html>

@@ -299,8 +299,8 @@ older server looks exactly as it did.
 - **Sign-up wording.** On a load with no settings and no session (the landing; not one opened
   from a sign-in link), the page asks `GET /auth/signup` of `DEFAULT_SERVER`, with no key and
   no session, once. `{"open": true}` (`signupOf`) has the landing's **Sign in** read **Sign in
-  or create an account** and the sign-in screen say `We email you a link. New here? The same
-  link creates your account; your first three postings are free.` (`signinWords`, written into
+  or create an account** and the sign-in screen say `New here? Create an account` (Michal,
+  2026-10-31; `signinWords`, written into
   `#landing-signin` and `#signin-what`). `false`, a 404 or no answer: the words as they were.
   The link is asked for exactly as before; the server makes the account on the first link.
 - **Address where you ship from** (`SHIP_FROM`; called Seller address before 2.16.0: Michal,
