@@ -189,10 +189,10 @@ saved), and the phone remembers which were left open.
    you, open Settings and sign out all other devices"); removing a member ends their
    sessions, leaving ends your own, deleting the account ends all. Keys stay for the
    admin and scripts only; a family member is a member by email.
-2. **Venues.** First a row of option chips, one per venue (ebay, craigslist, poshmark, in
-   `/me.venues` order); a chip opens that venue's block beneath it, one at a time, eBay's as
-   Admin opens (Michal, 2026-10-31). The chip names the venue; the block, the same shape for
-   every venue: its status line
+2. **Venues.** One white card per venue (ebay, craigslist, poshmark, in `/me.venues` order),
+   all shown, each as tall as the tallest, no chip row (Michal, 2026-10-31: "eliminate the venue
+   buttons at the top. instead provide 3 cards for the venues ... same size with same options").
+   Each card the same shape: the venue's name first, then its status line
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
    start posting"); one muted line "Ships from …" showing the address that venue uses, as
@@ -223,12 +223,11 @@ saved), and the phone remembers which were left open.
    Park", Poshmark a muted line saying it uses none. Ticking it again keeps the eBay address
    as the shared one (it is the one eBay prefilled). The page reads and writes `GET`/`PATCH
    /me/address` (`same`, `shared`, `venues`, `uses`).
-3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). No card, no
-   group labels, one muted line under the fold head: "Changed per posting from the customize
-   menu." (Michal, 2026-10-31). Then **Quantity**, a small box three digits wide, with the
-   **Price** slider to its right filling the line (its three words under it, no line under
-   them); then the options, one line each, no small print: Pickup only, no shipping / Post
-   without asking / Compare with marketplace listings / Fix dark photos, each saved as it
+3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). The Snap page's
+   customize field for field, its words and small print too (Michal, 2026-10-31: "make this card
+   look like the customize menu on the snap page"): **Quantity**; Pickup only, no shipping; the
+   **Price** slider, its three words and its line under them; Post without asking / Compare with
+   marketplace listings / Fix dark photos, each with customize's small print, each saved as it
    changes and kept on this phone for now (the server has no place for them yet, so they do
    not follow to a new phone: rule 6's exception until it does) / **Add standard text to
    posts**. That fifth is the header and footer (`GET`/`PATCH /me/wrap`): unticked, just its

@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.28.9">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.28.9" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.29.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.29.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -446,16 +446,12 @@
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
-        <div id="venue-chips" class="chips option-chips venue-chips" role="group" aria-label="Venue">
-          <button type="button" id="venue-chip-ebay" class="chip option" data-value="ebay"
-                  aria-pressed="true" aria-controls="venue-ebay">ebay</button>
-          <button type="button" id="venue-chip-craigslist" class="chip option" data-value="craigslist"
-                  aria-pressed="false" aria-controls="venue-craigslist">craigslist</button>
-          <button type="button" id="venue-chip-poshmark" class="chip option" data-value="poshmark"
-                  aria-pressed="false" aria-controls="venue-poshmark">poshmark</button>
-        </div>
+        <!-- the venues' cards, one each, the same size and the same parts, its name first
+             (Michal, 2026-10-31: "eliminate the venue buttons at the top. instead provide 3
+             cards for the venues") -->
         <div id="venues" class="venue-blocks">
           <div id="venue-ebay" class="card venue-block">
+            <p class="card-name venue-name">ebay</p>
             <p id="account-ebay" class="small venue-line" hidden></p>
             <p id="venue-ebay-ships" class="small venue-ships" hidden></p>
             <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
@@ -467,7 +463,8 @@
             <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-craigslist" class="card venue-block" hidden>
+          <div id="venue-craigslist" class="card venue-block">
+            <p class="card-name venue-name">craigslist</p>
             <p id="venue-craigslist-status" class="small venue-line"></p>
             <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -475,7 +472,8 @@
             <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
             <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
           </div>
-          <div id="venue-poshmark" class="card venue-block" hidden>
+          <div id="venue-poshmark" class="card venue-block">
+            <p class="card-name venue-name">poshmark</p>
             <p id="venue-poshmark-status" class="small venue-line"></p>
             <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
             <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
@@ -530,39 +528,40 @@
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
         <div id="posting-defaults" class="posting-defaults">
-          <p class="small posting-lead">Changed per posting from the customize menu.</p>
-          <div class="qty-row">
-            <label class="field qty-field">
-              <span class="field-label">Quantity</span>
-              <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
-                     spellcheck="false" maxlength="3" value="1">
-            </label>
-            <div class="field pricing-field">
-              <label class="field-label" for="posting-pricing">Price</label>
-              <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
-                     aria-valuetext="Quick sale">
-              <div class="pricing-words" aria-hidden="true">
-                <span id="posting-pricing-1" class="on">Quick sale</span>
-                <span id="posting-pricing-2">Fair price</span>
-                <span id="posting-pricing-3">Higher end</span>
-              </div>
-            </div>
-          </div>
+          <!-- the Snap page's customize as it is, field for field, its small print too (Michal,
+               2026-10-31: "make this card look like the customize menu on the snap page"); its
+               extra, Add standard text to posts, after -->
+          <label class="field">
+            <span class="field-label">Quantity</span>
+            <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+                   spellcheck="false" value="1">
+          </label>
           <label class="pickup">
             <input id="posting-pickup-only" type="checkbox">
             <span>Pickup only, no shipping</span>
           </label>
+          <div class="field pricing-field">
+            <label class="field-label" for="posting-pricing">Price</label>
+            <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+                   aria-valuetext="Quick sale" aria-describedby="posting-pricing-note">
+            <div class="pricing-words" aria-hidden="true">
+              <span id="posting-pricing-1" class="on">Quick sale</span>
+              <span id="posting-pricing-2">Fair price</span>
+              <span id="posting-pricing-3">Higher end</span>
+            </div>
+            <p id="posting-pricing-note" class="pricing-note">sell what we have this week</p>
+          </div>
           <label class="pickup">
             <input id="posting-auto-post" type="checkbox" checked>
-            <span>Post without asking</span>
+            <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
           </label>
           <label class="pickup">
             <input id="posting-comps" type="checkbox" checked>
-            <span>Compare with marketplace listings</span>
+            <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
           </label>
           <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
-            <span>Fix dark photos</span>
+            <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
           </label>
           <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
                checkbox for footnote/header for all posts"; 2026-10-31: one tick, "Add standard
@@ -991,6 +990,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.28.9"></script>
+<script type="module" src="app.js?v=2.29.0"></script>
 </body>
 </html>

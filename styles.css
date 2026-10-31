@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.28.9") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.29.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1168,7 +1168,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step.done .signup-word::after { content: " ✓"; color: var(--ok); }
 .signup-step.done { color: var(--muted); }
 .signup-step.off { opacity: 0.45; }
-.signup-policy-list { margin: 0; padding-left: 1.2em; font-size: 14px; font-weight: 500; color: var(--muted); line-height: 1.45; }
+/* step 3's policies in step 2's line's look, one a line, no bullets (Michal, 2026-10-31) */
+.signup-policy-list { list-style: none; margin: -4px 0 8px; padding: 0; font-size: 14px; font-weight: 500; color: var(--muted); }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
    say eBay connected on the same button, lit in green"): a listed badge's posted green, done
    with, so not faded as a disabled button is */
@@ -1254,8 +1255,8 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 
 /* The venue blocks under Venues (docs/UI.md, 2026-10-25): one card each, the same shape, the
    chosen venue chip's alone under the chips (Michal, 2026-10-31) */
-.chips.venue-chips { margin: 8px 0 0; }
-.venue-blocks { display: grid; gap: 8px; margin-top: 8px; }
+/* the three cards one size: each row as tall as the tallest (Michal, 2026-10-31) */
+.venue-blocks { display: grid; grid-auto-rows: 1fr; gap: 8px; margin-top: 8px; }
 .venue-block { padding: 12px 14px; }
 .venue-line { margin: 0; }
 .venue-line.ok { color: var(--ok); font-weight: 700; }

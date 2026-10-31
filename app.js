@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.9";
+import { VERSION } from "./version.js?v=2.29.0";
 import {
     adminLink,
     anyActive,
@@ -249,8 +249,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.9";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.9";
+} from "./core.js?v=2.29.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.29.0";
 import {
     addVenue,
     applyWrap,
@@ -301,8 +301,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.9";
-import { shrinkPhoto } from "./shrink.js?v=2.28.9";
+} from "./pc.js?v=2.29.0";
+import { shrinkPhoto } from "./shrink.js?v=2.29.0";
 import {
     bookCard,
     bookPriceValue,
@@ -315,8 +315,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.9";
-import { canScan, readIsbn } from "./scan.js?v=2.28.9";
+} from "./book.js?v=2.29.0";
+import { canScan, readIsbn } from "./scan.js?v=2.29.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -489,11 +489,6 @@ let folds = {};
 let freshSignin = false;
 /** Settings unfolded (its toggle's state, kept while a page of its own covers it). */
 let settingsOpen = false;
-/**
- * The venue whose block shows under Venues' chips, one at a time (Michal, 2026-10-31): eBay's
- * as Admin opens, the chip tapped since.
- */
-let venueOpen = "ebay";
 
 /** The way in, while there are no settings: "" the landing, "signin" the sign-in screen. */
 let entry = "";
@@ -1456,6 +1451,7 @@ function renderPosting() {
     el.postingPricing.value = String(grade.grade);
     el.postingPricing.setAttribute("aria-valuetext", grade.word);
     PRICING.forEach((p, i) => el.postingPricingWords[i].classList.toggle("on", p.grade === grade.grade));
+    el.postingPricingNote.textContent = grade.note;
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
     el.postingFixDark.checked = savedFixDark();
@@ -2566,7 +2562,6 @@ function showAdmin(open, card = "") {
         // the account card starts folded and quiet on the next visit, Delete account too, and
         // Venues on eBay's block
         Object.assign(account, { packs: false, status: "" });
-        venueOpen = "ebay";
         Object.assign(deleting, { open: false, status: "" });
         quietSeller();
         showPeople(false);
@@ -5349,8 +5344,8 @@ function renderAccount() {
 // symmetry") ----------------------------------------------------------------------------
 
 /**
- * The venue chips and the venue blocks, in /me's order, the chosen chip's block alone shown
- * (venueOpen): each its status line (venueBlockLine), its Ships from
+ * The venues' cards, in /me's order, all shown, the same size (Michal, 2026-10-31): each its
+ * name, its status line (venueBlockLine), its Ships from
  * line (shipsFromLine), eBay's Connect eBay and "Connect eBay to start posting" while it is
  * not connected, Reconnect once it is (the status line says "Connected as ...", so the green
  * button is the two steps' alone), the other venues' "Ask for it in Feedback" while the
@@ -5360,12 +5355,6 @@ function renderVenues() {
     const ebay = ebayNow();
     const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
     el.venues.replaceChildren(...order.map((v) => el.venueBlocks[v].block));
-    // the venue chips in the same order, the chosen one's block alone under them (Michal, 2026-10-31)
-    el.venueChipRow.replaceChildren(...order.map((v) => el.venueChips[v]));
-    for (const venue of VENUES) {
-        el.venueChips[venue].setAttribute("aria-pressed", venue === venueOpen ? "true" : "false");
-        el.venueBlocks[venue].block.hidden = venue !== venueOpen;
-    }
     for (const venue of VENUES) {
         const block = el.venueBlocks[venue];
         const words = settings() ? venueBlockLine(venue, me, ebay, seller.ready) : "";
@@ -6266,8 +6255,11 @@ function cameBack(back) {
     }
     loadMe()
         .then(() => {
-            if (signupStep(me)) render();
-            else openAccount(false);
+            if (signupStep(me)) {
+                // step 1's green button says it: the line only for what it cannot (a failure)
+                if (back.value === "connected") account.status = "";
+                render();
+            } else openAccount(false);
         })
         .catch(() => openAccount(false));
 }
@@ -6989,8 +6981,6 @@ function main() {
         accountConnect: $("account-connect"),
         accountReconnect: $("account-reconnect"),
         venues: $("venues"),
-        venueChipRow: $("venue-chips"),
-        venueChips: Object.fromEntries(VENUES.map((v) => [v, $(`venue-chip-${v}`)])),
         venueBlocks: Object.fromEntries(
             VENUES.map((v) => [
                 v,
@@ -7011,6 +7001,7 @@ function main() {
         postingPickupOnly: $("posting-pickup-only"),
         postingPricing: $("posting-pricing"),
         postingPricingWords: PRICING.map(({ grade }) => $(`posting-pricing-${grade}`)),
+        postingPricingNote: $("posting-pricing-note"),
         postingAutoPost: $("posting-auto-post"),
         postingComps: $("posting-comps"),
         postingFixDark: $("posting-fix-dark"),
@@ -7358,13 +7349,6 @@ function main() {
     for (const node of [el.accountConnect, el.accountReconnect]) {
         node.addEventListener("click", () => {
             connectEbay().catch(() => {});
-        });
-    }
-    // a venue chip: that venue's block, one at a time
-    for (const venue of VENUES) {
-        el.venueChips[venue].addEventListener("click", () => {
-            venueOpen = venue;
-            renderVenues();
         });
     }
     // a venue the account lacks: Ask for it in Feedback opens the Feedback fold

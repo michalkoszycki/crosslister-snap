@@ -314,10 +314,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // job's line and the reason one is grey
         "fold-venues-toggle",
         "fold-venues",
-        "venue-chips",
-        "venue-chip-ebay",
-        "venue-chip-craigslist",
-        "venue-chip-poshmark",
         "venues",
         "venue-ebay",
         "account-ebay",
@@ -358,12 +354,14 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "fold-posting-toggle",
         "fold-posting",
         "posting-defaults",
+        // as the Snap page's customize (Michal, 2026-10-31)
         "posting-quantity",
+        "posting-pickup-only",
         "posting-pricing",
         "posting-pricing-1",
         "posting-pricing-2",
         "posting-pricing-3",
-        "posting-pickup-only",
+        "posting-pricing-note",
         "posting-auto-post",
         "posting-comps",
         "posting-fix-dark",
@@ -443,8 +441,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<div class="account-foot">\s*<button type="button" id="settings-delete"[^>]*>Delete account<\/button>\s*<button type="button" id="account-leave"[^>]*>Leave this account<\/button>\s*<button type="button" id="settings-signout"[^>]*>Sign out<\/button>/);
     // the People page in the inventory card's shape, its way back at the top
     assert.match(html, /<button type="button" id="people-back" class="link back-link" hidden>← Back to settings<\/button>\s*<div id="people" class="card inventory people" hidden>/);
-    // the Posting defaults' one muted line, word for word (Michal, 2026-10-31), no card, no group labels
-    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*<p class="small posting-lead">Changed per posting from the customize menu\.<\/p>\s*<div class="qty-row">/);
+    // the Posting defaults as the Snap page's customize, Quantity first (Michal, 2026-10-31)
+    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*(<!--[\s\S]*?-->\s*)?<label class="field">\s*<span class="field-label">Quantity<\/span>/);
     // the header and footer card under Add standard text to posts: Header's box, then its chips
     assert.match(html, /<span class="field-label">Header<\/span>\s*<textarea id="wrap-header-text"[\s\S]*?<\/label>\s*<div id="wrap-header-venues" class="chips option-chips wrap-venues"/);
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
@@ -8066,7 +8064,8 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     // each change kept at once, "saved" said for a moment
     nodes.get("posting-pricing").value = "2";
     nodes.get("posting-pricing").fire("input");
-    assert.ok(!nodes.has("posting-pricing-note"), "no line under the slider: less is more (Michal, 2026-10-31)");
+    // the slider's line under it, as the Snap page's customize says it (Michal, 2026-10-31)
+    assert.equal(nodes.get("posting-pricing-note").textContent, "a fair price, a longer wait");
     assert.equal(nodes.get("posting-pricing").attrs["aria-valuetext"], "Fair price");
     assert.equal(nodes.get("posting-status").textContent, "saved");
     t.mock.timers.tick(2500);
@@ -9626,7 +9625,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.equal(pc.mes, 2, "asked again, once");
     assert.equal(n.get("admin").hidden, true);
     assert.deepEqual(shown(n), ["signup-steps"]);
-    assert.equal(n.get("signup-status").textContent, "eBay connected");
+    assert.equal(n.get("signup-status").textContent, "", "the green button says it (2026-10-31)");
     // step 1's button says eBay connected, in the posted green and done with (Michal,
     // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
     // heading without a tick since the button says it; step 2 open, step 3 spelled out
@@ -9959,7 +9958,7 @@ test("Fix dark photos: a dark photo is brightened before it goes and its lit bad
     };
     const onPc = () => pc.items.get(unnamedId(1)).photos;
     assert.match(html, /<input id="fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<small>/);
-    assert.match(html, /<input id="posting-fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<\/span>/);
+    assert.match(html, /<input id="posting-fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<small>/);
     assert.equal(nodes.get("fix-dark").checked, true, "on by default");
     try {
         picture = DARK;
@@ -10085,42 +10084,40 @@ async function openPosting(nodes) {
 const SAVE_OFF = ["Save for upcoming postings (off)", "Apply to existing postings (off)"];
 const SAVE_ON = ["Save for upcoming postings", "Apply to existing postings"];
 
-test("Posting defaults: one muted line, Quantity beside the slider, five options one line each, the fifth Add standard text to posts with its card", () => {
-    // Michal, 2026-10-31: "Changed per posting from the customize menu." and no other explanation
+test("Posting defaults: the Snap page's customize field for field, its small print too; Add standard text to posts and its card after", () => {
+    // Michal, 2026-10-31: "make this card look like the customize menu on the snap page. tho this
+    // card has some extra options"
     const fold = /<div id="fold-posting" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-server-toggle"/.exec(html)[1];
     const words = fold.replace(/<!--[\s\S]*?-->/g, "");
-    assert.ok(!/<small>/.test(words), "no small print");
-    assert.ok(!/glabel|Header and footer on every listing/.test(words), "no group labels");
-    // Quantity, a small box three digits wide, the Price slider to its right filling the line
-    assert.match(fold, /<div class="qty-row">\s*<label class="field qty-field">\s*<span class="field-label">Quantity<\/span>\s*<input id="posting-quantity" class="quantity"[^>]*maxlength="3"[^>]*>\s*<\/label>\s*<div class="field pricing-field">/);
+    const custom = /<div id="customize" class="card customize" hidden>([\s\S]*?)\n    <\/div>/.exec(html.replaceAll("\r\n", "\n"))[1].replace(/<!--[\s\S]*?-->/g, "");
+    // the same fields in the same order with the same words, the ids posting-'s
+    const shape = (part, prefix) =>
+        [...part.matchAll(/<(label|div|p|span|input)\b[^>]*?(?:id="([\w-]+)")?[^>]*>([^<]*)/g)]
+            .map((m) => [m[1], (m[2] || "").replace(prefix, ""), m[3].trim()])
+            .filter(([, id, text]) => id || text);
+    const posting = shape(words, /^posting-/);
+    const customize = shape(custom, /^/);
+    assert.deepEqual(posting.slice(0, customize.length), customize);
+    assert.ok(!/posting-lead|qty-row/.test(words), "no line of its own, no Quantity beside the slider");
+    // its extra after them
+    const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)/g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-fix-dark", "wrap-on"]);
     const css = readFileSync(join(root, "styles.css"), "utf8");
-    assert.match(css, /\.qty-row \{ display: flex;/);
-    assert.match(css, /\.qty-row \.pricing-field \{ flex: 1 1 auto; min-width: 0; \}/);
-    assert.match(css, /\.qty-row input\[type="text"\]\.quantity \{ width: 3\.4em;/);
-    // the options, one line each, in this order
-    const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)<\/span>\s*<\/label>/g)].map((m) => [m[1], m[2]]);
-    assert.deepEqual(options, [
-        ["posting-pickup-only", "Pickup only, no shipping"],
-        ["posting-auto-post", "Post without asking"],
-        ["posting-comps", "Compare with marketplace listings"],
-        ["posting-fix-dark", "Fix dark photos"],
-        ["wrap-on", "Add standard text to posts"],
-    ]);
-    // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
-    // then the two press-me pills on their own lines, dimmed at first
-    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<p id="posting-status"/.exec(fold)[1];
-    assert.ok(!/type="checkbox"/.test(card), "no checkbox on Header or Footer");
-    for (const [part, word, where] of [
-        ["header", "Header", "above"],
-        ["footer", "Footer", "below"],
-    ]) {
-        assert.match(card, new RegExp(`<label class="field wrap-field">\\s*<span class="field-label">${word}</span>\\s*<textarea id="wrap-${part}-text" class="wrap-text" rows="3" maxlength="2000"\\s+placeholder="Text added ${where} the description"></textarea>\\s*</label>\\s*<div id="wrap-${part}-venues" class="chips option-chips wrap-venues" role="group" aria-label="${word}: venues"></div>`));
-    }
-    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings<\/button>\s*<button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings<\/button>/);
-    assert.ok(!/wrap-count|\/ 2000/.test(card), "no counter: less is more");
-    assert.match(css, /\.pill\.wrap-button \{ display: flex; width: 100%; margin-top: 12px; \}/, "each on a line of its own");
-});
-
+    // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
+    // then the two press-me pills on their own lines, dimmed at first
+    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<p id="posting-status"/.exec(fold)[1];
+    assert.ok(!/type="checkbox"/.test(card), "no checkbox on Header or Footer");
+    for (const [part, word, where] of [
+        ["header", "Header", "above"],
+        ["footer", "Footer", "below"],
+    ]) {
+        assert.match(card, new RegExp(`<label class="field wrap-field">\\s*<span class="field-label">${word}</span>\\s*<textarea id="wrap-${part}-text" class="wrap-text" rows="3" maxlength="2000"\\s+placeholder="Text added ${where} the description"></textarea>\\s*</label>\\s*<div id="wrap-${part}-venues" class="chips option-chips wrap-venues" role="group" aria-label="${word}: venues"></div>`));
+    }
+    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings<\/button>\s*<button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings<\/button>/);
+    assert.ok(!/wrap-count|\/ 2000/.test(card), "no counter: less is more");
+    assert.match(css, /\.pill\.wrap-button \{ display: flex; width: 100%; margin-top: 12px; \}/, "each on a line of its own");
+});
+
 test("Add standard text to posts: unticked just its line; ticked the card; the buttons wake on a change and dim after a press; a blank box means none; unticked, both off with the texts kept", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
@@ -11028,37 +11025,21 @@ test("Settings' five parts: a grey card with a row of chips, the pressed one's p
     assert.equal(hers.nodes.get("feedback").hidden, false);
 });
 
-test("Venues: a row of option chips in /me's order; a chip opens that venue's block beneath, one at a time, eBay's first", async (t) => {
-    // Michal, 2026-10-31: the venue pills under Venues are options; tapping one opens its block
+test("Venues: three cards in /me's order, all shown, one size, each its name, no chip row", async (t) => {
+    // Michal, 2026-10-31: "eliminate the venue buttons at the top. instead provide 3 cards for the
+    // venues. 3 white area cards as you have now. they should all be same size with same options."
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const group = /<div id="venue-chips" class="chips option-chips venue-chips" role="group" aria-label="Venue">([\s\S]*?)<\/div>/.exec(html)[1];
-    const chips = [...group.matchAll(/<button type="button" id="venue-chip-(\w+)" class="chip option" data-value="(\w+)"\s+aria-pressed="(\w+)" aria-controls="venue-\1">([^<]+)</g)];
-    assert.deepEqual(chips.map((m) => [m[1], m[3], m[4]]), [
-        ["ebay", "true", "ebay"],
-        ["craigslist", "false", "craigslist"],
-        ["poshmark", "false", "poshmark"],
-    ]);
-    // the chip names the venue: no name inside its block
-    assert.ok(!/<p class="venue-name">/.test(html), "the chip says it");
+    assert.ok(!html.includes("venue-chips"), "no chip row");
+    for (const v of ["ebay", "craigslist", "poshmark"]) {
+        assert.match(html, new RegExp(`<div id="venue-${v}" class="card venue-block">\\s*<p class="card-name venue-name">${v}</p>`));
+    }
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.venue-blocks \{ display: grid; grid-auto-rows: 1fr;/, "each as tall as the tallest");
     const pc = fakePc({ me: { ...ACCOUNT_ME, poshmark: true, venues: ["poshmark", "ebay", "craigslist"] } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
-    nodes.get("fold-venues-toggle").fire("click");
-    const shown = () => ["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden);
-    const pressedChips = () => ["ebay", "craigslist", "poshmark"].filter((v) => nodes.get(`venue-chip-${v}`).attrs["aria-pressed"] === "true");
-    // in /me's order, the chips as the blocks
-    assert.deepEqual(nodes.get("venue-chips").children.map((c) => c.id), ["venue-chip-poshmark", "venue-chip-ebay", "venue-chip-craigslist"]);
+    nodes.get("settings-tab-venues").fire("click");
     assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-poshmark", "venue-ebay", "venue-craigslist"]);
-    // eBay's block first, alone
-    assert.deepEqual([shown(), pressedChips()], [["ebay"], ["ebay"]]);
-    nodes.get("venue-chip-craigslist").fire("click");
-    assert.deepEqual([shown(), pressedChips()], [["craigslist"], ["craigslist"]]);
-    nodes.get("venue-chip-craigslist").fire("click");
-    assert.deepEqual(shown(), ["craigslist"], "the chosen chip again keeps it open");
-    nodes.get("venue-chip-poshmark").fire("click");
-    assert.deepEqual([shown(), pressedChips()], [["poshmark"], ["poshmark"]]);
-    // Admin closed and opened again: eBay's again
-    nodes.get("admin-toggle").fire("click");
-    await openSettings(nodes);
-    assert.deepEqual([shown(), pressedChips()], [["ebay"], ["ebay"]]);
+    assert.deepEqual(["ebay", "craigslist", "poshmark"].filter((v) => !nodes.get(`venue-${v}`).hidden), ["ebay", "craigslist", "poshmark"]);
 });
+
