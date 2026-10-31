@@ -218,6 +218,7 @@ import {
     feedbackBody,
     feedbackScreen,
     INSTALL_SNOOZE_MS,
+    installDismissal,
     installState,
     installSteps,
     isIosDevice,
@@ -3922,7 +3923,7 @@ test("a press refused for want of postings (402) is marked so; any other refusal
     assert.equal(errorText(402, detail), detail);
 });
 
-test("the install nudge: none from the home screen, a week's rest when dismissed, the prompt or the two taps", () => {
+test("the install nudge: none from the home screen, a day's rest when dismissed, the prompt or the two taps", () => {
     const now = Date.parse("2026-10-08T12:00:00Z");
     const base = { standalone: false, hasPrompt: false, isIos: false, dismissedAt: "", now };
     assert.equal(installState({ ...base, standalone: true, hasPrompt: true }), "hidden");
@@ -3930,9 +3931,16 @@ test("the install nudge: none from the home screen, a week's rest when dismissed
     assert.equal(installState({ ...base, hasPrompt: true }), "prompt", "Chrome offered: its own prompt");
     assert.equal(installState({ ...base, hasPrompt: true, isIos: true }), "steps", "an iPhone is told the taps");
     const daysAgo = (d) => new Date(now - d * 24 * 60 * 60 * 1000).toISOString();
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(3) }), "hidden");
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(6.9) }), "hidden");
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(7) }), "steps", "a week on, back");
+    // a day's rest (Michal, 2026-10-31: "it should stay hidden for at least a day")
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.5) }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.99) }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(1) }), "steps", "a day on, back");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(30), never: true }), "hidden", "Do not show again: never");
+    // what the phone keeps: an older phone's plain date is one close
+    assert.deepEqual(installDismissal(""), { dismissedAt: "", count: 0, never: false });
+    assert.deepEqual(installDismissal(daysAgo(2)), { dismissedAt: daysAgo(2), count: 1, never: false });
+    assert.deepEqual(installDismissal(JSON.stringify({ at: daysAgo(2), count: 3, never: true })), { dismissedAt: daysAgo(2), count: 3, never: true });
+    assert.deepEqual(installDismissal("{broken"), { dismissedAt: "", count: 0, never: false });
     assert.equal(installState({ ...base, dismissedAt: "not a date" }), "steps");
     // Michal, 2026-10-08: no install nudge at all on a desktop browser
     assert.equal(installState({ ...base, desktop: true }), "hidden");
@@ -3944,7 +3952,7 @@ test("the install nudge: none from the home screen, a week's rest when dismissed
     assert.equal(isDesktopBrowser({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 }), false, "an iPad");
     assert.equal(isDesktopBrowser({}), false, "a browser that does not say");
     assert.equal(isDesktopBrowser(), false);
-    assert.equal(INSTALL_SNOOZE_MS, 7 * 24 * 60 * 60 * 1000);
+    assert.equal(INSTALL_SNOOZE_MS, 24 * 60 * 60 * 1000);
     assert.equal(installSteps(true), "Tap Share, then Add to Home Screen.");
     assert.equal(installSteps(false), "Open the browser menu, then Add to Home screen (or Install app).");
     assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" }), true);

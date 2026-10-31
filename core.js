@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.28.5";
+import { noteDirty, unsent } from "./queue.js?v=2.28.6";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.28.5";
+} from "./book.js?v=2.28.6";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1519,7 +1519,32 @@ export function booksAllowed(me) {
 export const BOOKS_ASK = "I would like to list books.";
 
 /** A dismissed home-screen banner stays away this long. */
-export const INSTALL_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+export const INSTALL_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+/** From this close of the banner on, its x asks whether to show it ever again. */
+export const INSTALL_ASK_AT = 3;
+
+/**
+ * The banner's closes as this phone keeps them: when it was last put away, how many times,
+ * and whether "Do not show again" was answered yes. An older phone's plain date is one close.
+ * @param {unknown} text the stored value
+ * @returns {{dismissedAt:string, count:number, never:boolean}}
+ */
+export function installDismissal(text) {
+    const none = { dismissedAt: "", count: 0, never: false };
+    if (typeof text !== "string" || !text) return none;
+    if (!text.startsWith("{")) return { dismissedAt: text, count: 1, never: false };
+    try {
+        const d = JSON.parse(text);
+        return {
+            dismissedAt: typeof d.at === "string" ? d.at : "",
+            count: Number.isInteger(d.count) && d.count > 0 ? d.count : 0,
+            never: d.never === true,
+        };
+    } catch {
+        return none;
+    }
+}
 
 /** The banner's words on the goods screen. */
 export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen app";
@@ -1535,8 +1560,8 @@ export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen 
  * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, desktop?:boolean, dismissedAt?:unknown, now:number}} o
  * @returns {"hidden"|"prompt"|"steps"}
  */
-export function installState({ standalone, hasPrompt, isIos, desktop = false, dismissedAt = "", now }) {
-    if (standalone || desktop) return "hidden";
+export function installState({ standalone, hasPrompt, isIos, desktop = false, dismissedAt = "", never = false, now }) {
+    if (standalone || desktop || never) return "hidden";
     const at = typeof dismissedAt === "string" && dismissedAt ? Date.parse(dismissedAt) : NaN;
     if (Number.isFinite(at) && now - at < INSTALL_SNOOZE_MS) return "hidden";
     // Safari never offers the prompt: an iPhone is always told the two taps

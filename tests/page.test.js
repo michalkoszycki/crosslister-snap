@@ -7400,9 +7400,13 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "signup-address",
         "signup-status",
         "install-banner",
+        "install-words",
         "install-add",
         "install-dismiss",
         "install-steps",
+        "install-ask",
+        "install-never",
+        "install-later",
     ]);
     const landing = /<section id="landing"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
     assert.match(
@@ -7424,7 +7428,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     assert.match(html, /<span class="field-label">Got the mail\? Enter the six-digit code from it<\/span>\s*<input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"/);
     assert.match(html, /id="signin-code-send"[^>]*>Sign in with the code</);
     assert.match(html, /<p id="signin-note" class="signin-note" hidden><\/p>/);
-    assert.match(html, /<p class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
+    assert.match(html, /<p id="install-words" class="install-words">Add Snap to your home screen for the full-screen app<\/p>/);
     // Sign out of the current account, whichever way it came in (2.23.0; "Forget this server" before)
     assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Sign out</);
 });
@@ -7504,14 +7508,38 @@ test("the home screen: a banner over the posting screens, away a week once dismi
     // the x: away, and the day it was put away remembered
     nodes.get("install-dismiss").fire("click");
     assert.equal(nodes.get("install-banner").hidden, true);
-    const at = Date.parse(local.getItem("snap.install.dismissed"));
-    assert.ok(Math.abs(Date.now() - at) < 5000, "today");
+    const kept = JSON.parse(local.getItem("snap.install.dismissed"));
+    assert.ok(Math.abs(Date.now() - Date.parse(kept.at)) < 5000, "today");
+    assert.deepEqual([kept.count, kept.never], [1, false]);
 
     const ago = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const within = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(3) }), fetchImpl: fakePc().fetch });
-    assert.equal(within.nodes.get("install-banner").hidden, true, "three days on: still away");
-    const later = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(8) }), fetchImpl: fakePc().fetch });
-    assert.equal(later.nodes.get("install-banner").hidden, false, "a week on: back");
+    const within = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(0.5) }), fetchImpl: fakePc().fetch });
+    assert.equal(within.nodes.get("install-banner").hidden, true, "half a day on: still away");
+    const later = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": ago(1.1) }), fetchImpl: fakePc().fetch });
+    assert.equal(later.nodes.get("install-banner").hidden, false, "a day on: back");
+
+    // the third close asks (Michal, 2026-10-31): No puts it away for a day, Yes for good
+    const twice = JSON.stringify({ at: ago(2), count: 2, never: false });
+    const thirdStore = memoryStore({ ...GOOD, "snap.install.dismissed": twice });
+    const third = await loadPage({ local: thirdStore, fetchImpl: fakePc().fetch });
+    assert.equal(third.nodes.get("install-banner").hidden, false);
+    third.nodes.get("install-dismiss").fire("click");
+    assert.equal(third.nodes.get("install-banner").hidden, false, "it asks first");
+    assert.equal(third.nodes.get("install-ask").hidden, false);
+    assert.equal(third.nodes.get("install-add").hidden, true);
+    third.nodes.get("install-later").fire("click");
+    assert.equal(third.nodes.get("install-banner").hidden, true);
+    assert.deepEqual(JSON.parse(thirdStore.getItem("snap.install.dismissed")).never, false);
+    const fourthStore = memoryStore({ ...GOOD, "snap.install.dismissed": twice });
+    const fourth = await loadPage({ local: fourthStore, fetchImpl: fakePc().fetch });
+    fourth.nodes.get("install-dismiss").fire("click");
+    fourth.nodes.get("install-never").fire("click");
+    assert.equal(fourth.nodes.get("install-banner").hidden, true);
+    const gone = JSON.parse(fourthStore.getItem("snap.install.dismissed"));
+    assert.deepEqual([gone.count, gone.never], [3, true]);
+    const months = JSON.stringify({ at: ago(90), count: 3, never: true });
+    const never = await loadPage({ local: memoryStore({ ...GOOD, "snap.install.dismissed": months }), fetchImpl: fakePc().fetch });
+    assert.equal(never.nodes.get("install-banner").hidden, true, "never again");
 
     // Chrome offers to install: the event kept, and Add asks with Chrome's own prompt, once
     const offer = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.5";
+import { VERSION } from "./version.js?v=2.28.6";
 import {
     adminLink,
     anyActive,
@@ -213,6 +213,8 @@ import {
     wrapApplyVenues,
     installState,
     installSteps,
+    installDismissal,
+    INSTALL_ASK_AT,
     isDesktopBrowser,
     isIosDevice,
     FEEDBACK_SENT,
@@ -247,8 +249,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.5";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.5";
+} from "./core.js?v=2.28.6";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.6";
 import {
     addVenue,
     applyWrap,
@@ -299,8 +301,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.5";
-import { shrinkPhoto } from "./shrink.js?v=2.28.5";
+} from "./pc.js?v=2.28.6";
+import { shrinkPhoto } from "./shrink.js?v=2.28.6";
 import {
     bookCard,
     bookPriceValue,
@@ -313,8 +315,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.5";
-import { canScan, readIsbn } from "./scan.js?v=2.28.5";
+} from "./book.js?v=2.28.6";
+import { canScan, readIsbn } from "./scan.js?v=2.28.6";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -6454,8 +6456,12 @@ function renderInstall(away) {
     el.landingInstall.setAttribute("aria-expanded", stepsOpen.landing ? "true" : "false");
     el.landingInstallSteps.textContent = steps;
     el.landingInstallSteps.hidden = onLanding !== "steps" || !stepsOpen.landing;
-    const banner = installState({ ...base, dismissedAt: readText("localStorage", INSTALL_KEY) });
+    const kept = installDismissal(readText("localStorage", INSTALL_KEY));
+    const banner = installAsking ? "asking" : installState({ ...base, dismissedAt: kept.dismissedAt, never: kept.never });
     el.installBanner.hidden = away || banner === "hidden";
+    // the question in the banner's place while it asks
+    for (const node of [el.installWords, el.installAdd, el.installDismiss]) node.hidden = installAsking;
+    el.installAsk.hidden = !installAsking;
     el.installAdd.setAttribute("aria-expanded", stepsOpen.banner ? "true" : "false");
     el.installSteps.textContent = steps;
     el.installSteps.hidden = banner !== "steps" || !stepsOpen.banner;
@@ -6489,9 +6495,28 @@ async function onInstall(where) {
     render();
 }
 
-/** The banner's x: away for a week (INSTALL_SNOOZE_MS), counted from now. */
+/** The banner's third close and on: it asks "Do not show this again?" in its own place. */
+let installAsking = false;
+
+/**
+ * The banner's x: away for a day (INSTALL_SNOOZE_MS), counted from now; from the third
+ * close (INSTALL_ASK_AT) it first asks whether to show it again at all (Michal, 2026-10-31).
+ */
 function dismissInstall() {
-    writeText("localStorage", INSTALL_KEY, new Date().toISOString());
+    const kept = installDismissal(readText("localStorage", INSTALL_KEY));
+    if (kept.count + 1 >= INSTALL_ASK_AT) {
+        installAsking = true;
+        render();
+        return;
+    }
+    putInstallAway(false);
+}
+
+/** The banner away: for a day, or (`never`) for good on this phone; the close counted. */
+function putInstallAway(never) {
+    const kept = installDismissal(readText("localStorage", INSTALL_KEY));
+    writeText("localStorage", INSTALL_KEY, JSON.stringify({ at: new Date().toISOString(), count: kept.count + 1, never }));
+    installAsking = false;
     render();
 }
 
@@ -7032,6 +7057,10 @@ function main() {
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
         installDismiss: $("install-dismiss"),
+        installWords: $("install-words"),
+        installAsk: $("install-ask"),
+        installNever: $("install-never"),
+        installLater: $("install-later"),
         installSteps: $("install-steps"),
         feedbackToggle: $("feedback-toggle"),
         feedback: $("feedback"),
@@ -7257,6 +7286,8 @@ function main() {
         onInstall("banner").catch(() => {});
     });
     el.installDismiss.addEventListener("click", dismissInstall);
+    el.installNever.addEventListener("click", () => putInstallAway(true));
+    el.installLater.addEventListener("click", () => putInstallAway(false));
     // Chrome offers to install: kept for our own button instead of its mini-infobar
     window.addEventListener("beforeinstallprompt", (e) => {
         e.preventDefault();

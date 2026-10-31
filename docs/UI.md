@@ -105,7 +105,8 @@ posting".
 
 ### 4.4 Posting screens (goods and book)
 
-The mode chips (goods, book); the install banner (until added or dismissed); the offline
+The mode chips (goods, book); the install banner (until added; its x puts it away for a day, and from the third close it
+asks "Do not show this again?": Yes, never on this phone; No, a day; Michal 2026-10-31); the offline
 banner; the photos with the AI mark and delete; the User note; the **▸ customize** fold
 (Quantity, Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
 asking, Compare with marketplace listings, Fix dark photos for goods); the title and price
