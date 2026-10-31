@@ -200,15 +200,14 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "inventory-back",
         "inventory",
         "inventory-browse",
-        // the line under the heading: what the count after "Inventory" cannot say, or the
-        // server's trouble
-        "inventory-status",
-        // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked
-        // away inside a foldout tab 'Options'"; 2026-10-31: "move the search to Options. so it
-        // is hidden at first. and change Options to 'Filters'"
+        // the card's tools top right, the search and the filters each its own menu (Michal, 2026-10-31)
+        "search-toggle",
         "options-toggle",
-        "options",
+        "search-panel",
         "inventory-search",
+        // the line under them: what the count after "Inventory" cannot say, or the server's trouble
+        "inventory-status",
+        "options",
         "inventory-venue",
         "inventory-venue-all",
         "inventory-venue-ebay",
@@ -448,8 +447,9 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
     // Show photos: on by default, a pill row of its own after the sort chips, the last of Options
     assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
-    // Filters folded by default, in customize's pattern; the search small, first inside it
-    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Filters<\/button>\s*<div id="options" class="options" hidden>\s*<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
+    // the filters and the search each its own menu, put away at first, the search small (Michal, 2026-10-31)
+    assert.match(html, /<div id="search-panel" class="search-panel" hidden>\s*<label class="field field-small">\s*<span class="sr-only">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
+    assert.match(html, /<div id="options" class="options" hidden>/);
     assert.match(html, /<button type="button" id="inventory-back" class="link back-link" hidden>← Back to inventory</);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
@@ -3200,22 +3200,30 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     assert.deepEqual(pc.calls.slice(before), [`GET /inventory?q=blue%20lamp&${ALL}`]);
 });
 
-test("the inventory's Filters: folded at first, the search inside; open or folded is remembered on this phone", async (t) => {
+test("the inventory's tools: a magnifying glass for the search, three sliders for the filters, each its own menu; the filters' open or folded remembered on this phone", async (t) => {
     // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked away
-    // inside a foldout tab 'Options'"; 2026-10-31: the search in it, and it called Filters
+    // inside a foldout tab 'Options'"; 2026-10-31: "an icon in the right top corner of the gray
+    // area ... next to it should be a search icon ... those two functions would get split into
+    // seprate menus"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     const local = memoryStore(NO_PHOTOS);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
     await settle();
-    assert.equal(nodes.get("inventory-search").hidden, false);
+    assert.match(html, /<div class="inv-tools">\s*<button type="button" id="search-toggle" class="icon-btn" aria-label="Search"[\s\S]*?<button type="button" id="options-toggle" class="icon-btn" aria-label="Filters"/);
+    // the search its own menu, put away at first
+    assert.equal(nodes.get("search-panel").hidden, true);
+    nodes.get("search-toggle").fire("click");
+    assert.equal(nodes.get("search-panel").hidden, false);
+    assert.equal(nodes.get("search-toggle").attrs["aria-expanded"], "true");
+    assert.equal(nodes.get("options").hidden, true, "the filters stay put away");
+    nodes.get("search-toggle").fire("click");
+    assert.equal(nodes.get("search-panel").hidden, true);
     assert.equal(nodes.get("options").hidden, true);
-    assert.equal(nodes.get("options-toggle").textContent, "▸ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "false");
     nodes.get("options-toggle").fire("click");
     assert.equal(nodes.get("options").hidden, false);
-    assert.equal(nodes.get("options-toggle").textContent, "▾ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "true");
     assert.equal(local.map.get("snap.inventory.options"), "open");
     // the chips inside ask as ever
@@ -3225,7 +3233,7 @@ test("the inventory's Filters: folded at first, the search inside; open or folde
     // a reload keeps it open; folded again, it stays folded
     const again = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(again.nodes.get("options").hidden, false);
-    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Filters");
+    assert.equal(again.nodes.get("options-toggle").attrs["aria-expanded"], "true");
     again.nodes.get("options-toggle").fire("click");
     assert.equal(again.nodes.get("options").hidden, true);
     assert.equal(local.map.get("snap.inventory.options"), "closed");

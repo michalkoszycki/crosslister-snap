@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.30.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.30.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.30.2">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.30.2" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -262,15 +262,25 @@
            tab 'Options'"; 2026-10-31: "move the search to Options. so it is hidden at first.
            and change Options to 'Filters'". Folded until he opens it (app.js remembers which) -->
       <div id="inventory-browse">
-        <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
-        <button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"
-                aria-controls="options">▸ Filters</button>
-        <div id="options" class="options" hidden>
+        <!-- the card's two tools, top right (Michal, 2026-10-31): search and filters, each its own
+             menu under them, the search a magnifying glass, the filters three sliders -->
+        <div class="inv-tools">
+          <button type="button" id="search-toggle" class="icon-btn" aria-label="Search" aria-expanded="false"
+                  aria-controls="search-panel"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                  stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></button>
+          <button type="button" id="options-toggle" class="icon-btn" aria-label="Filters" aria-expanded="false"
+                  aria-controls="options"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                  stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18M12 3v18M18 3v18"/><circle cx="6" cy="15" r="2.6" fill="currentColor"/><circle cx="12" cy="8" r="2.6" fill="currentColor"/><circle cx="18" cy="13" r="2.6" fill="currentColor"/></svg></button>
+        </div>
+        <div id="search-panel" class="search-panel" hidden>
           <label class="field field-small">
-            <span class="field-label">Search</span>
+            <span class="sr-only">Search</span>
             <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
                    autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
           </label>
+        </div>
+        <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
+        <div id="options" class="options" hidden>
           <div class="field">
             <span class="field-label">Venue</span>
             <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue">
@@ -1029,6 +1039,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.30.1"></script>
+<script type="module" src="app.js?v=2.30.2"></script>
 </body>
 </html>

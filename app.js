@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.30.1";
+import { VERSION } from "./version.js?v=2.30.2";
 import {
     adminLink,
     anyActive,
@@ -253,8 +253,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.30.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.1";
+} from "./core.js?v=2.30.2";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.30.2";
 import {
     addVenue,
     applyWrap,
@@ -307,8 +307,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.30.1";
-import { shrinkPhoto } from "./shrink.js?v=2.30.1";
+} from "./pc.js?v=2.30.2";
+import { shrinkPhoto } from "./shrink.js?v=2.30.2";
 import {
     bookCard,
     bookPriceValue,
@@ -321,8 +321,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.30.1";
-import { canScan, readIsbn } from "./scan.js?v=2.30.1";
+} from "./book.js?v=2.30.2";
+import { canScan, readIsbn } from "./scan.js?v=2.30.2";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2743,10 +2743,18 @@ function showInventory(open) {
  */
 function showOptions(open) {
     el.options.hidden = !open;
-    fold(el.optionsToggle, "Filters", open);
+    el.optionsToggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 /** Options tapped open or folded: remembered on this phone. */
+/** The magnifying glass: the search box under the tools, or put away; open, the box takes the typing. */
+function toggleSearch() {
+    const open = el.searchPanel.hidden;
+    el.searchPanel.hidden = !open;
+    el.searchToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && typeof el.inventorySearch.focus === "function") el.inventorySearch.focus();
+}
+
 function toggleOptions() {
     const open = el.options.hidden;
     writeText("localStorage", OPTIONS_KEY, open ? "open" : "closed");
@@ -7246,6 +7254,8 @@ function main() {
         inventorySearch: $("inventory-search"),
         inventoryStatus: $("inventory-status"),
         optionsToggle: $("options-toggle"),
+        searchToggle: $("search-toggle"),
+        searchPanel: $("search-panel"),
         options: $("options"),
         inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
         inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
@@ -7634,6 +7644,7 @@ function main() {
     });
     showOptions(readText("localStorage", OPTIONS_KEY) === "open");
     el.optionsToggle.addEventListener("click", toggleOptions);
+    el.searchToggle.addEventListener("click", toggleSearch);
     // a finger lifted anywhere ends a dial too: its button may have been redrawn under it; and
     // a swipe its row did not hear end (no pointer capture) slides back
     for (const type of ["pointerup", "pointercancel"]) {

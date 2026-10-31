@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.30.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.30.2") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -770,7 +770,12 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size: 16px; border-width: 1.5px; }
 /* Options, folded under the search: the filters, the sort and Show photos, all small,
    13 px chips 36 px tall (a thumb's target still, with their padding) */
-.link.options-toggle { margin-top: 4px; }
+/* the inventory card's tools, top right: round icon buttons, the open one pressed (Michal, 2026-10-31) */
+.inv-tools { display: flex; justify-content: flex-end; gap: 6px; margin: 6px 0 2px; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: none; border-radius: 999px; background: var(--field); color: var(--ink); }
+.icon-btn svg { display: block; }
+.icon-btn[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); }
+.search-panel .field { margin: 4px 0; }
 .options .field { margin: 6px 0 4px; }
 .options .field-label { margin-bottom: 4px; font-size: 12px; }
 .options .chips .chip { min-height: 36px; padding: 4px 2px; font-size: 13px; }

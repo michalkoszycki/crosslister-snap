@@ -257,7 +257,7 @@ saved), and the phone remembers which were left open.
 
 **Inventory.** The fold's heading carries the count once the list is in, "▸ Inventory (99)"
 ("Inventory (200+)" at the limit, the number grey and the word's size; Michal, 2026-10-31); the line under it says only what the
-count cannot ("No listings match.", the newest-200 note, the server's trouble); **▸ Filters**,
+count cannot ("No listings match.", the newest-200 note, the server's trouble); two round icons at the card's top right (Michal, 2026-10-31: "an icon in the right top corner of the gray area ... the accepted filters icon ... next to it a search icon"), a magnifying glass opening the search box and three sliders opening the filters, each its own menu, pressed while open (earlier **▸ Filters**),
 folded at first (the search box first, then the venue chips, status chips including
 Archived, sort chips, Show photos; no tip under the status chips: a row swiped off while it is live on a
 venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it there?" with
