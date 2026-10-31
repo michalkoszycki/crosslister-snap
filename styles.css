@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.3") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.4") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -595,6 +595,10 @@ button.busy::after {
 .mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
 /* hidden while Admin is open (Michal, 2026-10-06); display: grid above would beat the attribute */
 .modes[hidden] { display: none; }
+/* the undo bar's End listing, while it asks (Michal, 2026-10-31): press-me, small */
+.undo-end { flex: none; min-height: 32px; padding: 4px 14px; border: none; border-radius: 999px; background: var(--accent-ink); color: var(--accent); font-size: 13px; font-weight: 800; }
+/* the question runs to two lines: a rounded sheet, not a pill */
+.undo-bar:has(.undo-end:not([hidden])) { border-radius: var(--radius); padding-block: 8px; }
 /* the book screen for anyone but the admin: all of it very milky and inert, the line on top
    at full strength (Michal, 2026-10-31) */
 #book.books-locked > :not(#books-off) { opacity: 0.3; filter: grayscale(1); pointer-events: none; user-select: none; }

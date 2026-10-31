@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { ADDRESS_NEEDED, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
+import { ADDRESS_NEEDED, ASK_MS, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -221,7 +221,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // Michal, 2026-10-08: "swipe left or right to archive, so you no longer see it in the
         // list": the rows swiped off, and under the chips, once, that they stay live
         "inventory-state-archived",
-        "inventory-archived-note",
         // Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)"
         "inventory-sort",
         "inventory-sort-newest",
@@ -235,6 +234,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // a row just swiped off: "Archived <title>" and Undo, for 6 s
         "inventory-undo",
         "inventory-undo-text",
+        "inventory-end-btn",
         "inventory-undo-btn",
         // a listing, in place of the list: the heading, the photo strip, then only the venue
         // cards (Michal, 2026-10-06: "there should only be eBay or and Craigslist card")
@@ -9145,6 +9145,44 @@ function finger(open, id = 1) {
     return { down: at("pointerdown"), move: at("pointermove"), up: at("pointerup") };
 }
 
+test("a row swiped off while live: End listing on the bar ends it on each venue it is live on", async (t) => {
+    // Michal, 2026-10-31: "when a listing gets archived. If it is live on any venue do ask if
+    // the listing should be ended"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const live = { ebay: summary("B2").statuses.ebay, craigslist: { ...summary("B2").statuses.ebay, status: "listed" } };
+    const rows = [summary("A1"), summary("B2", { statuses: live }), summary("C3", { statuses: {} })];
+    const pc = inventoryPc(rows, { A1: wholeRow("A1"), B2: wholeRow("B2", { statuses: live }), C3: wholeRow("C3", { statuses: {} }) });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    let f = finger(listed(nodes)[1].open);
+    f.down(100, 50);
+    f.move(240, 50);
+    f.up(240, 50);
+    await settle();
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2. Still live on ebay and craigslist: end it there?");
+    assert.equal(nodes.get("inventory-end-btn").textContent, "End listings");
+    nodes.get("inventory-end-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.filter((b) => b.action === "end"), [
+        { action: "end", sku: "B2", venue: "ebay" },
+        { action: "end", sku: "B2", venue: "craigslist" },
+    ]);
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Ending Item B2 on ebay and craigslist");
+    assert.equal(nodes.get("inventory-end-btn").hidden, true);
+    t.mock.timers.tick(UNDO_MS);
+    assert.equal(nodes.get("inventory-undo").hidden, true);
+
+    // a row live nowhere: the bar as ever, no question
+    f = finger(listed(nodes)[1].open, 2);
+    f.down(100, 50);
+    f.move(240, 50);
+    f.up(240, 50);
+    await settle();
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item C3");
+    assert.equal(nodes.get("inventory-end-btn").hidden, true);
+});
+
 test("a swipe archives a list row: it follows the finger over the Archive panel, slides out past 120 px, Undo puts it back", async (t) => {
     // Michal, 2026-10-08: "Inventory list should have swipe left or right to archive, so you no
     // longer see it in the list, kind of like what the Gmail app has on the phone."
@@ -9212,7 +9250,10 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.deepEqual(titles(), ["Item A1", "Item C3"]);
     assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 2");
     assert.equal(nodes.get("inventory-undo").hidden, false);
-    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2");
+    // live on ebay: the bar asks whether to end it there (Michal, 2026-10-31)
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2. Still live on ebay: end it there?");
+    assert.equal(nodes.get("inventory-end-btn").hidden, false);
+    assert.equal(nodes.get("inventory-end-btn").textContent, "End listing");
     b2.open.fire("click");
     await settle();
     assert.equal(nodes.get("inventory-detail").hidden, true, "the swipe's own click opens nothing");
@@ -9227,7 +9268,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.equal(listed(nodes)[1].li.classList.contains("leaving"), false);
     assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
 
-    // to the left as well; the bar goes by itself after 6 s
+    // to the left as well; the bar goes by itself, after 15 s while it asks
     const c3 = listed(nodes)[2];
     f = finger(c3.open, 2);
     f.down(300, 50);
@@ -9238,11 +9279,13 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     await settle();
     assert.deepEqual(pc.patches.at(-1), { archived: true });
     assert.deepEqual(titles(), ["Item A1", "Item B2"]);
-    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item C3");
-    t.mock.timers.tick(UNDO_MS - 1);
+    assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item C3. Still live on ebay: end it there?");
+    t.mock.timers.tick(ASK_MS - 1);
     assert.equal(nodes.get("inventory-undo").hidden, false);
     t.mock.timers.tick(1);
     assert.equal(nodes.get("inventory-undo").hidden, true);
+    assert.equal(nodes.get("inventory-end-btn").hidden, true);
+    assert.equal(pc.posted.filter((b) => b.action === "end").length, 0, "nothing ended unasked");
 
     // a server without archiving: said, and the row slides back
     pc.noArchive = true;
@@ -9283,18 +9326,12 @@ test("the Archived chip lists only the archived rows, each with Unarchive in pla
     assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1"], "every other listing leaves it out");
     assert.match(html, /<div id="inventory-state" class="chips chips-six"/);
     assert.match(html, /id="inventory-state-archived" class="chip" data-value="archived"\s+aria-pressed="false">Archived</);
-    assert.equal(nodes.get("inventory-archived-note").hidden, true);
+    assert.ok(!html.includes("inventory-archived-note"), "no tip: the undo bar asks instead (2026-10-31)");
 
     nodes.get("inventory-state-archived").fire("click");
     await settle();
     assert.equal(pc.calls.at(-1), "GET /inventory?q=&venue=&status=archived&limit=200&sort=age&order=desc");
     assert.equal(nodes.get("inventory-state-archived").attrs["aria-pressed"], "true");
-    // said once, under the chips: archiving hides a row, it ends no listing
-    assert.equal(nodes.get("inventory-archived-note").hidden, false);
-    assert.match(
-        html,
-        /<\/div>\s*<p id="inventory-archived-note" class="small options-note" hidden>Archived listings stay live on their venues<\/p>/
-    );
     const [z9] = listed(nodes);
     assert.equal(z9.title, "Item Z9");
     assert.deepEqual(z9.li.children.map((c) => c.className), ["inv-row"], "no Archive panel under it");
@@ -9316,7 +9353,6 @@ test("the Archived chip lists only the archived rows, each with Unarchive in pla
     await settle();
     assert.deepEqual(listed(nodes).map((r) => r.title), ["Item A1", "Item Z9"]);
     assert.equal(listed(nodes)[1].unarchive, undefined);
-    assert.equal(nodes.get("inventory-archived-note").hidden, true);
 
     // a server without archiving says so for Unarchive too
     pc.archived.add("A1");

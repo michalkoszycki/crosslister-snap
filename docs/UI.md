@@ -246,7 +246,9 @@ saved), and the phone remembers which were left open.
 ("Inventory 200+" at the limit; Michal, 2026-10-31); the line under it says only what the
 count cannot ("No listings match.", the newest-200 note, the server's trouble); **▸ Filters**,
 folded at first (the search box first, then the venue chips, status chips including
-Archived, sort chips, Show photos; the count after "Inventory" small and muted, as the line
+Archived, sort chips, Show photos; no tip under the status chips: a row swiped off while it is live on a
+venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it there?" with
+**End listing** beside **Undo**, for 15 s (Michal, 2026-10-31); the count after "Inventory" small and muted, as the line
 under it said it before; every checkbox row on the page the box and its words on the smoke
 grey with no outline, Michal 2026-10-31; Michal, 2026-10-31: "move the search to Options. so it
 is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**. A row opens the

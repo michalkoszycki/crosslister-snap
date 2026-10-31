@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.27.3";
+import { noteDirty, unsent } from "./queue.js?v=2.27.4";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.27.3";
+} from "./book.js?v=2.27.4";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -5277,9 +5277,32 @@ export function swipeState(start, now, width, decided = "none") {
  * @param {string} title rowTitle's
  * @returns {string}
  */
-export function archivedLine(title) {
-    return `Archived ${title}`;
+export function archivedLine(title, live = []) {
+    if (!live.length) return `Archived ${title}`;
+    // still up somewhere: the bar asks (Michal, 2026-10-31: "when a listing gets archived. If
+    // it is live on any venue do ask if the listing should be ended")
+    return `Archived ${title}. Still live on ${live.join(" and ")}: end it there?`;
 }
+
+/** The bar once End listing was tapped. */
+export function endingLine(title, live) {
+    return `Ending ${title} on ${live.join(" and ")}`;
+}
+
+/**
+ * The venues a row is live on (its statuses' "listed"), in the row's order.
+ * @param {{statuses?: Record<string, {status?:string}>} | null} row
+ * @returns {string[]}
+ */
+export function liveVenues(row) {
+    const statuses = row && row.statuses && typeof row.statuses === "object" ? row.statuses : {};
+    return Object.entries(statuses)
+        .filter(([, st]) => st && st.status === "listed")
+        .map(([venue]) => venue);
+}
+
+/** The undo bar stays this long while it asks whether to end the listing. */
+export const ASK_MS = 15000;
 
 /**
  * The inventory's line when an archive, Unarchive or Undo was refused: a server without the

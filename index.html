@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.27.3">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.27.3" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.27.4">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.27.4" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -253,7 +253,6 @@
               <button type="button" id="inventory-state-archived" class="chip" data-value="archived"
                       aria-pressed="false">Archived</button>
             </div>
-            <p id="inventory-archived-note" class="small options-note" hidden>Archived listings stay live on their venues</p>
           </div>
           <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
           <div class="field">
@@ -280,6 +279,7 @@
         <!-- a row just swiped off the list: its title and Undo, for UNDO_MS (core.js) -->
         <div id="inventory-undo" class="undo-bar" role="status" hidden>
           <span id="inventory-undo-text" class="undo-words"></span>
+          <button type="button" id="inventory-end-btn" class="undo-end" hidden>End listing</button>
           <button type="button" id="inventory-undo-btn" class="link undo-btn">Undo</button>
         </div>
       </div>
@@ -970,6 +970,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.27.3"></script>
+<script type="module" src="app.js?v=2.27.4"></script>
 </body>
 </html>

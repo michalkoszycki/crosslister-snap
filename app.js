@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.27.3";
+import { VERSION } from "./version.js?v=2.27.4";
 import {
     adminLink,
     anyActive,
@@ -107,6 +107,9 @@ import {
     followRow,
     followSummary,
     inventoryCount,
+    endingLine,
+    liveVenues,
+    ASK_MS,
     booksAllowed,
     BOOKS_ASK,
     inventoryTally,
@@ -244,8 +247,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.27.3";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.3";
+} from "./core.js?v=2.27.4";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.4";
 import {
     addVenue,
     applyWrap,
@@ -296,8 +299,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.27.3";
-import { shrinkPhoto } from "./shrink.js?v=2.27.3";
+} from "./pc.js?v=2.27.4";
+import { shrinkPhoto } from "./shrink.js?v=2.27.4";
 import {
     bookCard,
     bookPriceValue,
@@ -310,8 +313,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.27.3";
-import { canScan, readIsbn } from "./scan.js?v=2.27.3";
+} from "./book.js?v=2.27.4";
+import { canScan, readIsbn } from "./scan.js?v=2.27.4";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2730,7 +2733,6 @@ function renderFilters() {
     for (const { value, node } of el.inventoryStates) node.setAttribute("aria-pressed", value === admin.status ? "true" : "false");
     for (const { value, node } of el.inventorySorts) node.setAttribute("aria-pressed", value === admin.sort ? "true" : "false");
     // archiving hides a row; it ends no listing: said once, under the chip that lists them
-    el.inventoryArchivedNote.hidden = admin.status !== "archived";
 }
 
 /**
@@ -3182,13 +3184,20 @@ async function archiveSwiped(sku, direction) {
     offerUndo({ sku, row: parts.row, at, parts });
 }
 
-/** The undo bar under the list, for UNDO_MS: "Archived <title>" and Undo. A newer archive takes its place. */
+/**
+ * The undo bar under the list: "Archived <title>" and Undo, for UNDO_MS; a row still live on a
+ * venue is asked about instead, End listing beside Undo, for ASK_MS (Michal, 2026-10-31). A
+ * newer archive takes its place.
+ */
 function offerUndo(entry) {
     clearTimeout(undo.timer);
     undo.entry = entry;
-    el.inventoryUndoText.textContent = archivedLine(rowTitle(entry.row));
+    entry.live = liveVenues(entry.row);
+    el.inventoryUndoText.textContent = archivedLine(rowTitle(entry.row), entry.live);
+    el.inventoryEndBtn.hidden = !entry.live.length;
+    el.inventoryEndBtn.textContent = entry.live.length > 1 ? "End listings" : "End listing";
     el.inventoryUndo.hidden = false;
-    undo.timer = setTimeout(dropUndo, UNDO_MS);
+    undo.timer = setTimeout(dropUndo, entry.live.length ? ASK_MS : UNDO_MS);
 }
 
 function dropUndo() {
@@ -3196,6 +3205,31 @@ function dropUndo() {
     undo.timer = null;
     undo.entry = null;
     el.inventoryUndo.hidden = true;
+    el.inventoryEndBtn.hidden = true;
+}
+
+/**
+ * End listing on the bar: an end job for each venue the archived row is live on, as a card's
+ * End listing sends; the bar says so, then goes. Undo after it puts the row back on the list,
+ * its listings ended.
+ */
+async function endArchived() {
+    const entry = undo.entry;
+    const pc = settings();
+    if (!entry || !pc || !entry.live.length) return;
+    el.inventoryEndBtn.hidden = true;
+    el.inventoryUndoText.textContent = endingLine(rowTitle(entry.row), entry.live);
+    clearTimeout(undo.timer);
+    undo.timer = setTimeout(dropUndo, UNDO_MS);
+    for (const venue of entry.live) {
+        try {
+            await postJob(pc, actionJob("end", { sku: entry.sku, venue }));
+        } catch (e) {
+            if (e.status === 0 || e.status === 401) heard(e.status);
+            el.inventoryStatus.textContent = `${entry.sku}: ${e.message}`;
+        }
+    }
+    entry.live = [];
 }
 
 /**
@@ -6936,13 +6970,13 @@ function main() {
         options: $("options"),
         inventoryVenues: INVENTORY_VENUES.map((value) => ({ value, node: $(`inventory-venue-${value || "all"}`) })),
         inventoryStates: INVENTORY_STATUSES.map((value) => ({ value, node: $(`inventory-state-${value || "all"}`) })),
-        inventoryArchivedNote: $("inventory-archived-note"),
         inventoryPhotos: $("inventory-photos"),
         inventorySorts: INVENTORY_SORTS.map(({ key }) => ({ value: key, node: $(`inventory-sort-${key}`) })),
         inventoryList: $("inventory-list"),
         inventoryUndo: $("inventory-undo"),
         inventoryUndoText: $("inventory-undo-text"),
         inventoryUndoBtn: $("inventory-undo-btn"),
+        inventoryEndBtn: $("inventory-end-btn"),
         inventoryDetail: $("inventory-detail"),
         inventoryBack: $("inventory-back"),
         detailHeading: $("detail-heading"),
@@ -7321,6 +7355,9 @@ function main() {
             dropSwipe();
         });
     }
+    el.inventoryEndBtn.addEventListener("click", () => {
+        endArchived().catch(() => {});
+    });
     el.inventoryUndoBtn.addEventListener("click", () => {
         undoArchive().catch(() => {});
     });
