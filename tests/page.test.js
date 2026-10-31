@@ -10045,6 +10045,8 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     assert.deepEqual(words().map(([, on]) => on), [false, true, false], "at least one stays");
     box(0).checked = true;
     box(0).fire("change");
+    // no Free shipping chip from a server that does not offer it
+    assert.deepEqual(n.get("policy-cost-type").children.map((c) => c.textContent), ["Calculated", "Flat rate"]);
     // a flat rate: a price beside each ticked one
     n.get("policy-cost-type").children[1].fire("click");
     assert.equal(n.get("policy-cost-row").hidden, true, "no single cost box");
@@ -10077,6 +10079,18 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     n.get("policy-save").fire("click");
     await settle();
     assert.deepEqual(pc.policySaves.at(-1), { handling_days: 2 });
+    // Free shipping, from a server that offers it (Michal, 2026-10-31): no price boxes, no costs sent
+    pc.policies = { ...pc.policies, cost_types: ["CALCULATED", "FLAT_RATE", "FREE"] };
+    const free = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });
+    await settle();
+    free.nodes.get("signup-policies-edit").fire("click");
+    const chips = free.nodes.get("policy-cost-type").children;
+    assert.deepEqual(chips.map((c) => c.textContent), ["Calculated", "Flat rate", "Free shipping"]);
+    chips[2].fire("click");
+    assert.equal(free.nodes.get("policy-ship-list").children[0].children.length, 1, "no price box");
+    free.nodes.get("policy-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.policySaves.at(-1), { shipping_cost_type: "FREE" }, "the costs go with the type");
     // more services than eBay takes: the rest wait greyed, and it says so
     pc.policies = { ...pc.policies, max_services: 1 };
     const one = await loadPage({ local: memoryStore({ "snap.session": "sess-1" }), fetchImpl: pc.fetch });

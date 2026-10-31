@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.41.1";
+import { VERSION } from "./version.js?v=2.42.0";
 import {
     adminLink,
     anyActive,
@@ -260,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.41.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.41.1";
+} from "./core.js?v=2.42.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.0";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.41.1";
-import { shrinkPhoto } from "./shrink.js?v=2.41.1";
+} from "./pc.js?v=2.42.0";
+import { shrinkPhoto } from "./shrink.js?v=2.42.0";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.41.1";
-import { canScan, readIsbn } from "./scan.js?v=2.41.1";
+} from "./book.js?v=2.42.0";
+import { canScan, readIsbn } from "./scan.js?v=2.42.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5470,7 +5470,8 @@ function renderPolicies() {
         })
     );
     el.policyService.value = d.shipping_service;
-    choiceRow(el.policyCostType, [["CALCULATED", "Calculated"], ["FLAT_RATE", "Flat rate"]], d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
+    const types = Array.isArray(info.cost_types) ? info.cost_types.filter((v) => COST_WORDS[v]) : ["CALCULATED", "FLAT_RATE"];
+    choiceRow(el.policyCostType, types.map((v) => [v, COST_WORDS[v]]), d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
     // several services, a row each, the buyer picking one (2026-10-31); else the one menu
     const several = Array.isArray(d.shipping);
     el.policyService.hidden = several;
@@ -5559,6 +5560,8 @@ function renderShipRows(info, d, services) {
     el.policyShipNote.hidden = services.length <= most;
 }
 
+/** Shipping cost's chips, those the server offers (GET /me/policies "cost_types"); Free shipping since 2026-10-31. */
+const COST_WORDS = { CALCULATED: "Calculated", FLAT_RATE: "Flat rate", FREE: "Free shipping" };
 /** Edit's label for the services, a server with several (Michal, 2026-10-31). */
 const SHIP_PICKS = "Shipping options - buyer picks";
 /** What every account gets besides the server's lines (ebay/seller_setup.py). */
