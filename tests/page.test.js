@@ -2777,6 +2777,9 @@ test("a row's + and −: a dollar a tap at once, nothing shut; one quiet PATCH a
     assert.deepEqual(pc.calls.slice(before), [], "nothing sent while the finger is down");
     lift();
     assert.deepEqual([g1.up.disabled, g1.down.disabled], [false, false], "never shut: the next tap counts at once");
+    // behind on eBay from the tap: its badge the sync button at once, dimmed by styles.css
+    assert.equal(ebayBadge(nodes, 0).className, "vbadge posted vsync");
+    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.inv-badges \.vbadge\.vsync:not\(\.busy\) \{ opacity: 0\.5; \}/);
     // a second tap at once: a dollar more on the tile, still nothing sent
     press(g1.up)();
     assert.equal(listed(nodes)[0].line, "$26 G1");

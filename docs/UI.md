@@ -254,7 +254,8 @@ venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it ther
 **End listing** beside **Undo**, for 15 s (Michal, 2026-10-31); the count after "Inventory" small and muted, as the line
 under it said it before; every checkbox row on the page the box and its words on the smoke
 grey with no outline, Michal 2026-10-31; Michal, 2026-10-31: "move the search to Options. so it
-is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**; a row's + and − change the price on the tile at once, nothing shut or grey, the price going quietly to the inventory 1.5 s after the last tap (at once when a sync or the listing's page needs it), and no venue hears of it before a sync (Michal, 2026-10-31). A row opens the
+is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**; a row's + and − change the price on the tile at once, nothing shut or grey, the price going quietly to the inventory 1.5 s after the last tap (at once when a sync or the listing's page needs it), and no venue hears of it before a sync (Michal, 2026-10-31); the badge of each venue the row
+is live on dims from the tap and stays dim until its sync is done: green is in sync. A row opens the
 listing's page: "← Back to inventory" above the grey card, on the page's ground (as the
 People page's "← Back to settings"; Michal, 2026-10-31), the heading and photos, **▾ customize** with
 Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in

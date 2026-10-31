@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.28.3") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.28.4") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -895,6 +895,9 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
 .inv-price { font-weight: 800; letter-spacing: -0.02em; }
 .inv-sku { color: var(--muted); }
 .inv-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* a listing its venue is behind: its badge dim, still a button, until its sync is done; green
+   is in sync (Michal, 2026-10-31) */
+.inv-badges .vbadge.vsync:not(.busy) { opacity: 0.5; }
 /* a venue's status: listed in the posted green, sold and ended muted, a draft outlined,
    a venue the listing is not on dashed. The list's rows and a listing's venue foldouts
    wear the same badge (Michal, 2026-10-07: "Keeping visual references the same across
@@ -983,7 +986,7 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 
 /* one listing, in place of the list: the heading, the photo strip, the venue cards */
 .link.back-link { display: block; min-height: 44px; padding: 10px 0; font-size: 15px; }
-.detail-heading { font-size: 22px; line-height: 1.25; margin: 2px 0 4px; overflow-wrap: anywhere; }
+.detail-heading { font-size: 22px; line-height: 1.25; margin: 14px 0 4px; overflow-wrap: anywhere; }
 .detail-photos .strip { padding: 8px 0 2px; gap: 8px; }
 .detail-photos .small { margin: 8px 0 0; }
 .fold { padding: 2px 14px 14px; margin-bottom: 4px; }
