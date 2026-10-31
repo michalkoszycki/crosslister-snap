@@ -196,6 +196,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.deepEqual(order, [
         // Michal, 2026-10-22: "inventory should be before settings"
         "inventory-toggle",
+        // a listing's Back above the grey card (Michal, 2026-10-31)
+        "inventory-back",
         "inventory",
         "inventory-browse",
         // the line under the heading: what the count after "Inventory" cannot say, or the
@@ -239,7 +241,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // a listing, in place of the list: the heading, the photo strip, then only the venue
         // cards (Michal, 2026-10-06: "there should only be eBay or and Craigslist card")
         "inventory-detail",
-        "inventory-back",
         "detail-heading",
         "detail-status",
         "detail-photos",
@@ -404,8 +405,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // what the counts mean (Michal, 2026-10-08: "I don't understand the jobs count on the stats.")
         "stats-note",
         // the People page, in Admin's place (Michal, 2026-10-25: "let it be a simple separate page")
-        "people",
         "people-back",
+        "people",
         "people-status",
         "people-list",
         "people-leave",
@@ -434,7 +435,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<div id="account" class="card account current" hidden>/);
     assert.match(html, /<div class="account-foot">\s*<button type="button" id="settings-delete"[^>]*>Delete account<\/button>\s*<button type="button" id="account-leave"[^>]*>Leave this account<\/button>\s*<button type="button" id="settings-signout"[^>]*>Sign out<\/button>/);
     // the People page in the inventory card's shape, its way back at the top
-    assert.match(html, /<div id="people" class="card inventory people" hidden>\s*<button type="button" id="people-back" class="link back-link">← Back to settings<\/button>/);
+    assert.match(html, /<button type="button" id="people-back" class="link back-link" hidden>← Back to settings<\/button>\s*<div id="people" class="card inventory people" hidden>/);
     // the Posting defaults' one muted line, word for word (Michal, 2026-10-31), no card, no group labels
     assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*<p class="small posting-lead">Changed per posting from the customize menu\.<\/p>\s*<div class="qty-row">/);
     // the header and footer card under Add standard text to posts: Header's box, then its chips
@@ -444,7 +445,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
     // Filters folded by default, in customize's pattern; the search small, first inside it
     assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Filters<\/button>\s*<div id="options" class="options" hidden>\s*<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
-    assert.match(html, /<button type="button" id="inventory-back" class="link back-link">← Back to inventory</);
+    assert.match(html, /<button type="button" id="inventory-back" class="link back-link" hidden>← Back to inventory</);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
     // customize opens with the listing; the goods card's slider, and no post without asking

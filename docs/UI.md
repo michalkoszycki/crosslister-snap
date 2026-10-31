@@ -251,7 +251,8 @@ venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it ther
 under it said it before; every checkbox row on the page the box and its words on the smoke
 grey with no outline, Michal 2026-10-31; Michal, 2026-10-31: "move the search to Options. so it
 is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**. A row opens the
-listing's page: "← Back to inventory", the heading and photos, **▾ customize** with
+listing's page: "← Back to inventory" above the grey card, on the page's ground (as the
+People page's "← Back to settings"; Michal, 2026-10-31), the heading and photos, **▾ customize** with
 Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in
 each venue's block under Settings, Venues, Michal 2026-10-31), then one card per venue with
 its status and actions (post, open, refresh, end, edit, add the venue; no Sync to <venue>),

@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.27.7">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.27.7" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.27.8">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.27.8" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -205,6 +205,9 @@
   <section id="admin" class="admin" hidden>
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="inventory">▸ Inventory</button>
+    <!-- a listing's page: its Back on the page's ground, above the grey card (Michal,
+         2026-10-31: "back to inventory should be outside the gray frame"); app.js shows it -->
+    <button type="button" id="inventory-back" class="link back-link" hidden>← Back to inventory</button>
     <div id="inventory" class="card inventory" hidden>
       <!-- the list: the line of what the count cannot say, then Filters (the search, the two
            filters, the sort, the photos or not), then one row per listing. Michal, 2026-10-08:
@@ -288,7 +291,6 @@
            should only be eBay or and Craigslist card"); a venue it is not on is an empty card
            with its Add -->
       <div id="inventory-detail" hidden>
-        <button type="button" id="inventory-back" class="link back-link">← Back to inventory</button>
         <h2 id="detail-heading" class="detail-heading"></h2>
         <p id="detail-status" class="small" aria-live="polite" hidden></p>
         <div id="detail-photos" class="detail-photos"></div>
@@ -655,8 +657,9 @@
     <!-- The People page (Michal, 2026-10-25: "let it be a simple separate page"), in Admin's
          place as a listing's page is: Back, the heading, one card per person (app.js), the owner
          first, each with its devices; a member's Leave this account at the end -->
+    <!-- its Back above the card, as a listing's (2026-10-31) -->
+    <button type="button" id="people-back" class="link back-link" hidden>← Back to settings</button>
     <div id="people" class="card inventory people" hidden>
-      <button type="button" id="people-back" class="link back-link">← Back to settings</button>
       <h2 class="detail-heading">People on this account</h2>
       <p id="people-status" class="small account-status" aria-live="polite"></p>
       <ul id="people-list" class="people-list"></ul>
@@ -969,6 +972,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.27.7"></script>
+<script type="module" src="app.js?v=2.27.8"></script>
 </body>
 </html>
