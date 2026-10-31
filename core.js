@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.27.0";
+import { noteDirty, unsent } from "./queue.js?v=2.27.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.27.0";
+} from "./book.js?v=2.27.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -4102,15 +4102,15 @@ export function inventoryCount(n) {
 }
 
 /**
- * The inventory foldout's word: the number of listings after it once the PC answered
- * (Michal, 2026-10-31: "put the number of listings after the Inventory on top"), "+" after
- * a list cut at the limit; the word alone before.
+ * The number after the inventory foldout's word once the PC answered (Michal, 2026-10-31: "put
+ * the number of listings after the Inventory on top", "in same light gray . slightly smaller
+ * font as before"), "+" after a list cut at the limit; "" before an answer.
  * @param {number|null} n rows in the answer, null before one
  * @returns {string}
  */
-export function inventoryHeading(n) {
-    if (n === null) return "Inventory";
-    return n >= INVENTORY_LIMIT ? `Inventory ${n}+` : `Inventory ${n}`;
+export function inventoryTally(n) {
+    if (n === null) return "";
+    return n >= INVENTORY_LIMIT ? `${n}+` : String(n);
 }
 
 /**

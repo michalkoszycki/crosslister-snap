@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.27.0";
+import { VERSION } from "./version.js?v=2.27.1";
 import {
     adminLink,
     anyActive,
@@ -109,7 +109,7 @@ import {
     inventoryCount,
     booksAllowed,
     BOOKS_ASK,
-    inventoryHeading,
+    inventoryTally,
     inventoryRows,
     jobRunning,
     leftUnsynced,
@@ -244,8 +244,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.27.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.0";
+} from "./core.js?v=2.27.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.1";
 import {
     addVenue,
     applyWrap,
@@ -296,8 +296,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.27.0";
-import { shrinkPhoto } from "./shrink.js?v=2.27.0";
+} from "./pc.js?v=2.27.1";
+import { shrinkPhoto } from "./shrink.js?v=2.27.1";
 import {
     bookCard,
     bookPriceValue,
@@ -310,8 +310,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.27.0";
-import { canScan, readIsbn } from "./scan.js?v=2.27.0";
+} from "./book.js?v=2.27.1";
+import { canScan, readIsbn } from "./scan.js?v=2.27.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2497,15 +2497,28 @@ async function poll(m, venue, mine) {
 // fields]. Also I think when I click on an item there should only be eBay or and
 // Craigslist card." core.js decides what each card offers and says; this wires it.
 
-/** The inventory foldout's word, with the list's count once there is one. */
-function inventoryWord() {
-    return inventoryHeading(admin.counted ? admin.rows.length : null);
+/** The inventory foldout's arrow and word, the list's count after it once there is one. */
+function inventoryFold(open) {
+    foldCounted(el.inventoryToggle, "Inventory", inventoryTally(admin.counted ? admin.rows.length : null), open);
 }
 
 /** The list's count after the Inventory foldout's word, and under it only what the count cannot say. */
 function showCount(lead = "") {
     el.inventoryStatus.textContent = [lead, inventoryCount(admin.rows.length)].filter(Boolean).join(" ");
-    fold(el.inventoryToggle, inventoryWord(), admin.inventoryOpen);
+    inventoryFold(admin.inventoryOpen);
+}
+
+/** A foldout's arrow and word with a count after it in small muted type ("" for none), as People's. */
+function foldCounted(toggle, word, count, open) {
+    if (!count) {
+        fold(toggle, word, open);
+        return;
+    }
+    const small = document.createElement("span");
+    small.className = "fold-count";
+    small.textContent = count;
+    toggle.replaceChildren(`${open ? "▾" : "▸"} ${word} `, small);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 /** The foldout's arrow and word: ▸ folded, ▾ open, as customize. */
@@ -2599,7 +2612,7 @@ function showAdmin(open, card = "") {
     }
     admin.inventoryOpen = true;
     el.inventory.hidden = false;
-    fold(el.inventoryToggle, inventoryWord(), true);
+    inventoryFold(true);
     openRow({ sku }, null).catch(() => {});
 }
 
@@ -2694,7 +2707,7 @@ function setTheme(theme) {
 function showInventory(open) {
     admin.inventoryOpen = open;
     el.inventory.hidden = !open;
-    fold(el.inventoryToggle, inventoryWord(), open);
+    inventoryFold(open);
     if (open) {
         showList();
         loadInventory().catch(() => {});
