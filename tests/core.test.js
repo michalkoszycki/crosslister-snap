@@ -273,7 +273,10 @@ import {
     peopleError,
     signedOutOthers,
     LEFT_ACCOUNT,
-    wrapTextsBody,
+    wrapApplyVenues,
+    wrapDraftBody,
+    wrapOffBody,
+    wrapOn,
     DEFAULTS_SAVED,
     DEFAULTS_SAVED_MS,
     SWIPE_MAX_PX,
@@ -282,7 +285,7 @@ import {
     swipeState,
     UNDO_MS,
 } from "../core.js";
-import { applyLabel, venueTickLabel, WRAP_MAX, WRAP_PARTS, wrapBody, wrapCounter, wrapError, wrapOf } from "../core.js";
+import { WRAP_MAX, WRAP_PARTS, wrapBody, wrapError, wrapOf } from "../core.js";
 import { ACCOUNT_DELETED, accountName, accountsOf, ADMIN_NO_DELETE, deleteError, newAccount, SIGNED_OUT } from "../core.js";
 import {
     NAME_WAIT_HINT,
@@ -4339,16 +4342,7 @@ test("wrapBody: only what changed for one part; the text tidied and at most 2000
     assert.throws(() => wrapBody("sidebar", { on: true }), RangeError);
 });
 
-test("the counter, the Apply to: pill's face, the apply button's word, a refusal's line", () => {
-    assert.equal(wrapCounter(""), "0 / 2000");
-    assert.equal(wrapCounter("Thanks!"), "7 / 2000");
-    assert.equal(wrapCounter(undefined), "0 / 2000");
-    // Michal: "once clicked the button changes to green with a check, our typical"
-    assert.deepEqual(venueTickLabel("ebay", true), { text: "ebay", tick: true });
-    assert.deepEqual(venueTickLabel("craigslist", false), { text: "craigslist", tick: false });
-    // "Finally a button 'Apply to all existing listings' (per the venue specified)"
-    assert.equal(applyLabel("ebay"), "Apply to all existing ebay listings");
-    assert.equal(applyLabel("craigslist"), "Apply to all existing craigslist listings");
+test("a header and footer refusal's line", () => {
     assert.equal(wrapError(404, "Not Found"), "The header and footer are not available yet.");
     assert.equal(wrapError(400, "header.text: at most 2000 characters"), "header.text: at most 2000 characters");
     assert.equal(wrapError(0, "cannot reach the server"), "Could not save: cannot reach the server.");
@@ -4504,12 +4498,29 @@ test("Invite, Change name, the people actions' lines", () => {
     assert.equal(LEFT_ACCOUNT, "You left the account.");
 });
 
-test("the header and footer's one Save: only the parts whose text changed, each checked; nothing changed is nothing to send", () => {
-    const info = wrapOf({ header: { on: true, text: "Hello", venues: ["ebay"] }, footer: { on: false, text: "Bye", venues: [] }, available: ["ebay"] });
-    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "Bye" }, info), { ok: true, body: {} });
-    assert.deepEqual(wrapTextsBody({ header: "  Hello there \r\n", footer: "Bye" }, info), { ok: true, body: { header: { text: "Hello there" } } });
-    assert.deepEqual(wrapTextsBody({ header: "Hi", footer: "So long" }, info), { ok: true, body: { header: { text: "Hi" }, footer: { text: "So long" } } });
-    assert.deepEqual(wrapTextsBody({ header: "Hello", footer: "x".repeat(2001) }, info), { ok: false, error: "Footer: At most 2000 characters; this is 2001." });
+test("Add standard text to posts (Michal, 2026-10-31): ticked while a part is on with words; the card's body only what differs, a blank box off; unticked, both off", () => {
+    const info = wrapOf({ header: { on: true, text: "Hello", venues: ["ebay"] }, footer: { on: false, text: "Bye", venues: [] }, available: ["ebay", "craigslist"] });
+    const draft = (header, footer, hv = ["ebay"], fv = []) => ({ header: { text: header, venues: hv }, footer: { text: footer, venues: fv } });
+    assert.equal(wrapOn(info), true);
+    assert.equal(wrapOn(wrapOf({ header: { on: false, text: "Hello", venues: [] }, footer: { on: true, text: " ", venues: ["ebay"] } })), false, "off with words, or on with a blank box: unticked");
+    // nothing changed: nothing to send, the two buttons stay dimmed
+    assert.deepEqual(wrapDraftBody(draft("Hello", ""), wrapOf({ ...info, footer: { on: false, text: "", venues: [] } })), { ok: true, body: {} });
+    // the footer's box holds words: on (no checkbox: words mean on); tidied
+    assert.deepEqual(wrapDraftBody(draft("Hello", "Bye"), info), { ok: true, body: { footer: { on: true } } });
+    assert.deepEqual(wrapDraftBody(draft("  Hello there \r\n", "Bye"), info), { ok: true, body: { header: { text: "Hello there" }, footer: { on: true } } });
+    // a blank box means none: off, the text cleared
+    assert.deepEqual(wrapDraftBody(draft("", "Bye"), info), { ok: true, body: { header: { on: false, text: "" }, footer: { on: true } } });
+    // a chip chosen: its venues, in the page's order
+    assert.deepEqual(wrapDraftBody(draft("Hello", "Bye", ["craigslist", "ebay"], ["ebay"]), info), { ok: true, body: { header: { venues: ["ebay", "craigslist"] }, footer: { on: true, venues: ["ebay"] } } });
+    assert.deepEqual(wrapDraftBody(draft("Hello", "x".repeat(2001)), info), { ok: false, error: "Footer: At most 2000 characters; this is 2001." });
+    // unticked: the parts on turned off, their texts kept
+    assert.deepEqual(wrapOffBody(info), { header: { on: false } });
+    assert.deepEqual(wrapOffBody(wrapOf({ header: { on: false }, footer: { on: false } })), {});
+    // Apply to existing postings: every venue a part with words goes on
+    const both = wrapOf({ header: { on: true, text: "Hi", venues: ["craigslist"] }, footer: { on: true, text: "Bye", venues: ["ebay"] }, available: ["ebay", "craigslist"] });
+    assert.deepEqual(wrapApplyVenues(both), ["ebay", "craigslist"]);
+    assert.deepEqual(wrapApplyVenues(info), ["ebay"]);
+    assert.deepEqual(wrapApplyVenues(wrapOf({ header: { on: false, text: "Hi", venues: ["ebay"] } })), []);
 });
 
 test("Delete account refused by a member's 403: the server's words, as a sentence", () => {

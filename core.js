@@ -1371,55 +1371,64 @@ export function wrapBody(part, { on, text, venues } = {}) {
 }
 
 /**
- * The one Save's body (Michal, 2026-10-25: one card, one Save): each part's text as typed,
- * only where it differs from what the server has (`info`); each tidied and checked as
- * wrapBody does, a part too long named. `{}` when nothing changed: nothing to send.
- * @param {{header:unknown, footer:unknown}} texts the two boxes
+ * Add standard text to posts, ticked as the server has it (Michal, 2026-10-31): while a part
+ * is on with words in it (a part on with a blank box adds nothing to a listing).
+ * @param {Wrap} info
+ * @returns {boolean}
+ */
+export function wrapOn(info) {
+    return WRAP_PARTS.some((part) => info[part].on && info[part].text.trim() !== "");
+}
+
+/**
+ * The header and footer as the card has them (each part's box and its venue chips), as one
+ * PATCH /me/wrap body against what the server has (`info`): each part on while its box holds
+ * words, off while it is blank (a blank box means none: Michal, 2026-10-31), its text tidied
+ * and checked as wrapBody does, its venues; only what differs. `{}` when nothing changed: the
+ * two buttons stay dimmed. A part too long is named and nothing is sent.
+ * @param {{header:{text:unknown, venues:unknown}, footer:{text:unknown, venues:unknown}}} draft
  * @param {Wrap} info the server's
  * @returns {{ok:true, body:Record<string, Partial<WrapPart>>} | {ok:false, error:string}}
  */
-export function wrapTextsBody(texts, info) {
+export function wrapDraftBody(draft, info) {
     /** @type {Record<string, Partial<WrapPart>>} */
     const body = {};
     for (const part of WRAP_PARTS) {
-        const made = wrapBody(part, { text: texts[part] });
+        const made = wrapBody(part, { text: draft[part].text, venues: draft[part].venues });
         if (!made.ok) return { ok: false, error: `${part === "header" ? "Header" : "Footer"}: ${made.error}` };
-        if (made.body[part].text !== info[part].text) body[part] = made.body[part];
+        const want = made.body[part];
+        const now = info[part];
+        /** @type {Partial<WrapPart>} */
+        const change = {};
+        const on = want.text !== "";
+        if (on !== now.on) change.on = on;
+        if (want.text !== now.text) change.text = want.text;
+        if ((want.venues || []).join(" ") !== now.venues.join(" ")) change.venues = want.venues;
+        if (Object.keys(change).length) body[part] = change;
     }
     return { ok: true, body };
 }
 
 /**
- * The counter under a part's box: "120 / 2000".
- * @param {string} text
- * @returns {string}
+ * Add standard text to posts unticked: both parts off at once, their texts and venues kept on
+ * the server (Michal, 2026-10-31: "saving with the box unticked turns both on false but keeps
+ * the texts"); only the parts that are on. `{}`: nothing to send.
+ * @param {Wrap} info
+ * @returns {Record<string, {on:false}>}
  */
-export function wrapCounter(text) {
-    return `${typeof text === "string" ? text.length : 0} / ${WRAP_MAX}`;
+export function wrapOffBody(info) {
+    return Object.fromEntries(WRAP_PARTS.filter((part) => info[part].on).map((part) => [part, { on: false }]));
 }
 
 /**
- * An Apply to: button's face: the venue as the venue buttons say it, and, ticked, the tick
- * after it in the posted green (Michal, 2026-10-17: "once clicked the button changes to green
- * with a check, our typical"), drawn by app.js as a listed badge's.
- * @param {string} venue
- * @param {boolean} on
- * @returns {{text:string, tick:boolean}}
+ * The venues Apply to existing postings pushes onto (POST /me/wrap/apply, one each): every
+ * venue a part that is on, with words, goes on, in VENUES' order.
+ * @param {Wrap} info
+ * @returns {string[]}
  */
-export function venueTickLabel(venue, on) {
-    return { text: venue, tick: !!on };
+export function wrapApplyVenues(info) {
+    return VENUES.filter((v) => WRAP_PARTS.some((part) => info[part].on && info[part].text !== "" && info[part].venues.includes(v)));
 }
-
-/**
- * The job button under a part, per venue ticked (Michal, 2026-10-17: "Finally a button 'Apply
- * to all existing listings' (per the venue specified)").
- * @param {string} venue
- * @returns {string}
- */
-export function applyLabel(venue) {
-    return `Apply to all existing ${venue} listings`;
-}
-
 /**
  * A part's line when its change did not go: a server without the route (404) has it not
  * available yet; a refusal (400: a bad value, a text too long) is the server's own words;

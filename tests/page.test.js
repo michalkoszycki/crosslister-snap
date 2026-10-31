@@ -344,26 +344,29 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "address-same",
         "seller-status",
         // 3. Posting defaults (Michal, 2026-10-26: "call this posting defaults"): the customize
-        // box's controls, saved on change; then the header and footer on every listing as one card
+        // box's controls, saved on change: Quantity beside the Price slider (2026-10-31), the
+        // options one line each, the fifth Add standard text to posts and its card under it
         "fold-posting-toggle",
         "fold-posting",
         "posting-defaults",
         "posting-quantity",
-        "posting-pickup-only",
         "posting-pricing",
         "posting-pricing-1",
         "posting-pricing-2",
         "posting-pricing-3",
-        "posting-pricing-note",
+        "posting-pickup-only",
         "posting-auto-post",
         "posting-comps",
         "posting-fix-dark",
-        "posting-status",
+        "wrap-row",
+        "wrap-on",
         "wrap",
-        ...["header", "footer"].flatMap((part) => [`wrap-${part}-on`, `wrap-${part}`, `wrap-${part}-text`, `wrap-${part}-count`, `wrap-${part}-venues`]),
+        ...["header", "footer"].flatMap((part) => [`wrap-${part}-text`, `wrap-${part}-venues`]),
         "wrap-save",
-        "wrap-status",
         "wrap-apply",
+        "wrap-status",
+        "wrap-jobs",
+        "posting-status",
         // 4. Server, a key account's alone
         "fold-server-toggle",
         "fold-server",
@@ -432,10 +435,10 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<div class="account-foot">\s*<button type="button" id="settings-delete"[^>]*>Delete account<\/button>\s*<button type="button" id="account-leave"[^>]*>Leave this account<\/button>\s*<button type="button" id="settings-signout"[^>]*>Sign out<\/button>/);
     // the People page in the inventory card's shape, its way back at the top
     assert.match(html, /<div id="people" class="card inventory people" hidden>\s*<button type="button" id="people-back" class="link back-link">← Back to settings<\/button>/);
-    // the Posting defaults' one line, word for word (Michal, 2026-10-26)
-    assert.match(html, /The defaults every posting starts with\. Each can be adjusted for one posting at the time of posting, through the customize menu on the Snap page\./);
-    // the header and footer card: the box and the pills only under a ticked part
-    assert.match(html, /<div id="wrap-header" class="wrap-fold" hidden>\s*<textarea id="wrap-header-text"[\s\S]*?<div id="wrap-header-venues" class="wrap-venues"/);
+    // the Posting defaults' one muted line, word for word (Michal, 2026-10-31), no card, no group labels
+    assert.match(html, /<div id="posting-defaults" class="posting-defaults">\s*<p class="small posting-lead">Changed per posting from the customize menu\.<\/p>\s*<div class="qty-row">/);
+    // the header and footer card under Add standard text to posts: Header's box, then its chips
+    assert.match(html, /<span class="field-label">Header<\/span>\s*<textarea id="wrap-header-text"[\s\S]*?<\/label>\s*<div id="wrap-header-venues" class="chips option-chips wrap-venues"/);
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
     // Show photos: on by default, a pill row of its own after the sort chips, the last of Options
     assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
@@ -7936,7 +7939,7 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     // each change kept at once, "saved" said for a moment
     nodes.get("posting-pricing").value = "2";
     nodes.get("posting-pricing").fire("input");
-    assert.notEqual(nodes.get("posting-pricing-note").textContent, "sell what we have this week", "the grade's own line");
+    assert.ok(!nodes.has("posting-pricing-note"), "no line under the slider: less is more (Michal, 2026-10-31)");
     assert.equal(nodes.get("posting-pricing").attrs["aria-valuetext"], "Fair price");
     assert.equal(nodes.get("posting-status").textContent, "saved");
     t.mock.timers.tick(2500);
@@ -9855,296 +9858,275 @@ const NO_WRAP = {
     available: ["ebay"],
 };
 
-/** One part of the header-and-footer card as the screen shows it: its tick, its box and its venue pills (drawn by app.js). */
+/** One part of the header-and-footer card as the screen shows it: its box and its venue chips (drawn by app.js), "ebay ✓" for a chosen one. */
 function wrapPart(nodes, part) {
-    const n = (id) => nodes.get(`wrap-${part}${id}`);
-    const pills = n("-venues").children.map((node) => {
-        const ticked = node.attrs["aria-pressed"] === "true";
-        assert.equal(node.children.some((c) => c.tag === "svg"), ticked, "a tick only when ticked");
-        return ticked ? `${wordOf(node)} ✓` : wordOf(node);
+    const chips = nodes.get(`wrap-${part}-venues`).children.map((node) => {
+        assert.equal(node.className, "chip option", "an option chip");
+        return node.attrs["aria-pressed"] === "true" ? `${wordOf(node)} ✓` : wordOf(node);
     });
+    return { text: nodes.get(`wrap-${part}-text`).value, chips };
+}
+
+/** The tick, the card, and the two buttons as the screen shows them: "(off)" while dimmed. */
+function wrapCard(nodes) {
+    // the stub does not read index.html's words: named here
+    const words = { "wrap-save": "Save for upcoming postings", "wrap-apply": "Apply to existing postings" };
+    const btn = (id) => `${words[id]}${nodes.get(id).disabled ? " (off)" : ""}`;
     return {
-        on: n("-on").checked,
-        open: !n("").hidden,
-        text: n("-text").value,
-        count: n("-count").textContent,
-        pills,
+        row: !nodes.get("wrap-row").hidden,
+        on: nodes.get("wrap-on").checked === true,
+        card: !nodes.get("wrap").hidden,
+        buttons: [btn("wrap-save"), btn("wrap-apply")],
+        status: nodes.get("wrap-status").textContent,
     };
 }
 
-/** The card's one Save line, and its Apply to all existing <venue> listings, one per venue ticked (null: none). */
-function wrapApplies(nodes) {
-    const row = nodes.get("wrap-apply");
-    return row.hidden ? null : row.children.filter((k) => k.id && /^wrap-apply-\w+$/.test(k.id)).map(buttonSays);
+function tickWrap(nodes, on) {
+    nodes.get("wrap-on").checked = on;
+    nodes.get("wrap-on").fire("change");
 }
 
-function tickRow(nodes, part, on) {
-    nodes.get(`wrap-${part}-on`).checked = on;
-    nodes.get(`wrap-${part}-on`).fire("change");
+function typeWrap(nodes, part, text) {
+    nodes.get(`wrap-${part}-text`).value = text;
+    nodes.get(`wrap-${part}-text`).fire("input");
 }
 
-/** Admin, Settings and its Posting defaults fold open: where the header-and-footer card is. */
+/** Admin, Settings and its Posting defaults fold open: where Add standard text to posts is. */
 async function openPosting(nodes) {
     await openSettings(nodes);
     if (nodes.get("fold-posting").hidden) nodes.get("fold-posting-toggle").fire("click");
     await settle();
 }
 
-test("header and footer: one card under Posting defaults, each part's tick, its box and venue pills under it, one Save, the apply buttons", () => {
+const SAVE_OFF = ["Save for upcoming postings (off)", "Apply to existing postings (off)"];
+const SAVE_ON = ["Save for upcoming postings", "Apply to existing postings"];
+
+test("Posting defaults: one muted line, Quantity beside the slider, five options one line each, the fifth Add standard text to posts with its card", () => {
+    // Michal, 2026-10-31: "Changed per posting from the customize menu." and no other explanation
     const fold = /<div id="fold-posting" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-server-toggle"/.exec(html)[1];
-    assert.match(fold, /<div id="posting-defaults" class="card posting-defaults">[\s\S]*?<\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="wrap" class="card wrap" hidden>/, "after the defaults");
-    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<div id="wrap-apply"/.exec(fold)[1];
-    assert.match(card, /^\s*<p class="card-name">Header and footer on every listing<\/p>/);
+    const words = fold.replace(/<!--[\s\S]*?-->/g, "");
+    assert.ok(!/<small>/.test(words), "no small print");
+    assert.ok(!/glabel|Header and footer on every listing/.test(words), "no group labels");
+    // Quantity, a small box three digits wide, the Price slider to its right filling the line
+    assert.match(fold, /<div class="qty-row">\s*<label class="field qty-field">\s*<span class="field-label">Quantity<\/span>\s*<input id="posting-quantity" class="quantity"[^>]*maxlength="3"[^>]*>\s*<\/label>\s*<div class="field pricing-field">/);
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.qty-row \{ display: flex;/);
+    assert.match(css, /\.qty-row \.pricing-field \{ flex: 1 1 auto; min-width: 0; \}/);
+    assert.match(css, /\.qty-row input\[type="text"\]\.quantity \{ width: 3\.4em;/);
+    // the options, one line each, in this order
+    const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)<\/span>\s*<\/label>/g)].map((m) => [m[1], m[2]]);
+    assert.deepEqual(options, [
+        ["posting-pickup-only", "Pickup only, no shipping"],
+        ["posting-auto-post", "Post without asking"],
+        ["posting-comps", "Compare with marketplace listings"],
+        ["posting-fix-dark", "Fix dark photos"],
+        ["wrap-on", "Add standard text to posts"],
+    ]);
+    // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
+    // then the two press-me pills on their own lines, dimmed at first
+    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<p id="posting-status"/.exec(fold)[1];
+    assert.ok(!/type="checkbox"/.test(card), "no checkbox on Header or Footer");
     for (const [part, word, where] of [
         ["header", "Header", "above"],
         ["footer", "Footer", "below"],
     ]) {
-        // pickup only's pill row; its box and its venue pills only under it, while it is ticked
-        // (Michal, 2026-10-26: "choice of venue only makes sense after")
-        assert.match(card, new RegExp(`<label class="pickup">\\s*<input id="wrap-${part}-on" type="checkbox">\\s*<span>${word}</span>\\s*</label>\\s*<div id="wrap-${part}" class="wrap-fold" hidden>`));
-        assert.match(card, new RegExp(`<textarea id="wrap-${part}-text"[^>]*maxlength="2000"[^>]*aria-label="${word}"\\s+placeholder="Text added ${where} the description"></textarea>\\s*<p id="wrap-${part}-count" class="small wrap-count">0 / 2000</p>\\s*<div id="wrap-${part}-venues" class="wrap-venues" role="group" aria-label="${word}: apply to"></div>\\s*</div>`));
+        assert.match(card, new RegExp(`<label class="field wrap-field">\\s*<span class="field-label">${word}</span>\\s*<textarea id="wrap-${part}-text" class="wrap-text" rows="3" maxlength="2000"\\s+placeholder="Text added ${where} the description"></textarea>\\s*</label>\\s*<div id="wrap-${part}-venues" class="chips option-chips wrap-venues" role="group" aria-label="${word}: venues"></div>`));
     }
-    // one Save for both; less is more (Michal, 2026-10-26): no line of text the person does not need
-    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-save">Save<\/button>\s*<p id="wrap-status"[^>]*aria-live="polite"><\/p>\s*$/);
-    assert.ok(!/wrap-note|Apply to:/.test(card), "no notes, no Apply to: label");
-    assert.match(fold, /<div id="wrap-apply" class="wrap-apply" hidden><\/div>/);
-    const css = readFileSync(join(root, "styles.css"), "utf8");
-    // on: the posted green, as eBay connected and a listed badge; off: outlined in ink
-    assert.match(css, /\.pill\.wrap-venue \{[^}]*background: none; border-color: var\(--ink\);/);
-    assert.match(css, /\.pill\.wrap-venue\[aria-pressed="true"\] \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/);
+    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings<\/button>\s*<button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings<\/button>/);
+    assert.ok(!/wrap-count|\/ 2000/.test(card), "no counter: less is more");
+    assert.match(css, /\.pill\.wrap-button \{ display: flex; width: 100%; margin-top: 12px; \}/, "each on a line of its own");
 });
 
-test("header and footer: a part ticked opens its box and pills, eBay ticked with it for one venue; one Save for both; untick keeps the text; every body as sent", async (t) => {
+test("Add standard text to posts: unticked just its line; ticked the card; the buttons wake on a change and dim after a press; a blank box means none; unticked, both off with the texts kept", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
     pc.wrap = structuredClone(NO_WRAP);
     pc.wrap.footer.text = "Thanks for looking!";
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
-    assert.equal(nodes.get("wrap").hidden, true, "nothing before the server answers");
+    assert.equal(nodes.get("wrap-row").hidden, true, "nothing before the server answers");
     assert.deepEqual(pc.wrapAsks, [], "not asked before Settings opens");
     await openPosting(nodes);
     assert.deepEqual(pc.wrapAsks, ["key test-key-0123456789"]);
-    assert.equal(nodes.get("wrap").hidden, false);
-    for (const part of ["header", "footer"]) {
-        assert.equal(wrapPart(nodes, part).on, false);
-        assert.equal(wrapPart(nodes, part).open, false, "box and pills out of sight while unticked");
-    }
-    assert.equal(wrapApplies(nodes), null);
+    // off with a text kept on the server: unticked, just the line
+    assert.deepEqual(wrapCard(nodes), { row: true, on: false, card: false, buttons: SAVE_OFF, status: "" });
 
-    // ticked: the box and the pills, and eBay, the only venue, ticked in the same PATCH
-    tickRow(nodes, "header", true);
-    assert.deepEqual(wrapPart(nodes, "header"), { on: true, open: true, text: "", count: "0 / 2000", pills: ["ebay ✓"] });
-    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"]);
+    // ticked: the card, the texts as the server keeps them, nothing sent; the footer's words
+    // mean on, so Save wakes at once
+    tickWrap(nodes, true);
     await settle();
-    assert.deepEqual(pc.wrapSaves, [
-        { body: { header: { on: true, venues: ["ebay"] } }, auth: "key test-key-0123456789", type: "application/json" },
-    ]);
+    assert.deepEqual(pc.wrapSaves, [], "ticking sends nothing");
+    assert.deepEqual(wrapPart(nodes, "header"), { text: "", chips: ["ebay"] });
+    assert.deepEqual(wrapPart(nodes, "footer"), { text: "Thanks for looking!", chips: ["ebay"] });
+    assert.deepEqual(wrapCard(nodes), { row: true, on: true, card: true, buttons: SAVE_ON, status: "" });
 
-    // typed, counted, saved: trimmed, the box as the server keeps it
-    nodes.get("wrap-header-text").value = "  Free local pickup in Chicago.\r\n";
-    nodes.get("wrap-header-text").fire("input");
-    assert.equal(wrapPart(nodes, "header").count, "33 / 2000");
+    // typed into the header: eBay, the one venue, chosen with it
+    typeWrap(nodes, "header", "  Free local pickup in Chicago.\r\n");
+    assert.deepEqual(wrapPart(nodes, "header").chips, ["ebay ✓"]);
     nodes.get("wrap-save").fire("click");
     assert.equal(nodes.get("wrap-status").textContent, "Saving...");
-    assert.equal(nodes.get("wrap-save").disabled, true, "one Save at a time");
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_OFF, "one press at a time");
     await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Free local pickup in Chicago." } }, "only what changed");
-    assert.equal(nodes.get("wrap-status").textContent, "saved");
-    assert.equal(wrapPart(nodes, "header").text, "Free local pickup in Chicago.");
-    assert.equal(wrapPart(nodes, "header").count, "29 / 2000");
-    assert.equal(nodes.get("wrap-save").disabled, false);
-    // typing again: "saved" no longer speaks for the box; nothing changed, nothing sent
-    nodes.get("wrap-header-text").fire("input");
-    assert.equal(nodes.get("wrap-status").textContent, "");
+    assert.deepEqual(pc.wrapSaves.at(-1), {
+        body: { header: { on: true, text: "Free local pickup in Chicago.", venues: ["ebay"] }, footer: { on: true } },
+        auth: "key test-key-0123456789",
+        type: "application/json",
+    });
+    assert.deepEqual(wrapCard(nodes), { row: true, on: true, card: true, buttons: SAVE_OFF, status: "saved" }, "dimmed again after the press");
+    assert.equal(wrapPart(nodes, "header").text, "Free local pickup in Chicago.", "the box as the server keeps it");
+    assert.deepEqual(pc.wrapApplies, [], "Save is for upcoming postings alone");
+
+    // a chip: the buttons wake; chosen again as it was, they dim
+    findIn(nodes.get("wrap-footer-venues"), "wrap-footer-ebay").fire("click");
+    assert.deepEqual(wrapPart(nodes, "footer").chips, ["ebay ✓"]);
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_ON);
+    assert.equal(wrapCard(nodes).status, "", "saved no longer speaks for the card");
+    findIn(nodes.get("wrap-footer-venues"), "wrap-footer-ebay").fire("click");
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_OFF);
+
+    // a blank box means none: the header off, its text cleared
+    typeWrap(nodes, "header", "   ");
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_ON);
+    nodes.get("wrap-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: false, text: "" } });
+
+    // unticked: both parts off at once, the texts kept on the server and in the boxes
     const sent = pc.wrapSaves.length;
-    nodes.get("wrap-save").fire("click");
+    tickWrap(nodes, false);
+    assert.deepEqual(wrapCard(nodes), { row: true, on: false, card: false, buttons: SAVE_OFF, status: "" });
     await settle();
-    assert.equal(pc.wrapSaves.length, sent);
-    assert.equal(nodes.get("wrap-status").textContent, "saved");
-
-    // unticked: {"on": false} alone, box and pills hidden, the text kept; ticked again: the server's text, eBay as it was
-    tickRow(nodes, "header", false);
+    assert.equal(pc.wrapSaves.length, sent + 1);
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { on: false } }, "only the part that was on");
+    assert.equal(pc.wrap.footer.text, "Thanks for looking!", "the server keeps it");
+    // ticked again: the card as left; its words wake Save
+    tickWrap(nodes, true);
     await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: false } });
-    assert.equal(wrapPart(nodes, "header").open, false);
-    assert.equal(wrapApplies(nodes), null, "no part ticked, nothing to apply");
-    assert.equal(pc.wrap.header.text, "Free local pickup in Chicago.", "the server keeps it");
-    nodes.get("wrap-header-text").value = "typed but never saved";
-    tickRow(nodes, "header", true);
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { on: true } }, "eBay ticked already: not sent again");
-    assert.equal(wrapPart(nodes, "header").text, "Free local pickup in Chicago.", "the text the server has");
-    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay ✓"]);
-
-    // the pill: off at once, outlined, the apply button gone; on again
-    findIn(nodes.get("wrap-header-venues"), "wrap-header-ebay").fire("click");
-    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay"]);
-    assert.equal(wrapApplies(nodes), null);
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: [] } });
-    findIn(nodes.get("wrap-header-venues"), "wrap-header-ebay").fire("click");
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { venues: ["ebay"] } });
-    assert.deepEqual(wrapPart(nodes, "header").pills, ["ebay ✓"]);
-
-    // the footer is its own: off with its text kept on the server, ticked it opens on that text
-    tickRow(nodes, "footer", true);
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { on: true, venues: ["ebay"] } });
+    assert.equal(pc.wrapSaves.length, sent + 1);
     assert.equal(wrapPart(nodes, "footer").text, "Thanks for looking!");
-    assert.equal(wrapPart(nodes, "footer").count, "19 / 2000");
-    assert.equal(wrapPart(nodes, "header").on, true, "the header untouched");
-    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"], "one per venue, for both parts");
-
-    // both boxes typed: the one Save sends both in one PATCH
-    nodes.get("wrap-header-text").value = "Hello";
-    nodes.get("wrap-footer-text").value = "Bye";
-    nodes.get("wrap-save").fire("click");
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { header: { text: "Hello" }, footer: { text: "Bye" } });
-    assert.equal(pc.wrapSaves.length, 8);
-    assert.ok(pc.wrapSaves.every((s) => s.auth === "key test-key-0123456789" && s.type === "application/json"));
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_ON);
+    // a fresh load: unticked while no part is on
+    const again = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await openPosting(again.nodes);
+    assert.equal(wrapCard(again.nodes).on, false);
     assert.ok(!pc.calls.some((c) => c.includes("/me/wrap")), "counted apart");
 });
 
-test("header and footer: two venues tick none by themselves; a refusal puts the pill back and says why; a text too long is not sent", async (t) => {
+test("header and footer: two venues are chosen by hand; a refusal says why and keeps the card; a text too long is not sent; unticking refused ticks it again", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
     pc.wrap = { ...structuredClone(NO_WRAP), available: ["ebay", "craigslist"] };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openPosting(nodes);
-    tickRow(nodes, "footer", true);
-    await settle();
-    assert.deepEqual(pc.wrapSaves.map((s) => s.body), [{ footer: { on: true } }], "two venues: he chooses");
-    assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay", "craigslist"]);
-    assert.equal(wrapApplies(nodes), null, "no venue ticked, nothing to apply");
+    tickWrap(nodes, true);
+    typeWrap(nodes, "footer", "Bye");
+    assert.deepEqual(wrapPart(nodes, "footer").chips, ["ebay", "craigslist"], "two venues: he chooses");
     findIn(nodes.get("wrap-footer-venues"), "wrap-footer-craigslist").fire("click");
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["craigslist"] } });
-    assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay", "craigslist ✓"]);
-    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing craigslist listings"]);
     findIn(nodes.get("wrap-footer-venues"), "wrap-footer-ebay").fire("click");
-    await settle();
-    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { venues: ["ebay", "craigslist"] } }, "both, in the page's venue order");
-    assert.deepEqual(pc.wrap.footer.venues, ["ebay", "craigslist"]);
-    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings", "Apply to all existing craigslist listings"]);
+    assert.deepEqual(wrapPart(nodes, "footer").chips, ["ebay ✓", "craigslist ✓"]);
 
-    // refused: the pill as it was, and why on the card's line
+    // refused: the server's words, the card as he left it, the buttons awake to try again
     for (const [status, detail, said] of [
         [400, "footer.venues: craigslist is not connected", "footer.venues: craigslist is not connected"],
         [404, "Not Found", "The header and footer are not available yet."],
         [500, "boom", "Could not save: boom."],
     ]) {
         pc.wrapRefuse = { status, detail };
-        findIn(nodes.get("wrap-footer-venues"), "wrap-footer-craigslist").fire("click");
-        assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay ✓", "craigslist"], "at once");
+        nodes.get("wrap-save").fire("click");
         await settle();
-        assert.deepEqual(wrapPart(nodes, "footer").pills, ["ebay ✓", "craigslist ✓"], `answered ${status}: back`);
-        assert.equal(nodes.get("wrap-status").textContent, said);
+        assert.equal(nodes.get("wrap-status").textContent, said, `answered ${status}`);
+        assert.deepEqual(wrapPart(nodes, "footer").chips, ["ebay ✓", "craigslist ✓"]);
+        assert.deepEqual(wrapCard(nodes).buttons, SAVE_ON);
     }
     pc.wrapRefuse = null;
+    nodes.get("wrap-save").fire("click");
+    await settle();
+    assert.deepEqual(pc.wrapSaves.at(-1).body, { footer: { on: true, text: "Bye", venues: ["ebay", "craigslist"] } }, "both, in the page's venue order");
 
     // more than 2000 characters (pasted past the box's own limit): named, nothing sent
     const sent = pc.wrapSaves.length;
-    nodes.get("wrap-footer-text").value = "x".repeat(2001);
+    typeWrap(nodes, "footer", "x".repeat(2001));
     nodes.get("wrap-save").fire("click");
     await settle();
     assert.equal(nodes.get("wrap-status").textContent, "Footer: At most 2000 characters; this is 2001.");
     assert.equal(pc.wrapSaves.length, sent);
-    nodes.get("wrap-footer-text").value = "x".repeat(2000);
-    nodes.get("wrap-save").fire("click");
+    typeWrap(nodes, "footer", "Bye");
+
+    // unticking refused: ticked again, and why
+    pc.wrapRefuse = { status: 500, detail: "boom" };
+    tickWrap(nodes, false);
     await settle();
-    assert.equal(pc.wrapSaves.at(-1).body.footer.text.length, 2000);
-    assert.equal(nodes.get("wrap-status").textContent, "saved");
+    assert.deepEqual(wrapCard(nodes), { row: true, on: true, card: true, buttons: SAVE_OFF, status: "Could not save: boom." });
 });
 
-test("Apply to all existing listings: one job button per venue ticked, as a venue block's sync is; its summary under it; paused, reset; refused", async (t) => {
+test("Apply to existing postings: saved first, then one push per venue a part goes on, its line under the card; refused", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     let applying = { state: "running", step: "updating eBay listings" };
-    const pc = fakePc({ jobs: { "w-ebay": () => applying } });
+    const pc = fakePc({ jobs: { "w-ebay": () => applying, "w-craigslist": () => ({ state: "done", summary: "1 listings updated, 0 unchanged, 0 failed" }) } });
     pc.wrap = {
         header: { on: true, text: "Free local pickup.", venues: ["ebay"] },
         footer: { on: true, text: "Thanks!", venues: ["ebay"] },
-        available: ["ebay"],
+        available: ["ebay", "craigslist"],
     };
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openPosting(nodes);
-    assert.deepEqual(wrapApplies(nodes), ["Apply to all existing ebay listings"]);
+    // a part on with words: ticked, the card open, both buttons dimmed until a change
+    assert.deepEqual(wrapCard(nodes), { row: true, on: true, card: true, buttons: SAVE_OFF, status: "" });
     assert.equal(wrapPart(nodes, "header").text, "Free local pickup.");
-    assert.equal(wrapPart(nodes, "footer").text, "Thanks!");
-    const btn = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay");
-    const line = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay-status");
-    const reset = findIn(nodes.get("wrap-apply"), "wrap-apply-ebay-reset");
-    assert.equal(reset.attrs["aria-label"], "reset Apply to all existing ebay listings");
-
-    // the press: its ring and "tap again to cancel" at once; the job after the second
-    btn.fire("click");
-    assert.equal(line.textContent, "sending");
-    assert.equal(btn.classList.contains("busy"), true);
-    assert.equal(buttonSays(btn), "Apply to all existing ebay listings / tap again to cancel");
+    typeWrap(nodes, "footer", "Thanks for looking!");
+    nodes.get("wrap-apply").fire("click");
     await settle();
-    assert.deepEqual(pc.wrapApplies, []);
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
+    // saved, then pushed onto eBay's listings
+    assert.deepEqual(pc.wrapSaves.map((s) => s.body), [{ footer: { text: "Thanks for looking!" } }]);
     assert.deepEqual(pc.wrapApplies, [{ body: { venue: "ebay" }, auth: "key test-key-0123456789", type: "application/json" }]);
-    assert.equal(line.textContent, "queued");
+    const line = () => findIn(nodes.get("wrap-jobs"), "wrap-apply-ebay-status");
+    assert.equal(nodes.get("wrap-jobs").hidden, false);
+    assert.equal(line().textContent, "queued");
+    assert.deepEqual(wrapCard(nodes).buttons, SAVE_OFF, "dimmed after the press");
     t.mock.timers.tick(POLL_MS);
     await settle();
     assert.equal(pc.calls.at(-1), "GET /jobs/w-ebay");
-    assert.equal(line.textContent, "updating eBay listings");
-    assert.equal(line.className, "venue-status busy");
-
-    // done: the summary under it, the button its word again
+    assert.equal(line().textContent, "updating eBay listings");
+    assert.equal(line().className, "venue-status busy");
+    // a change while it runs: Save wakes, Apply waits for the push
+    typeWrap(nodes, "header", "Free pickup.");
+    assert.deepEqual(wrapCard(nodes).buttons, ["Save for upcoming postings", "Apply to existing postings (off)"]);
+    typeWrap(nodes, "header", "Free local pickup.");
+    // done: its summary
     applying = { state: "done", summary: "3 listings updated, 10 unchanged, 0 failed" };
     t.mock.timers.tick(POLL_MS);
     await settle();
-    assert.equal(line.textContent, "3 listings updated, 10 unchanged, 0 failed");
-    assert.equal(line.className, "venue-status ok");
-    assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
-    assert.equal(btn.classList.contains("busy"), false);
+    assert.equal(line().textContent, "3 listings updated, 10 unchanged, 0 failed");
+    assert.equal(line().className, "venue-status ok");
     const polled = pc.calls.length;
     t.mock.timers.tick(POLL_MS * 2);
     await settle();
     assert.equal(pc.calls.length, polled, "no more polls once it ended");
 
-    // within the second, a tap holds it: continue and reset, reset drops it, nothing sent
-    btn.fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS / 2);
-    btn.fire("click");
+    // the header on craigslist too: one push per venue, each line named once there are two
+    findIn(nodes.get("wrap-header-venues"), "wrap-header-craigslist").fire("click");
+    nodes.get("wrap-apply").fire("click");
     await settle();
-    assert.equal(line.textContent, "paused");
-    assert.equal(buttonSays(btn), "continue");
-    assert.equal(reset.hidden, false);
-    t.mock.timers.tick(SEND_DELAY_MS * 3);
-    await settle();
-    assert.equal(pc.wrapApplies.length, 1, "held: nothing leaves the phone");
-    reset.fire("click");
-    await settle();
-    assert.equal(line.textContent, "cancelled");
-    assert.equal(line.className, "venue-status bad");
-    assert.equal(buttonSays(btn), "Apply to all existing ebay listings");
-    assert.equal(reset.hidden, true);
-    t.mock.timers.tick(SEND_DELAY_MS * 3);
-    await settle();
-    assert.equal(pc.wrapApplies.length, 1, "the dropped press never goes");
+    assert.deepEqual(pc.wrapApplies.slice(1).map((a) => a.body), [{ venue: "ebay" }, { venue: "craigslist" }]);
+    assert.deepEqual(nodes.get("wrap-jobs").children.map((p) => p.textContent), ["ebay: queued", "craigslist: queued"]);
 
-    // refused: the server's words under it, the button free
+    // refused: the server's words on its line
     pc.wrapApplyRefuse = "eBay is not connected";
-    btn.fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
+    t.mock.timers.tick(POLL_MS);
     await settle();
-    assert.equal(pc.wrapApplies.length, 2);
-    assert.equal(line.textContent, "eBay is not connected");
-    assert.equal(line.className, "venue-status bad");
-    assert.equal(btn.disabled, false);
+    typeWrap(nodes, "footer", "Bye");
+    nodes.get("wrap-apply").fire("click");
+    await settle();
+    assert.equal(line().textContent.endsWith("eBay is not connected"), true);
+    assert.match(line().className, /bad/);
 });
 
-test("header and footer: an older server (404) has no card; signing out takes it away with the rest", async (t) => {
+test("header and footer: an older server (404) has no tick and no card; signing out takes them away with the rest", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const old = fakePc();
     const before = await loadPage({ local: memoryStore(GOOD), fetchImpl: old.fetch });
     await openPosting(before.nodes);
     assert.equal(old.wrapAsks.length, 1);
+    assert.equal(before.nodes.get("wrap-row").hidden, true);
     assert.equal(before.nodes.get("wrap").hidden, true);
     assert.equal(before.nodes.get("posting-defaults").hidden, false, "the defaults are the phone's: there all the same");
 
@@ -10156,9 +10138,9 @@ test("header and footer: an older server (404) has no card; signing out takes it
     assert.equal(wrapPart(nodes, "header").text, "Hello");
     nodes.get("settings-signout").fire("click");
     assert.equal(nodes.get("wrap").hidden, true);
+    assert.equal(nodes.get("wrap-row").hidden, true);
     assert.equal(nodes.get("wrap-header-text").value, "", "nothing of hers left on the phone's screen");
 });
-
 // --- several accounts on one phone (Michal, 2026-10-18: "mostly i want to make sure there is a
 // logout somewhere. and switch accounts somewhere so i can navigate easy between two logins to
 // this app ... there should be a way to REMOVE account from phone [which is different than

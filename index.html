@@ -514,83 +514,80 @@
 
       <!-- 3. Posting defaults: the defaults every new item starts with (the customize box's,
            Michal 2026-10-08: "in case someone wants to change something permanently"), saved on
-           change; then the header and footer on every listing as one card (Michal, 2026-10-17),
-           from GET /me/wrap -->
+           change, no card, no group labels (Michal, 2026-10-31: "less is more"): one muted line;
+           Quantity, a box three digits wide, with the Price slider beside it filling the line;
+           the options one line each; the fifth, Add standard text to posts, unfolding the header
+           and footer card (GET /me/wrap) while it is ticked -->
       <button type="button" id="fold-posting-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
-        <div id="posting-defaults" class="card posting-defaults">
-          <p class="small posting-lead">The defaults every posting starts with. Each can be adjusted for one posting at the time of posting, through the customize menu on the Snap page.</p>
-          <label class="field">
-            <span class="field-label">Quantity</span>
-            <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
-                   spellcheck="false" value="1">
-          </label>
+        <div id="posting-defaults" class="posting-defaults">
+          <p class="small posting-lead">Changed per posting from the customize menu.</p>
+          <div class="qty-row">
+            <label class="field qty-field">
+              <span class="field-label">Quantity</span>
+              <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
+                     spellcheck="false" maxlength="3" value="1">
+            </label>
+            <div class="field pricing-field">
+              <label class="field-label" for="posting-pricing">Price</label>
+              <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
+                     aria-valuetext="Quick sale">
+              <div class="pricing-words" aria-hidden="true">
+                <span id="posting-pricing-1" class="on">Quick sale</span>
+                <span id="posting-pricing-2">Fair price</span>
+                <span id="posting-pricing-3">Higher end</span>
+              </div>
+            </div>
+          </div>
           <label class="pickup">
             <input id="posting-pickup-only" type="checkbox">
             <span>Pickup only, no shipping</span>
           </label>
-          <div class="field pricing-field">
-            <label class="field-label" for="posting-pricing">Price</label>
-            <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
-                   aria-valuetext="Quick sale" aria-describedby="posting-pricing-note">
-            <div class="pricing-words" aria-hidden="true">
-              <span id="posting-pricing-1" class="on">Quick sale</span>
-              <span id="posting-pricing-2">Fair price</span>
-              <span id="posting-pricing-3">Higher end</span>
-            </div>
-            <p id="posting-pricing-note" class="pricing-note">sell what we have this week</p>
-          </div>
           <label class="pickup">
             <input id="posting-auto-post" type="checkbox" checked>
-            <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
+            <span>Post without asking</span>
           </label>
           <label class="pickup">
             <input id="posting-comps" type="checkbox" checked>
-            <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
+            <span>Compare with marketplace listings</span>
           </label>
           <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
             <span>Fix dark photos</span>
           </label>
+          <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
+               checkbox for footnote/header for all posts"; 2026-10-31: one tick, "Add standard
+               text to posts", there once the server answered (an older server's 404: none);
+               ticked, the gray card: Header and its box and venue chips, Footer the same (a
+               blank box means none), then Save for upcoming postings and Apply to existing
+               postings, each on its own line, dimmed until the text or a chip changes) -->
+          <label id="wrap-row" class="pickup" hidden>
+            <input id="wrap-on" type="checkbox">
+            <span>Add standard text to posts</span>
+          </label>
+          <div id="wrap" class="card wrap" hidden>
+            <label class="field wrap-field">
+              <span class="field-label">Header</span>
+              <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000"
+                        placeholder="Text added above the description"></textarea>
+            </label>
+            <div id="wrap-header-venues" class="chips option-chips wrap-venues" role="group" aria-label="Header: venues"></div>
+            <label class="field wrap-field">
+              <span class="field-label">Footer</span>
+              <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000"
+                        placeholder="Text added below the description"></textarea>
+            </label>
+            <div id="wrap-footer-venues" class="chips option-chips wrap-venues" role="group" aria-label="Footer: venues"></div>
+            <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings</button>
+            <button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings</button>
+            <p id="wrap-status" class="small account-status" aria-live="polite"></p>
+            <!-- one line per venue Apply pushes onto, its job's step and summary (app.js) -->
+            <div id="wrap-jobs" class="wrap-jobs" hidden></div>
+          </div>
           <p id="posting-status" class="small account-status" aria-live="polite"></p>
         </div>
-
-        <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
-             checkbox for footnote/header for all posts ... once you check header you get a header
-             foldout with all these options"; one card with one Save since 2026-10-25): each part's
-             tick, and only under a ticked one its box, counter and a pill per venue /me/wrap
-             offers (Michal, 2026-10-26: "choice of venue only makes sense after"; drawn by
-             app.js), Save, then Apply to all existing listings per venue ticked. An older
-             server's 404: no card -->
-        <div id="wrap" class="card wrap" hidden>
-          <p class="card-name">Header and footer on every listing</p>
-          <label class="pickup">
-            <input id="wrap-header-on" type="checkbox">
-            <span>Header</span>
-          </label>
-          <div id="wrap-header" class="wrap-fold" hidden>
-            <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Header"
-                      placeholder="Text added above the description"></textarea>
-            <p id="wrap-header-count" class="small wrap-count">0 / 2000</p>
-            <div id="wrap-header-venues" class="wrap-venues" role="group" aria-label="Header: apply to"></div>
-          </div>
-          <label class="pickup">
-            <input id="wrap-footer-on" type="checkbox">
-            <span>Footer</span>
-          </label>
-          <div id="wrap-footer" class="wrap-fold" hidden>
-            <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000" aria-label="Footer"
-                      placeholder="Text added below the description"></textarea>
-            <p id="wrap-footer-count" class="small wrap-count">0 / 2000</p>
-            <div id="wrap-footer-venues" class="wrap-venues" role="group" aria-label="Footer: apply to"></div>
-          </div>
-          <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-save">Save</button>
-          <p id="wrap-status" class="small account-status" aria-live="polite"></p>
-          <div id="wrap-apply" class="wrap-apply" hidden></div>
-        </div>
       </div>
-
       <!-- 4. Server: only for an account that signed in by key (an email account has no Server
            fold at all), and for I have a key before a key is saved -->
       <button type="button" id="fold-server-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"

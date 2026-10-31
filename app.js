@@ -200,7 +200,10 @@ import {
     peopleOf,
     personWords,
     signedOutOthers,
-    wrapTextsBody,
+    wrapDraftBody,
+    wrapOffBody,
+    wrapOn,
+    wrapApplyVenues,
     installState,
     installSteps,
     isDesktopBrowser,
@@ -229,11 +232,7 @@ import {
     inboxOf,
     refusalLine,
     signupStep,
-    applyLabel,
-    venueTickLabel,
     WRAP_PARTS,
-    wrapBody,
-    wrapCounter,
     wrapError,
     wrapOf,
     ACCOUNT_DELETED,
@@ -442,23 +441,27 @@ const account = { packs: false, busy: false, status: "" };
  */
 const seller = { info: null, same: true, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0, venueBoxes: {} };
 /**
- * The header and footer on every listing (GET /me/wrap), one card under Posting defaults, as the screen
+ * The header and footer on every listing (GET /me/wrap), under Posting defaults, as the screen
  * has it: the server's answer (wrapOf; null until asked, and from an older server's 404, which
- * is no card), its line, its one Save on its way, `asked`, bumped per ask so a late answer for
- * an older one is dropped, per venue the job task (jobTask) of Apply to all existing listings
- * (one push carries both parts), and the pills and apply buttons as drawn, by venue.
+ * is no tick and no card), Add standard text to posts ticked (`open`), each part's venue chips
+ * as chosen (`draft`; its words are its box's), the card's line, a PATCH on its way, `asked`,
+ * bumped per ask so a late answer for an older one is dropped, per venue the job task (jobTask)
+ * of Apply to existing postings (one push carries both parts), and the chips as drawn.
  */
 const wrap = {
     info: null,
+    open: false,
+    /** @type {{header:string[], footer:string[]}} */
+    draft: { header: [], footer: [] },
     status: "",
     busy: false,
     asked: 0,
     /** @type {Record<string, ReturnType<typeof jobTask>>} */
     apply: {},
-    /** @type {Record<string, {pills:Record<string, HTMLButtonElement>, btn:HTMLButtonElement, reset:HTMLButtonElement, line:HTMLElement}>} */
-    drawn: {},
-    /** What each part's pill row and the apply row hold now, so each is redrawn only when that changes. */
-    shown: { header: "", footer: "", apply: "" },
+    /** @type {Record<string, HTMLButtonElement>} "<part> <venue>" -> its chip */
+    chips: {},
+    /** What each part's chip row holds now, so it is redrawn only when that changes. */
+    shown: { header: "", footer: "" },
 };
 /**
  * The people on this account (GET /me/people, /me/devices; Michal, 2026-10-25), as the screen
@@ -1432,7 +1435,6 @@ function renderPosting() {
     el.postingPricing.value = String(grade.grade);
     el.postingPricing.setAttribute("aria-valuetext", grade.word);
     PRICING.forEach((p, i) => el.postingPricingWords[i].classList.toggle("on", p.grade === grade.grade));
-    el.postingPricingNote.textContent = grade.note;
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
     el.postingFixDark.checked = savedFixDark();
@@ -5438,116 +5440,96 @@ function pollPolicies(fresh) {
     }, SELLER_POLL_MS);
 }
 
-// --- a header and a footer on every listing, one card under Posting defaults --------------
+// --- a header and a footer on every listing, under Posting defaults ----------------------
 // Michal, 2026-10-17: "In default settings add a checkbox for footnote/header for all posts.
 // When you check that, a text area appears ... If you uncheck it, it should not lose what you
-// had ... Below would be the venue buttons; 'Apply to:' above them ... Finally a button 'Apply
-// to all existing listings' (per the venue specified)." The server keeps both (GET/PATCH
-// /me/wrap) and puts them round every description it posts. Since 2026-10-25 one card: the
-// two ticks, each unfolding its box and its pills (one per venue /me/wrap offers), one Save,
-// and Apply to all existing listings per venue ticked.
+// had." The server keeps both (GET/PATCH /me/wrap) and puts them round every description it
+// posts. Since 2026-10-31 one tick, Add standard text to posts, and under it while ticked the
+// gray card: Header and its box and venue chips, Footer the same (a blank box means none),
+// then Save for upcoming postings and Apply to existing postings, dimmed until something
+// changes, dimmed again once pressed.
+
+/** The card's two parts as typed and chosen: each box's words and its venue chips. */
+function wrapDraft() {
+    return Object.fromEntries(WRAP_PARTS.map((part) => [part, { text: el.wrapParts[part].text.value, venues: wrap.draft[part] }]));
+}
 
 /**
- * The card: each part ticked as the server has it, its box and its venue pills (ticked in the
- * posted green) under it while it is; the boxes' counters; Save and its line; and per venue
- * ticked in either part (or still pushing) Apply to all existing listings, a job button, its
- * line under it. No card until the server answered.
+ * The tick and the card: the tick once the server answered, ticked as wrap.open; the card
+ * while it is; per part its venue chips (option chips, one per venue /me/wrap offers, the
+ * chosen white with a check); the two buttons dimmed until the boxes or the chips differ from
+ * the server's (wrapDraftBody), while a Save is on its way, and Apply while one of its pushes
+ * runs; the card's line; under it one line per venue Apply pushed onto, its job's step or summary.
  */
 function renderWrap() {
     const info = wrap.info;
-    el.wrap.hidden = !info;
+    el.wrapRow.hidden = !info;
+    el.wrapOn.checked = !!info && wrap.open;
+    el.wrap.hidden = !info || !wrap.open;
     const venues = info ? info.available : [];
-    for (const venue of venues) wrapNodes(venue);
     for (const part of WRAP_PARTS) {
-        const p = el.wrapParts[part];
-        const now = info ? info[part] : null;
-        p.on.checked = !!now && now.on;
-        p.fold.hidden = !now || !now.on;
-        p.count.textContent = wrapCounter(p.text.value);
-        const pills = venues.map((venue) => {
-            const pill = wrap.drawn[venue].pills[part];
-            const ticked = !!now && now.venues.includes(venue);
-            const face = venueTickLabel(venue, ticked);
-            pill.replaceChildren(...(face.tick ? [face.text, tickIcon()] : [face.text]));
-            pill.setAttribute("aria-pressed", ticked ? "true" : "false");
-            return pill;
+        const chips = venues.map((venue) => {
+            const chip = wrapChip(part, venue);
+            chip.setAttribute("aria-pressed", wrap.draft[part].includes(venue) ? "true" : "false");
+            chip.disabled = wrap.busy;
+            return chip;
         });
         if (wrap.shown[part] !== venues.join(" ")) {
             wrap.shown[part] = venues.join(" ");
-            p.venues.replaceChildren(...pills);
+            el.wrapParts[part].venues.replaceChildren(...chips);
         }
     }
-    el.wrapSave.disabled = wrap.busy;
+    const made = info ? wrapDraftBody(wrapDraft(), info) : { ok: true, body: {} };
+    const changed = !made.ok || Object.keys(made.body).length > 0;
+    const applying = Object.values(wrap.apply).some((task) => !!task.wait || jobRunning(task.job));
+    el.wrapSave.disabled = wrap.busy || !wrap.open || !changed;
+    el.wrapApply.disabled = wrap.busy || !wrap.open || !changed || applying;
     el.wrapStatus.textContent = wrap.status;
-    const applies = [];
-    for (const venue of venues) {
-        const ticked = !!info && WRAP_PARTS.some((part) => info[part].on && info[part].venues.includes(venue));
+    const said = VENUES.flatMap((venue) => {
         const task = wrap.apply[venue];
-        const busy = pressed(task, "apply");
-        const { btn, reset, line } = wrap.drawn[venue];
-        if (!ticked && !busy) continue;
-        btn.disabled = busy && !taskTap(task);
-        paintJobButton(btn, applyLabel(venue), {
-            busy,
-            cancel: busy && taskCancel(task),
-            paused: busy && task.paused,
-            reset,
-        });
-        const said = busyLine(task);
-        line.textContent = said ? said.text : "";
-        line.className = said && said.kind ? `venue-status ${said.kind}` : "venue-status";
-        applies.push(btn, reset, line);
-    }
-    el.wrapApply.hidden = !applies.length;
-    const shown = applies.map((n) => n.id).join(" ");
-    if (wrap.shown.apply !== shown) {
-        wrap.shown.apply = shown;
-        el.wrapApply.replaceChildren(...applies);
-    }
+        const line = task ? busyLine(task) : null;
+        return line ? [{ venue, line }] : [];
+    });
+    el.wrapJobs.hidden = !said.length;
+    el.wrapJobs.replaceChildren(
+        ...said.map(({ venue, line }) => {
+            const p = document.createElement("p");
+            p.id = `wrap-apply-${venue}-status`;
+            p.className = line.kind ? `venue-status ${line.kind}` : "venue-status";
+            // the venue named once there is more than one line
+            p.textContent = said.length > 1 ? `${venue}: ${line.text}` : line.text;
+            return p;
+        })
+    );
 }
 
-/**
- * A venue's pills (one per part, `wrap-<part>-<venue>`), its Apply to all existing listings
- * (`wrap-apply-<venue>`), its reset and its line, made once per venue /me/wrap offers.
- */
-function wrapNodes(venue) {
-    if (!wrap.drawn[venue]) {
-        wrap.apply[venue] = jobTask();
-        const pills = Object.fromEntries(
-            WRAP_PARTS.map((part) => {
-                const pill = actionButton(venue, "pill pill-small wrap-venue", false, () => toggleWrapVenue(part, venue));
-                pill.id = `wrap-${part}-${venue}`;
-                pill.setAttribute("aria-pressed", "false");
-                return [part, pill];
-            })
-        );
-        const btn = actionButton(applyLabel(venue), "pill pill-small", false, () => {
-            startApply(venue).catch(() => {});
+/** A part's venue chip (`wrap-<part>-<venue>`), made once: a tap chooses the venue or lets it go. */
+function wrapChip(part, venue) {
+    const key = `${part} ${venue}`;
+    if (!wrap.chips[key]) {
+        const chip = actionButton(venue, "chip option", false, () => {
+            const now = wrap.draft[part];
+            wrap.draft[part] = now.includes(venue) ? now.filter((v) => v !== venue) : VENUES.filter((v) => v === venue || now.includes(v));
+            wrap.status = "";
+            renderWrap();
         });
-        btn.id = `wrap-apply-${venue}`;
-        const reset = actionButton(RESET, "reset-call", false, () => {
-            resetTask(wrap.apply[venue], renderWrap).catch(() => {});
-        });
-        reset.id = `wrap-apply-${venue}-reset`;
-        reset.hidden = true;
-        reset.setAttribute("aria-label", `${RESET} ${applyLabel(venue)}`);
-        const line = document.createElement("p");
-        line.id = `wrap-apply-${venue}-status`;
-        line.className = "venue-status";
-        line.setAttribute("aria-live", "polite");
-        wrap.drawn[venue] = { pills, btn, reset, line };
+        chip.id = `wrap-${part}-${venue}`;
+        wrap.chips[key] = chip;
     }
-    return wrap.drawn[venue];
+    return wrap.chips[key];
 }
 
-/** Each part's box as the server has its text (Settings opened, a row ticked again, a Save answered). */
+/** The card as the server has it: each box its text, each part's chips its venues (Settings opened, a Save answered). */
 function fillWrap(info, parts) {
-    for (const part of parts) el.wrapParts[part].text.value = info[part].text;
+    for (const part of parts) {
+        el.wrapParts[part].text.value = info[part].text;
+        wrap.draft[part] = [...info[part].venues];
+    }
 }
 
 /**
- * GET /me/wrap, as Settings opens: the two rows, the boxes filled. An older server's 404: no
- * rows. No answer keeps what the last one said.
+ * GET /me/wrap, as Settings opens: the tick as the server has it (wrapOn), the card filled.
+ * An older server's 404: no tick, no card. No answer keeps what the last one said.
  */
 async function loadWrap() {
     const pc = settings();
@@ -5558,7 +5540,10 @@ async function loadWrap() {
         const info = wrapOf(await getWrap(pc));
         if (mine !== wrap.asked) return;
         wrap.info = info;
-        if (info) fillWrap(info, WRAP_PARTS);
+        if (info) {
+            fillWrap(info, WRAP_PARTS);
+            wrap.open = wrapOn(info);
+        }
     } catch (e) {
         if (mine !== wrap.asked) return;
         if (e.status === 404) wrap.info = null;
@@ -5568,107 +5553,46 @@ async function loadWrap() {
 }
 
 /**
- * One PATCH /me/wrap for a part (wrapBody): the screen follows the tap at once, and the
- * server's answer then has the last word; a refusal puts the part back as it was (unless a
- * newer change is on its way) and says why on the part's line. True once the server took it.
+ * A box typed in: the buttons wake once it differs from the server's. A part with words and no
+ * venue chosen, for an account that posts to one venue (Michal: "If there is only one venue
+ * available, as for a typical user, that can be checked right away"), gets that venue chosen.
  * @param {"header"|"footer"} part
- * @param {{on?:boolean, text?:string, venues?:string[]}} changes
- * @returns {Promise<boolean>}
  */
-async function changeWrap(part, changes) {
-    const pc = settings();
-    if (!pc || !wrap.info) return false;
-    const made = wrapBody(part, changes);
-    if (!made.ok) {
-        wrap.status = made.error;
-        renderWrap();
-        return false;
-    }
-    const before = wrap.info;
-    wrap.info = { ...before, [part]: { ...before[part], ...made.body[part] } };
-    wrap.asked += 1;
-    const mine = wrap.asked;
+function onWrapInput(part) {
+    const info = wrap.info;
+    if (!info) return;
+    if (!wrap.busy) wrap.status = "";
+    if (info.available.length === 1 && !wrap.draft[part].length && el.wrapParts[part].text.value.trim()) wrap.draft[part] = [...info.available];
     renderWrap();
-    try {
-        const info = wrapOf(await patchWrap(pc, made.body));
-        if (mine === wrap.asked && info) wrap.info = info;
-        return true;
-    } catch (e) {
-        if (e.status === 0 || e.status === 401) heard(e.status);
-        if (mine === wrap.asked) wrap.info = before;
-        wrap.status = wrapError(e.status, e.message);
-        return false;
-    } finally {
-        renderWrap();
-    }
 }
 
 /**
- * A row ticked or unticked: {"on"} at once. Unticked, the text stays the server's and the
- * box's; ticked again, the foldout opens on the text the server has. The first tick of a row
- * on no venue, for an account that posts to one (Michal: "If there is only one venue
- * available, as for a typical user, that can be checked right away"), ticks that one too, in
- * the same PATCH.
- * @param {"header"|"footer"} part
+ * Add standard text to posts ticked: the card, as it was left, nothing sent. Unticked: the card
+ * goes and both parts are turned off on the server at once (wrapOffBody), their texts and
+ * venues kept; a refusal ticks it again and says why.
  * @param {boolean} on
  */
-function tickWrap(part, on) {
-    const info = wrap.info;
-    if (!info) return;
-    wrap.status = "";
-    /** @type {{on:boolean, venues?:string[]}} */
-    const changes = { on };
-    if (on && info.available.length === 1 && info[part].venues.length === 0) changes.venues = info.available;
-    if (on) fillWrap(info, [part]);
-    changeWrap(part, changes).catch(() => {});
-}
-
-/** A venue pill: that venue in or out of the part's venues, sent at once. */
-function toggleWrapVenue(part, venue) {
-    const info = wrap.info;
-    if (!info) return;
-    wrap.status = "";
-    const now = info[part].venues;
-    const venues = now.includes(venue) ? now.filter((v) => v !== venue) : [...now, venue];
-    changeWrap(part, { venues }).catch(() => {});
-}
-
-/**
- * The one Save: both texts as typed, only what differs from the server's (wrapTextsBody), in
- * one PATCH; its line saying so; the boxes as the server keeps them, unless typed in meanwhile.
- */
-async function saveWrap() {
+async function setWrapOpen(on) {
     const pc = settings();
     const info = wrap.info;
-    if (wrap.busy || !info || !pc) return;
-    const sent = { header: el.wrapParts.header.text.value, footer: el.wrapParts.footer.text.value };
-    const made = wrapTextsBody(sent, info);
-    if (!made.ok) {
-        wrap.status = made.error;
-        renderWrap();
-        return;
-    }
-    if (!Object.keys(made.body).length) {
-        wrap.status = "saved";
-        renderWrap();
-        return;
-    }
+    if (!info || !pc) return;
+    wrap.open = on;
+    wrap.status = "";
+    renderWrap();
+    const body = on ? {} : wrapOffBody(info);
+    if (!Object.keys(body).length) return;
     wrap.busy = true;
-    wrap.status = "Saving...";
     wrap.asked += 1;
     const mine = wrap.asked;
-    renderWrap();
     try {
-        const answer = wrapOf(await patchWrap(pc, made.body));
-        if (mine !== wrap.asked) return;
-        if (answer) wrap.info = answer;
-        wrap.status = "saved";
-        for (const part of WRAP_PARTS) {
-            if (el.wrapParts[part].text.value === sent[part] && wrap.info) fillWrap(wrap.info, [part]);
-        }
+        const answer = wrapOf(await patchWrap(pc, body));
+        if (mine === wrap.asked && answer) wrap.info = answer;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        if (mine === wrap.asked) wrap.status = wrapError(e.status, e.message);
+        if (mine === wrap.asked) {
+            wrap.open = true;
+            wrap.status = wrapError(e.status, e.message);
+        }
     } finally {
         wrap.busy = false;
         renderWrap();
@@ -5676,24 +5600,73 @@ async function saveWrap() {
 }
 
 /**
- * Apply to all existing listings, either row's, for a venue: after the second a job button
- * waits, POST /me/wrap/apply {"venue"}, then the job polled every POLL_MS as the sync bar's,
- * its line under the button (queued, the server's step, its summary or its error); a tap on
- * it pauses, reset calls it off. A refusal shows the server's words.
+ * Save for upcoming postings: the card as it stands, only what differs from the server's
+ * (wrapDraftBody), in one PATCH /me/wrap; its line saying so; the boxes and chips as the
+ * server keeps them, unless typed in meanwhile. True once the server holds what the card says
+ * (nothing to send counts), so Apply can follow.
+ * @returns {Promise<boolean>}
+ */
+async function saveWrap() {
+    const pc = settings();
+    const info = wrap.info;
+    if (wrap.busy || !info || !pc) return false;
+    const sent = wrapDraft();
+    const made = wrapDraftBody(sent, info);
+    if (!made.ok) {
+        wrap.status = made.error;
+        renderWrap();
+        return false;
+    }
+    if (!Object.keys(made.body).length) return true;
+    wrap.busy = true;
+    wrap.status = "Saving...";
+    wrap.asked += 1;
+    const mine = wrap.asked;
+    renderWrap();
+    try {
+        const answer = wrapOf(await patchWrap(pc, made.body));
+        if (mine !== wrap.asked) return false;
+        if (answer) {
+            wrap.info = answer;
+            for (const part of WRAP_PARTS) {
+                if (el.wrapParts[part].text.value === sent[part].text) fillWrap(answer, [part]);
+            }
+        }
+        wrap.status = "saved";
+        return true;
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        if (mine === wrap.asked) wrap.status = wrapError(e.status, e.message);
+        return false;
+    } finally {
+        wrap.busy = false;
+        renderWrap();
+    }
+}
+
+/**
+ * Apply to existing postings: Save first, then POST /me/wrap/apply for every venue a part now
+ * goes on (wrapApplyVenues), each its own job, polled every POLL_MS as a venue block's sync is,
+ * its line under the card's (queued, the server's step, its summary or its error).
+ */
+async function applyWrapAll() {
+    if (!(await saveWrap()) || !wrap.info) return;
+    for (const venue of wrapApplyVenues(wrap.info)) startApply(venue).catch(() => {});
+}
+
+/**
+ * One venue's push of the header and footer onto its listings already up: POST /me/wrap/apply
+ * {"venue"}, then the job asked about every POLL_MS; a refusal shows the server's words.
  * @param {string} venue
  */
 async function startApply(venue) {
+    if (!wrap.apply[venue]) wrap.apply[venue] = jobTask();
     const task = wrap.apply[venue];
-    if (task.wait || jobRunning(task.job)) {
-        if (pressed(task, "apply")) onTaskTap(task, renderWrap);
-        return;
-    }
+    if (task.wait || jobRunning(task.job)) return;
     const pc = settings();
     if (!pc) return;
     Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: "sending" });
-    const waited = pressWait(task);
     renderWrap();
-    if (!(await waited)) return;
     let answer;
     try {
         answer = await applyWrap(pc, venue);
@@ -5718,25 +5691,20 @@ async function startApply(venue) {
 }
 
 /**
- * Signed out, or other settings saved: the rows and their answers go, any push's press is
- * let go and no longer asked about (the job itself is the server's).
+ * Signed out, or other settings saved: the tick, the card and their answers go, any push no
+ * longer asked about (the job itself is the server's).
  */
 function dropWrap() {
     wrap.asked += 1;
-    wrap.info = null;
-    wrap.status = "";
-    wrap.busy = false;
+    Object.assign(wrap, { info: null, open: false, status: "", busy: false, draft: { header: [], footer: [] } });
     for (const part of WRAP_PARTS) el.wrapParts[part].text.value = "";
-    for (const venue of Object.keys(wrap.apply)) {
-        const task = wrap.apply[venue];
-        takeBack(task);
+    for (const task of Object.values(wrap.apply)) {
         clearTimeout(task.timer);
         clearTimeout(task.lateTimer);
-        wrap.apply[venue] = jobTask();
     }
+    wrap.apply = {};
     renderWrap();
 }
-
 // --- the people on this account (Michal, 2026-10-25: "allow two users to join the same
 // family group") -----------------------------------------------------------------------
 // The owner's card carries the invite box (their email alone); everyone's carries the People
@@ -6807,7 +6775,6 @@ function main() {
         postingPickupOnly: $("posting-pickup-only"),
         postingPricing: $("posting-pricing"),
         postingPricingWords: PRICING.map(({ grade }) => $(`posting-pricing-${grade}`)),
-        postingPricingNote: $("posting-pricing-note"),
         postingAutoPost: $("posting-auto-post"),
         postingComps: $("posting-comps"),
         postingFixDark: $("posting-fix-dark"),
@@ -6853,21 +6820,13 @@ function main() {
         sellerSave: $("seller-save"),
         sellerStatus: $("seller-status"),
         wrap: $("wrap"),
-        wrapParts: Object.fromEntries(
-            WRAP_PARTS.map((part) => [
-                part,
-                {
-                    on: $(`wrap-${part}-on`),
-                    fold: $(`wrap-${part}`),
-                    text: $(`wrap-${part}-text`),
-                    count: $(`wrap-${part}-count`),
-                    venues: $(`wrap-${part}-venues`),
-                },
-            ])
-        ),
+        wrapRow: $("wrap-row"),
+        wrapOn: $("wrap-on"),
+        wrapParts: Object.fromEntries(WRAP_PARTS.map((part) => [part, { text: $(`wrap-${part}-text`), venues: $(`wrap-${part}-venues`) }])),
         wrapSave: $("wrap-save"),
-        wrapStatus: $("wrap-status"),
         wrapApply: $("wrap-apply"),
+        wrapStatus: $("wrap-status"),
+        wrapJobs: $("wrap-jobs"),
         aboutLink: $("about-link"),
         installBanner: $("install-banner"),
         installAdd: $("install-add"),
@@ -7199,19 +7158,17 @@ function main() {
     el.phoneInstall.addEventListener("click", () => {
         onInstall("phone").catch(() => {});
     });
-    // the header and the footer: each part's tick, its box's counter, the one Save (the pills
-    // and the apply buttons are drawn per venue /me/wrap offers, with their own listeners)
-    for (const [, p] of Object.entries(el.wrapParts)) {
-        const part = /** @type {"header"|"footer"} */ (p.on.id.split("-")[1]);
-        p.on.addEventListener("change", () => tickWrap(part, p.on.checked));
-        p.text.addEventListener("input", () => {
-            // "saved" no longer speaks for what is in the box
-            if (!wrap.busy) wrap.status = "";
-            renderWrap();
-        });
-    }
+    // the header and the footer: Add standard text to posts, each part's box, the two buttons
+    // (the venue chips are drawn per venue /me/wrap offers, with their own listeners)
+    el.wrapOn.addEventListener("change", () => {
+        setWrapOpen(el.wrapOn.checked).catch(() => {});
+    });
+    for (const part of WRAP_PARTS) el.wrapParts[part].text.addEventListener("input", () => onWrapInput(/** @type {"header"|"footer"} */ (part)));
     el.wrapSave.addEventListener("click", () => {
         saveWrap().catch(() => {});
+    });
+    el.wrapApply.addEventListener("click", () => {
+        applyWrapAll().catch(() => {});
     });
     renderWrap();
     // a venue button refused for want of postings: its Buy postings opens the account card

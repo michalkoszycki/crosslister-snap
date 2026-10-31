@@ -1232,25 +1232,23 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .seller-policies[hidden] { display: none; }
 .seller-policies-head { margin: 0 0 4px; font-weight: 800; }
 .seller-policy-list { margin: 0; padding-left: 1.2em; color: var(--muted); line-height: 1.45; }
-/* the defaults every new item starts with: the customize card's controls, as they are there */
-.posting-defaults .field:first-of-type { margin-top: 6px; }
-/* Header and footer on every listing, one card under Posting (Michal, 2026-10-17; one Save
-   since 2026-10-25): two of pickup only's pill rows, each unfolding its box, its counter and
-   the venue pills (outlined off; on, the posted green with a tick, as eBay connected), Save,
-   and the job buttons that push them onto the listings already up */
-.wrap-fold { padding: 10px 2px 4px; }
-.wrap-count { margin: 4px 2px 0; text-align: right; }
-.wrap-note { margin: 4px 2px 0; }
-.wrap-venues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.wrap-venues:empty { display: none; }
-.pill.wrap-venue { gap: 4px; background: none; border-color: var(--ink); color: var(--ink); }
-.pill.wrap-venue[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); }
-.wrap-venue .tick { flex: none; width: 14px; height: 14px; }
-.pill.wrap-save { margin-top: 12px; }
-.wrap-apply { margin-top: 12px; }
-.wrap-apply .pill { display: flex; width: 100%; margin-top: 8px; }
-.wrap-apply .venue-status:empty { display: none; }
-/* This phone: Install on the home screen, the press-me pill, with its two taps under it; once
+/* Posting defaults (Michal, 2026-10-31: "less is more"): no card, one muted line, Quantity a
+   box three digits wide with the Price slider beside it filling the line, the options one
+   pill row each with no small print */
+.posting-lead { margin: 6px 0 0; }
+.qty-row { display: flex; align-items: flex-start; gap: 14px; }
+.qty-row .field { margin: 10px 0 0; }
+.qty-row .pricing-field { flex: 1 1 auto; min-width: 0; }
+.qty-row input[type="text"].quantity { width: 3.4em; padding-inline: 8px; text-align: center; }
+/* Add standard text to posts, ticked: the gray card, Header and Footer each a label, its box
+   and its venue option chips (a blank box means none), then the two press-me pills each on a
+   line of its own, dimmed until something changes; the pushes' lines under them */
+.card.wrap { margin-top: 10px; padding: 4px 14px 14px; }
+.wrap-field { margin: 10px 0 0; }
+.chips.wrap-venues { margin-top: 8px; }
+.chips.wrap-venues:empty { display: none; }
+.pill.wrap-button { display: flex; width: 100%; margin-top: 12px; }
+.wrap-jobs .venue-status { margin-top: 6px; }/* This phone: Install on the home screen, the press-me pill, with its two taps under it; once
    on the home screen, the chosen option chip saying so (Michal, 2026-10-31) */
 .pill.phone-install { margin-top: 12px; }
 .chip.option.phone-installed { display: inline-flex; align-items: center; margin: 12px 0 0; }
