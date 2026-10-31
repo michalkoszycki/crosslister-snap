@@ -461,8 +461,12 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(icon("sync-from-icon")[1], /<path d="M20 12a8 8 0 0 1-14 5\.5"><\/path>/);
     // a venue block's sync row: empty in the page, both buttons drawn by app.js
     for (const v of ["ebay", "craigslist", "poshmark"]) assert.match(html, new RegExp(`<div id="venue-${v}-sync" class="venue-sync"></div>`));
-    // the round arrow out of sight while a sync button's ring turns
-    assert.match(css, /button\.vbadge\.busy \.sync-arrow \{ display: none; \}/);
+    // the half of the sync symbol after a sync button's words out of sight while its ring turns;
+    // no round arrow any more (Michal, 2026-10-31: the page's own icons, the one sync symbol)
+    assert.match(css, /button\.vbadge\.busy \.btn-icon \{ display: none; \}/);
+    assert.ok(!css.includes("sync-arrow"), "no ↻");
+    // the sync buttons' green with black words
+    assert.match(css, /\.vbadge\.posted\.sync-call \{ color: #0b0b0b; \}/);
     assert.match(html, /<div id="detail-customize-actions" class="venue-actions">\s*<button type="button" id="detail-customize-save" class="pill pill-ink">Save<\/button>\s*<\/div>/);
     // the goods | book switch has an id, so Admin can hide it
     assert.match(html, /<div id="modes" class="modes" role="group"/);
@@ -2532,14 +2536,17 @@ test("a venue block's sync buttons: from and to post their job, show its step an
     await settle();
     assert.equal(nodes.get("sync-ebay-status").textContent, "");
     assert.equal(drawn(nodes, "sync-from-ebay").disabled, false);
-    // each button the inventory's small green badge, its word, then the round arrow (Michal,
-    // 2026-10-26: "Sync from ebay ↻"), in the eBay block under Settings, Venues
+    // each button the inventory's small green badge with black words (`sync-call`), its word,
+    // then the page's own half of the sync symbol, the "from" half on Sync from and the "to"
+    // half on Sync to (Michal, 2026-10-31: the one sync symbol throughout, no ↻), in the eBay
+    // block under Settings, Venues
     for (const direction of ["from", "to"]) {
         const btn = drawn(nodes, `sync-${direction}-ebay`);
-        assert.equal(btn.className, `vbadge posted vsync sync-${direction}`);
+        assert.equal(btn.className, `vbadge posted vsync sync-call sync-${direction}`);
         assert.equal(buttonSays(btn), `Sync ${direction} ebay`);
-        assert.equal(btn.children.at(-1).textContent, "↻");
-        assert.equal(btn.children.at(-1).attrs["aria-hidden"], "true");
+        assert.equal(btn.children.at(-1).cloneOf, nodes.get(`sync-${direction}-icon`));
+        assert.equal(btn.children.at(-1).id, "", "the copy carries no id");
+        assert.ok(!btn.textContent.includes("↻"));
     }
     assert.deepEqual(nodes.get("venue-ebay-sync").children.map((n) => n.id), ["sync-from-ebay", "sync-to-ebay", "sync-from-ebay-reset", "sync-to-ebay-reset"]);
 
@@ -3649,14 +3656,11 @@ test("Edit's Condition: chips of what eBay allows, the row's pressed; Save sends
     cardOf(nodes, "ebay").button("Save").fire("click");
     await settle();
     assert.deepEqual(pc.patches, [{ title: "Cooler, works" }]);
-    // eBay's listing is behind its title, and its card says so and offers the sync, filled
-    // (Michal, 2026-10-22: "there was no sync to eBay button after I made the edit")
+    // eBay's listing is behind its title, and its card says so and where the sync is: the sync
+    // buttons live only in each venue's block under Settings, Venues (Michal, 2026-10-31)
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
-    assert.equal(cardOf(nodes, "ebay").line, "saved; Sync to ebay puts it on the listing");
-    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Sync to ebay", "Refresh status", "End listing", "Edit"]);
-    // the green badge with its round arrow, as every sync button (docs/UI.md, Michal 2026-10-26)
-    assert.equal(cardOf(nodes, "ebay").button("Sync to ebay").className, "vbadge posted vsync");
-    assert.equal(cardOf(nodes, "ebay").button("Sync to ebay").children.at(-1).textContent, "↻");
+    assert.equal(cardOf(nodes, "ebay").line, "saved; Sync to ebay in Settings, Venues puts it on the listing");
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 
     // another chip pressed: the condition alone sent; both listings behind it
     cardOf(nodes, "ebay").button("Edit").fire("click");
@@ -3675,7 +3679,7 @@ test("Edit's Condition: chips of what eBay allows, the row's pressed; Save sends
     assert.equal(cardOf(nodes, "ebay").facts[2], "Condition: Used, excellent");
     assert.equal(cardOf(nodes, "craigslist").facts.at(-1), "Condition: excellent (derived from eBay)");
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay","craigslist"]}]');
-    assert.ok(cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
+    assert.ok(!cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
 
     // a condition the server refuses: its words under the chips, not under Save, still editing
     pc.refusePatch = "condition: NEW is not allowed in this category; use one of NEW_OTHER, USED_EXCELLENT";
@@ -3919,11 +3923,12 @@ test("a listing's photos: + adds one (shrunk, as snapped), x asks then removes; 
     ]);
     strip = photoStripOf(nodes);
     assert.equal(strip.tiles, 3);
-    assert.deepEqual(strip.words, ["photo added; Sync to ebay puts it on the listing"]);
+    assert.deepEqual(strip.words, ["photo added; Sync to ebay in Settings, Venues puts it on the listing"]);
     assert.equal(strip.kind, "venue-status ok");
-    // eBay's listing is behind its photos (craigslist's is a draft): its card offers the sync
+    // eBay's listing is behind its photos (craigslist's is a draft): marked so on the phone, and
+    // the line says where the sync is; the card has none (Michal, 2026-10-31: only in Venues)
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
-    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Sync to ebay", "Refresh status", "End listing", "Edit"]);
+    assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 
     // x: a question first, nothing sent; Keep it puts it away
     const asked = pc.calls.length;
@@ -3942,7 +3947,7 @@ test("a listing's photos: + adds one (shrunk, as snapped), x asks then removes; 
     assert.equal(pc.calls[asked], "DELETE /inventory/R5/photos/2");
     strip = photoStripOf(nodes);
     assert.equal(strip.tiles, 2);
-    assert.deepEqual(strip.words, ["photo removed; Sync to ebay puts it on the listing"]);
+    assert.deepEqual(strip.words, ["photo removed; Sync to ebay in Settings, Venues puts it on the listing"]);
 
     // what the PC refuses is said under the strip, the photos as they were
     pc.refusePhoto = "a job is running: try again when it is done";
@@ -3976,11 +3981,10 @@ test("a listing with one photo has no x (the server keeps at least one); one wit
     assert.deepEqual([strip.tiles, strip.kills.length, !!strip.input], [24, 24, false]);
 });
 
-test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist pushes it; End as eBay's", async (t) => {
-    // Michal, 2026-10-08: craigslist price and edits from the card; the server side is built
-    // alongside, and one that still refuses a craigslist push answers 400
+test("the craigslist card: an Edit leaves its listing behind, said with where its sync is (no Sync on the card); End as eBay's", async (t) => {
+    // Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-31: the sync
+    // buttons live only in each venue's block under Settings, Venues
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    let pushing = { action: "push", state: "running", step: "revising the craigslist post" };
     let ending = { action: "end", state: "running", step: "deleting the craigslist post" };
     const whole = wholeRow("R5", {
         statuses: {
@@ -3988,7 +3992,7 @@ test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist
             craigslist: { status: "listed", id: "1", url: "https://sfbay.craigslist.org/1.html", listed_at: null },
         },
     });
-    const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => pushing, a2: () => ending } });
+    const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => ending } });
     const local = memoryStore(GOOD);
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     nodes.get("admin-toggle").fire("click");
@@ -4005,51 +4009,10 @@ test("the craigslist card: an Edit leaves its listing behind, Sync to craigslist
     await settle();
     assert.deepEqual(pc.patches, [{ craigslist: { price: "30" } }]);
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["craigslist"]}]');
-    assert.deepEqual(cardOf(nodes, "craigslist").actions, [
-        "Open listing (link)",
-        "Sync to craigslist",
-        "Refresh status",
-        "End listing",
-        "Edit",
-    ]);
-    assert.equal(cardOf(nodes, "craigslist").line, "saved; Sync to craigslist puts it on the listing");
-    assert.equal(cardOf(nodes, "craigslist").button("Sync to craigslist").className, "vbadge posted vsync", "green: plain to see");
+    assert.deepEqual(cardOf(nodes, "craigslist").actions, listedActions, "no Sync to craigslist on the card");
+    assert.equal(cardOf(nodes, "craigslist").line, "saved; Sync to craigslist in Settings, Venues puts it on the listing");
     assert.deepEqual(cardOf(nodes, "ebay").actions, listedActions, "eBay's price did not move");
-
-    // a server that still refuses a craigslist push: its words, the sync still offered
-    pc.refuse.push = "push goes to ebay only";
-    cardOf(nodes, "craigslist").button("Sync to craigslist").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "craigslist" }]);
-    assert.equal(cardOf(nodes, "craigslist").line, "push goes to ebay only");
-    assert.equal(cardOf(nodes, "craigslist").kind, "venue-status bad");
-    assert.ok(cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
-    delete pc.refuse.push;
-
-    // a job button as any: its ring and "tap again to cancel", after the second the push
-    cardOf(nodes, "craigslist").button("Sync to craigslist").fire("click");
-    assert.deepEqual(cardOf(nodes, "craigslist").actions, [
-        "Open listing (link)",
-        "Sync to craigslist / tap again to cancel (busy)",
-        "Refresh status (off)",
-        "End listing (off)",
-        "Edit (off)",
-    ]);
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "craigslist" });
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(cardOf(nodes, "craigslist").line, "revising the craigslist post");
-    pushing = { ...pushing, state: "done", summary: "updated" };
-    const before = pc.calls.length;
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", "GET /inventory/R5"], "done: the row read again");
-    assert.equal(cardOf(nodes, "craigslist").line, "updated");
-    assert.equal(local.getItem("snap.inventory.unsynced"), "[]");
-    assert.deepEqual(cardOf(nodes, "craigslist").actions, listedActions);
+    assert.deepEqual(pc.posted, [], "nothing pushed from the card");
 
     // End listing on craigslist: two taps, then {"action": "end", "sku", "venue": "craigslist"}
     cardOf(nodes, "craigslist").button("End listing").fire("click");
@@ -4144,29 +4107,6 @@ test("a listing's job buttons tapped: paused at once, continue or reset beside; 
     assert.equal(cardOf(nodes, "ebay").line, "cancelled from the phone");
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
 
-    // Sync to ebay, paused while its push is queued, then reset: the PC drops it at once
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "ebay" });
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay / tap again to cancel (busy)"]);
-    assert.equal(drawn(nodes, "detail-customize-reset-ebay").hidden, true);
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    await settle();
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "continue"]);
-    assert.equal(customizeOf(nodes).line, "paused: the server may still be working on it");
-    assert.equal(drawn(nodes, "detail-customize-reset-ebay").hidden, false);
-    drawn(nodes, "detail-customize-reset-ebay").fire("click");
-    await settle();
-    assert.equal(pc.calls.at(-1), "DELETE /jobs/a2");
-    assert.equal(customizeOf(nodes).line, "cancelled");
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay"]);
-    assert.equal(drawn(nodes, "detail-customize-reset-ebay").hidden, true);
-    const dropped = pc.calls.length;
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(pc.calls.length, dropped, "no more polls for a job the server dropped");
-
     // Post, once the PC publishes it: a tap is too late, said for a moment; nothing else changes
     cardOf(nodes, "craigslist").button("Post on craigslist").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -4202,8 +4142,9 @@ function customizeOf(nodes) {
         grade: [1, 2, 3].filter((g) => nodes.get(`detail-pricing-${g}`).classList.contains("on")),
         words: [1, 2, 3].map((g) => nodes.get(`detail-pricing-${g}`).textContent),
         note: nodes.get("detail-pricing-note").textContent,
-        // Save (the stub does not read index.html's words, so it is named here), then each Sync
-        // to <venue> app.js drew after it, job buttons, as cardOf says a card's (their resets apart)
+        // Save (the stub does not read index.html's words, so it is named here), then anything
+        // app.js drew after it: nothing since the sync buttons live only under Settings, Venues
+        // (Michal, 2026-10-31)
         buttons: [nodes.get("detail-customize-save"), ...nodes.get("detail-customize-actions").children.slice(1)]
             .filter((b) => b.className !== "reset-call")
             .map((b) => {
@@ -4261,7 +4202,7 @@ test("a listing's customize: the goods card, live, first and open; Save sends on
         grade: [2],
         words: CACHED_WORDS,
         note: "a fair price, a longer wait",
-        buttons: ["Save (off)", "Sync to ebay"],
+        buttons: ["Save (off)"],
         line: "",
         kind: "venue-status",
     });
@@ -4279,27 +4220,27 @@ test("a listing's customize: the goods card, live, first and open; Save sends on
     custom = customizeOf(nodes);
     assert.equal(custom.line, "Quantity must be a whole number, 1 or more");
     assert.equal(custom.kind, "venue-status bad");
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay (off)"]);
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
 
     // the quantity and pickup only changed: one PATCH with only them, the row as the PC answers it
     typeField(nodes.get("detail-quantity"), "3");
     tickPickup(nodes, true);
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save", "Sync to ebay"]);
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save"]);
     nodes.get("detail-customize-save").fire("click");
     custom = customizeOf(nodes);
     assert.equal(custom.line, "saving");
     assert.equal(custom.locked, true);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay (off)"]);
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
     assert.deepEqual(cardOf(nodes, "ebay").actions, ["Open listing (link)", "Refresh status (off)", "End listing (off)", "Edit (off)"]);
     await settle();
     assert.deepEqual(pc.patches, [{ quantity: 3, pickup_only: true }], "no pricing: the slider was not moved");
     assert.equal(pc.calls.at(-1), "PATCH /inventory/R5");
     assert.deepEqual(pc.posted, [], "no job");
     custom = customizeOf(nodes);
-    assert.equal(custom.line, "saved; Sync to ebay puts it on the listing");
+    assert.equal(custom.line, "saved; Sync to ebay in Settings, Venues puts it on the listing");
     assert.equal(custom.kind, "venue-status ok");
     assert.deepEqual([custom.quantity, custom.pickup, custom.locked, custom.slider], ["3", true, false, "2"]);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay"], "nothing left to save");
+    assert.deepEqual(custom.buttons, ["Save (off)"], "nothing left to save");
     // the eBay card says it as a fact; its Edit no longer holds them
     assert.deepEqual(cardOf(nodes, "ebay").facts.slice(4, 6), ["Quantity: 3", "Pickup only: yes, no shipping on eBay"]);
 
@@ -4320,7 +4261,7 @@ test("a listing's customize: the goods card, live, first and open; Save sends on
     assert.equal(custom.line, "quantity: more than eBay allows");
     assert.equal(custom.kind, "venue-status bad");
     assert.equal(custom.quantity, "5000");
-    assert.deepEqual(custom.buttons, ["Save", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save"]);
 });
 
 test("the Price slider: moved and saved, the price is the grade's cached one; a grade with none is refused", async (t) => {
@@ -4338,11 +4279,11 @@ test("the Price slider: moved and saved, the price is the grade's cached one; a 
     slide(nodes, 3);
     let custom = customizeOf(nodes);
     assert.deepEqual([custom.slider, custom.grade, custom.note], ["3", [3], "a higher-end price; cheaper ones exist out there"]);
-    assert.deepEqual(custom.buttons, ["Save", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save"]);
     assert.equal(nodes.get("detail-pricing").attrs["aria-valuetext"], "Higher end $31.50");
     // moved back: nothing to save
     slide(nodes, 2);
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay"]);
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)"]);
 
     // Save: one PATCH with the grade, no job; the heading and the eBay card show the new price at once
     slide(nodes, 3);
@@ -4353,8 +4294,8 @@ test("the Price slider: moved and saved, the price is the grade's cached one; a 
     assert.deepEqual(pc.posted, [], "no model call, no job");
     custom = customizeOf(nodes);
     assert.deepEqual([custom.slider, custom.grade, custom.words, custom.locked], ["3", [3], CACHED_WORDS, false]);
-    assert.equal(custom.line, "saved; Sync to ebay puts it on the listing");
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay"]);
+    assert.equal(custom.line, "saved; Sync to ebay in Settings, Venues puts it on the listing");
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
     assert.equal(nodes.get("detail-heading").textContent, "Item R5 · $31.50");
     assert.equal(cardOf(nodes, "ebay").facts[1], "Price: $31.50");
 
@@ -4373,7 +4314,7 @@ test("the Price slider: moved and saved, the price is the grade's cached one; a 
     assert.equal(custom.line, "no cached quick price for this row: set the price by hand");
     assert.equal(custom.kind, "venue-status bad");
     assert.deepEqual([custom.slider, custom.grade], ["1", [1]]);
-    assert.deepEqual(custom.buttons, ["Save", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save"]);
     assert.equal(nodes.get("detail-heading").textContent, "Item R5 · $31.50", "the price as it was");
 });
 
@@ -4398,11 +4339,11 @@ test("a re-read row moves the slider only when it holds no move of his", async (
     await settle();
     let custom = customizeOf(nodes);
     assert.deepEqual([custom.quantity, custom.slider, custom.grade], ["4", "3", [3]], "the box follows, his move stays");
-    assert.deepEqual(custom.buttons, ["Save", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save"]);
 
     // moved back to where the row stood: the next re-read moves it with the row
     slide(nodes, 1);
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay"]);
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)"]);
     refreshing = { action: "refresh", state: "running", step: "reading eBay" };
     cardOf(nodes, "ebay").button("Refresh status").fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -4413,107 +4354,12 @@ test("a re-read row moves the slider only when it holds no move of his", async (
     await settle();
     custom = customizeOf(nodes);
     assert.deepEqual([custom.slider, custom.grade, custom.note], ["2", [2], "a fair price, a longer wait"]);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
 });
 
-test("Sync to ebay: the slider moved and pickup only ticked, saved in one PATCH, then pushed and polled", async (t) => {
-    // Michal, 2026-10-07: "I can there click pickup only and sync to eBay, and that detail of
-    // that listing should update."
-    t.mock.timers.enable({ apis: ["setTimeout"] });
-    let pushing = { action: "push", state: "running", step: "revising the eBay listing" };
-    let again = { action: "push", state: "running", step: "revising the eBay listing" };
-    const whole = wholeRow("R5");
-    const pc = inventoryPc([summary("R5")], { R5: whole }, { jobs: { a1: () => pushing, a2: () => again } });
-    const local = memoryStore(NO_PHOTOS);
-    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
-    await openFirst(nodes);
-    await settle();
-
-    // moved and ticked, not saved: Sync to ebay saves both first, then sends the push, which
-    // puts the row's price (the PATCH already set it) on the listing
-    slide(nodes, 1);
-    tickPickup(nodes, true);
-    const from = pc.calls.length;
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    // the second a job button waits, its ring and "tap again to cancel" from the tap
-    assert.equal(customizeOf(nodes).line, "sending");
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay / tap again to cancel (busy)"]);
-    await settle();
-    assert.deepEqual(pc.calls.slice(from), [], "nothing has left the phone yet");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.calls.slice(from), ["PATCH /inventory/R5", "POST /jobs"], "saved, then pushed");
-    assert.deepEqual(pc.patches, [{ pickup_only: true, pricing: 1 }]);
-    assert.deepEqual(pc.posted, [{ action: "push", sku: "R5", venue: "ebay" }]);
-    assert.equal(whole.price, "18.00", "the server set the cached quick price before the push");
-    // the listing is behind its row until the push is done: its list badge would offer the sync
-    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"R5","venues":["ebay"]}]');
-    let custom = customizeOf(nodes);
-    assert.equal(custom.line, "queued");
-    assert.equal(custom.locked, true);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay / tap again to cancel (busy)"]);
-    assert.equal(nodes.get("detail-heading").textContent, "Item R5 · $18");
-    // one job per row: the cards wait too
-    assert.deepEqual(cardOf(nodes, "craigslist").actions, ["Post on craigslist (off)", "Edit (off)"]);
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
-    assert.equal(customizeOf(nodes).line, "revising the eBay listing");
-    assert.equal(customizeOf(nodes).kind, "venue-status busy");
-
-    // done: "updated", and the row read again (the heading and the eBay card with it)
-    pushing = { action: "push", state: "done", step: "done", summary: "updated" };
-    whole.title = "Brass lamp, pickup only";
-    whole.statuses = { ...whole.statuses, ebay: { ...whole.statuses.ebay, listed_at: "2026-10-07T09:30:00-05:00" } };
-    const before = pc.calls.length;
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.deepEqual(pc.calls.slice(before), ["GET /jobs/a1", "GET /inventory/R5"]);
-    custom = customizeOf(nodes);
-    assert.equal(custom.line, "updated");
-    assert.equal(custom.kind, "venue-status ok");
-    assert.equal(local.getItem("snap.inventory.unsynced"), "[]", "eBay has the price now");
-    assert.deepEqual([custom.pickup, custom.slider, custom.grade, custom.locked], [true, "1", [1], false]);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay"]);
-    assert.equal(nodes.get("detail-heading").textContent, "Brass lamp, pickup only · $18");
-    const ebay = cardOf(nodes, "ebay");
-    assert.match(ebay.line, /^listed since 2026-10-07 \d\d:\d\d$/);
-    assert.equal(ebay.facts[5], "Pickup only: yes, no shipping on eBay");
-    assert.deepEqual(ebay.actions, ["Open listing (link)", "Refresh status", "End listing", "Edit"]);
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(pc.calls.length, before + 2, "no more polls once it ended");
-
-    // nothing changed: Sync to ebay only pushes, and "unchanged" says so
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.equal(pc.patches.length, 1);
-    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "R5", venue: "ebay" });
-    again = { action: "push", state: "done", summary: "unchanged" };
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(customizeOf(nodes).line, "unchanged");
-
-    // a refused Save sends no push
-    whole.prices = { ...whole.prices, high: null };
-    slide(nodes, 3);
-    const posted = pc.posted.length;
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.patches.at(-1), { pricing: 3 });
-    assert.equal(pc.posted.length, posted, "no push after a refusal");
-    assert.equal(customizeOf(nodes).line, "no cached high price for this row: set the price by hand");
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save", "Sync to ebay"], "the ring stops with the refusal");
-
-    // the row changed: back asks for the list again
-    nodes.get("inventory-back").fire("click");
-    await settle();
-    assert.equal(pc.calls.at(-1), `GET /inventory?q=&${ALL}`);
-});
-
-test("no Sync to ebay before a listing on eBay; no cached prices keeps the slider out of Save; a push refused says why", async (t) => {
+test("customize: Save alone, the boxes and the slider; no cached prices keep the slider out of Save; a draft saves its boxes", async (t) => {
+    // the sync buttons live only in each venue's block under Settings, Venues (Michal,
+    // 2026-10-31): customize has Save and nothing after it
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const draft = { status: "draft", id: "", url: "", listed_at: null };
     const none = { pricing: null, prices: { quick: null, market: null, high: null } };
@@ -4530,8 +4376,8 @@ test("no Sync to ebay before a listing on eBay; no cached prices keeps the slide
     let custom = customizeOf(nodes);
     assert.deepEqual([custom.slider, custom.grade, custom.note], ["1", [], "not priced by grade yet"]);
     assert.deepEqual(custom.words, ["Quick sale —", "Fair price —", "Higher end —"]);
-    assert.deepEqual(custom.buttons, ["Save (off)"], "a draft: no listing to sync, no button");
-    assert.equal(custom.line, "Sync to ebay opens once the listing is up on eBay");
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
+    assert.equal(custom.line, "", "no line about a Sync that is not here");
     // moved: the line says there is nothing to set, and Save stays shut
     slide(nodes, 2);
     custom = customizeOf(nodes);
@@ -4547,10 +4393,9 @@ test("no Sync to ebay before a listing on eBay; no cached prices keeps the slide
     custom = customizeOf(nodes);
     assert.equal(custom.line, "saved");
     assert.deepEqual([custom.slider, custom.note], ["2", "no cached prices on this listing; set the price by hand"]);
-    assert.equal(drawn(nodes, "detail-customize-sync-ebay"), undefined);
     assert.deepEqual(pc.posted, [], "a draft is never pushed");
 
-    // a listing at the higher end; a push the PC refuses
+    // a listing at the higher end: the foldout is this row's; Save alone again
     nodes.get("inventory-back").fire("click");
     await settle();
     listed(nodes)[1].open.fire("click");
@@ -4558,145 +4403,82 @@ test("no Sync to ebay before a listing on eBay; no cached prices keeps the slide
     custom = customizeOf(nodes);
     assert.deepEqual([custom.slider, custom.grade, custom.words], ["3", [3], CACHED_WORDS]);
     assert.deepEqual([custom.quantity, custom.pickup], ["1", false], "the foldout is this row's, not the last one's");
-    pc.refuse.push = "eBay would not revise L1: the listing has ended";
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted, [{ action: "push", sku: "L1", venue: "ebay" }]);
-    custom = customizeOf(nodes);
-    assert.equal(custom.line, "eBay would not revise L1: the listing has ended");
-    assert.equal(custom.kind, "venue-status bad");
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay"]);
+    assert.deepEqual(custom.buttons, ["Save (off)"]);
+    assert.equal(nodes.get("detail-customize-actions").children.length, 0, "nothing drawn after Save");
 });
 
 // --- venue symmetry (Michal, 2026-10-17) -------------------------------------------------------
 // "There is a button push to eBay, so add a button push to Craigslist next to it. All venues need
-// to be represented (if any new get added as well). We are aiming for venue symmetry."
+// to be represented (if any new get added as well). We are aiming for venue symmetry." Since
+// 2026-10-31 the sync buttons live only in each venue's block under Settings, Venues.
 
 /** The /me of an account that syncs to eBay and craigslist and from eBay (the server's of 2026-10-17). */
 const SYMMETRIC_ME = { user: "michal", venues: ["ebay", "craigslist"], syncable: { to: ["ebay", "craigslist"], from: ["ebay"] } };
 
-test("customize: a Sync to <venue> per venue the listing is up on, from /me's syncable, each its own job button", async (t) => {
+test("a listing has no Sync of its own: Save says which venue block's Sync puts it on the listing, per venue it is up on", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    let pushing = { action: "push", state: "running", step: "revising the craigslist post" };
     const up = { status: "listed", id: "7781", url: "https://chicago.craigslist.org/hsh/d/7781.html", listed_at: null };
     const both = { statuses: { ...summary("C1").statuses, craigslist: up } };
     const whole = wholeRow("C1", both);
-    const pc = inventoryPc([summary("C1", both)], { C1: whole }, {
-        jobs: { a1: () => pushing, a2: () => ({ action: "push", state: "done", summary: "unchanged" }) },
-    });
+    const pc = inventoryPc([summary("C1", both)], { C1: whole });
     pc.me = SYMMETRIC_ME;
     const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"C1","venues":["ebay","craigslist"]}]' });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     await openFirst(nodes);
     await settle();
-    // after Save, eBay's then craigslist's, in /me's venue order, each with its reset
-    let custom = customizeOf(nodes);
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay", "Sync to craigslist"]);
-    assert.deepEqual(nodes.get("detail-customize-actions").children.map((b) => b.id), [
-        "detail-customize-save",
-        "detail-customize-sync-ebay",
-        "detail-customize-reset-ebay",
-        "detail-customize-sync-craigslist",
-        "detail-customize-reset-craigslist",
-    ]);
-    assert.equal(drawn(nodes, "detail-customize-reset-craigslist").attrs["aria-label"], "reset Sync to craigslist");
-    assert.deepEqual(["ebay", "craigslist"].map((v) => drawn(nodes, `detail-customize-reset-${v}`).hidden), [true, true]);
-    // the craigslist card keeps its own Sync to craigslist (eBay's card has none)
+    // Save alone; neither card has a Sync, even with its listing behind the row
+    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)"]);
     nodes.get("detail-craigslist-toggle").fire("click");
-    assert.ok(cardOf(nodes, "craigslist").actions.includes("Sync to craigslist"));
+    nodes.get("detail-ebay-toggle").fire("click");
+    for (const v of ["ebay", "craigslist"]) assert.ok(!cardOf(nodes, v).actions.some((a) => a.startsWith("Sync")), v);
 
-    // Sync to craigslist: its ring, eBay's shut (one job per row), the push after the second
-    drawn(nodes, "detail-customize-sync-craigslist").fire("click");
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay (off)", "Sync to craigslist / tap again to cancel (busy)"]);
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted, [{ action: "push", sku: "C1", venue: "craigslist" }]);
-    assert.equal(customizeOf(nodes).line, "queued");
-    // tapped: paused, its own continue and reset; eBay's reset stays hidden
-    drawn(nodes, "detail-customize-sync-craigslist").fire("click");
-    await settle();
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay (off)", "continue"]);
-    assert.deepEqual(["ebay", "craigslist"].map((v) => drawn(nodes, `detail-customize-reset-${v}`).hidden), [true, false]);
-    drawn(nodes, "detail-customize-sync-craigslist").fire("click");
-    await settle();
-    assert.equal(pc.calls.at(-1), "GET /jobs/a1");
-    assert.equal(customizeOf(nodes).line, "revising the craigslist post");
-    // done: craigslist's mark goes, eBay's stays; both buttons open again
-    pushing = { action: "push", state: "done", summary: "updated" };
-    t.mock.timers.tick(3000);
-    await settle();
-    custom = customizeOf(nodes);
-    assert.equal(custom.line, "updated");
-    assert.deepEqual(custom.buttons, ["Save (off)", "Sync to ebay", "Sync to craigslist"]);
-    assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"C1","venues":["ebay"]}]', "only craigslist's mark goes");
-
-    // Save with two buttons showing: "sync", no venue named
+    // Save with both up: "sync", no venue named, and where it is
     tickPickup(nodes, true);
     nodes.get("detail-customize-save").fire("click");
     await settle();
-    assert.equal(customizeOf(nodes).line, "saved; sync puts it on the listings");
-    // Sync to ebay: its own body; done, eBay's mark goes too
-    drawn(nodes, "detail-customize-sync-ebay").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "C1", venue: "ebay" });
-    t.mock.timers.tick(3000);
-    await settle();
-    assert.equal(customizeOf(nodes).line, "unchanged");
-    assert.equal(local.getItem("snap.inventory.unsynced"), "[]");
+    assert.equal(customizeOf(nodes).line, "saved; sync in Settings, Venues puts it on the listings");
+    assert.deepEqual(pc.posted, [], "nothing pushed from the listing");
 
-    // the eBay listing ended: no button for it, and Save names the one left
+    // the eBay listing ended: Save names the one left
     whole.statuses = { ...whole.statuses, ebay: { status: "ended", id: "", url: "", listed_at: null } };
     nodes.get("inventory-back").fire("click");
     await settle();
     listed(nodes)[0].open.fire("click");
     await settle();
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to craigslist"]);
-    assert.equal(drawn(nodes, "detail-customize-sync-ebay"), undefined);
     tickPickup(nodes, false);
     nodes.get("detail-customize-save").fire("click");
     await settle();
-    assert.equal(customizeOf(nodes).line, "saved; Sync to craigslist puts it on the listing");
+    assert.equal(customizeOf(nodes).line, "saved; Sync to craigslist in Settings, Venues puts it on the listing");
 
     // an older server (no syncable): eBay's alone, as before
     const old = inventoryPc([summary("C1", both)], { C1: wholeRow("C1", both) });
     const today = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: old.fetch });
     await openFirst(today.nodes);
     await settle();
-    assert.deepEqual(customizeOf(today.nodes).buttons, ["Save (off)", "Sync to ebay"]);
+    assert.deepEqual(customizeOf(today.nodes).buttons, ["Save (off)"]);
+    tickPickup(today.nodes, true);
+    today.nodes.get("detail-customize-save").fire("click");
+    await settle();
+    assert.equal(customizeOf(today.nodes).line, "saved; Sync to ebay in Settings, Venues puts it on the listing");
 });
 
-test("a venue the server adds (a made-up poshmark) gets its Sync buttons by itself, in customize and its venue block", async (t) => {
+test("a venue the server adds (a made-up poshmark) gets its Sync buttons by itself in its venue block", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const cl = { status: "listed", id: "7781", url: "https://chicago.craigslist.org/hsh/d/7781.html", listed_at: null };
     const posh = { status: "listed", id: "p1", url: "https://poshmark.com/listing/p1", listed_at: null };
     const three = { venues: ["ebay", "craigslist", "poshmark"], statuses: { ...summary("P1").statuses, craigslist: cl, poshmark: posh } };
     const pc = inventoryPc([summary("P1", three)], { P1: wholeRow("P1", three) }, {
-        jobs: { a1: () => ({ state: "running", step: "revising the poshmark listing" }), a2: () => ({ state: "queued" }) },
+        jobs: { a1: () => ({ state: "queued" }) },
     });
     pc.me = { user: "michal", poshmark: true, venues: ["ebay", "craigslist", "poshmark"], syncable: { to: ["ebay", "craigslist", "poshmark"], from: ["ebay"] } };
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
-    await openFirst(nodes);
+    nodes.get("admin-toggle").fire("click");
     await settle();
-    // a third Sync, after craigslist's, posting the venue as /me named it
-    assert.deepEqual(customizeOf(nodes).buttons, ["Save (off)", "Sync to ebay", "Sync to craigslist", "Sync to poshmark"]);
-    // each the green badge with its round arrow, as every sync button (docs/UI.md)
-    assert.equal(drawn(nodes, "detail-customize-sync-poshmark").className, "vbadge posted vsync");
-    assert.equal(drawn(nodes, "detail-customize-sync-poshmark").children.at(-1).textContent, "↻");
-    drawn(nodes, "detail-customize-sync-poshmark").fire("click");
-    t.mock.timers.tick(SEND_DELAY_MS);
-    await settle();
-    assert.deepEqual(pc.posted, [{ action: "push", sku: "P1", venue: "poshmark" }]);
-    assert.equal(customizeOf(nodes).line, "queued");
-
     // its venue block: both buttons, from grey (nothing reads poshmark back yet), to its job
-    nodes.get("inventory-back").fire("click");
-    await settle();
     assert.deepEqual(nodes.get("venue-poshmark-sync").children.map((b) => b.id), ["sync-from-poshmark", "sync-to-poshmark", "sync-from-poshmark-reset", "sync-to-poshmark-reset"]);
-    assert.deepEqual(["sync-from-poshmark", "sync-to-poshmark"].map((id) => [buttonSays(drawn(nodes, id)), drawn(nodes, id).disabled]), [
-        ["Sync from poshmark", true],
-        ["Sync to poshmark", false],
+    assert.deepEqual(["sync-from-poshmark", "sync-to-poshmark"].map((id) => [buttonSays(drawn(nodes, id)), drawn(nodes, id).disabled, drawn(nodes, id).hidden]), [
+        ["Sync from poshmark", true, false],
+        ["Sync to poshmark", false, false],
     ]);
     assert.equal(nodes.get("venue-poshmark-cannot").textContent, "Poshmark cannot be read back yet.");
     drawn(nodes, "sync-to-poshmark").fire("click");
@@ -4707,9 +4489,11 @@ test("a venue the server adds (a made-up poshmark) gets its Sync buttons by itse
     assert.equal(nodes.get("sync-ebay-status").textContent, "", "the line is the pressed venue's block's alone");
 });
 
-test("the venue blocks: both sync buttons on every venue, grey where /me does not sync it or the account lacks it, each its own job", async (t) => {
+test("the venue blocks: both sync buttons once the venue is connected or signed in, grey where /me does not sync it, each its own job", async (t) => {
     // Michal, 2026-10-26: "even if function does not exist, there should be sync from and to
-    // buttons for each venue, gray if function is still not working"
+    // buttons for each venue, gray if function is still not working"; 2026-10-31: shown only
+    // once the venue is connected or signed in (none for eBay before connect, none for a venue
+    // the account lacks)
     t.mock.timers.enable({ apis: ["setTimeout"] });
     let syncing = { action: "sync", direction: "to", state: "running", step: "writing to craigslist" };
     const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") }, { jobs: { a1: () => syncing, a2: () => ({ state: "queued" }) } });
@@ -4724,7 +4508,7 @@ test("the venue blocks: both sync buttons on every venue, grey where /me does no
     }
     const state = (id) => {
         const btn = drawn(nodes, id);
-        return `${buttonSays(btn)}${btn.disabled ? " (grey)" : ""}`;
+        return `${buttonSays(btn)}${btn.hidden ? " (hidden)" : btn.disabled ? " (grey)" : ""}`;
     };
     const ids = ["ebay", "craigslist", "poshmark"].flatMap((v) => [`sync-from-${v}`, `sync-to-${v}`]);
     assert.deepEqual(ids.map(state), [
@@ -4732,8 +4516,8 @@ test("the venue blocks: both sync buttons on every venue, grey where /me does no
         "Sync to ebay",
         "Sync from craigslist (grey)",
         "Sync to craigslist",
-        "Sync from poshmark (grey)",
-        "Sync to poshmark (grey)",
+        "Sync from poshmark (hidden)",
+        "Sync to poshmark (hidden)",
     ]);
     // grey: the posted green gives way to the muted badge
     const looks = (id) => ["posted", "muted"].filter((c) => drawn(nodes, id).classList.contains(c));
@@ -4793,15 +4577,15 @@ test("the venue blocks: both sync buttons on every venue, grey where /me does no
     assert.equal(nodes.get("sync-ebay-status").textContent, "queued");
     assert.equal(nodes.get("sync-craigslist-status").textContent, "");
 
-    // a plain seller whose eBay is not connected yet: every button grey, no reason line (the
-    // status lines say it), Connect eBay in the eBay block
+    // a plain seller whose eBay is not connected yet: no sync button at all, no reason line
+    // (the status lines say it), Connect eBay in the eBay block
     const seller = inventoryPc([summary("G1")], { G1: wholeRow("G1") });
     seller.me = { user: "wife", venues: ["ebay"], craigslist: false, syncable: { to: ["ebay"], from: ["ebay"] }, ebay: { connected: false, user: "", policies: "none" } };
     const plain = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: seller.fetch });
     plain.nodes.get("admin-toggle").fire("click");
     await settle();
     for (const v of ["ebay", "craigslist", "poshmark"]) {
-        for (const d of ["from", "to"]) assert.equal(drawn(plain.nodes, `sync-${d}-${v}`).disabled, true, `${d} ${v}`);
+        for (const d of ["from", "to"]) assert.equal(drawn(plain.nodes, `sync-${d}-${v}`).hidden, true, `${d} ${v}`);
         assert.equal(plain.nodes.get(`venue-${v}-cannot`).hidden, true, v);
     }
     assert.equal(plain.nodes.get("account-ebay").textContent, "Not connected");

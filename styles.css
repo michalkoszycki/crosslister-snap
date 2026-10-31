@@ -1033,17 +1033,17 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .chips-conditions .chip { min-height: 36px; padding: 4px 6px; font-size: 13px; }
 .choice-note { margin: 4px 2px 0; font-size: 13px; color: var(--muted); }
 
-/* The sync buttons, in each venue's block under Settings, Venues (docs/UI.md, 2026-10-25; the
-   sticky bar under the inventory until then): both always, the inventory's small green badge
-   with the round arrow after the words (Michal, 2026-10-26), grey where the function or the
-   venue is missing; a venue's from before its to, the resets after both so a paused one's
-   sits under the pair; the job's line under the row, in that venue's block alone. */
+/* The sync buttons, in each venue's block under Settings, Venues, the one place they live
+   (Michal, 2026-10-31; the sticky bar under the inventory until 2026-10-25): both, once the
+   venue is connected or signed in, the inventory's green badge with black words and the
+   page's own half of the sync symbol after them, grey where the direction does not exist; a
+   venue's from before its to, the resets after both so a paused one's sits under the pair;
+   the job's line under the row, in that venue's block alone. */
 .venue-sync { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .venue-sync:empty { display: none; }
 .venue-sync .reset-call { flex-basis: 100%; text-align: left; }
 .venue-sync button.vbadge:disabled.muted { opacity: 0.6; }
-.sync-arrow { font-size: 14px; line-height: 1; }
-button.vbadge.busy .sync-arrow { display: none; }
+.vbadge.posted.sync-call { color: #0b0b0b; }
 .sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sync-status:empty { display: none; }
 .sync-status.busy { color: var(--ink); }

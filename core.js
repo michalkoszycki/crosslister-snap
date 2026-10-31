@@ -438,8 +438,8 @@ export function syncVenues(me, direction) {
 }
 
 /**
- * A sync button's word, before its round arrow: "Sync from ebay", "Sync to craigslist" (the
- * venue lowercase, as on every button and chip: Michal, 2026-10-26).
+ * A sync button's word, before its half of the sync symbol: "Sync from ebay", "Sync to
+ * craigslist" (the venue lowercase, as on every button and chip: Michal, 2026-10-26).
  * @param {"from"|"to"} direction
  * @param {string} venue
  * @returns {string}
@@ -488,17 +488,32 @@ function sentenceVenue(venue) {
 export const CONNECT_FIRST = "Connect eBay first";
 
 /**
+ * Whether a venue block shows its pair of sync buttons at all (Michal, 2026-10-31): only once
+ * the venue is connected or signed in; none for eBay before it is connected, none for a venue
+ * the account lacks (its status line says so). A server that does not say how eBay stands
+ * shows them, as before.
+ * @param {string} venue
+ * @param {{craigslist:boolean, poshmark?:boolean} | null} me meOf's
+ * @param {Ebay|null} ebay /me's
+ * @returns {boolean}
+ */
+export function syncShown(venue, me, ebay) {
+    if (!venueAllowed(me, venue)) return false;
+    return !(venue === "ebay" && ebay && !ebay.connected);
+}
+
+/**
  * The one muted line under a venue block's pair of sync buttons where one is grey: its reason
  * (syncReason), or "<Venue> sync is not built yet." where both are; "" when both work, and ""
- * where the block's own status line says it already (a venue the account lacks, an eBay not
- * connected: the spec's "less is more", Michal 2026-10-26).
+ * where the pair is not shown (syncShown: the block's own status line says why, the spec's
+ * "less is more", Michal 2026-10-26).
  * @param {string} venue
  * @param {{craigslist:boolean, poshmark?:boolean, venues:string[], syncable:Syncable|null} | null} me meOf's
  * @param {Ebay|null} ebay
  * @returns {string}
  */
 export function syncNote(venue, me, ebay) {
-    if (!venueAllowed(me, venue) || (venue === "ebay" && ebay && !ebay.connected)) return "";
+    if (!syncShown(venue, me, ebay)) return "";
     const from = syncReason(venue, "from", me, ebay);
     const to = syncReason(venue, "to", me, ebay);
     if (from && to) return `${sentenceVenue(venue)} sync is not built yet.`;
@@ -4429,29 +4444,23 @@ export function venueFacts(row, venue) {
  *   "add"     the row is not on this venue: its empty card puts it there
  *   "post"    on the venue and not listed (a draft; an ended or sold row goes up again)
  *   "open"    listed, with a link: the listing in a new tab
- *   "sync"    listed, and a change since the last sync left this listing behind
- *             (unsyncedList, leftUnsynced): the push job puts the row on the listing
- *             (Michal, 2026-10-08: craigslist price and edits from the card; 2026-10-22, for
- *             eBay too: "there was no sync to eBay button after I made the edit ... This goes
- *             for each venue")
  *   "refresh" listed: the PC asks the venue how the listing stands
  *   "end"     listed: the PC takes it down, after a second tap
  *   "edit"    on the venue: the card's fields as inputs
- * customize keeps its Sync to <venue> for every venue listed, behind or not. Poshmark
- * (2026-10-11) is add, post and open alone: the server only posts there, it cannot yet
- * refresh, end, push or edit a listing, so nothing leaves it behind.
+ * No sync: the sync buttons live only in each venue's block under Settings, Venues (Michal,
+ * 2026-10-31); a listing an edit left behind is put right by that block's Sync to <venue>.
+ * Poshmark (2026-10-11) is add, post and open alone: the server only posts there, it cannot
+ * yet refresh, end, push or edit a listing.
  * @param {Record<string, any>} row
  * @param {string} venue
- * @param {Unsynced[]} [unsynced] unsyncedList's
  * @returns {string[]}
  */
-export function venueActions(row, venue, unsynced = []) {
+export function venueActions(row, venue) {
     if (!rowVenues(row).includes(venue)) return ["add"];
     const s = venueStatus(row, venue);
     if (POST_ONLY.includes(venue)) return s.status !== "listed" ? ["post"] : s.url ? ["open"] : [];
     if (s.status !== "listed") return ["post", "edit"];
-    const behind = isUnsynced(unsynced, row.sku, venue);
-    return [...(s.url ? ["open"] : []), ...(behind ? ["sync"] : []), "refresh", "end", "edit"];
+    return [...(s.url ? ["open"] : []), "refresh", "end", "edit"];
 }
 
 /**
@@ -4685,21 +4694,6 @@ export function patchBody(venue, before, after) {
 // PC sets the price to that grade's cached one. No model call, no job. Post without
 // asking is not shown any more.
 
-/**
- * Said under Save while the listing is up on none of the venues the account syncs to: there is
- * nothing to push to ("Sync to ebay opens once the listing is up on eBay": the button by its
- * word; with more venues, "Sync opens once the listing is up on eBay or craigslist");
- * nothing when it syncs to none.
- * @param {string[]} to syncVenues' "to"
- * @returns {string}
- */
-export function pushClosed(to) {
-    if (!to.length) return "";
-    const names = to.map(venueName);
-    if (names.length === 1) return `${actionWord("sync", to[0])} opens once the listing is up on ${names[0]}`;
-    return `Sync opens once the listing is up on ${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-}
-
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
 
@@ -4829,10 +4823,9 @@ function listedOn(row, venue) {
 }
 
 /**
- * The venues customize offers a Sync to <venue> for (Michal, 2026-10-17: "There is a button
- * push to eBay, so add a button push to Craigslist next to it. All venues need to be
- * represented"): each the account syncs to (syncVenues' "to", in its order) that the row is
- * listed on. A venue it is not listed on has no listing to update, so no button.
+ * The venues a saved row's listing is up on that the account syncs to (syncVenues' "to", in its
+ * order): where a Sync to <venue>, under Settings, Venues, puts the change. A venue it is not
+ * listed on has no listing to update.
  * @param {Record<string, any>} row
  * @param {string[]} to syncVenues' "to"
  * @returns {string[]}
@@ -4842,42 +4835,40 @@ export function customizeVenues(row, to) {
 }
 
 /**
- * Which of the foldout's buttons can be pressed. Save: something to send, the box
- * a quantity. Each Sync to <venue> (customizeVenues draws one per venue listed): the box a
- * quantity (what is not yet saved is saved first). Neither while the row is busy (one job
- * per row at a time).
+ * Whether the foldout's Save can be pressed: something to send, the box a quantity, the row
+ * not busy (one job per row at a time). The foldout has no Sync of its own: the sync buttons
+ * live only in each venue's block under Settings, Venues (Michal, 2026-10-31).
  * @param {Record<string, any>} row
  * @param {RowCustomize} values
  * @param {boolean} busy
- * @param {string[]} to syncVenues' "to"
- * @returns {{save:boolean, sync:boolean}}
+ * @returns {{save:boolean}}
  */
-export function customizeButtons(row, values, busy, to) {
+export function customizeButtons(row, values, busy) {
     const ok = !busy && quantityValue(values.quantity) > 0;
-    return { save: ok && customizeChanges(row, values) !== null, sync: ok && customizeVenues(row, to).length > 0 };
+    return { save: ok && customizeChanges(row, values) !== null };
 }
 
 /**
- * The foldout's status line: what is on its way, the push job (its step, then
- * "updated" or "unchanged", or its error), what the PC refused or said; then the
- * quantity box that holds no quantity, then why there is no Sync to press (pushClosed).
- * @param {Record<string, any>} row
+ * The foldout's status line: what is on its way, what the PC refused or said; then the
+ * quantity box that holds no quantity.
  * @param {{wait:string, job:object|null, note:{text:string, kind:string}|null, values:{quantity:string}}} card
- * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
  */
-export function customizeLine(row, card, to) {
+export function customizeLine(card) {
     const said = busyLine(card);
     if (said) return said;
     if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
-    if (!customizeVenues(row, to).length) return { text: pushClosed(to), kind: "" };
     return { text: "", kind: "" };
 }
 
+/** Where a sync button is, said after a change that left a listing behind (Michal, 2026-10-31: only there). */
+const IN_VENUES = "in Settings, Venues";
+
 /**
  * Said once Save is through: the PC holds it, and on a listing up on a venue it syncs to, the
- * Sync that puts it there: the one by name ("saved; Sync to eBay puts it on the listing"),
- * or, with more than one button, "saved; sync puts it on the listings".
+ * Sync that puts it there, under Settings, Venues: the one by name ("saved; Sync to ebay in
+ * Settings, Venues puts it on the listing"), or, with more than one, "saved; sync in Settings,
+ * Venues puts it on the listings".
  * @param {Record<string, any>} row the row the PC answered
  * @param {string[]} to syncVenues' "to"
  * @returns {{text:string, kind:string}}
@@ -4885,20 +4876,21 @@ export function customizeLine(row, card, to) {
 export function customizeSaved(row, to) {
     const venues = customizeVenues(row, to);
     if (!venues.length) return { text: "saved", kind: "ok" };
-    if (venues.length > 1) return { text: "saved; sync puts it on the listings", kind: "ok" };
-    return { text: `saved; ${actionWord("sync", venues[0])} puts it on the listing`, kind: "ok" };
+    if (venues.length > 1) return { text: `saved; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
+    return { text: `saved; ${actionWord("sync", venues[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
 }
 
 /**
  * Said on a card once its Edit is saved and the change left its own listing behind: the Sync
- * that puts it there, by name ("saved; Sync to eBay puts it on the listing"). null when the
- * listing is not behind (a draft, or nothing it shows changed): the card's status line then.
+ * that puts it there, by name, and where it is ("saved; Sync to ebay in Settings, Venues puts
+ * it on the listing"). null when the listing is not behind (a draft, or nothing it shows
+ * changed): the card's status line then.
  * @param {string} venue
  * @param {string[]} behind leftUnsynced's
  * @returns {{text:string, kind:string} | null}
  */
 export function editSaved(venue, behind) {
-    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} puts it on the listing`, kind: "ok" } : null;
+    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} ${IN_VENUES} puts it on the listing`, kind: "ok" } : null;
 }
 
 /**
@@ -4913,16 +4905,17 @@ export function photoQuestion(n) {
 
 /**
  * Said under the strip once a photo is added or removed (`done`: "photo added", "2 photos
- * added", "photo removed"), then the Sync that puts the photos on a listing up somewhere:
- * by name with one ("photo added; Sync to eBay puts it on the listing"), "sync" with more.
+ * added", "photo removed"), then the Sync under Settings, Venues that puts the photos on a
+ * listing up somewhere: by name with one ("photo added; Sync to ebay in Settings, Venues puts
+ * it on the listing"), "sync" with more.
  * @param {string} done
  * @param {string[]} behind photosBehind's
  * @returns {{text:string, kind:string}}
  */
 export function photoSaved(done, behind) {
     if (!behind.length) return { text: done, kind: "ok" };
-    if (behind.length > 1) return { text: `${done}; sync puts it on the listings`, kind: "ok" };
-    return { text: `${done}; ${actionWord("sync", behind[0])} puts it on the listing`, kind: "ok" };
+    if (behind.length > 1) return { text: `${done}; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
+    return { text: `${done}; ${actionWord("sync", behind[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
 }
 
 // --- Admin: a list row's price, dialled on its tile -------------------------------------
