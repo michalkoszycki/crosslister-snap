@@ -321,15 +321,27 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "fold-venues",
         "venues",
         // one summary card per venue, a tap its own page (Michal, 2026-10-31)
+        "venue-tile-ebay",
         "venue-card-ebay",
         "venue-card-ebay-status",
         "venue-card-ebay-ships",
+        "venue-ebay-sync",
+        "sync-ebay-status",
+        "venue-ebay-cannot",
+        "venue-tile-craigslist",
         "venue-card-craigslist",
         "venue-card-craigslist-status",
         "venue-card-craigslist-ships",
+        "venue-craigslist-sync",
+        "sync-craigslist-status",
+        "venue-craigslist-cannot",
+        "venue-tile-poshmark",
         "venue-card-poshmark",
         "venue-card-poshmark-status",
         "venue-card-poshmark-ships",
+        "venue-poshmark-sync",
+        "sync-poshmark-status",
+        "venue-poshmark-cannot",
         // 3. Posting defaults (Michal, 2026-10-26: "call this posting defaults"): the customize
         // box's controls, saved on change: Quantity beside the Price slider (2026-10-31), the
         // options one line each, the fifth Add standard text to posts and its card under it
@@ -410,17 +422,11 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "account-connect",
         "account-reconnect",
         "venue-ebay-note",
-        "venue-ebay-sync",
-        "sync-ebay-status",
-        "venue-ebay-cannot",
         ...["craigslist", "poshmark"].flatMap((v) => [
             `venue-${v}`,
             `venue-${v}-status`,
             `venue-${v}-ships`,
             `venue-${v}-ask`,
-            `venue-${v}-sync`,
-            `sync-${v}-status`,
-            `venue-${v}-cannot`,
         ]),
         // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
         // venues"): the shared block, the venues' blocks
@@ -9872,9 +9878,16 @@ test("a sender's Feedback: what they sent, Reviewed beside each marked; a dot on
     nodes.get("admin-toggle").fire("click");
     assert.equal(nodes.get("feedback").hidden, false, "Feedback open");
     await settle();
-    const lines = nodes.get("feedback-mine").children.map((li) => li.children.map((c) => c.textContent));
-    // a chat: oldest first, Reviewed under the one marked (Michal, 2026-10-31)
-    assert.deepEqual(lines, [["The lamp price looked low", "Reviewed"], ["Craigslist stopped again"]]);
+    // a chat: oldest first, each message the admin's card headed "<name>'s feedback · <date>", the
+    // reply under the one marked a card of its own on grey, "Admin · <date>" over "Reviewed" (Michal, 2026-10-31)
+    const cards = nodes.get("feedback-mine").children.map((li) => li.children.map((box) => [box.className, ...box.children.map((p) => p.textContent)]));
+    assert.deepEqual(cards, [
+        [
+            ["inbox-entry", "michal's feedback · 2026-10-30 10:00", "The lamp price looked low"],
+            ["inbox-entry mine-reply", "Admin · 2026-10-31 09:00", "Reviewed"],
+        ],
+        [["inbox-entry", "michal's feedback · 2026-10-31 10:00", "Craigslist stopped again"]],
+    ]);
     assert.equal(nodes.get("feedback-mine").hidden, false);
     assert.equal(pc.seenPosts, 1, "seen once opened");
     assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), false, "the dot gone");
@@ -11457,7 +11470,11 @@ test("Venues: three cards in /me's order, all shown, one size, each its name, no
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
     nodes.get("settings-tab-venues").fire("click");
-    assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-card-poshmark", "venue-card-ebay", "venue-card-craigslist"]);
+    assert.deepEqual(nodes.get("venues").children.map((c) => c.id), ["venue-tile-poshmark", "venue-tile-ebay", "venue-tile-craigslist"]);
+    // the sync pair on each card, under its tap to the page (Michal, 2026-10-31: "these two buttons shoudl live on the main card")
+    for (const v of ["ebay", "craigslist", "poshmark"]) {
+        assert.match(html, new RegExp(`<div id="venue-tile-${v}" class="card venue-block venue-card">\\s*<button type="button" id="venue-card-${v}" class="venue-card-open">[\\s\\S]*?<\\/button>\\s*<div id="venue-${v}-sync" class="venue-sync"><\\/div>`));
+    }
     assert.equal(nodes.get("venue-card-ebay-status").textContent, nodes.get("account-ebay").textContent, "the card says what the page says");
     assert.equal(nodes.get("venue-page").hidden, true);
     // a card: that venue's own page, Back above it, its block alone, Settings put away (Michal,

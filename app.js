@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.37.0";
+import { VERSION } from "./version.js?v=2.38.0";
 import {
     adminLink,
     anyActive,
@@ -244,6 +244,7 @@ import {
     swipeState,
     feedbackWord,
     myFeedbackOf,
+    listedAtWord,
     inboxHead,
     inboxOf,
     refusalLine,
@@ -257,8 +258,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.37.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.37.0";
+} from "./core.js?v=2.38.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.38.0";
 import {
     addVenue,
     applyWrap,
@@ -314,8 +315,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.37.0";
-import { shrinkPhoto } from "./shrink.js?v=2.37.0";
+} from "./pc.js?v=2.38.0";
+import { shrinkPhoto } from "./shrink.js?v=2.38.0";
 import {
     bookCard,
     bookPriceValue,
@@ -328,8 +329,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.37.0";
-import { canScan, readIsbn } from "./scan.js?v=2.37.0";
+} from "./book.js?v=2.38.0";
+import { canScan, readIsbn } from "./scan.js?v=2.38.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -4903,19 +4904,25 @@ function renderExtras() {
     // oldest first, the newest nearest the box, as a chat reads
     const sent = (mine || []).slice().reverse();
     el.feedbackMine.hidden = isAdmin || !sent.length;
+    const who = me && me.user ? `${me.user}'s feedback` : "Your feedback";
+    const mineCard = (className, head, text) => {
+        const box = document.createElement("div");
+        box.className = className;
+        const line = (cls, words) => {
+            const p = document.createElement("p");
+            p.className = cls;
+            p.textContent = words;
+            return p;
+        };
+        box.replaceChildren(line("inbox-head", head), line("inbox-text", text));
+        return box;
+    };
     el.feedbackMine.replaceChildren(
         ...sent.map((e) => {
             const li = document.createElement("li");
-            const words = document.createElement("span");
-            words.className = "mine-text";
-            words.textContent = e.text;
-            li.append(words);
-            if (e.reviewed) {
-                const mark = document.createElement("span");
-                mark.className = "mine-reviewed";
-                mark.textContent = "Reviewed";
-                li.append(mark);
-            }
+            const parts = [mineCard("inbox-entry", [who, listedAtWord(e.created)].filter(Boolean).join(" · "), e.text)];
+            if (e.reviewed) parts.push(mineCard("inbox-entry mine-reply", ["Admin", listedAtWord(e.reviewedAt)].filter(Boolean).join(" · "), "Reviewed"));
+            li.replaceChildren(...parts);
             return li;
         })
     );
@@ -5812,7 +5819,7 @@ function renderVenues() {
     const ebay = ebayNow();
     const order = [...new Set([...(me ? me.venues : []), ...VENUES])].filter((v) => VENUES.includes(v));
     // the Venues part: one summary card per venue, in /me's order; the open venue's page its block
-    el.venues.replaceChildren(...order.map((v) => el.venueCards[v].card));
+    el.venues.replaceChildren(...order.map((v) => el.venueCards[v].tile));
     for (const venue of VENUES) {
         const block = el.venueBlocks[venue];
         const card = el.venueCards[venue];
@@ -7459,7 +7466,7 @@ function main() {
         accountReconnect: $("account-reconnect"),
         venues: $("venues"),
         venueCards: Object.fromEntries(
-            VENUES.map((v) => [v, { card: $(`venue-card-${v}`), status: $(`venue-card-${v}-status`), ships: $(`venue-card-${v}-ships`) }])
+            VENUES.map((v) => [v, { tile: $(`venue-tile-${v}`), card: $(`venue-card-${v}`), status: $(`venue-card-${v}-status`), ships: $(`venue-card-${v}-ships`) }])
         ),
         venueBack: $("venue-back"),
         venuePage: $("venue-page"),

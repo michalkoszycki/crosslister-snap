@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.37.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.38.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -188,9 +188,9 @@ header #admin-toggle > .dots { display: block; }
 header #admin-toggle { position: relative; }
 header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
 .feedback-mine { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.feedback-mine li { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
-.feedback-mine .mine-text { padding: 10px 12px; border-radius: 14px; background: var(--field); border: 1.5px solid var(--line); color: var(--ink); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.feedback-mine .mine-reviewed { padding: 0 4px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.feedback-mine li { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
+/* the reply: the message's card on grey (Michal, 2026-10-31) */
+.inbox-entry.mine-reply { background: var(--card); }
 
 .header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
 
@@ -789,7 +789,7 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: none; border-radius: 999px; background: none; color: var(--ink); }
 .icon-btn svg { display: block; }
 .icon-btn[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); }
-.search-panel .field { margin: 4px 0; }
+.search-panel .field { margin: 12px 0 4px; }
 .options .field { margin: 6px 0 4px; }
 .options .field-label { margin-bottom: 4px; font-size: 12px; }
 .options .chips .chip { min-height: 36px; padding: 4px 2px; font-size: 13px; }
@@ -1006,6 +1006,7 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* one listing, in place of the list: the heading, the photo strip, the venue cards */
 .link.back-link { display: block; min-height: 44px; padding: 10px 0; font-size: 15px; }
 .detail-heading { font-size: 22px; line-height: 1.25; margin: 14px 0 4px; overflow-wrap: anywhere; }
+.venue-page .detail-heading { margin-bottom: 14px; }
 .detail-photos .strip { padding: 8px 0 2px; gap: 8px; }
 .detail-photos .small { margin: 8px 0 0; }
 .fold { padding: 2px 14px 14px; margin-bottom: 4px; }
@@ -1306,7 +1307,9 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 .venue-blocks { display: grid; grid-auto-rows: 1fr; gap: 8px; margin-top: 8px; }
 .venue-block { padding: 12px 14px; }
 /* a venue's summary card under Venues: the whole card the way to its page (Michal, 2026-10-31) */
-.venue-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; font: inherit; color: var(--ink); border: none; cursor: pointer; }
+.venue-card { display: flex; flex-direction: column; align-items: stretch; width: 100%; color: var(--ink); }
+/* its upper part the tap to the venue's page; the sync pair under it (Michal, 2026-10-31) */
+.venue-card-open { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 0; border: none; border-radius: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .venue-card .card-name { margin: 0 0 4px; }
 .venue-page .venue-full { display: grid; gap: 8px; }
 .venue-page .venue-block .venue-name { display: none; } /* the page's heading says it */

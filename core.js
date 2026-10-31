@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.37.0";
+import { noteDirty, unsent } from "./queue.js?v=2.38.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.37.0";
+} from "./book.js?v=2.38.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1774,13 +1774,19 @@ export function inboxHead(entry, offsetMinutes) {
  * A sender's own entries (GET /me/feedback), newest first: each its text and whether it was
  * reviewed (Michal, 2026-10-31: no replies, the Reviewed mark only). Odd ones are left out.
  * @param {unknown} answer
- * @returns {{id:string, text:string, reviewed:boolean}[]}
+ * @returns {{id:string, text:string, reviewed:boolean, created:string, reviewedAt:string}[]}
  */
 export function myFeedbackOf(answer) {
     const entries = answer && typeof answer === "object" && Array.isArray(answer.entries) ? answer.entries : [];
     return entries
         .filter((e) => e && typeof e === "object" && typeof e.text === "string" && e.text.trim())
-        .map((e) => ({ id: String(e.id ?? ""), text: e.text.trim(), reviewed: e.reviewed === true }));
+        .map((e) => ({
+            id: String(e.id ?? ""),
+            text: e.text.trim(),
+            reviewed: e.reviewed === true,
+            created: typeof e.created === "string" ? e.created : "",
+            reviewedAt: typeof e.reviewed_at === "string" ? e.reviewed_at : "",
+        }));
 }
 
 export function feedbackWord(count, admin = false) {

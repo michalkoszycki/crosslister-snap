@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.37.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.37.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.38.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.38.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -294,7 +294,7 @@
                   stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></button>
           <button type="button" id="options-toggle" class="icon-btn" aria-label="Filters" aria-expanded="false"
                   aria-controls="options"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-                  stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18M12 3v18M18 3v18"/><circle cx="6" cy="15" r="2.6" fill="currentColor"/><circle cx="12" cy="8" r="2.6" fill="currentColor"/><circle cx="18" cy="13" r="2.6" fill="currentColor"/></svg></button>
+                  stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18M12 3v18M18 3v18M4 15h4M10 8h4M16 13h4"/></svg></button>
         </div>
         <div id="search-panel" class="search-panel" hidden>
           <label class="field field-small">
@@ -530,21 +530,36 @@
              cards for the venues") -->
         <div id="venues" class="venue-blocks">
           <!-- one card per venue, a tap its own page (Michal, 2026-10-31) -->
-          <button type="button" id="venue-card-ebay" class="card venue-block venue-card">
-            <span class="card-name venue-name">ebay</span>
-            <span id="venue-card-ebay-status" class="small venue-line"></span>
-            <span id="venue-card-ebay-ships" class="small venue-ships"></span>
-          </button>
-          <button type="button" id="venue-card-craigslist" class="card venue-block venue-card">
-            <span class="card-name venue-name">craigslist</span>
-            <span id="venue-card-craigslist-status" class="small venue-line"></span>
-            <span id="venue-card-craigslist-ships" class="small venue-ships"></span>
-          </button>
-          <button type="button" id="venue-card-poshmark" class="card venue-block venue-card">
-            <span class="card-name venue-name">poshmark</span>
-            <span id="venue-card-poshmark-status" class="small venue-line"></span>
-            <span id="venue-card-poshmark-ships" class="small venue-ships"></span>
-          </button>
+          <div id="venue-tile-ebay" class="card venue-block venue-card">
+            <button type="button" id="venue-card-ebay" class="venue-card-open">
+              <span class="card-name venue-name">ebay</span>
+              <span id="venue-card-ebay-status" class="small venue-line"></span>
+              <span id="venue-card-ebay-ships" class="small venue-ships"></span>
+            </button>
+            <div id="venue-ebay-sync" class="venue-sync"></div>
+            <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
+            <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
+          </div>
+          <div id="venue-tile-craigslist" class="card venue-block venue-card">
+            <button type="button" id="venue-card-craigslist" class="venue-card-open">
+              <span class="card-name venue-name">craigslist</span>
+              <span id="venue-card-craigslist-status" class="small venue-line"></span>
+              <span id="venue-card-craigslist-ships" class="small venue-ships"></span>
+            </button>
+            <div id="venue-craigslist-sync" class="venue-sync"></div>
+            <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
+            <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
+          </div>
+          <div id="venue-tile-poshmark" class="card venue-block venue-card">
+            <button type="button" id="venue-card-poshmark" class="venue-card-open">
+              <span class="card-name venue-name">poshmark</span>
+              <span id="venue-card-poshmark-status" class="small venue-line"></span>
+              <span id="venue-card-poshmark-ships" class="small venue-ships"></span>
+            </button>
+            <div id="venue-poshmark-sync" class="venue-sync"></div>
+            <p id="sync-poshmark-status" class="sync-status" aria-live="polite"></p>
+            <p id="venue-poshmark-cannot" class="small venue-note" hidden></p>
+          </div>
         </div>
 
       </div>
@@ -734,27 +749,18 @@
                to eBay's consent again, for a token eBay let lapse (app.js) -->
           <button type="button" id="account-reconnect" class="pill pill-small" hidden>Reconnect</button>
           <p id="venue-ebay-note" class="small venue-note" hidden></p>
-          <div id="venue-ebay-sync" class="venue-sync"></div>
-          <p id="sync-ebay-status" class="sync-status" aria-live="polite"></p>
-          <p id="venue-ebay-cannot" class="small venue-note" hidden></p>
         </div>
         <div id="venue-craigslist" class="card venue-block">
           <p class="card-name venue-name">craigslist</p>
           <p id="venue-craigslist-status" class="small venue-line"></p>
           <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
           <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
-          <div id="venue-craigslist-sync" class="venue-sync"></div>
-          <p id="sync-craigslist-status" class="sync-status" aria-live="polite"></p>
-          <p id="venue-craigslist-cannot" class="small venue-note" hidden></p>
         </div>
         <div id="venue-poshmark" class="card venue-block">
           <p class="card-name venue-name">poshmark</p>
           <p id="venue-poshmark-status" class="small venue-line"></p>
           <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
           <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
-          <div id="venue-poshmark-sync" class="venue-sync"></div>
-          <p id="sync-poshmark-status" class="sync-status" aria-live="polite"></p>
-          <p id="venue-poshmark-cannot" class="small venue-note" hidden></p>
         </div>
       </div>
       <div id="seller" class="address-card" hidden>
@@ -1117,6 +1123,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.37.0"></script>
+<script type="module" src="app.js?v=2.38.0"></script>
 </body>
 </html>
