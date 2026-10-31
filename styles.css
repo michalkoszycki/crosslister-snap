@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.28.6") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.28.7") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1079,7 +1079,7 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .venue-sync:empty { display: none; }
 .venue-sync .reset-call { flex-basis: 100%; text-align: left; }
 .venue-sync button.vbadge:disabled.muted { opacity: 0.6; }
-.vbadge.posted.sync-call { color: #0b0b0b; }
+/* the sync buttons' words as the badges': white on the green, dark on the dark look's light green (Michal, 2026-10-31) */
 .sync-status { margin: 8px 2px 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sync-status:empty { display: none; }
 .sync-status.busy { color: var(--ink); }

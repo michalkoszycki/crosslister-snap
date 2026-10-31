@@ -475,8 +475,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(css, /button\.vbadge\.busy \{ flex-wrap: nowrap; \}/);
     assert.match(css, /button\.vbadge \.tap-cancel \{ flex-basis: auto;/);
     assert.ok(!css.includes("sync-arrow"), "no ↻");
-    // the sync buttons' green with black words
-    assert.match(css, /\.vbadge\.posted\.sync-call \{ color: #0b0b0b; \}/);
+    // the sync buttons' words as the inventory badges': white on the green in the light look (Michal, 2026-10-31)
+    assert.ok(!/\.sync-call \{ color:/.test(css), "no colour of their own");
     assert.match(html, /<div id="detail-customize-actions" class="venue-actions">\s*<button type="button" id="detail-customize-save" class="pill pill-ink">Save<\/button>\s*<\/div>/);
     // the goods | book switch has an id, so Admin can hide it
     assert.match(html, /<div id="modes" class="modes" role="group"/);
