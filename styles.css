@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.28.7") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.28.8") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1168,6 +1168,7 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .signup-step.done .signup-word::after { content: " ✓"; color: var(--ok); }
 .signup-step.done { color: var(--muted); }
 .signup-step.off { opacity: 0.45; }
+.signup-policy-list { margin: 0; padding-left: 1.2em; font-size: 14px; font-weight: 500; color: var(--muted); line-height: 1.45; }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
    say eBay connected on the same button, lit in green"): a listed badge's posted green, done
    with, so not faded as a disabled button is */

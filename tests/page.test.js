@@ -7398,6 +7398,9 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         // its word, which a prefilled address asks to confirm (Michal, 2026-10-08)
         "signup-address-word",
         "signup-address",
+        // step 3: what Snap sets up on eBay (Michal, 2026-10-31)
+        "signup-step-policies",
+        "signup-policy-list",
         "signup-status",
         "install-banner",
         "install-words",
@@ -9610,23 +9613,33 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     nodes.get("admin-toggle").fire("click");
     assert.deepEqual(shown(nodes), ["signup-steps"]);
 
-    // back from eBay: Settings opens on the address at the end of Venues, saying why
+    // back from eBay: Finish setting up again, not Settings (Michal, 2026-10-31: "i want to come
+    // back to this page"), its line saying so
     pc.me = { ...NEW_ME, ebay: { connected: true, user: "anna_sells", policies: "none" } };
     pc.address = structuredClone(NEW_ADDRESS);
     pc.seller = structuredClone(SELLER_SAVED);
     const back = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
     const n = back.nodes;
+    await settle();
     assert.equal(globalThis.location.hash, "");
     assert.equal(pc.mes, 2, "asked again, once");
-    assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false]);
-    assert.equal(n.get("seller-note").textContent, ADDRESS_NEEDED);
-    assert.equal(n.get("account-status").textContent, "eBay connected");
-    assert.equal(n.get("account-ebay").textContent, "Connected as anna_sells");
-    // closed: step 1's button says eBay connected, in the posted green and done with (Michal,
-    // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
-    // heading without a tick since the button says it; step 2 open
-    n.get("admin-toggle").fire("click");
+    assert.equal(n.get("admin").hidden, true);
     assert.deepEqual(shown(n), ["signup-steps"]);
+    assert.equal(n.get("signup-status").textContent, "eBay connected");
+    // step 1's button says eBay connected, in the posted green and done with (Michal,
+    // 2026-10-10: "It better just say eBay connected on the same button, lit in green"), its
+    // heading without a tick since the button says it; step 2 open, step 3 spelled out
+    assert.deepEqual(
+        n.get("signup-policy-list").children.map((li) => li.textContent),
+        [
+            "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
+            "Returns: 30 days, buyer pays return shipping",
+            "Local pickup only, for items you mark pickup only",
+            "Your ship-from location: the address above",
+        ]
+    );
+    assert.equal(n.get("signup-step-policies").classList.contains("off"), false);
+    assert.equal(n.get("signup-step-policies").classList.contains("done"), false, "not made yet");
     const connected = n.get("signup-connect");
     assert.equal(connected.hidden, false, "the button stays");
     assert.equal(connected.textContent, "eBay connected: anna_sells");
@@ -9668,6 +9681,11 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     pc.seller = structuredClone(SELLER_SAVED);
     const local = memoryStore({ "snap.session": "sess-1" });
     const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    await settle();
+    assert.equal(n.get("signup-steps").hidden, false, "back on Finish setting up (2026-10-31)");
+    // Admin from there opens on the address, at the end of Venues
+    n.get("admin-toggle").fire("click");
+    await settle();
     assert.deepEqual(["admin", "settings", "fold-venues", "seller"].map((id) => n.get(id).hidden), [false, false, false, false], "open by itself");
     assert.deepEqual(addressCard(n), {
         shown: true,
@@ -9723,6 +9741,10 @@ test("an address that came all there from eBay: step 2 ticked; Settings opened f
     pc.address = { ...structuredClone(NEW_ADDRESS), shared: { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601", neighborhood: "" } };
     const local = memoryStore({ "snap.session": "sess-1" });
     const { nodes: n } = await loadPage({ local, fetchImpl: pc.fetch, hash: "#ebay=connected" });
+    await settle();
+    assert.equal(n.get("signup-steps").hidden, false, "back on Finish setting up (2026-10-31)");
+    n.get("admin-toggle").fire("click");
+    await settle();
     assert.equal(addressCard(n).note, null, "nothing to say: it is all there");
     assert.equal(n.get("seller-policies").hidden, true);
     assert.equal(n.get("seller-save").textContent, "Save address", "the card still takes a correction");

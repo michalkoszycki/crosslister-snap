@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.7";
+import { VERSION } from "./version.js?v=2.28.8";
 import {
     adminLink,
     anyActive,
@@ -249,8 +249,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.7";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.7";
+} from "./core.js?v=2.28.8";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.8";
 import {
     addVenue,
     applyWrap,
@@ -301,8 +301,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.7";
-import { shrinkPhoto } from "./shrink.js?v=2.28.7";
+} from "./pc.js?v=2.28.8";
+import { shrinkPhoto } from "./shrink.js?v=2.28.8";
 import {
     bookCard,
     bookPriceValue,
@@ -315,8 +315,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.7";
-import { canScan, readIsbn } from "./scan.js?v=2.28.7";
+} from "./book.js?v=2.28.8";
+import { canScan, readIsbn } from "./scan.js?v=2.28.8";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5252,6 +5252,9 @@ function renderSignup() {
     const ebay = ebayNow();
     paintConnect(el.signupConnect, connected, ebay ? ebay.user : "");
     el.signupStepAddress.classList.toggle("off", !connected);
+    // step 3 waits with step 2, and is ticked once eBay says the policies are made
+    el.signupStepPolicies.classList.toggle("off", !connected);
+    el.signupStepPolicies.classList.toggle("done", !!ebay && ebay.policies === "ready");
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
     // there (ticked; the address card still takes a correction while /me catches up)
     const address = connected ? addressState(seller.info) : "empty";
@@ -6248,19 +6251,25 @@ async function leaveFor(what, meanwhile, ask) {
 }
 
 /**
- * Back from Stripe (`#paid=`) or eBay (`#ebay=`): Admin on Settings, the line says how it
- * went, and /me is asked again for the postings or the eBay now there.
+ * Back from Stripe (`#paid=`) or eBay (`#ebay=`): the line says how it went, and /me is asked
+ * again for the postings or the eBay now there. Back from Stripe, and from eBay on an account
+ * set up already: Admin on Settings. A new account back from eBay stays on Finish setting up,
+ * step 1 green and the address next (Michal, 2026-10-31: "i want to come back to this page").
  * @param {{kind:"paid"|"ebay", value:string}} back
  */
 function cameBack(back) {
     account.status = returnLine(back);
-    openAccount(false);
+    if (back.kind !== "ebay") {
+        openAccount(false);
+        loadMe().catch(() => {});
+        return;
+    }
     loadMe()
         .then(() => {
-            // a new account's eBay connected: the address is next, at the end of Venues
-            if (back.kind === "ebay" && signupStep(me) === "address" && !el.admin.hidden) openSeller();
+            if (signupStep(me)) render();
+            else openAccount(false);
         })
-        .catch(() => {});
+        .catch(() => openAccount(false));
 }
 
 /**
@@ -7032,6 +7041,8 @@ function main() {
         signupSteps: $("signup-steps"),
         signupConnect: $("signup-connect"),
         signupStepAddress: $("signup-step-address"),
+        signupStepPolicies: $("signup-step-policies"),
+        signupPolicyList: $("signup-policy-list"),
         signupAddress: $("signup-address"),
         signupAddressWord: $("signup-address-word"),
         signupStatus: $("signup-status"),
@@ -7247,14 +7258,17 @@ function main() {
     renderExtras();
     renderAccount();
     renderPosting();
-    // what Snap sets up on her eBay, listed under the address boxes: fixed, so written once
-    el.sellerPolicyList.replaceChildren(
-        ...POLICY_LINES.map((line) => {
-            const li = document.createElement("li");
-            li.textContent = line;
-            return li;
-        })
-    );
+    // what Snap sets up on her eBay, listed under the address boxes and as Finish setting up's
+    // step 3 (2026-10-31): fixed, so written once
+    for (const list of [el.sellerPolicyList, el.signupPolicyList]) {
+        list.replaceChildren(
+            ...POLICY_LINES.map((line) => {
+                const li = document.createElement("li");
+                li.textContent = line;
+                return li;
+            })
+        );
+    }
 
     // the way in: the landing's Sign in, key and Install, the sign-in screen, the banner's Add and x
     // I have a key: Admin, which opens on Settings while none are saved

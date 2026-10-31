@@ -99,7 +99,10 @@ is an ordinary account with a name in the top bar, an empty inventory and the wh
 Admin. In place of the posting screens, until eBay is connected and the address saved:
 "Finish setting up" with no line under it (Michal, 2026-10-31: "take this out"). Step 1 as a card: **Connect eBay**, which
 becomes "eBay connected: name" in green. Step 2 as a card: the address where you ship
-from, prefilled from eBay once connected, **Looks right** or **Save address**. The same
+from, prefilled from eBay once connected, **Looks right** or **Save address**. Step 3 (Michal,
+2026-10-31): "Snap sets up on your eBay account" and the policy lines Settings lists under the
+address, ticked once eBay says they are made. Back from eBay's consent, a new account lands on
+this screen again (not Settings), step 1 green, its line saying "eBay connected". The same
 two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
 posting".
 

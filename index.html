@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.28.7">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.28.7" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.28.8">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.28.8" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -162,6 +162,12 @@
         <span id="signup-address-word" class="signup-word">Address where you ship from</span>
         <span class="signup-line">eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
         <button type="button" id="signup-address" class="secondary">Your address</button>
+      </li>
+      <!-- step 3 (Michal, 2026-10-31: "under the address. there shoudl be item 3. the policy
+           setups spelled out here"): POLICY_LINES, the ones Settings lists under the address -->
+      <li id="signup-step-policies" class="signup-step">
+        <span class="signup-word">Snap sets up on your eBay account</span>
+        <ul id="signup-policy-list" class="signup-policy-list"></ul>
       </li>
     </ol>
     <p id="signup-status" class="landing-status" aria-live="polite"></p>
@@ -982,6 +988,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.28.7"></script>
+<script type="module" src="app.js?v=2.28.8"></script>
 </body>
 </html>
