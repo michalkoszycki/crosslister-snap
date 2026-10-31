@@ -107,6 +107,9 @@ import {
     followRow,
     followSummary,
     inventoryCount,
+    booksAllowed,
+    BOOKS_ASK,
+    inventoryHeading,
     inventoryRows,
     jobRunning,
     leftUnsynced,
@@ -425,6 +428,8 @@ let me = null;
 let meAsked = false;
 /** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
 const offTaps = new Set();
+/** The grey book chip was tapped: its line and the way to ask show under the switch. */
+let booksTapped = false;
 /**
  * Settings' account card, as the screen has it: Buy postings' packs unfolded, a checkout or
  * Connect eBay on its way (`busy`), and its line (`status`: the way back from Stripe or eBay,
@@ -556,6 +561,8 @@ let grounds = { light: "", dark: "" };
  */
 const admin = {
     inventoryOpen: false,
+    /** the PC has answered with a list: its count follows the Inventory foldout's word */
+    counted: false,
     venue: "",
     status: "",
     sort: INVENTORY_SORTS[0].key,
@@ -1179,6 +1186,12 @@ function changed() {
 }
 
 function render() {
+    // books are the admin's (booksAllowed): anyone else's chip is grey, and goods is the screen
+    const booksOff = !booksAllowed(me);
+    if (booksOff && mode === "book") mode = "goods";
+    el.modeBook.classList.toggle("mode-off", booksOff);
+    if (booksOff) el.modeBook.setAttribute("aria-disabled", "true");
+    else el.modeBook.removeAttribute("aria-disabled");
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
@@ -1210,6 +1223,7 @@ function render() {
     // About and privacy under the landing and Admin; the posting screens keep their foot clear
     el.aboutLink.hidden = !out && !away && !signing;
     el.modes.hidden = out || away || signing;
+    el.booksOff.hidden = el.modes.hidden || !booksOff || !booksTapped;
     el.work.hidden = out || away || signing || mode !== "goods";
     el.book.hidden = out || away || signing || mode !== "book";
     renderInstall(out || away);
@@ -1758,6 +1772,12 @@ function showMessage() {
 /** goods | book, chosen with the switch: remembered, and where the items in hand come back. */
 function setMode(m) {
     if (!MODES.includes(m)) return;
+    if (m === "book" && !booksAllowed(me)) {
+        // nothing changes: the line under the switch says why, with the way to ask
+        booksTapped = true;
+        render();
+        return;
+    }
     writeText("localStorage", MODE_KEY, m);
     showMode(m);
 }
@@ -1768,6 +1788,22 @@ function showMode(m) {
     mode = m;
     render();
     pump(); // the shown item's photos go first from now on
+}
+
+/**
+ * The book chip's "Ask for it in Feedback": Admin at Feedback, open, its box saying what is
+ * asked for unless something is written there already.
+ */
+function askForBooks() {
+    if (el.admin.hidden) {
+        Object.assign(visit, { from: settings() ? mode : "admin", sawCard: false });
+        adminShown(true);
+    }
+    extras.feedback = true;
+    renderExtras();
+    if (!el.feedbackText.value.trim()) el.feedbackText.value = BOOKS_ASK;
+    if (typeof el.feedbackToggle.scrollIntoView === "function") el.feedbackToggle.scrollIntoView({ block: "start" });
+    if (typeof el.feedbackText.focus === "function") el.feedbackText.focus();
 }
 
 // --- photos ----------------------------------------------------------------
@@ -2461,6 +2497,17 @@ async function poll(m, venue, mine) {
 // fields]. Also I think when I click on an item there should only be eBay or and
 // Craigslist card." core.js decides what each card offers and says; this wires it.
 
+/** The inventory foldout's word, with the list's count once there is one. */
+function inventoryWord() {
+    return inventoryHeading(admin.counted ? admin.rows.length : null);
+}
+
+/** The list's count after the Inventory foldout's word, and under it only what the count cannot say. */
+function showCount(lead = "") {
+    el.inventoryStatus.textContent = [lead, inventoryCount(admin.rows.length)].filter(Boolean).join(" ");
+    fold(el.inventoryToggle, inventoryWord(), admin.inventoryOpen);
+}
+
 /** The foldout's arrow and word: ▸ folded, ▾ open, as customize. */
 function fold(toggle, word, open) {
     toggle.textContent = `${open ? "▾" : "▸"} ${word}`;
@@ -2552,7 +2599,7 @@ function showAdmin(open, card = "") {
     }
     admin.inventoryOpen = true;
     el.inventory.hidden = false;
-    fold(el.inventoryToggle, "Inventory", true);
+    fold(el.inventoryToggle, inventoryWord(), true);
     openRow({ sku }, null).catch(() => {});
 }
 
@@ -2647,7 +2694,7 @@ function setTheme(theme) {
 function showInventory(open) {
     admin.inventoryOpen = open;
     el.inventory.hidden = !open;
-    fold(el.inventoryToggle, "Inventory", open);
+    fold(el.inventoryToggle, inventoryWord(), open);
     if (open) {
         showList();
         loadInventory().catch(() => {});
@@ -2661,7 +2708,7 @@ function showInventory(open) {
  */
 function showOptions(open) {
     el.options.hidden = !open;
-    fold(el.optionsToggle, "Options", open);
+    fold(el.optionsToggle, "Filters", open);
 }
 
 /** Options tapped open or folded: remembered on this phone. */
@@ -2717,7 +2764,8 @@ async function loadInventory(lead = "") {
     if (mine !== admin.asked) return; // a later search or filter has its own answer coming
     heard(200);
     admin.rows = inventoryRows(answer);
-    el.inventoryStatus.textContent = [lead, inventoryCount(admin.rows.length)].filter(Boolean).join(" ");
+    admin.counted = true;
+    showCount(lead);
     renderRows();
     if (el.inventoryPhotos.checked) fetchThumbs(pc, mine).catch(() => {});
 }
@@ -2998,7 +3046,7 @@ async function sendPrice(sku, price) {
         shown.row = followSummary(shown.row, whole);
         shown.shown = null;
     }
-    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    showCount();
     paintTile(sku);
 }
 
@@ -3124,7 +3172,7 @@ async function archiveSwiped(sku, direction) {
     const at = admin.rows.findIndex((r) => r.sku === sku);
     admin.rows = admin.rows.filter((r) => r.sku !== sku);
     showRows();
-    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    showCount();
     offerUndo({ sku, row: parts.row, at, parts });
 }
 
@@ -3169,7 +3217,7 @@ async function undoArchive() {
     slideRow(entry.parts, 0);
     admin.rows.splice(Math.max(0, Math.min(entry.at, admin.rows.length)), 0, entry.row);
     showRows();
-    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    showCount();
 }
 
 /** Unarchive, on a row the Archived chip lists: back on the lists, and off this one. */
@@ -3192,7 +3240,7 @@ async function unarchiveRow(sku) {
     task.wait = "";
     admin.rows = admin.rows.filter((r) => r.sku !== sku);
     showRows();
-    el.inventoryStatus.textContent = inventoryCount(admin.rows.length);
+    showCount();
 }
 
 /**
@@ -6909,6 +6957,8 @@ function main() {
         modes: $("modes"),
         modeGoods: $("mode-goods"),
         modeBook: $("mode-book"),
+        booksOff: $("books-off"),
+        booksAsk: $("books-ask"),
         work: $("work"),
         itemInput: $("item-name"),
         cleaned: $("cleaned"),
@@ -7298,6 +7348,7 @@ function main() {
     });
     el.modeGoods.addEventListener("click", () => setMode("goods"));
     el.modeBook.addEventListener("click", () => setMode("book"));
+    el.booksAsk.addEventListener("click", askForBooks);
 
     el.itemInput.addEventListener("input", onItemNameChanged);
     // Fix dark photos: for every photo taken from now on (Michal, 2026-10-08: "Some of mine are quite dark.")

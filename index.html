@@ -190,6 +190,10 @@
     <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
     <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
   </div>
+  <!-- books are the admin's (Michal, 2026-10-31): anyone else's book chip is grey, and its tap
+       says so here, with the way to ask (app.js) -->
+  <p id="books-off" class="small books-off" hidden>Books are not open for your account yet.
+    <button type="button" id="books-ask" class="link books-ask">Ask for it in Feedback</button></p>
 
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
     You are offline. Photos wait on this page and go to the server when you are back.
@@ -207,20 +211,21 @@
     <button type="button" id="inventory-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="inventory">▸ Inventory</button>
     <div id="inventory" class="card inventory" hidden>
-      <!-- the list: the search, then Options (the two filters, the sort, the photos or not),
-           then one row per listing. Michal, 2026-10-08: "Inventory list options need to be all
-           small, and also locked away inside a foldout tab 'Options'": the search stays out,
-           small; the rest folds away, folded until he opens it (app.js remembers which) -->
+      <!-- the list: the line of what the count cannot say, then Filters (the search, the two
+           filters, the sort, the photos or not), then one row per listing. Michal, 2026-10-08:
+           "Inventory list options need to be all small, and also locked away inside a foldout
+           tab 'Options'"; 2026-10-31: "move the search to Options. so it is hidden at first.
+           and change Options to 'Filters'". Folded until he opens it (app.js remembers which) -->
       <div id="inventory-browse">
-        <label class="field field-small">
-          <span class="field-label">Search</span>
-          <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
-                 autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
-        </label>
         <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
         <button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"
-                aria-controls="options">▸ Options</button>
+                aria-controls="options">▸ Filters</button>
         <div id="options" class="options" hidden>
+          <label class="field field-small">
+            <span class="field-label">Search</span>
+            <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
+          </label>
           <div class="field">
             <span class="field-label">Venue</span>
             <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue">

@@ -197,13 +197,15 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "inventory-toggle",
         "inventory",
         "inventory-browse",
-        "inventory-search",
-        // the status line right under the search box: the count, or the server's trouble
+        // the line under the heading: what the count after "Inventory" cannot say, or the
+        // server's trouble
         "inventory-status",
         // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked
-        // away inside a foldout tab 'Options'": the chips and Show photos, the search left out
+        // away inside a foldout tab 'Options'"; 2026-10-31: "move the search to Options. so it
+        // is hidden at first. and change Options to 'Filters'"
         "options-toggle",
         "options",
+        "inventory-search",
         "inventory-venue",
         "inventory-venue-all",
         "inventory-venue-ebay",
@@ -443,9 +445,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<input id="inventory-search"[^>]*inputmode="search"/);
     // Show photos: on by default, a pill row of its own after the sort chips, the last of Options
     assert.match(html, /<\/div>\s*<\/div>\s*(<!--[\s\S]*?-->\s*)?<label class="pickup">\s*<input id="inventory-photos" type="checkbox" checked>\s*<span>Show photos<\/span>\s*<\/label>\s*<\/div>\s*<ul id="inventory-list"/);
-    // Options folded by default, in customize's pattern; the search small, out of it
-    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Options<\/button>\s*<div id="options" class="options" hidden>/);
-    assert.match(html, /<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
+    // Filters folded by default, in customize's pattern; the search small, first inside it
+    assert.match(html, /<button type="button" id="options-toggle" class="link customize-toggle options-toggle" aria-expanded="false"\s+aria-controls="options">▸ Filters<\/button>\s*<div id="options" class="options" hidden>\s*<label class="field field-small">\s*<span class="field-label">Search<\/span>\s*<input id="inventory-search" class="small-input"/);
     assert.match(html, /<button type="button" id="inventory-back" class="link back-link">← Back to inventory</);
     assert.ok(!html.includes('id="detail-item"'), "no Item foldout");
     assert.ok(!html.includes('id="detail-photos-toggle"'), "the photos are a strip, not a foldout");
@@ -2417,7 +2418,9 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     assert.equal(nodes.get("inventory-status").textContent, "Asking the server...");
     await settle();
     assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
-    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+    // the count after the heading (Michal, 2026-10-31), nothing more under it
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
+    assert.equal(nodes.get("inventory-status").textContent, "");
     const rows = listed(nodes);
     assert.deepEqual(
         rows.map(({ title, line, badges }) => ({ title, line, badges })),
@@ -3099,9 +3102,9 @@ test("the search waits for him to stop typing; the chips and Show photos ask at 
     assert.deepEqual(pc.calls.slice(before), [`GET /inventory?q=blue%20lamp&${ALL}`]);
 });
 
-test("the inventory's Options: folded at first, the search out of it; open or folded is remembered on this phone", async (t) => {
+test("the inventory's Filters: folded at first, the search inside; open or folded is remembered on this phone", async (t) => {
     // Michal, 2026-10-08: "Inventory list options need to be all small, and also locked away
-    // inside a foldout tab 'Options'."
+    // inside a foldout tab 'Options'"; 2026-10-31: the search in it, and it called Filters
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     const local = memoryStore(NO_PHOTOS);
@@ -3110,11 +3113,11 @@ test("the inventory's Options: folded at first, the search out of it; open or fo
     await settle();
     assert.equal(nodes.get("inventory-search").hidden, false);
     assert.equal(nodes.get("options").hidden, true);
-    assert.equal(nodes.get("options-toggle").textContent, "▸ Options");
+    assert.equal(nodes.get("options-toggle").textContent, "▸ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "false");
     nodes.get("options-toggle").fire("click");
     assert.equal(nodes.get("options").hidden, false);
-    assert.equal(nodes.get("options-toggle").textContent, "▾ Options");
+    assert.equal(nodes.get("options-toggle").textContent, "▾ Filters");
     assert.equal(nodes.get("options-toggle").attrs["aria-expanded"], "true");
     assert.equal(local.map.get("snap.inventory.options"), "open");
     // the chips inside ask as ever
@@ -3124,7 +3127,7 @@ test("the inventory's Options: folded at first, the search out of it; open or fo
     // a reload keeps it open; folded again, it stays folded
     const again = await loadPage({ local, fetchImpl: pc.fetch });
     assert.equal(again.nodes.get("options").hidden, false);
-    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Options");
+    assert.equal(again.nodes.get("options-toggle").textContent, "▾ Filters");
     again.nodes.get("options-toggle").fire("click");
     assert.equal(again.nodes.get("options").hidden, true);
     assert.equal(local.map.get("snap.inventory.options"), "closed");
@@ -3436,7 +3439,7 @@ test("a listing Admin reopens that the PC no longer has is let go; the list says
     assert.equal(nodes.get("inventory-detail").hidden, true);
     assert.equal(nodes.get("inventory-browse").hidden, false);
     assert.equal(nodes.get("inventory-toggle").hidden, false);
-    assert.equal(nodes.get("inventory-status").textContent, "Could not read GONE: no row GONE. 1 listing");
+    assert.equal(nodes.get("inventory-status").textContent, "Could not read GONE: no row GONE.");
     assert.equal(listed(nodes).length, 1);
 
     // a PC that does not answer is not a listing gone: it stays, saying so
@@ -7737,6 +7740,46 @@ test("a desktop browser is not nudged to install: no Install on the landing, no 
 
 // --- the account: GET /me (Michal, 2026-10-08) --------------------------------------------------
 
+test("books are the admin's: anyone else's book chip is grey, its tap says so, and its link asks in Feedback", async (t) => {
+    // Michal, 2026-10-31: "for anyone other then me the admin the book thing should be all
+    // grayed out and minimal. with a link to request in feedback"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    pc.me = { user: "wife", admin: false, craigslist: false, venues: ["ebay"] };
+    const { nodes } = await loadPage({ local: memoryStore({ ...NO_PHOTOS, "snap.mode": "book" }), fetchImpl: pc.fetch });
+    await settle();
+    const book = nodes.get("mode-book");
+    assert.equal(book.classList.contains("mode-off"), true);
+    assert.equal(book.attrs["aria-disabled"], "true");
+    assert.equal(book.attrs["aria-pressed"], "false", "a book chosen before is goods now");
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("book").hidden, true);
+    assert.equal(nodes.get("books-off").hidden, true, "nothing said before the tap");
+
+    book.fire("click");
+    assert.equal(nodes.get("book").hidden, true, "the tap opens nothing");
+    assert.equal(nodes.get("books-off").hidden, false);
+    assert.equal(nodes.get("admin").hidden, true);
+
+    nodes.get("books-ask").fire("click");
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("feedback").hidden, false);
+    assert.equal(nodes.get("feedback-text").value, "I would like to list books.");
+});
+
+test("the admin's book chip is as ever", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    await settle();
+    const book = nodes.get("mode-book");
+    assert.equal(book.classList.contains("mode-off"), false);
+    book.fire("click");
+    assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("books-off").hidden, true);
+});
+
 test("an account without craigslist: its button grey yet tappable, saying why; its empty card says the same", async (t) => {
     // Michal, 2026-10-08: "Keep the Craigslist button gray and when tapped write 'contact developer'."
     // Michal, 2026-10-10: and it says where to ask, the page's own Admin, Feedback
@@ -9158,7 +9201,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.deepEqual(pc.patches, [{ archived: true }]);
     assert.equal(pc.calls.filter((c) => c.startsWith("PATCH")).at(-1), "PATCH /inventory/B2");
     assert.deepEqual(titles(), ["Item A1", "Item C3"]);
-    assert.equal(nodes.get("inventory-status").textContent, "2 listings");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 2");
     assert.equal(nodes.get("inventory-undo").hidden, false);
     assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2");
     b2.open.fire("click");
@@ -9173,7 +9216,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.equal(nodes.get("inventory-undo").hidden, true);
     assert.equal(listed(nodes)[1].row.style.transform, "");
     assert.equal(listed(nodes)[1].li.classList.contains("leaving"), false);
-    assert.equal(nodes.get("inventory-status").textContent, "3 listings");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
 
     // to the left as well; the bar goes by itself after 6 s
     const c3 = listed(nodes)[2];

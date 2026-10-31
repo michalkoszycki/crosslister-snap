@@ -104,6 +104,8 @@ import {
     INVENTORY_STATUSES,
     INVENTORY_VENUES,
     inventoryCount,
+    inventoryHeading,
+    booksAllowed,
     inventoryQuery,
     inventoryRows,
     sortQuery,
@@ -2630,9 +2632,19 @@ test("the inventory's rows: only objects with a sku; the count line", () => {
     assert.deepEqual(inventoryRows({ rows: "no" }), []);
     assert.deepEqual(inventoryRows({ rows: [{ sku: "A" }, null, { title: "no sku" }, { sku: "" }, "B"] }), [{ sku: "A" }]);
     assert.equal(inventoryCount(0), "No listings match.");
-    assert.equal(inventoryCount(1), "1 listing");
-    assert.equal(inventoryCount(12), "12 listings");
+    // the count is after the heading now (Michal, 2026-10-31); the line keeps what it cannot say
+    assert.equal(inventoryCount(1), "");
+    assert.equal(inventoryCount(12), "");
     assert.equal(inventoryCount(200), "The newest 200 listings; search to narrow them.");
+    assert.equal(inventoryHeading(null), "Inventory");
+    assert.equal(inventoryHeading(0), "Inventory 0");
+    assert.equal(inventoryHeading(99), "Inventory 99");
+    assert.equal(inventoryHeading(200), "Inventory 200+");
+    // books: the admin's alone; no answer from /me is everything as before
+    assert.equal(booksAllowed(null), true);
+    assert.equal(booksAllowed({ admin: true }), true);
+    assert.equal(booksAllowed({ user: "old server" }), true);
+    assert.equal(booksAllowed({ admin: false }), false);
 });
 
 test("a row's price: whole dollars when .00, cents otherwise, nothing for none", () => {

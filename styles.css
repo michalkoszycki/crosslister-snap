@@ -591,6 +591,10 @@ button.busy::after {
 .mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
 /* hidden while Admin is open (Michal, 2026-10-06); display: grid above would beat the attribute */
 .modes[hidden] { display: none; }
+/* the book chip for anyone but the admin: grey, as a venue the account may not use */
+.mode.mode-off { color: var(--muted); opacity: 0.6; }
+.books-off { margin: -6px 2px 12px; }
+.books-off .books-ask { padding: 0; font: inherit; font-weight: 700; color: var(--ink); text-decoration: underline; }
 
 /* the book the PC found: the title in bold, then the authors, then the small print */
 .book-card { margin-top: 14px; }
