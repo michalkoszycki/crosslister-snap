@@ -1120,22 +1120,90 @@ export function addressFor(venue, info) {
 }
 
 /**
+ * An address as the one line it is typed in (Michal, 2026-10-31: "1234 W Example St, Chicago,
+ * IL 60637"): the fields `uses` names, in ADDRESS_FIELDS' order, a comma between them, the
+ * state and the ZIP one part ("IL 60637"); Craigslist's "60609, McKinley Park". Empty fields
+ * are left out.
+ * @param {Record<string, unknown>} fields
+ * @param {string[]} uses
+ * @returns {string}
+ */
+export function addressLine(fields, uses) {
+    const has = (k) => (uses.includes(k) && typeof fields[k] === "string" ? fields[k].trim() : "");
+    const stateZip = [has("state"), has("zip")].filter(Boolean).join(" ");
+    return [has("line1"), has("city"), stateZip, has("neighborhood")].filter(Boolean).join(", ");
+}
+
+/** A part that is the state and the ZIP together ("IL 60637"), or the city, state and ZIP with no comma ("Chicago IL 60637"). */
+const STATE_ZIP = /^([A-Za-z]{2})\s+(\d[\d -]*)$/;
+const TOWN_STATE_ZIP = /^(.*\S)\s+([A-Za-z]{2})\s+(\d[\d -]*)$/;
+
+/**
+ * The one line typed back into its fields, split at the commas (Michal, 2026-10-31), for the
+ * fields `uses` names: with a street (eBay's, the shared one) the first parts are the street,
+ * then the city, then the state and ZIP ("IL 60637", or "IL" and "60637" as two parts, or
+ * "Chicago IL 60637" with no comma), and what follows is the neighbourhood; without one
+ * (Craigslist's) the ZIP, then the neighbourhood. Leniently, unchecked: a part missing is "",
+ * and checkFields names it when it is saved.
+ * @param {unknown} text
+ * @param {string[]} uses
+ * @returns {AddressFields}
+ */
+export function parseAddressLine(text, uses) {
+    const parts = (typeof text === "string" ? text : "")
+        .split(",")
+        .map((s) => s.trim().replace(/\s+/g, " "))
+        .filter(Boolean);
+    /** @type {AddressFields} */
+    const f = { line1: "", city: "", state: "", zip: "", neighborhood: "" };
+    if (!uses.includes("line1")) {
+        if (uses.includes("zip")) f.zip = parts.shift() || "";
+        f.neighborhood = parts.join(", ");
+    } else {
+        // the state and ZIP part, from the third part on (a street of two parts, "Apt 2", allowed)
+        let at = -1;
+        for (let i = 2; i < parts.length && at < 0; i += 1) if (STATE_ZIP.test(parts[i]) || /^[A-Za-z]{2}$/.test(parts[i])) at = i;
+        if (at >= 0) {
+            f.line1 = parts.slice(0, at - 1).join(", ");
+            f.city = parts[at - 1];
+            const both = STATE_ZIP.exec(parts[at]);
+            f.state = both ? both[1] : parts[at];
+            f.zip = both ? both[2] : parts[at + 1] || "";
+            f.neighborhood = parts.slice(at + (both ? 1 : 2)).join(", ");
+        } else {
+            const town = parts.length === 2 ? TOWN_STATE_ZIP.exec(parts[1]) : null;
+            const [city, state, zip] = town ? town.slice(1) : parts.slice(1, 4);
+            f.line1 = parts[0] || "";
+            f.city = city || "";
+            f.state = state || "";
+            f.zip = zip || "";
+            f.neighborhood = parts.slice(town ? 2 : 4).join(", ");
+        }
+    }
+    return Object.fromEntries(uses.map((k) => [k, f[k]]));
+}
+
+/**
+ * The placeholder in an address's one box: what goes in it, in its order.
+ * @param {string[]} uses
+ * @returns {string}
+ */
+export function addressHint(uses) {
+    if (!uses.includes("line1")) return uses.includes("neighborhood") ? "ZIP, neighborhood" : "ZIP";
+    return uses.includes("neighborhood") ? "Street, city, state ZIP, neighborhood" : "Street, city, state ZIP";
+}
+
+/**
  * The muted "Ships from ..." line in a venue's block under Venues (Michal, 2026-10-25): the
- * fields that venue uses, as "12 Oak St, Chicago IL 60601" or "60609, McKinley Park"; "" for a
- * venue that uses none, or whose fields are still empty.
+ * fields that venue uses, as its one line is typed (addressLine: "12 Oak St, Chicago, IL
+ * 60601", "60609, McKinley Park"); "" for a venue that uses none, or whose fields are still empty.
  * @param {string} venue
  * @param {Address|null} info
  * @returns {string}
  */
 export function shipsFromLine(venue, info) {
-    const f = addressFor(venue, info);
-    const parts = [];
-    if (f.line1) parts.push(f.line1);
-    const town = [f.city, [f.state, f.zip].filter(Boolean).join(" ")].filter(Boolean).join(" ");
-    if (town && (f.city || f.state)) parts.push(town);
-    else if (f.zip) parts.push(f.zip);
-    if (f.neighborhood) parts.push(f.neighborhood);
-    return parts.length ? `Ships from ${parts.join(", ")}` : "";
+    const line = addressLine(addressFor(venue, info), info ? info.uses[venue] || [] : []);
+    return line ? `Ships from ${line}` : "";
 }
 
 /** One address's boxes checked: each trimmed (inner spaces one), the state two letters upper-cased, the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */

@@ -477,48 +477,21 @@
               d="M18 2v4.5h-4.5"></path></svg></span>
         </div>
         <!-- last under Venues (Michal, 2026-10-26: "the address box should be at the end of
-             venues"): the address where you ship from, from GET /me/address, one for every venue
-             or, the tick off, one per venue that uses an address (Michal, 2026-10-25) -->
-        <div id="seller" class="card address-card" hidden>
+             venues"), no card of its own, in line with the venue block's inner text (2026-10-31):
+             the address where you ship from, from GET /me/address, typed as ONE line ("1234 W
+             Example St, Chicago, IL 60637", split at the commas by app.js) for every venue or, the
+             tick off, one line per venue that uses an address (Michal, 2026-10-25); then one row,
+             Save address and the Same address for every venue tick, last -->
+        <div id="seller" class="address-card" hidden>
           <p class="card-name">Address where you ship from</p>
           <!-- why the fold opened by itself: eBay connected and the address not all there, or
                where a prefilled one came from (Michal, 2026-10-08) -->
           <p id="seller-note" class="small seller-note" hidden></p>
-          <label class="pickup">
-            <input id="address-same" type="checkbox" checked>
-            <span>Same address for every venue</span>
-          </label>
           <div id="address-shared" class="address-block">
-            <label class="field field-small">
-              <span class="field-label">Street address</span>
-              <input id="seller-line1" class="small-input" type="text" autocomplete="address-line1"
-                     autocapitalize="words" spellcheck="false">
-            </label>
-            <label class="field field-small">
-              <span class="field-label">City</span>
-              <input id="seller-city" class="small-input" type="text" autocomplete="address-level2"
-                     autocapitalize="words" spellcheck="false">
-            </label>
-            <div class="seller-row">
-              <label class="field field-small">
-                <span class="field-label">State</span>
-                <input id="seller-state" class="small-input" type="text" autocomplete="address-level1"
-                       autocapitalize="characters" spellcheck="false" maxlength="2" placeholder="IL">
-              </label>
-              <label class="field field-small">
-                <span class="field-label">ZIP</span>
-                <input id="seller-zip" class="small-input" type="text" inputmode="numeric"
-                       autocomplete="postal-code" spellcheck="false" maxlength="10" placeholder="60601">
-              </label>
-            </div>
-            <!-- Craigslist's, beside the ZIP it uses; shown while a venue of the account's uses it -->
-            <label id="seller-neighborhood-field" class="field field-small" hidden>
-              <span class="field-label">Neighborhood</span>
-              <input id="seller-neighborhood" class="small-input" type="text" autocomplete="off"
-                     autocapitalize="words" spellcheck="false" placeholder="McKinley Park">
-            </label>
+            <input id="seller-line" class="small-input" type="text" autocomplete="off" autocapitalize="words"
+                   spellcheck="false" aria-label="Address where you ship from" placeholder="Street, city, state ZIP">
           </div>
-          <!-- unticked: one block per venue that uses an address, drawn by app.js -->
+          <!-- unticked: one line per venue that uses an address, its name its label, drawn by app.js -->
           <div id="address-venues" class="address-venues" hidden></div>
           <!-- what Snap sets up on her eBay once the address is in, while it is being given
                (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
@@ -527,7 +500,13 @@
             <p class="seller-policies-head">Snap will set up on your eBay account:</p>
             <ul id="seller-policy-list" class="seller-policy-list"></ul>
           </div>
-          <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+          <div class="address-row">
+            <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
+            <label class="pickup">
+              <input id="address-same" type="checkbox" checked>
+              <span>Same address for every venue</span>
+            </label>
+          </div>
           <p id="seller-status" class="small account-status" aria-live="polite"></p>
         </div>
 

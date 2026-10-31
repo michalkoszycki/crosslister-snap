@@ -177,6 +177,9 @@ import {
     accountError,
     ADDRESS_NEEDED,
     addressBody,
+    addressHint,
+    addressLine,
+    parseAddressLine,
     connectLabel,
     policiesLine,
     SELLER_POLL_MAX,
@@ -3791,14 +3794,50 @@ test("a venue's address and its Ships from line: the shared one while it is the 
     assert.deepEqual(addressFor("craigslist", same), { zip: "60609", neighborhood: "McKinley Park" }, "the same for every venue: its own kept aside");
     assert.deepEqual(addressFor("poshmark", same), {});
     assert.deepEqual(addressFor("ebay", null), {});
-    assert.equal(shipsFromLine("ebay", same), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("ebay", same), "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
     assert.equal(shipsFromLine("craigslist", same), "Ships from 60609, McKinley Park");
     assert.equal(shipsFromLine("poshmark", same), "", "a venue that uses none");
     const split = addressOf({ same: false, shared, venues: { craigslist: { zip: "60608", neighborhood: "" } }, uses });
     assert.equal(shipsFromLine("craigslist", split), "Ships from 60608, McKinley Park", "a field it has not got yet comes from the shared one");
-    assert.equal(shipsFromLine("ebay", split), "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(shipsFromLine("ebay", split), "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
     assert.equal(shipsFromLine("ebay", addressOf({ shared: {}, uses })), "", "nothing there yet");
     assert.equal(noAddressLine("poshmark"), "Poshmark does not use a ship-from address.");
+});
+
+test("an address as one line (Michal, 2026-10-31): written with commas, the state and ZIP one part; typed back, split at the commas", () => {
+    const full = ["line1", "city", "state", "zip"];
+    const cl = ["zip", "neighborhood"];
+    const all = [...full, "neighborhood"];
+    const michal = { line1: "4234 S Wolcott Ave", city: "Chicago", state: "IL", zip: "60609", neighborhood: "McKinley Park" };
+    assert.equal(addressLine(michal, full), "4234 S Wolcott Ave, Chicago, IL 60609");
+    assert.equal(addressLine(michal, cl), "60609, McKinley Park");
+    assert.equal(addressLine(michal, all), "4234 S Wolcott Ave, Chicago, IL 60609, McKinley Park");
+    assert.equal(addressLine({ line1: "12 Oak St", city: "Chicago", state: "IL", zip: "" }, full), "12 Oak St, Chicago, IL", "an empty field left out");
+    assert.equal(addressLine({}, full), "");
+    // typed back: street, city, "ST ZIP"
+    assert.deepEqual(parseAddressLine("1234 W Example St, Chicago, IL 60637", full), { line1: "1234 W Example St", city: "Chicago", state: "IL", zip: "60637" });
+    assert.deepEqual(parseAddressLine(" 12  Oak St , Chicago,il 60601-1234 ", full), { line1: "12 Oak St", city: "Chicago", state: "il", zip: "60601-1234" }, "spaces tidied; checked on Save");
+    // the state and ZIP as two parts; a street of two parts; no comma before the state
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, IL, 60601", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    assert.deepEqual(parseAddressLine("1 Main St, Apt 2, St Louis, MO 63101", full), { line1: "1 Main St, Apt 2", city: "St Louis", state: "MO", zip: "63101" });
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago IL 60601", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "60601" });
+    // the neighbourhood after the ZIP, for the shared line of an account with Craigslist
+    assert.deepEqual(parseAddressLine("4234 S Wolcott Ave, Chicago, IL 60609, McKinley Park", all), michal);
+    // Craigslist's: the ZIP, then the neighbourhood
+    assert.deepEqual(parseAddressLine("60609, McKinley Park", cl), { zip: "60609", neighborhood: "McKinley Park" });
+    assert.deepEqual(parseAddressLine("60608", cl), { zip: "60608", neighborhood: "" });
+    // what is missing is "", named when it is saved
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, IL", full), { line1: "12 Oak St", city: "Chicago", state: "IL", zip: "" });
+    assert.deepEqual(parseAddressLine("12 Oak St, Chicago, Illinois 60601", full), { line1: "12 Oak St", city: "Chicago", state: "Illinois 60601", zip: "" });
+    assert.deepEqual(addressBody(parseAddressLine("12 Oak St, Chicago, Illinois 60601", full)), { ok: false, error: "The state is two letters, as IL." });
+    assert.deepEqual(parseAddressLine("", full), { line1: "", city: "", state: "", zip: "" });
+    assert.deepEqual(parseAddressLine(null, cl), { zip: "", neighborhood: "" });
+    // the line written and typed back is the same address
+    assert.deepEqual(parseAddressLine(addressLine(michal, all), all), michal);
+    // the box's placeholder: what goes in it
+    assert.equal(addressHint(full), "Street, city, state ZIP");
+    assert.equal(addressHint(all), "Street, city, state ZIP, neighborhood");
+    assert.equal(addressHint(cl), "ZIP, neighborhood");
 });
 
 test("Save address's body for /me/address: the one shared block, or one per venue that uses an address, each checked; a box not right is named", () => {

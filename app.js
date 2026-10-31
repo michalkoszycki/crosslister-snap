@@ -172,9 +172,11 @@ import {
     safeLink,
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
-    ADDRESS_FIELDS,
     ADDRESS_ON_SERVER,
     addressBody,
+    addressHint,
+    addressLine,
+    parseAddressLine,
     addressOf,
     addressSaveBody,
     CONNECT_TO_POST,
@@ -436,7 +438,7 @@ const account = { packs: false, busy: false, status: "" };
  * is no card), the Same address for every venue tick as on screen, a Save on its way, its line,
  * "policies ready" to be said (once), the poll's timer while eBay's policies are being set up
  * and how many times it has asked, and `asked`, bumped per ask so a late answer for an older
- * one is dropped. `venueBoxes`: venue -> field -> its input, drawn while the tick is off.
+ * one is dropped. `venueBoxes`: venue -> its one line and the fields it uses, drawn while the tick is off.
  */
 const seller = { info: null, same: true, busy: false, status: "", ready: false, poll: null, polls: 0, asked: 0, venueBoxes: {} };
 /**
@@ -5187,12 +5189,13 @@ function renderVenues() {
 // per venue") and sets up her eBay business policies from it.
 
 /**
- * The address card: shown once the server gave an answer; its line (why the fold opened by
- * itself, or where a prefilled address came from); the Same address for every venue tick;
- * the one block, or one per venue that uses an address (addressVenueBlocks), a venue that uses
- * none saying so; what Snap sets up on her eBay while the address is still to be given after
- * eBay connected; Save address (Looks right for one prefilled from eBay: Michal, 2026-10-08)
- * and its line. The admin's is the server's own: the boxes read-only, no Save.
+ * The address card, last under Venues with no card of its own (Michal, 2026-10-31): shown
+ * once the server gave an answer; its line (why the fold opened by itself, or where a
+ * prefilled address came from); the one line, or one line per venue that uses an address
+ * (drawAddressVenues), a venue that uses none saying so; what Snap sets up on her eBay while
+ * the address is still to be given after eBay connected; then one row, Save address (Looks
+ * right for one prefilled from eBay: Michal, 2026-10-08) and the Same address for every venue
+ * tick; its line. The admin's is the server's own: the boxes read-only, no Save.
  */
 function renderSeller() {
     const info = seller.info;
@@ -5204,9 +5207,8 @@ function renderSeller() {
     el.addressSame.checked = seller.same;
     el.addressSame.disabled = !info.editable;
     el.addressShared.hidden = !seller.same;
-    const usesNeighborhood = Object.entries(info.uses).some(([v, fields]) => (me ? me.venues : VENUES).includes(v) && fields.includes("neighborhood"));
-    el.sellerNeighborhoodField.hidden = !usesNeighborhood;
-    for (const box of [el.sellerLine1, el.sellerCity, el.sellerState, el.sellerZip, el.sellerNeighborhood]) box.readOnly = !info.editable;
+    el.sellerLine.readOnly = !info.editable;
+    el.sellerLine.setAttribute("placeholder", addressHint(sharedUses(info)));
     el.addressVenues.hidden = seller.same;
     el.sellerPolicies.hidden = !note;
     el.sellerSave.textContent = addressState(info) === "prefilled" ? "Looks right" : "Save address";
@@ -5215,97 +5217,97 @@ function renderSeller() {
     el.sellerStatus.textContent = seller.status;
 }
 
-/** The shared block's boxes as the server has the address (Settings opened, a Save answered). */
-function fillSeller(info) {
-    el.sellerLine1.value = info.shared.line1;
-    el.sellerCity.value = info.shared.city;
-    el.sellerState.value = info.shared.state;
-    el.sellerZip.value = info.shared.zip;
-    el.sellerNeighborhood.value = info.shared.neighborhood;
-}
-
-/** The shared block's boxes, as typed. */
-function sharedBoxes() {
-    return {
-        line1: el.sellerLine1.value,
-        city: el.sellerCity.value,
-        state: el.sellerState.value,
-        zip: el.sellerZip.value,
-        neighborhood: el.sellerNeighborhood.value,
-    };
+/** The venues of the account, in /me's order (every venue while /me does not say). */
+function accountVenues() {
+    return (me ? me.venues : VENUES).filter((v) => VENUES.includes(v));
 }
 
 /**
- * The tick off: one block per venue the account has (in /me's order), each prefilled from the
- * shared block as it stands (or the venue's own, once the server keeps one) with the boxes
- * that venue uses; a venue that uses none gets its muted line. Drawn afresh each time.
+ * The fields the shared line holds: the street, city, state and ZIP, and the neighbourhood
+ * while a venue of the account's uses it (Craigslist's).
+ * @param {Address} info
+ */
+function sharedUses(info) {
+    const venues = accountVenues();
+    const neighborhood = Object.entries(info.uses).some(([v, fields]) => venues.includes(v) && fields.includes("neighborhood"));
+    return ["line1", "city", "state", "zip", ...(neighborhood ? ["neighborhood"] : [])];
+}
+
+/** The shared line as the server has the address (Settings opened, a Save answered). */
+function fillSeller(info) {
+    el.sellerLine.value = addressLine(info.shared, sharedUses(info));
+}
+
+/**
+ * The shared line, as typed, split at its commas into its fields (parseAddressLine); a
+ * neighbourhood no venue of the account uses stays as the server has it.
+ */
+function sharedBoxes() {
+    const info = seller.info;
+    const kept = info ? info.shared.neighborhood : "";
+    return { neighborhood: kept, ...parseAddressLine(el.sellerLine.value, info ? sharedUses(info) : ["line1", "city", "state", "zip"]) };
+}
+
+/**
+ * The tick off: one line per venue the account has (in /me's order), its name its label,
+ * prefilled from the shared line as it stands (or the venue's own, once the server keeps one)
+ * with the fields that venue uses (eBay the full line, Craigslist "60609, McKinley Park"); a
+ * venue that uses none gets its muted line. Drawn afresh each time.
  * @param {Address} info
  */
 function drawAddressVenues(info) {
-    const venues = (me ? me.venues : VENUES).filter((v) => VENUES.includes(v));
     seller.venueBoxes = {};
     const shared = sharedBoxes();
     el.addressVenues.replaceChildren(
-        ...venues.map((venue) => {
-            const block = document.createElement("div");
-            block.className = "address-venue";
-            const name = document.createElement("p");
-            name.className = "venue-name";
-            name.textContent = venue;
-            block.append(name);
+        ...accountVenues().map((venue) => {
             const uses = info.uses[venue] || [];
             if (!uses.length) {
                 const none = document.createElement("p");
                 none.className = "small venue-note";
                 none.textContent = noAddressLine(venue);
-                block.append(none);
-                return block;
+                return none;
             }
             const own = info.same ? {} : info.venues[venue] || {};
-            seller.venueBoxes[venue] = {};
-            for (const [field, label] of ADDRESS_FIELDS) {
-                if (!uses.includes(field)) continue;
-                const wrap = document.createElement("label");
-                wrap.className = "field field-small";
-                const span = document.createElement("span");
-                span.className = "field-label";
-                span.textContent = label;
-                const input = document.createElement("input");
-                input.className = "small-input";
-                input.type = "text";
-                input.id = `address-${venue}-${field}`;
-                input.value = own[field] || shared[field] || "";
-                input.readOnly = !info.editable;
-                wrap.append(span, input);
-                block.append(wrap);
-                seller.venueBoxes[venue][field] = input;
-            }
-            return block;
+            const fields = Object.fromEntries(uses.map((k) => [k, own[k] || shared[k] || ""]));
+            const wrap = document.createElement("label");
+            wrap.className = "field field-small";
+            const span = document.createElement("span");
+            span.className = "field-label";
+            span.textContent = venue;
+            const input = document.createElement("input");
+            input.className = "small-input";
+            input.type = "text";
+            input.id = `address-${venue}-line`;
+            input.value = addressLine(fields, uses);
+            input.setAttribute("placeholder", addressHint(uses));
+            input.readOnly = !info.editable;
+            wrap.append(span, input);
+            seller.venueBoxes[venue] = { input, uses };
+            return wrap;
         })
     );
 }
 
 /**
- * Same address for every venue ticked or unticked: unticked, the venue blocks come up from
+ * Same address for every venue ticked or unticked: unticked, the venue lines come up from
  * the shared one; ticked again, eBay's goes on as the shared one (it is the one eBay
- * prefilled: docs/UI.md). Nothing is sent until Save address.
+ * prefilled: docs/UI.md), with Craigslist's neighbourhood. Nothing is sent until Save address.
  */
 function setSameAddress(on) {
     const info = seller.info;
     if (!info) return;
     if (!on) drawAddressVenues(info);
     else if (seller.venueBoxes.ebay) {
-        for (const [field, input] of Object.entries(seller.venueBoxes.ebay)) {
-            const box = { line1: el.sellerLine1, city: el.sellerCity, state: el.sellerState, zip: el.sellerZip, neighborhood: el.sellerNeighborhood }[field];
-            if (box) box.value = input.value;
-        }
-        if (seller.venueBoxes.craigslist && seller.venueBoxes.craigslist.neighborhood) el.sellerNeighborhood.value = seller.venueBoxes.craigslist.neighborhood.value;
+        const typed = (venue) => (seller.venueBoxes[venue] ? parseAddressLine(seller.venueBoxes[venue].input.value, seller.venueBoxes[venue].uses) : {});
+        const fields = { ...sharedBoxes(), ...typed("ebay") };
+        const cl = typed("craigslist");
+        if (cl.neighborhood !== undefined) fields.neighborhood = cl.neighborhood;
+        el.sellerLine.value = addressLine(fields, sharedUses(info));
     }
     seller.same = on;
     seller.status = "";
     renderSeller();
 }
-
 /** Quiet for the next visit, and no more asking about the policies. */
 function quietSeller() {
     clearTimeout(seller.poll);
@@ -5356,7 +5358,8 @@ async function saveSeller() {
     const pc = settings();
     const info = seller.info;
     if (!pc || !info || seller.busy) return;
-    const venues = Object.fromEntries(Object.entries(seller.venueBoxes).map(([v, boxes]) => [v, Object.fromEntries(Object.entries(boxes).map(([f, input]) => [f, input.value]))]));
+    // each venue's line split at its commas into the fields it uses (eBay's street, city, state and ZIP)
+    const venues = Object.fromEntries(Object.entries(seller.venueBoxes).map(([v, { input, uses }]) => [v, parseAddressLine(input.value, uses)]));
     const uses = Object.fromEntries(Object.entries(info.uses).filter(([v]) => (me ? me.venues : VENUES).includes(v)));
     // step 2 of Finish setting up saves through PATCH /me/seller as ever: the route that starts
     // the eBay policy setup (and writes the shared address too); the card otherwise /me/address
@@ -6844,12 +6847,7 @@ function main() {
         addressSame: $("address-same"),
         addressShared: $("address-shared"),
         addressVenues: $("address-venues"),
-        sellerLine1: $("seller-line1"),
-        sellerCity: $("seller-city"),
-        sellerState: $("seller-state"),
-        sellerZip: $("seller-zip"),
-        sellerNeighborhoodField: $("seller-neighborhood-field"),
-        sellerNeighborhood: $("seller-neighborhood"),
+        sellerLine: $("seller-line"),
         sellerPolicies: $("seller-policies"),
         sellerPolicyList: $("seller-policy-list"),
         sellerSave: $("seller-save"),

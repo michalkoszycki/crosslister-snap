@@ -324,26 +324,24 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
             `sync-${v}-status`,
             `venue-${v}-cannot`,
         ]),
-        // the two halves of the sync symbol, kept for a row's sync badge (Michal, 2026-10-07)
+        // the two halves of the sync symbol (Michal, 2026-10-07), after a sync button's words
+        // and in a row's sync badge
         "sync-from-icon",
         "sync-to-icon",
         // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
-        // venues"): Same address for every venue, the shared block, the venues' blocks
+        // venues"): the shared block, the venues' blocks
         "seller",
         "seller-note",
-        "address-same",
         "address-shared",
-        "seller-line1",
-        "seller-city",
-        "seller-state",
-        "seller-zip",
-        "seller-neighborhood-field",
-        "seller-neighborhood",
+        // the one line (Michal, 2026-10-31), or one per venue
+        "seller-line",
         "address-venues",
         // what Snap sets up on her eBay, while the address is being given (Michal, 2026-10-08)
         "seller-policies",
         "seller-policy-list",
+        // the last row: Save address and the tick
         "seller-save",
+        "address-same",
         "seller-status",
         // 3. Posting defaults (Michal, 2026-10-26: "call this posting defaults"): the customize
         // box's controls, saved on change; then the header and footer on every listing as one card
@@ -8602,27 +8600,24 @@ test("a server open to sign-ups: the landing's Sign in and the sign-in screen sa
     assert.deepEqual([keyed.signups, linked.signups], [[], []]);
 });
 
-test("the address where you ship from is the last card under Venues, hidden until the server answers; About and privacy in the footer", () => {
-    // Michal, 2026-10-26: "the address box should be at the end of venues"
+test("the address where you ship from is last under Venues, no card, one line, then Save address and the tick on one row; About and privacy in the footer", () => {
+    // Michal, 2026-10-26: "the address box should be at the end of venues"; 2026-10-31: no
+    // card background, in line with the venue block's inner text, ONE line typed as one line,
+    // then one row: Save address and Same address for every venue, last
     const venues = /<div id="fold-venues" class="fold-body" hidden>([\s\S]*?)<button type="button" id="fold-posting-toggle"/.exec(html)[1];
-    const card = /<div id="seller" class="card address-card" hidden>([\s\S]*?)<p id="seller-status"/.exec(venues)[1];
+    const card = /<div id="seller" class="address-card" hidden>([\s\S]*?)<p id="seller-status"/.exec(venues)[1];
     assert.ok(venues.indexOf('id="seller"') > venues.indexOf('id="venue-poshmark-cannot"'), "after the venue blocks");
     assert.match(card, /<p class="card-name">Address where you ship from<\/p>/);
-    assert.match(card, /<input id="address-same" type="checkbox" checked>\s*<span>Same address for every venue<\/span>/);
-    for (const [id, label, fill] of [
-        ["seller-line1", "Street address", "address-line1"],
-        ["seller-city", "City", "address-level2"],
-        ["seller-state", "State", "address-level1"],
-        ["seller-zip", "ZIP", "postal-code"],
-    ]) {
-        assert.match(card, new RegExp(`<span class="field-label">${label}</span>\\s*<input id="${id}"[^>]*autocomplete="${fill}"`));
-    }
-    assert.match(card, /id="seller-zip"[^>]*inputmode="numeric"/);
-    assert.match(card, /<label id="seller-neighborhood-field" class="field field-small" hidden>\s*<span class="field-label">Neighborhood<\/span>/);
+    // one box, no label of its own (the title says it), what goes in it as its placeholder
+    assert.match(card, /<div id="address-shared" class="address-block">\s*<input id="seller-line" class="small-input" type="text"[^>]*aria-label="Address where you ship from" placeholder="Street, city, state ZIP">\s*<\/div>/);
+    for (const gone of ["seller-line1", "seller-city", "seller-state", "seller-zip", "seller-neighborhood"]) assert.ok(!card.includes(`id="${gone}"`), gone);
     assert.match(card, /<div id="address-venues" class="address-venues" hidden><\/div>/);
-    assert.match(card, /<button type="button" id="seller-save"[^>]*>Save address<\/button>/);
+    // the last row: Save address, then the tick
+    assert.match(card, /<div class="address-row">\s*<button type="button" id="seller-save" class="pill pill-ink pill-small">Save address<\/button>\s*<label class="pickup">\s*<input id="address-same" type="checkbox" checked>\s*<span>Same address for every venue<\/span>\s*<\/label>\s*<\/div>\s*$/);
     const css = readFileSync(join(root, "styles.css"), "utf8");
-    assert.match(css, /\.seller-row \{ display: grid;/);
+    assert.match(css, /\.address-card \{ margin: 14px 0 0; padding: 0 14px; \}/, "no card, the venue block's 14 px in");
+    assert.match(css, /\.venue-block \{ padding: 12px 14px; \}/);
+    assert.match(css, /\.address-row \{ display: flex;/);
     // the footer's link to the page eBay's developer console takes as the privacy policy
     const footer = /<footer[^>]*>([\s\S]*?)<\/footer>/.exec(html)[1];
     assert.match(footer, /<a id="about-link" class="about-link" href="about.html">About and privacy<\/a>/);
@@ -8727,11 +8722,9 @@ function addressCard(nodes) {
     };
 }
 
+/** The address typed as its one line (Michal, 2026-10-31): "street, city, state ZIP". */
 function typeAddress(nodes, { line1, city, state, zip }) {
-    nodes.get("seller-line1").value = line1;
-    nodes.get("seller-city").value = city;
-    nodes.get("seller-state").value = state;
-    nodes.get("seller-zip").value = zip;
+    nodes.get("seller-line").value = `${line1}, ${city}, ${state} ${zip}`;
 }
 
 /** A node app.js drew under `root`, by its id; undefined when it is not there. */
@@ -8745,12 +8738,9 @@ function findIn(root, id) {
     return undefined;
 }
 
-/** Each venue's block when the address is not the same for every venue: its name, then its boxes (id: value) or its line. */
+/** Each venue's line when the address is not the same for every venue: "<venue>=<its one line>", or the muted line of one that uses none. */
 function addressVenues(nodes) {
-    return nodes.get("address-venues").children.map((block) => [
-        block.children[0].textContent,
-        ...block.children.slice(1).map((k) => (k.className === "small venue-note" ? k.textContent : `${k.children[0].textContent}=${k.children[1].value}`)),
-    ]);
+    return nodes.get("address-venues").children.map((k) => (k.className === "small venue-note" ? k.textContent : `${k.children[0].textContent}=${k.children[1].value}`));
 }
 
 test("the address card: the Venues fold opens by itself for a connected eBay with no address; saved, the policies set up and said ready once", async (t) => {
@@ -8778,8 +8768,10 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
     // typed in rather than prefilled: what Snap sets up is listed all the same, above Save address
     assert.equal(nodes.get("seller-policies").hidden, false);
     assert.equal(nodes.get("seller-save").textContent, "Save address");
-    // no venue of hers uses a neighbourhood: no box for it; no address yet: no Ships from
-    assert.equal(nodes.get("seller-neighborhood-field").hidden, true);
+    // no venue of hers uses a neighbourhood: the one line is street, city, state ZIP; no address
+    // yet: no Ships from
+    assert.equal(nodes.get("seller-line").attrs.placeholder, "Street, city, state ZIP");
+    assert.equal(nodes.get("seller-line").value, "");
     assert.equal(nodes.get("venue-ebay-ships").hidden, true);
 
     // a box not right: named, nothing sent
@@ -8794,7 +8786,7 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
 
     // saved: the server sets up her policies, and the eBay line says so while it does
     pc.me.ebay.policies = "pending";
-    nodes.get("seller-state").value = "il";
+    nodes.get("seller-line").value = " 12  Oak St , Chicago, il 60601";
     nodes.get("seller-save").fire("click");
     assert.equal(addressCard(nodes).status, "Saving...");
     assert.equal(nodes.get("seller-save").disabled, true, "one Save at a time");
@@ -8816,9 +8808,8 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
         status: "saved",
         ebay: "Connected as anna_sells · setting up your policies...",
     });
-    assert.equal(nodes.get("seller-line1").value, "12 Oak St", "the boxes as the server keeps it");
-    assert.equal(nodes.get("seller-state").value, "IL");
-    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago IL 60601");
+    assert.equal(nodes.get("seller-line").value, "12 Oak St, Chicago, IL 60601", "the line as the server keeps it");
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago, IL 60601");
 
     // /me asked again every 10 s while they are pending ...
     t.mock.timers.tick(SELLER_POLL_MS);
@@ -8840,7 +8831,7 @@ test("the address card: the Venues fold opens by itself for a connected eBay wit
     await openSettings(nodes);
     assert.equal(addressCard(nodes).ebay, "Connected as anna_sells");
     assert.equal(addressCard(nodes).note, null);
-    assert.equal(nodes.get("seller-city").value, "Chicago");
+    assert.equal(nodes.get("seller-line").value, "12 Oak St, Chicago, IL 60601");
 });
 
 test("the address card: failed policies say contact the developer; pending is asked about three minutes at most; refusals in the server's words", async (t) => {
@@ -8851,17 +8842,17 @@ test("the address card: failed policies say contact the developer; pending is as
     await openSettings(nodes);
     assert.equal(addressCard(nodes).venuesOpen, false, "the address all there: Venues stays folded");
     assert.equal(addressCard(nodes).note, null);
-    assert.equal(nodes.get("seller-zip").value, "60601");
+    assert.equal(nodes.get("seller-line").value, "12 Oak St, Chicago, IL 60601");
     assert.equal(nodes.get("seller-policies").hidden, true);
 
     // the policies could not be made: said, and nothing more asked
     pc.me.ebay.policies = "failed: no return policy allowed";
-    nodes.get("seller-zip").value = "60601-1234";
+    nodes.get("seller-line").value = "12 Oak St, Chicago, IL 60601-1234";
     nodes.get("seller-save").fire("click");
     await settle();
     // Michal, 2026-10-10: a ZIP+4 is taken, its five sent, and the box shows the five after Save
     assert.equal(pc.addressSaves.at(-1).body.shared.zip, "60601");
-    assert.equal(nodes.get("seller-zip").value, "60601");
+    assert.equal(nodes.get("seller-line").value, "12 Oak St, Chicago, IL 60601");
     assert.equal(addressCard(nodes).ebay, "Connected as anna_sells · policies failed: no return policy allowed; contact the developer");
     const asks = pc.mes;
     t.mock.timers.tick(SELLER_POLL_MS * 2);
@@ -8903,11 +8894,12 @@ test("Same address for every venue: unticked, one block per venue that uses an a
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
     // each venue block says where it ships from, the fields it uses; Poshmark uses none
-    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
     assert.equal(nodes.get("venue-craigslist-ships").textContent, "Ships from 60609, McKinley Park");
     assert.equal(nodes.get("venue-poshmark-ships").hidden, true);
-    assert.equal(nodes.get("seller-neighborhood-field").hidden, false, "Craigslist uses the neighbourhood");
-    assert.equal(nodes.get("seller-neighborhood").value, "McKinley Park");
+    // the one line, Craigslist's neighbourhood after the ZIP (a venue of his uses it)
+    assert.equal(nodes.get("seller-line").value, "4234 S Wolcott Ave, Chicago, IL 60609, McKinley Park");
+    assert.equal(nodes.get("seller-line").attrs.placeholder, "Street, city, state ZIP, neighborhood");
     assert.equal(nodes.get("address-shared").hidden, false);
     assert.equal(nodes.get("address-venues").hidden, true);
 
@@ -8916,22 +8908,19 @@ test("Same address for every venue: unticked, one block per venue that uses an a
     nodes.get("address-same").fire("change");
     assert.equal(nodes.get("address-shared").hidden, true);
     assert.equal(nodes.get("address-venues").hidden, false);
-    assert.deepEqual(addressVenues(nodes), [
-        ["ebay", "Street address=4234 S Wolcott Ave", "City=Chicago", "State=IL", "ZIP=60609"],
-        ["craigslist", "ZIP=60609", "Neighborhood=McKinley Park"],
-        ["poshmark", "Poshmark does not use a ship-from address."],
-    ]);
+    // one line each, the venue its label: eBay the full line, Craigslist "60609, McKinley Park"
+    assert.deepEqual(addressVenues(nodes), ["ebay=4234 S Wolcott Ave, Chicago, IL 60609", "craigslist=60609, McKinley Park", "Poshmark does not use a ship-from address."]);
+    assert.equal(findIn(nodes.get("address-venues"), "address-craigslist-line").attrs.placeholder, "ZIP, neighborhood");
     assert.deepEqual(pc.addressSaves, []);
     const box = (id) => findIn(nodes.get("address-venues"), id);
     // a box not right is named with its venue, nothing sent
-    box("address-craigslist-zip").value = "M5V";
+    box("address-craigslist-line").value = "M5V";
     nodes.get("seller-save").fire("click");
     await settle();
     assert.equal(addressCard(nodes).status, "Craigslist: The ZIP is five digits, as 60601.");
     assert.deepEqual(pc.addressSaves, []);
     // Craigslist its own: sent per venue, the venues that use one
-    box("address-craigslist-zip").value = "60608";
-    box("address-craigslist-neighborhood").value = "Pilsen";
+    box("address-craigslist-line").value = "60608, Pilsen";
     nodes.get("seller-save").fire("click");
     await settle();
     assert.deepEqual(pc.addressSaves.map((s) => s.body), [
@@ -8946,21 +8935,21 @@ test("Same address for every venue: unticked, one block per venue that uses an a
     assert.equal(addressCard(nodes).status, "saved");
     assert.equal(addressCard(nodes).same, false);
     assert.equal(nodes.get("venue-craigslist-ships").textContent, "Ships from 60608, Pilsen");
-    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago IL 60609");
+    assert.equal(nodes.get("venue-ebay-ships").textContent, "Ships from 4234 S Wolcott Ave, Chicago, IL 60609");
 
     // a fresh look reads it back split
     const again = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(again.nodes);
     assert.equal(again.nodes.get("address-same").checked, false);
-    assert.deepEqual(addressVenues(again.nodes)[1], ["craigslist", "ZIP=60608", "Neighborhood=Pilsen"]);
+    assert.equal(addressVenues(again.nodes)[1], "craigslist=60608, Pilsen");
 
-    // ticked again: eBay's address is the shared one (the one eBay prefilled), sent as it
-    findIn(again.nodes.get("address-venues"), "address-ebay-line1").value = "1 New St";
+    // ticked again: eBay's address is the shared one (the one eBay prefilled), sent as it, with
+    // the neighbourhood Craigslist had
+    findIn(again.nodes.get("address-venues"), "address-ebay-line").value = "1 New St, Chicago, IL 60609";
     again.nodes.get("address-same").checked = true;
     again.nodes.get("address-same").fire("change");
     assert.equal(again.nodes.get("address-shared").hidden, false);
-    assert.equal(again.nodes.get("seller-line1").value, "1 New St");
-    assert.equal(again.nodes.get("seller-neighborhood").value, "Pilsen", "the neighbourhood Craigslist had");
+    assert.equal(again.nodes.get("seller-line").value, "1 New St, Chicago, IL 60609, Pilsen");
     again.nodes.get("seller-save").fire("click");
     await settle();
     assert.deepEqual(pc.addressSaves.at(-1).body, {
@@ -9497,7 +9486,7 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.deepEqual(pc.addressSaves, [], "not through /me/address");
     assert.equal(pc.addressAsks.length, asked + 1, "the card read back from /me/address");
     assert.equal(pc.mes, 3, "asked once the address is in");
-    assert.equal(n.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago IL 60601");
+    assert.equal(n.get("venue-ebay-ships").textContent, "Ships from 12 Oak St, Chicago, IL 60601");
     n.get("admin-close").fire("click");
     assert.deepEqual(shown(n), ["modes", "work"]);
     assert.equal(n.get("signup-steps").hidden, true);
@@ -9524,7 +9513,7 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
         status: "",
         ebay: "Connected as anna_sells",
     });
-    assert.deepEqual(["seller-line1", "seller-city", "seller-state", "seller-zip"].map((id) => n.get(id).value), ["12 Oak St", "Chicago", "IL", ""]);
+    assert.equal(n.get("seller-line").value, "12 Oak St, Chicago, IL", "the one line, the ZIP still missing");
     // under the boxes, above the button: what Snap sets up on her eBay
     assert.equal(n.get("seller-policies").hidden, false);
     assert.deepEqual(
@@ -9552,7 +9541,7 @@ test("an address prefilled from eBay: step 2 asks to confirm it, the boxes fille
     await settle();
     assert.equal(addressCard(n).status, "The ZIP is five digits, as 60601.");
     assert.deepEqual(pc.sellerSaves, []);
-    n.get("seller-zip").value = "60601";
+    n.get("seller-line").value = "12 Oak St, Chicago, IL 60601";
     pc.me = { ...pc.me, registered: true };
     n.get("seller-save").fire("click");
     await settle();
