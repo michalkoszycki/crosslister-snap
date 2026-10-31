@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.31.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.32.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -184,6 +184,13 @@ header .link { color: var(--head-ink); padding-left: 10px; }
    the dots are. and no height changes should should be happening") */
 header #admin-toggle { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 44px; padding: 0; }
 header #admin-toggle > .dots { display: block; }
+/* a Reviewed mark on their feedback not yet seen: a dot on the dots (Michal, 2026-10-31) */
+header #admin-toggle { position: relative; }
+header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; right: 12px; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
+.feedback-mine { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: 14px; }
+.feedback-mine li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.feedback-mine .mine-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.feedback-mine .mine-reviewed { flex: none; font-size: 12px; font-weight: 700; color: var(--ok); }
 
 .header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
 

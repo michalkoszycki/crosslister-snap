@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.31.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.31.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.32.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.32.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -66,6 +66,8 @@
     <span id="server" class="server" aria-live="polite"></span>
     <!-- three dots in a row while Admin is closed, heard as "Admin"; "Snap" while it is
          open (adminLink in core.js; Michal, 2026-10-31) -->
+    <!-- a dot while a Reviewed mark on their feedback is unseen (Michal, 2026-10-31: "i do like
+         the notification on top") -->
     <button type="button" id="admin-toggle" class="link" aria-label="Admin" aria-expanded="false"
             aria-controls="admin"><svg class="dots" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2.25"/><circle cx="12" cy="12" r="2.25"/><circle cx="19" cy="12" r="2.25"/></svg></button>
   </div>
@@ -663,6 +665,8 @@
       </label>
       <button type="button" id="feedback-send" class="secondary">Send</button>
       <p id="feedback-status" class="small" aria-live="polite"></p>
+      <!-- what they sent, Reviewed beside each the admin marked (Michal, 2026-10-31) -->
+      <ul id="feedback-mine" class="feedback-mine" hidden></ul>
       </div>
     </div>
 
@@ -1069,6 +1073,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.31.1"></script>
+<script type="module" src="app.js?v=2.32.0"></script>
 </body>
 </html>

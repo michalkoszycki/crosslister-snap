@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.31.1";
+import { noteDirty, unsent } from "./queue.js?v=2.32.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.31.1";
+} from "./book.js?v=2.32.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -372,6 +372,8 @@ export function meOf(answer) {
         ebay: ebayOf(a.ebay),
         registered: a.registered !== false,
         syncable: syncableOf(a.syncable),
+        // the sender's Reviewed marks not yet seen: a dot on the top button (Michal, 2026-10-31)
+        feedbackUnseen: typeof a.feedback_unseen === "number" && a.feedback_unseen > 0 ? a.feedback_unseen : 0,
     };
 }
 
@@ -1717,6 +1719,19 @@ export function inboxHead(entry, offsetMinutes) {
  * @param {number} count
  * @returns {string}
  */
+/**
+ * A sender's own entries (GET /me/feedback), newest first: each its text and whether it was
+ * reviewed (Michal, 2026-10-31: no replies, the Reviewed mark only). Odd ones are left out.
+ * @param {unknown} answer
+ * @returns {{id:string, text:string, reviewed:boolean}[]}
+ */
+export function myFeedbackOf(answer) {
+    const entries = answer && typeof answer === "object" && Array.isArray(answer.entries) ? answer.entries : [];
+    return entries
+        .filter((e) => e && typeof e === "object" && typeof e.text === "string" && e.text.trim())
+        .map((e) => ({ id: String(e.id ?? ""), text: e.text.trim(), reviewed: e.reviewed === true }));
+}
+
 export function feedbackWord(count, admin = false) {
     // the admin's: what comes in (Michal, 2026-10-31: "that menu should be called 'incoming feedback'")
     const word = admin ? "Incoming feedback" : "Feedback";

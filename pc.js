@@ -159,7 +159,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.31.1";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.32.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -643,6 +643,29 @@ export function patchSeller({ pc, ...auth }, body) {
  */
 export function patchAddress({ pc, ...auth }, body) {
     return call(`${pc}/me/address`, auth, { method: "PATCH", json: body });
+}
+
+// A sender's own feedback (Michal, 2026-10-31: the Reviewed mark reaches them, in the app only):
+//   GET    <pc>/me/feedback       -> {"entries": [{"id", "created", "text", "screen", "reviewed",
+//                                    "reviewed_at", "seen"}]} newest first; 404 from an older server
+//   POST   <pc>/me/feedback/seen  -> 204: every Reviewed mark of theirs seen (the dot on top goes)
+//   GET /me adds "feedback_unseen": how many of theirs are reviewed and not yet seen
+
+/**
+ * @param {Settings} settings
+ * @returns {Promise<Record<string, any>>}
+ */
+export function getMyFeedback({ pc, ...auth }) {
+    return call(`${pc}/me/feedback`, auth);
+}
+
+/**
+ * @param {Settings} settings
+ * @returns {Promise<void>}
+ */
+export async function markFeedbackSeen({ pc, ...auth }) {
+    const res = await request(`${pc}/me/feedback/seen`, auth, { method: "POST" });
+    if (!res.ok) throw await refused(res);
 }
 
 // The eBay policies Snap sets up (Michal, 2026-10-31, Finish setting up's step 3 and its Edit):

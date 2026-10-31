@@ -377,6 +377,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "feedback-job",
         "feedback-send",
         "feedback-status",
+        "feedback-mine",
         "stats-toggle",
         "stats",
         "stats-since",
@@ -1261,6 +1262,9 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         sellerSaves: [],
         sellerRefuse: null,
         policiesAfterSave: "",
+        // GET /me/feedback and POST /me/feedback/seen (2026-10-31): null is an older server's 404
+        mine: null,
+        seenPosts: 0,
         // GET/PATCH /me/policies (2026-10-31): null is an older server's 404
         policies: null,
         policySaves: [],
@@ -1320,6 +1324,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const addressed = parts[0] === "me" && parts[1] === "address";
         const peopled = parts[0] === "me" && ["people", "devices", "leave"].includes(parts[1]);
         const policied = parts[0] === "me" && parts[1] === "policies";
+        const mined = parts[0] === "me" && parts[1] === "feedback";
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
         else if (signup) pc.signups.push({ auth, origin: u.origin });
@@ -1329,7 +1334,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         else if (addressed && method === "GET") pc.addressAsks.push(auth);
         else if (peopled && method === "GET" && parts[1] === "people") pc.peopleAsks.push(auth);
         else if (peopled && method === "GET") pc.devicesAsks.push(`${auth} ${u.search}`);
-        else if (!sold && !wrapped && !inboxed && !addressed && !peopled && !policied) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (!sold && !wrapped && !inboxed && !addressed && !peopled && !policied && !mined) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
@@ -1454,6 +1459,12 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json(pc.policies);
         }
         if (policied) return pc.policies ? json(pc.policies) : json({ detail: "Not Found" }, 404);
+        if (mined && parts[2] === "seen" && method === "POST") {
+            pc.seenPosts += 1;
+            if (pc.me) pc.me.feedback_unseen = 0;
+            return new Response(null, { status: 204 });
+        }
+        if (mined) return pc.mine ? json(pc.mine) : json({ detail: "Not Found" }, 404);
         if (parts[0] === "feedback" && method === "POST") {
             pc.feedback.push(body);
             if (pc.refuseFeedback) return json({ detail: pc.refuseFeedback }, 400);
@@ -9788,6 +9799,35 @@ const POLICIES = {
     best_offer: false,
     lines: ["Shipping: USPS Ground Advantage, buyer pays, 1 business day handling", "Returns: 30 days, buyer pays return shipping"],
 };
+
+test("a sender's Feedback: what they sent, Reviewed beside each marked; a dot on top until they open it", async (t) => {
+    // Michal, 2026-10-31: "the sender gets no replies", "reviewed. can send 'reviewed' to the
+    // sender", "no email. in app only. i do like the notification on top."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = fakePc({ me: { ...structuredClone(ACCOUNT_ME), feedback_unseen: 1 } });
+    pc.mine = {
+        entries: [
+            { id: "f2", created: "2026-10-31T10:00:00", text: "Craigslist stopped again", screen: "goods", reviewed: false, reviewed_at: null, seen: false },
+            { id: "f1", created: "2026-10-30T10:00:00", text: "The lamp price looked low", screen: "card", reviewed: true, reviewed_at: "2026-10-31T09:00:00", seen: false },
+        ],
+    };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await settle();
+    assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), true, "the dot on top");
+    nodes.get("admin-toggle").fire("click");
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    const lines = nodes.get("feedback-mine").children.map((li) => li.children.map((c) => c.textContent));
+    assert.deepEqual(lines, [["Craigslist stopped again"], ["The lamp price looked low", "Reviewed"]]);
+    assert.equal(nodes.get("feedback-mine").hidden, false);
+    assert.equal(pc.seenPosts, 1, "seen once opened");
+    assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), false, "the dot gone");
+    // nothing unseen: no second POST
+    nodes.get("feedback-toggle").fire("click");
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.equal(pc.seenPosts, 1);
+});
 
 test("step 3's Edit: each choice a menu, Save sends what changed and the list comes back; none for the admin's, none before eBay", async (t) => {
     // Michal, 2026-10-31: "at the end of the policies i want an edit button. ... create menus that

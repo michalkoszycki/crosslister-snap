@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.31.1";
+import { VERSION } from "./version.js?v=2.32.0";
 import {
     adminLink,
     anyActive,
@@ -240,6 +240,7 @@ import {
     archivedLine,
     swipeState,
     feedbackWord,
+    myFeedbackOf,
     inboxHead,
     inboxOf,
     refusalLine,
@@ -253,8 +254,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.31.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.31.1";
+} from "./core.js?v=2.32.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.32.0";
 import {
     addVenue,
     applyWrap,
@@ -273,6 +274,8 @@ import {
     endSession,
     getAddress,
     getPolicies,
+    getMyFeedback,
+    markFeedbackSeen,
     getBook,
     getConditions,
     getDevices,
@@ -307,8 +310,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.31.1";
-import { shrinkPhoto } from "./shrink.js?v=2.31.1";
+} from "./pc.js?v=2.32.0";
+import { shrinkPhoto } from "./shrink.js?v=2.32.0";
 import {
     bookCard,
     bookPriceValue,
@@ -321,8 +324,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.31.1";
-import { canScan, readIsbn } from "./scan.js?v=2.31.1";
+} from "./book.js?v=2.32.0";
+import { canScan, readIsbn } from "./scan.js?v=2.32.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -496,6 +499,8 @@ let folds = {};
  * an older server's 404, the fixed lines then), whether it was asked, Edit open and its draft.
  */
 const policies = { info: null, asked: false, editing: false, draft: null, busy: false, status: "" };
+/** A sender's own feedback as GET /me/feedback last said (null: not asked, or an older server). */
+let mine = null;
 /** The venue whose own page is open under Settings ("" none; Michal, 2026-10-31). */
 let venuePage = "";
 /** A sign-in just made on this phone: Admin's first open lands on Settings, Snap Account open. */
@@ -4853,6 +4858,25 @@ function renderExtras() {
     const isAdmin = !!me && me.admin === true && !inbox.refused;
     fold(el.feedbackToggle, feedbackWord(entries.length, isAdmin), extras.feedback);
     el.feedbackBox.hidden = isAdmin;
+    // what they sent, Reviewed beside each the admin marked
+    const sent = mine || [];
+    el.feedbackMine.hidden = isAdmin || !sent.length;
+    el.feedbackMine.replaceChildren(
+        ...sent.map((e) => {
+            const li = document.createElement("li");
+            const words = document.createElement("span");
+            words.className = "mine-text";
+            words.textContent = e.text;
+            li.append(words);
+            if (e.reviewed) {
+                const mark = document.createElement("span");
+                mark.className = "mine-reviewed";
+                mark.textContent = "Reviewed";
+                li.append(mark);
+            }
+            return li;
+        })
+    );
     el.feedbackInbox.hidden = !entries.length;
     const stats = !card && !!me && me.admin && !extras.refused;
     el.statsToggle.hidden = !stats;
@@ -4881,6 +4905,39 @@ async function sendJob(pc, body) {
  * Feedback's Send: the words, where he came from (feedbackScreen), the page's version and,
  * ticked, the last job. Sent, the box clears and says thanks; a refusal is the server's words.
  */
+/**
+ * Their own feedback (GET /me/feedback) as Feedback opens, and, any Reviewed mark among it not
+ * seen, every one seen (POST /me/feedback/seen): the dot on top goes. An older server: none.
+ */
+async function loadMine() {
+    const pc = settings();
+    if (!pc) return;
+    try {
+        mine = myFeedbackOf(await getMyFeedback(pc));
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        mine = null;
+    }
+    renderExtras();
+    if (me && me.feedbackUnseen > 0) {
+        try {
+            await markFeedbackSeen(pc);
+            me.feedbackUnseen = 0;
+        } catch {
+            /* the dot stays until the next try */
+        }
+        renderUnseen();
+    }
+}
+
+/** The dot on the top button while a Reviewed mark on their feedback is unseen. */
+function renderUnseen() {
+    const unseen = !!me && me.feedbackUnseen > 0;
+    el.adminToggle.classList.toggle("unseen", unseen);
+    if (unseen) el.adminToggle.setAttribute("data-unseen", String(me.feedbackUnseen));
+    else el.adminToggle.removeAttribute("data-unseen");
+}
+
 async function sendFeedback() {
     const pc = settings();
     if (!pc) {
@@ -4904,6 +4961,7 @@ async function sendFeedback() {
         heard(200);
         el.feedbackText.value = "";
         el.feedbackStatus.textContent = FEEDBACK_SENT;
+        loadMine().catch(() => {});
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         el.feedbackStatus.textContent = refusalLine("Not sent", e.status, e.message);
@@ -5410,6 +5468,7 @@ async function savePolicies() {
  */
 function renderMe() {
     render();
+    renderUnseen();
     renderExtras();
     renderAccount();
     renderSync();
@@ -7291,6 +7350,7 @@ function main() {
         feedbackInbox: $("feedback-inbox"),
         feedbackText: $("feedback-text"),
         feedbackBox: $("feedback-box"),
+        feedbackMine: $("feedback-mine"),
         feedbackJob: $("feedback-job"),
         feedbackSend: $("feedback-send"),
         feedbackStatus: $("feedback-status"),
@@ -7656,8 +7716,11 @@ function main() {
     el.feedbackToggle.addEventListener("click", () => {
         extras.feedback = !extras.feedback;
         renderExtras();
-        // an admin's inbox, asked afresh as it opens
-        if (extras.feedback) loadInbox().catch(() => {});
+        // an admin's inbox, asked afresh as it opens; anyone's own, and their Reviewed marks seen
+        if (extras.feedback) {
+            loadInbox().catch(() => {});
+            loadMine().catch(() => {});
+        }
     });
     el.feedbackSend.addEventListener("click", () => {
         sendFeedback().catch(() => {});

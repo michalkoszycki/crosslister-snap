@@ -3522,10 +3522,11 @@ test("GET /me read leniently; craigslist off only when it says so", () => {
         ebay: null,
         registered: true,
         syncable: null,
+        feedbackUnseen: 0,
     });
     assert.deepEqual(
         meOf({ jobs: [] }),
-        { user: "", name: "", email: "", owner: true, admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, registered: true, syncable: null },
+        { user: "", name: "", email: "", owner: true, admin: false, craigslist: true, poshmark: false, venues: [], credits: null, packs: [], ebay: null, registered: true, syncable: null, feedbackUnseen: 0 },
         "silent: as today, an account with nothing left to set up, its own owner"
     );
     // since 2026-10-25: the person's name, their email, and whether they own the account; no pending

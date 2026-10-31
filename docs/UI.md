@@ -276,7 +276,7 @@ listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues 
 the listing"). A list row's listed badge still wears the sync-to half while its listing is
 behind and pushes that row when tapped.
 
-**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else the Feedback box, "Include my
+**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else the Feedback box and, under it, what they sent, "Reviewed" beside each the admin marked (GET /me/feedback; no replies, no email: Michal, 2026-10-31), a red dot on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"), gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
 last job", **Send**, "Thanks, sent."
 
 **Stats** (admin only). 7d / 30d / all chips, the table, the note.
