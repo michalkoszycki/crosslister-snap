@@ -108,8 +108,9 @@ test("the work section reads top to bottom the way Michal asked", () => {
         "snap-input",
         "gallery-label",
         "gallery-input",
-        "note-status",
+        // no word over the note box, its "sent" under it (Michal, 2026-10-31)
         "note",
+        "note-status",
         // Michal, 2026-09-28: "Before the eBay and Craigslist buttons ... a little arrow with the word customize"
         "customize-toggle",
         "customize",
@@ -4786,6 +4787,9 @@ test("the book section is its own, beside the goods one, and reads top to bottom
     assert.match(book[0], /^<section id="book" hidden>/, "goods is what the page opens on");
     const order = [...book[1].matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(order, [
+        // books are the admin's: anyone else's line on top, with the way to ask (Michal, 2026-10-31)
+        "books-off",
+        "books-ask",
         "book-hint",
         "book-scan-label",
         "book-scan-input",
@@ -4872,7 +4876,9 @@ test("the book section is its own, beside the goods one, and reads top to bottom
     // both that one note; the ids stay
     const label = (status) => new RegExp(`<span class="field-label">\\s*User note\\s*<span id="${status}" class="note-status"></span>`);
     assert.match(book[1], label("book-note-status"));
-    assert.match(html, label("note-status"));
+    // the goods box carries no word over it, its placeholder says it (Michal, 2026-10-31)
+    assert.match(html, /<span class="sr-only">User note<\/span>\s*<textarea id="note"[\s\S]*?<\/textarea>\s*<span id="note-status" class="note-status note-status-under"><\/span>/);
+    assert.match(html, /<span class="sr-only">Item name<\/span>\s*<input id="item-name"/);
     assert.ok(!/Flaws|Notes for this item/.test(html), "no other name for it on the screen");
     for (const [value, label] of [
         ["like_new", "Like new"],
@@ -7740,26 +7746,29 @@ test("a desktop browser is not nudged to install: no Install on the landing, no 
 
 // --- the account: GET /me (Michal, 2026-10-08) --------------------------------------------------
 
-test("books are the admin's: anyone else's book chip is grey, its tap says so, and its link asks in Feedback", async (t) => {
+test("books are the admin's: anyone else sees the book screen milky, the line on top, its link asking in Feedback", async (t) => {
     // Michal, 2026-10-31: "for anyone other then me the admin the book thing should be all
-    // grayed out and minimal. with a link to request in feedback"
+    // grayed out and minimal. with a link to request in feedback"; then: "lets let the other
+    // users 'see' the book page. That is where that comment should show"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([]);
     pc.me = { user: "wife", admin: false, craigslist: false, venues: ["ebay"] };
-    const { nodes } = await loadPage({ local: memoryStore({ ...NO_PHOTOS, "snap.mode": "book" }), fetchImpl: pc.fetch });
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     await settle();
-    const book = nodes.get("mode-book");
-    assert.equal(book.classList.contains("mode-off"), true);
-    assert.equal(book.attrs["aria-disabled"], "true");
-    assert.equal(book.attrs["aria-pressed"], "false", "a book chosen before is goods now");
-    assert.equal(nodes.get("work").hidden, false);
-    assert.equal(nodes.get("book").hidden, true);
-    assert.equal(nodes.get("books-off").hidden, true, "nothing said before the tap");
-
-    book.fire("click");
-    assert.equal(nodes.get("book").hidden, true, "the tap opens nothing");
+    nodes.get("mode-book").fire("click");
+    assert.equal(nodes.get("mode-book").attrs["aria-pressed"], "true", "the switch goes to book");
+    assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("book").classList.contains("books-locked"), true);
     assert.equal(nodes.get("books-off").hidden, false);
-    assert.equal(nodes.get("admin").hidden, true);
+    // nothing on it posts
+    nodes.get("book-ebay-btn").fire("click");
+    await settle();
+    assert.deepEqual(pc.posted, []);
+    // goods takes them back
+    nodes.get("mode-goods").fire("click");
+    assert.equal(nodes.get("book").hidden, true);
+    assert.equal(nodes.get("work").hidden, false);
+    nodes.get("mode-book").fire("click");
 
     nodes.get("books-ask").fire("click");
     assert.equal(nodes.get("admin").hidden, false);
@@ -7773,10 +7782,9 @@ test("the admin's book chip is as ever", async (t) => {
     pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
     const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
     await settle();
-    const book = nodes.get("mode-book");
-    assert.equal(book.classList.contains("mode-off"), false);
-    book.fire("click");
+    nodes.get("mode-book").fire("click");
     assert.equal(nodes.get("book").hidden, false);
+    assert.equal(nodes.get("book").classList.contains("books-locked"), false);
     assert.equal(nodes.get("books-off").hidden, true);
 });
 
@@ -8563,7 +8571,8 @@ test("no postings left (402): the server's words under the button and Buy postin
 
 test("a book refused for want of postings says so the same way", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const pc = fakePc({ me: structuredClone(ACCOUNT_ME), books: { [ISBN]: BOOK } });
+    // books are the admin's (Michal, 2026-10-31): an admin account counted as a seller's is
+    const pc = fakePc({ me: { ...structuredClone(ACCOUNT_ME), admin: true }, books: { [ISBN]: BOOK } });
     pc.broke = "You have used your 3 free postings. Buy postings in Settings.";
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch, barcodes: [ISBN] });
     nodes.get("mode-book").fire("click");

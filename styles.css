@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.2") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.3") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -234,6 +234,8 @@ textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 /* the quiet "saved" / "saving..." next to the notes label */
 .note-status { float: right; font-size: 12px; color: var(--muted); font-weight: 500; }
+.note-status-under { float: none; display: block; margin-top: 4px; text-align: right; }
+.note-status-under:empty { display: none; }
 
 /* every button a pill */
 button, .big, .secondary {
@@ -593,9 +595,10 @@ button.busy::after {
 .mode[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
 /* hidden while Admin is open (Michal, 2026-10-06); display: grid above would beat the attribute */
 .modes[hidden] { display: none; }
-/* the book chip for anyone but the admin: grey, as a venue the account may not use */
-.mode.mode-off { color: var(--muted); opacity: 0.6; }
-.books-off { margin: -6px 2px 12px; }
+/* the book screen for anyone but the admin: all of it very milky and inert, the line on top
+   at full strength (Michal, 2026-10-31) */
+#book.books-locked > :not(#books-off) { opacity: 0.3; filter: grayscale(1); pointer-events: none; user-select: none; }
+.books-off { margin: 4px 2px 14px; font-size: 15px; }
 .books-off .books-ask { padding: 0; font: inherit; font-weight: 700; color: var(--ink); text-decoration: underline; }
 
 /* the book the PC found: the title in bold, then the authors, then the small print */

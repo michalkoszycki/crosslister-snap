@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.27.2">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.27.2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.27.3">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.27.3" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -190,10 +190,6 @@
     <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
     <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
   </div>
-  <!-- books are the admin's (Michal, 2026-10-31): anyone else's book chip is grey, and its tap
-       says so here, with the way to ask (app.js) -->
-  <p id="books-off" class="small books-off" hidden>Books are not open for your account yet.
-    <button type="button" id="books-ask" class="link books-ask">Ask for it in Feedback</button></p>
 
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
     You are offline. Photos wait on this page and go to the server when you are back.
@@ -674,8 +670,10 @@
   <section id="work">
     <!-- Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening
          the app." The name is optional: left empty, the listing's title names the item -->
+    <!-- no word over the box: its placeholder says it (Michal, 2026-10-31: "can take it out.
+         tips are in the text field already"); a screen reader still hears Item name -->
     <label class="field">
-      <span class="field-label">Item name</span>
+      <span class="sr-only">Item name</span>
       <input id="item-name" type="text" inputmode="text" autocomplete="off"
              autocapitalize="sentences" placeholder="Name (optional): the listing's title names it">
     </label>
@@ -699,13 +697,12 @@
 
     <!-- Michal, 2026-10-07: "Call it 'User Note' everywhere. It is not something that posts.
          And 'note' by itself confuses me." -->
+    <!-- no word over the box either (Michal, 2026-10-31); its "sent" small under it -->
     <label class="field">
-      <span class="field-label">
-        User note
-        <span id="note-status" class="note-status"></span>
-      </span>
+      <span class="sr-only">User note</span>
       <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
                 placeholder="Size, flaws, brand, anything the listing should say."></textarea>
+      <span id="note-status" class="note-status note-status-under"></span>
     </label>
 
     <!-- customize: folded away, most items are one of a kind and shipped
@@ -808,6 +805,10 @@
        format, and the PC looks it up by those instead. After an ISBN no catalogue
        knows, No ISBN is the next step and keeps that ISBN (#book-isbn-kept says so). -->
   <section id="book" hidden>
+    <!-- books are the admin's (Michal, 2026-10-31): anyone else sees this screen milky and
+         inert, this line on top with the way to ask, and goes back with goods (app.js) -->
+    <p id="books-off" class="books-off" hidden>Books are not open for your account yet.
+      <button type="button" id="books-ask" class="link books-ask">Ask for it in Feedback</button></p>
     <p id="book-hint" class="small">Tap ISBN to read the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
     <label id="book-scan-label" class="big snap" for="book-scan-input"
            aria-label="ISBN: read the barcode with the camera"><span class="btn-icon" aria-hidden="true"><svg
@@ -969,6 +970,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.27.2"></script>
+<script type="module" src="app.js?v=2.27.3"></script>
 </body>
 </html>

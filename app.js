@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.27.2";
+import { VERSION } from "./version.js?v=2.27.3";
 import {
     adminLink,
     anyActive,
@@ -244,8 +244,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.27.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.2";
+} from "./core.js?v=2.27.3";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.3";
 import {
     addVenue,
     applyWrap,
@@ -296,8 +296,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.27.2";
-import { shrinkPhoto } from "./shrink.js?v=2.27.2";
+} from "./pc.js?v=2.27.3";
+import { shrinkPhoto } from "./shrink.js?v=2.27.3";
 import {
     bookCard,
     bookPriceValue,
@@ -310,8 +310,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.27.2";
-import { canScan, readIsbn } from "./scan.js?v=2.27.2";
+} from "./book.js?v=2.27.3";
+import { canScan, readIsbn } from "./scan.js?v=2.27.3";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -428,8 +428,7 @@ let me = null;
 let meAsked = false;
 /** "<mode>:<venue>" of a venue button the account may not use, once tapped: its line says why. */
 const offTaps = new Set();
-/** The grey book chip was tapped: its line and the way to ask show under the switch. */
-let booksTapped = false;
+
 /**
  * Settings' account card, as the screen has it: Buy postings' packs unfolded, a checkout or
  * Connect eBay on its way (`busy`), and its line (`status`: the way back from Stripe or eBay,
@@ -1186,12 +1185,12 @@ function changed() {
 }
 
 function render() {
-    // books are the admin's (booksAllowed): anyone else's chip is grey, and goods is the screen
+    // books are the admin's (booksAllowed): anyone else sees the book screen milky and inert,
+    // the line on top saying so with the way to ask
     const booksOff = !booksAllowed(me);
-    if (booksOff && mode === "book") mode = "goods";
-    el.modeBook.classList.toggle("mode-off", booksOff);
-    if (booksOff) el.modeBook.setAttribute("aria-disabled", "true");
-    else el.modeBook.removeAttribute("aria-disabled");
+    el.book.classList.toggle("books-locked", booksOff);
+    for (const kid of el.book.children || []) if (kid !== el.booksOff) kid.inert = booksOff;
+    el.booksOff.hidden = !booksOff;
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
@@ -1223,7 +1222,6 @@ function render() {
     // About and privacy under the landing and Admin; the posting screens keep their foot clear
     el.aboutLink.hidden = !out && !away && !signing;
     el.modes.hidden = out || away || signing;
-    el.booksOff.hidden = el.modes.hidden || !booksOff || !booksTapped;
     el.work.hidden = out || away || signing || mode !== "goods";
     el.book.hidden = out || away || signing || mode !== "book";
     renderInstall(out || away);
@@ -1772,12 +1770,6 @@ function showMessage() {
 /** goods | book, chosen with the switch: remembered, and where the items in hand come back. */
 function setMode(m) {
     if (!MODES.includes(m)) return;
-    if (m === "book" && !booksAllowed(me)) {
-        // nothing changes: the line under the switch says why, with the way to ask
-        booksTapped = true;
-        render();
-        return;
-    }
     writeText("localStorage", MODE_KEY, m);
     showMode(m);
 }
@@ -2342,6 +2334,7 @@ async function send(m, venue) {
  * continues, a publishing one says it is too late.
  */
 function onVenueTap(m, venue) {
+    if (m === "book" && !booksAllowed(me)) return; // the book screen is only to see (render)
     const key = `${m}:${venue}`;
     if (!venueAllowed(me, venue) && slots[m].jobs[venue].phase === "idle") {
         // nothing is sent: the line under it says the account has no such venue

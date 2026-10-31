@@ -114,10 +114,10 @@ button, "reset" while paused, the status line, "Buy postings" after a 402, the p
 link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
 tapped, says it is not available for this account yet and points to Feedback. The book
 screen has the same venue blocks as the goods screen, not eBay alone. Books are the admin's
-alone (Michal, 2026-10-31): for anyone else the book chip is grey, goods stays the screen,
-and a tap shows one line under the chips, "Books are not open for your account yet. **Ask
-for it in Feedback**"; the link opens Admin at Feedback with "I would like to list books."
-in the box.
+alone (Michal, 2026-10-31): anyone else can switch to book and see its screen, all of it very
+milky light grey and inert, with one line on top, "Books are not open for your account yet.
+**Ask for it in Feedback**" (the link opens Admin at Feedback with "I would like to list
+books." in the box); goods takes them back.
 
 The customize fold holds this item's values. Its starting values come from Settings,
 Posting defaults (4.5). "Save as default" has left the fold; the defaults are edited in
@@ -276,7 +276,7 @@ postings, then prepaid); the version.
 |---|---|---|---|---|
 | Top bar name | michal | the account's name | the account's name | the account's name |
 | Posting screens | yes | yes | yes | no, the two steps |
-| Book chip | live | grey, asks in Feedback | grey, asks in Feedback | not shown |
+| Book screen | live | milky, asks in Feedback | milky, asks in Feedback | not shown |
 | Venue buttons | all live | ebay live, others grey | as the owner | ebay says connect first |
 | Settings, Account | card, no postings count, no Delete; people and devices | card, postings, Buy, Delete; people and devices | card, postings; own devices; Leave this account | card, postings; people and devices; Delete |
 | Settings, Venues | all three with sync | ebay with sync, others "not available" | as the owner | ebay "Connect eBay to start posting" |
