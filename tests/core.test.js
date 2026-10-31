@@ -183,6 +183,9 @@ import {
     addressLine,
     parseAddressLine,
     connectLabel,
+    policyRowsOf,
+    shippingOf,
+    policyChanges,
     policiesLine,
     SELLER_POLL_MAX,
     SELLER_POLL_MS,
@@ -3665,6 +3668,31 @@ test("the account card's lines and the venue blocks' status: what it is, the pos
     assert.deepEqual(["ebay", "craigslist", "poshmark"].map((v) => venueBlockLine(v, admin, connected, true)), ["Connected as anna_sells · policies ready", ON_SERVER, ON_SERVER]);
     assert.equal(ON_SERVER, "Connected");
     assert.equal(ASK_IN_FEEDBACK, "Ask for it in Feedback");
+});
+
+test("step 3's rows and services: names beside lines where the server has them; the services list, or null from an older server; the whole list sent when it changed", () => {
+    // Michal, 2026-10-31: "isnt there a way buyer chooses?", "show that name if we have it"
+    assert.deepEqual(policyRowsOf({ lines: ["a", "b"], line_names: ["crosslister default", null] }), [
+        { line: "a", name: "crosslister default" },
+        { line: "b", name: "" },
+    ]);
+    assert.deepEqual(policyRowsOf({ lines: ["a", "b"], line_names: ["x"] }), [
+        { line: "a", name: "" },
+        { line: "b", name: "" },
+    ], "names not as long as the lines: none");
+    assert.equal(policyRowsOf(null).length, 4, "the fixed lines");
+    assert.equal(shippingOf({ shipping_service: "USPSParcel" }), null);
+    assert.deepEqual(shippingOf({ shipping: [{ service: "USPSParcel", cost: "5.00" }, { service: "" }, null] }), [{ service: "USPSParcel", cost: "5.00" }]);
+    const info = { shipping_service: "USPSParcel", shipping_cost: "5.00", shipping_cost_type: "FLAT_RATE", shipping: [{ service: "USPSParcel", cost: "5.00" }] };
+    assert.deepEqual(policyChanges(info, { ...info, shipping: [{ service: "USPSParcel", cost: "5.00" }] }), {}, "unchanged: nothing");
+    assert.deepEqual(policyChanges(info, { ...info, shipping: [{ service: "USPSParcel", cost: "5.00" }, { service: "USPSPriority", cost: "9.00" }] }), {
+        shipping: [
+            { service: "USPSParcel", cost: "5.00" },
+            { service: "USPSPriority", cost: "9.00" },
+        ],
+    });
+    // calculated: no costs sent, and the costs dropping alone is no change of the list
+    assert.deepEqual(policyChanges(info, { ...info, shipping_cost_type: "CALCULATED", shipping: [{ service: "USPSParcel", cost: "5.00" }] }), { shipping_cost_type: "CALCULATED" });
 });
 
 test("Connect eBay's word: Connect eBay until it is, then eBay connected on the same button, the user after it when known", () => {

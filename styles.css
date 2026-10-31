@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.33.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.34.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1189,6 +1189,16 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .policy-editor .field:first-child { margin-top: 0; }
 .policy-select, .policy-editor input[type="text"].policy-cost { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; font-size: 15px; }
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* a row per service the buyer picks from: its menu, its flat rate, its remove (2026-10-31) */
+.policy-ship-list { display: grid; gap: 8px; }
+.ship-row { display: flex; gap: 8px; align-items: center; }
+.ship-row .policy-select { flex: 1 1 auto; width: auto; min-width: 0; }
+.policy-editor .ship-row input[type="text"].policy-cost { flex: none; width: 6.5em; }
+.ship-remove { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--card); color: var(--ink); font-size: 20px; line-height: 1; }
+.policy-ship-note { margin: 6px 0 0; color: var(--muted); }
+.link.policy-ship-add { display: block; min-height: 44px; padding: 10px 0; text-align: left; font-size: 15px; }
+/* the eBay policy a line comes from, beside it (Michal, 2026-10-31: "show that name") */
+.policy-name { font-size: 12px; color: var(--muted); }
 .policy-chips .chip { min-height: 36px; padding: 4px 14px; font-size: 13px; border-radius: 999px; }
 .secondary.policy-save { margin-top: 14px; }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just

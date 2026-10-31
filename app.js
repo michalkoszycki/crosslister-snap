@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.33.0";
+import { VERSION } from "./version.js?v=2.34.0";
 import {
     adminLink,
     anyActive,
@@ -196,6 +196,8 @@ import {
     CONFIRM_SHIP_FROM,
     POLICY_LINES,
     policyLinesOf,
+    policyRowsOf,
+    shippingOf,
     policyChanges,
     returnsWord,
     handlingWord,
@@ -254,8 +256,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.33.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.33.0";
+} from "./core.js?v=2.34.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.34.0";
 import {
     addVenue,
     applyWrap,
@@ -310,8 +312,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.33.0";
-import { shrinkPhoto } from "./shrink.js?v=2.33.0";
+} from "./pc.js?v=2.34.0";
+import { shrinkPhoto } from "./shrink.js?v=2.34.0";
 import {
     bookCard,
     bookPriceValue,
@@ -324,8 +326,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.33.0";
-import { canScan, readIsbn } from "./scan.js?v=2.33.0";
+} from "./book.js?v=2.34.0";
+import { canScan, readIsbn } from "./scan.js?v=2.34.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5361,9 +5363,16 @@ function renderPolicies() {
     const ebay = ebayNow();
     const connected = !!ebay && ebay.connected;
     el.signupPolicyList.replaceChildren(
-        ...policyLinesOf(info).map((line) => {
+        ...policyRowsOf(info).map(({ line, name }) => {
             const li = document.createElement("li");
             li.textContent = line;
+            // the eBay policy it comes from, beside it (Michal, 2026-10-31)
+            if (name) {
+                const tag = document.createElement("span");
+                tag.className = "policy-name";
+                tag.textContent = ` · eBay policy “${name}”`;
+                li.append(tag);
+            }
             return li;
         })
     );
@@ -5387,7 +5396,16 @@ function renderPolicies() {
     );
     el.policyService.value = d.shipping_service;
     choiceRow(el.policyCostType, [["CALCULATED", "Calculated"], ["FLAT_RATE", "Flat rate"]], d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
-    el.policyCostRow.hidden = d.shipping_cost_type !== "FLAT_RATE";
+    // several services, a row each, the buyer picking one (2026-10-31); else the one menu
+    const several = Array.isArray(d.shipping);
+    el.policyService.hidden = several;
+    el.policyShipList.hidden = !several;
+    if (several) renderShipRows(info, d, services);
+    else {
+        el.policyShipAdd.hidden = true;
+        el.policyShipNote.hidden = true;
+    }
+    el.policyCostRow.hidden = several || d.shipping_cost_type !== "FLAT_RATE";
     if (document.activeElement !== el.policyCost) el.policyCost.value = d.shipping_cost || "";
     const handling = Array.isArray(info.handling_choices) ? info.handling_choices : [d.handling_days];
     choiceRow(el.policyHandling, handling.map((n) => [n, handlingWord(n)]), d.handling_days, (v) => (d.handling_days = v));
@@ -5399,6 +5417,86 @@ function renderPolicies() {
     el.policyBestOffer.checked = !!d.best_offer;
     el.policyBestOfferTip.hidden = !d.best_offer;
     el.policySave.disabled = policies.busy;
+}
+
+/**
+ * Edit's services the buyer picks from (Michal, 2026-10-31: "isnt there a way buyer chooses?"):
+ * a row each, its menu leaving out the others' services, its own flat rate when the shipping is
+ * flat, and a remove while there is more than one; the add link up to the server's most.
+ */
+function renderShipRows(info, d, services) {
+    const flat = d.shipping_cost_type === "FLAT_RATE";
+    const most = typeof info.max_services === "number" && info.max_services > 0 ? info.max_services : 4;
+    const nameOf = (code) => (services.find((sv) => sv.code === code) || { name: code }).name;
+    el.policyShipList.replaceChildren(
+        ...d.shipping.map((row, i) => {
+            const line = document.createElement("div");
+            line.className = "ship-row";
+            const menu = document.createElement("select");
+            menu.className = "policy-select";
+            menu.setAttribute("aria-label", `Shipping service ${i + 1}`);
+            const taken = new Set(d.shipping.filter((_, j) => j !== i).map((r) => r.service));
+            menu.replaceChildren(
+                ...services
+                    .filter((sv) => !taken.has(sv.code))
+                    .map((sv) => {
+                        const option = document.createElement("option");
+                        option.value = sv.code;
+                        option.textContent = sv.name;
+                        if (sv.code === row.service) option.setAttribute("selected", "");
+                        return option;
+                    })
+            );
+            menu.value = row.service;
+            menu.addEventListener("change", () => {
+                row.service = menu.value;
+                renderPolicies();
+            });
+            line.append(menu);
+            if (flat) {
+                const cost = document.createElement("input");
+                cost.type = "text";
+                cost.className = "policy-cost";
+                cost.setAttribute("inputmode", "decimal");
+                cost.setAttribute("autocomplete", "off");
+                cost.setAttribute("placeholder", "$");
+                cost.setAttribute("aria-label", `Flat rate for ${nameOf(row.service)}, $`);
+                cost.value = row.cost || "";
+                cost.addEventListener("input", () => {
+                    row.cost = cost.value.trim() || null;
+                });
+                line.append(cost);
+            }
+            if (d.shipping.length > 1) {
+                const drop = document.createElement("button");
+                drop.type = "button";
+                drop.className = "ship-remove";
+                drop.textContent = "×";
+                drop.setAttribute("aria-label", `Remove ${nameOf(row.service)}`);
+                drop.addEventListener("click", () => {
+                    d.shipping.splice(i, 1);
+                    renderPolicies();
+                });
+                line.append(drop);
+            }
+            return line;
+        })
+    );
+    const used = new Set(d.shipping.map((r) => r.service));
+    el.policyShipAdd.hidden = d.shipping.length >= most || !services.some((sv) => !used.has(sv.code));
+    el.policyShipNote.hidden = d.shipping.length < 2;
+}
+
+/** The add link: the first service not chosen yet, as a new row. */
+function addShipRow() {
+    const d = policies.draft;
+    const info = policies.info;
+    if (!d || !Array.isArray(d.shipping) || !info) return;
+    const services = Array.isArray(info.shipping_services) ? info.shipping_services : [];
+    const used = new Set(d.shipping.map((r) => r.service));
+    const next = services.find((sv) => !used.has(sv.code));
+    if (next) d.shipping.push({ service: next.code, cost: null });
+    renderPolicies();
 }
 
 /** A row of chips, the chosen one pressed; a tap chooses (`pick`) and draws Edit again. */
@@ -5422,7 +5520,8 @@ function choiceRow(node, choices, chosen, pick) {
 /** Edit tapped: the choices as menus, a draft of them as they are. */
 function editPolicies() {
     if (!policies.info) return;
-    policies.draft = { ...policies.info };
+    // its own copy of the services, so a row changed and not saved leaves the list as it was
+    policies.draft = { ...policies.info, shipping: shippingOf(policies.info) };
     policies.editing = true;
     policies.status = "";
     renderPolicies();
@@ -7328,6 +7427,9 @@ function main() {
         policyBestOffer: $("policy-best-offer"),
         policyBestOfferTip: $("policy-best-offer-tip"),
         policySave: $("policy-save"),
+        policyShipList: $("policy-ship-list"),
+        policyShipNote: $("policy-ship-note"),
+        policyShipAdd: $("policy-ship-add"),
         policyStatus: $("policy-status"),
         signupAddress: $("signup-address"),
         signupAddressWord: $("signup-address-word"),
@@ -7702,6 +7804,7 @@ function main() {
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
     // step 3's Edit, its menus and Save (Michal, 2026-10-31)
     el.policiesEdit.addEventListener("click", editPolicies);
+    el.policyShipAdd.addEventListener("click", addShipRow);
     el.policySave.addEventListener("click", () => {
         savePolicies().catch(() => {});
     });

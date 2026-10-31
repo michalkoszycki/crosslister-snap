@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.33.0";
+import { noteDirty, unsent } from "./queue.js?v=2.34.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.33.0";
+} from "./book.js?v=2.34.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1001,6 +1001,35 @@ export function policyLinesOf(info) {
     return lines.length ? lines : POLICY_LINES;
 }
 
+/**
+ * Step 3's lines each with the eBay policy it comes from (GET /me/policies "line_names", as long
+ * as "lines", a name or null), else no names: policyLinesOf's lines.
+ * @param {{lines?: unknown, line_names?: unknown} | null} info
+ * @returns {{line: string, name: string}[]}
+ */
+export function policyRowsOf(info) {
+    const lines = info && Array.isArray(info.lines) ? info.lines : [];
+    const names = info && Array.isArray(info.line_names) && info.line_names.length === lines.length ? info.line_names : [];
+    const rows = lines
+        .map((line, i) => ({ line, name: typeof names[i] === "string" ? names[i].trim() : "" }))
+        .filter((r) => typeof r.line === "string" && r.line);
+    return rows.length ? rows : POLICY_LINES.map((line) => ({ line, name: "" }));
+}
+
+/**
+ * The services the buyer picks from at checkout (GET /me/policies "shipping", 2026-10-31), in
+ * order, each {service, cost}; null from a server with the one service only.
+ * @param {{shipping?: unknown} | null} info
+ * @returns {{service: string, cost: string | null}[] | null}
+ */
+export function shippingOf(info) {
+    if (!info || !Array.isArray(info.shipping)) return null;
+    const rows = info.shipping
+        .filter((r) => r && typeof r === "object" && typeof r.service === "string" && r.service)
+        .map((r) => ({ service: r.service, cost: typeof r.cost === "string" && r.cost ? r.cost : null }));
+    return rows.length ? rows : null;
+}
+
 /** The choices Edit changes, as GET/PATCH /me/policies names them. */
 export const POLICY_KEYS = [
     "shipping_service",
@@ -1022,6 +1051,16 @@ export const POLICY_KEYS = [
 export function policyChanges(info, draft) {
     const out = {};
     for (const key of POLICY_KEYS) if (draft[key] !== info[key]) out[key] = draft[key];
+    // several services (2026-10-31): the list whole when it changed, in place of the one pair; a
+    // cost only with a flat rate
+    if (Array.isArray(draft.shipping)) {
+        delete out.shipping_service;
+        delete out.shipping_cost;
+        const flat = draft.shipping_cost_type === "FLAT_RATE";
+        const sent = draft.shipping.map((r) => ({ service: r.service, cost: flat ? r.cost || null : null }));
+        const before = (shippingOf(info) || []).map((r) => ({ service: r.service, cost: flat ? r.cost : null }));
+        if (JSON.stringify(sent) !== JSON.stringify(before)) out.shipping = sent;
+    }
     return out;
 }
 
