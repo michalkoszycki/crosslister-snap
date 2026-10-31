@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.27.8";
+import { noteDirty, unsent } from "./queue.js?v=2.27.9";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.27.8";
+} from "./book.js?v=2.27.9";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -4110,7 +4110,8 @@ export function inventoryCount(n) {
  */
 export function inventoryTally(n) {
     if (n === null) return "";
-    return n >= INVENTORY_LIMIT ? `${n}+` : String(n);
+    // in parentheses, its size the word's (Michal, 2026-10-31: "enclose it in parentheses")
+    return n >= INVENTORY_LIMIT ? `(${n}+)` : `(${n})`;
 }
 
 /**

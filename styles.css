@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.8") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.9") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1218,8 +1218,8 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .invite .pill { margin-top: 8px; }
 .link.people-link { display: block; min-height: 44px; margin-top: 4px; padding: 10px 0; font-size: 15px; }
 .people-count { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
-/* the inventory's count after its heading, as the line under it said it before (Michal, 2026-10-31) */
-.fold-count { font-size: 13px; font-weight: 600; color: var(--muted); }
+/* the inventory's count after its heading: the word's size, grey, in parentheses, a little apart (Michal, 2026-10-31) */
+.fold-count { margin-left: 0.2em; font-weight: 600; color: var(--muted); }
 /* the People page, in Admin's place (Michal, 2026-10-25): one bordered card per person in the
    inventory row's style (2026-10-31), their devices under */
 .people-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }

@@ -2415,9 +2415,9 @@ test("Admin opens on the inventory once Settings are right: the PC's rows, one b
     await settle();
     assert.deepEqual(pc.calls, [`GET /inventory?q=&${ALL}`]);
     // the count after the heading, small and muted (Michal, 2026-10-31), nothing more under it
-    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory (3)");
     assert.equal(nodes.get("inventory-toggle").children[1].className, "fold-count");
-    assert.equal(nodes.get("inventory-toggle").children[1].textContent, "3");
+    assert.equal(nodes.get("inventory-toggle").children[1].textContent, "(3)");
     assert.equal(nodes.get("inventory-status").textContent, "");
     const rows = listed(nodes);
     assert.deepEqual(
@@ -9248,7 +9248,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.deepEqual(pc.patches, [{ archived: true }]);
     assert.equal(pc.calls.filter((c) => c.startsWith("PATCH")).at(-1), "PATCH /inventory/B2");
     assert.deepEqual(titles(), ["Item A1", "Item C3"]);
-    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 2");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory (2)");
     assert.equal(nodes.get("inventory-undo").hidden, false);
     // live on ebay: the bar asks whether to end it there (Michal, 2026-10-31)
     assert.equal(nodes.get("inventory-undo-text").textContent, "Archived Item B2. Still live on ebay: end it there?");
@@ -9266,7 +9266,7 @@ test("a swipe archives a list row: it follows the finger over the Archive panel,
     assert.equal(nodes.get("inventory-undo").hidden, true);
     assert.equal(listed(nodes)[1].row.style.transform, "");
     assert.equal(listed(nodes)[1].li.classList.contains("leaving"), false);
-    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory 3");
+    assert.equal(nodes.get("inventory-toggle").textContent, "▾ Inventory (3)");
 
     // to the left as well; the bar goes by itself, after 15 s while it asks
     const c3 = listed(nodes)[2];

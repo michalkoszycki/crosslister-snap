@@ -241,8 +241,8 @@ saved), and the phone remembers which were left open.
    (Michal, 2026-10-31). "Show photos" is an inventory setting and stays at the top of the
    Inventory fold (Michal, 2026-10-26).
 
-**Inventory.** The fold's heading carries the count once the list is in, "▸ Inventory 99"
-("Inventory 200+" at the limit; Michal, 2026-10-31); the line under it says only what the
+**Inventory.** The fold's heading carries the count once the list is in, "▸ Inventory (99)"
+("Inventory (200+)" at the limit, the number grey and the word's size; Michal, 2026-10-31); the line under it says only what the
 count cannot ("No listings match.", the newest-200 note, the server's trouble); **▸ Filters**,
 folded at first (the search box first, then the venue chips, status chips including
 Archived, sort chips, Show photos; no tip under the status chips: a row swiped off while it is live on a

@@ -2637,9 +2637,9 @@ test("the inventory's rows: only objects with a sku; the count line", () => {
     assert.equal(inventoryCount(12), "");
     assert.equal(inventoryCount(200), "The newest 200 listings; search to narrow them.");
     assert.equal(inventoryTally(null), "");
-    assert.equal(inventoryTally(0), "0");
-    assert.equal(inventoryTally(99), "99");
-    assert.equal(inventoryTally(200), "200+");
+    assert.equal(inventoryTally(0), "(0)");
+    assert.equal(inventoryTally(99), "(99)");
+    assert.equal(inventoryTally(200), "(200+)");
     // books: the admin's alone; no answer from /me is everything as before
     assert.equal(booksAllowed(null), true);
     assert.equal(booksAllowed({ admin: true }), true);
