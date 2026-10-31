@@ -66,7 +66,8 @@
 Always present. Left: the camera mark and the "$nap" wordmark, as today. After the
 wordmark: **the current account's name** (`/me` `user`; there is no one signing up without
 an account since 2026-10-25, 4.3), muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
-"wrong key" red, "checking server...", "server not set"), then the Admin link, which reads
+"wrong key" red, "checking server...", "server not set"), then the Admin button: three
+vertical dots, the way apps open their menu, heard as "Admin" (Michal, 2026-10-31); it reads
 "Snap" while Admin is open and takes the person back. The server word appears here only;
 nowhere else on the page repeats it.
 

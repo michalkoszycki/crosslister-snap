@@ -2011,7 +2011,11 @@ export function snapWord(state, { earlier = false } = {}) {
  * @returns {{text: string, label: string}}
  */
 export function adminLink(open) {
-    return open ? { text: "Snap", label: "Snap: close Admin and go back to snapping" } : { text: "Admin", label: "" };
+    // closed: three vertical dots, the way apps open their menu, heard as "Admin" (Michal,
+    // 2026-10-31, on the live mock: "make 3 dots typical of apps instead of 'Admin'")
+    return open
+        ? { text: "Snap", label: "Snap: close Admin and go back to snapping", dots: false }
+        : { text: "", label: "Admin", dots: true };
 }
 
 /**

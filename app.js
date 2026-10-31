@@ -2479,7 +2479,8 @@ function adminShown(open) {
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
     // Snap while Admin is open, the way back to snapping (Michal, 2026-10-17)
     const link = adminLink(open);
-    el.adminToggle.textContent = link.text;
+    if (link.dots) el.adminToggle.replaceChildren(dotsIcon());
+    else el.adminToggle.textContent = link.text;
     if (link.label) el.adminToggle.setAttribute("aria-label", link.label);
     else el.adminToggle.removeAttribute("aria-label");
     render();
@@ -3315,6 +3316,25 @@ function badgeNode(badge) {
     b.className = kind;
     b.replaceChildren(...words);
     return b;
+}
+
+/**
+ * The header's Admin button while Admin is closed (adminLink): three vertical dots in the
+ * header's ink, hidden from a screen reader, which hears the button's label, "Admin".
+ */
+function dotsIcon() {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ class: "dots", viewBox: "0 0 24 24", width: "24", height: "24", fill: "currentColor", "aria-hidden": "true" })) {
+        svg.setAttribute(k, v);
+    }
+    for (const cy of ["5", "12", "19"]) {
+        const dot = document.createElementNS(SVG_NS, "circle");
+        dot.setAttribute("cx", "12");
+        dot.setAttribute("cy", cy);
+        dot.setAttribute("r", "2.25");
+        svg.append(dot);
+    }
+    return svg;
 }
 
 /**

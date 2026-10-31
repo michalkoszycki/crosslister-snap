@@ -64,8 +64,10 @@
   <span id="header-user" class="header-user" hidden></span>
   <div class="header-right">
     <span id="server" class="server" aria-live="polite"></span>
-    <button type="button" id="admin-toggle" class="link" aria-expanded="false"
-            aria-controls="admin">Admin</button>
+    <!-- three vertical dots while Admin is closed, heard as "Admin"; "Snap" while it is
+         open (adminLink in core.js; Michal, 2026-10-31) -->
+    <button type="button" id="admin-toggle" class="link" aria-label="Admin" aria-expanded="false"
+            aria-controls="admin"><svg class="dots" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2.25"/><circle cx="12" cy="12" r="2.25"/><circle cx="12" cy="19" r="2.25"/></svg></button>
   </div>
 </header>
 

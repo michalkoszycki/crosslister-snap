@@ -186,7 +186,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     // Michal, 2026-10-06: "Admin which would replace Settings ... settings and inventory
     // would be a foldout in the admin section ... all the cards are different foldouts";
     // docs/UI.md (2026-10-22/25): no title, Inventory first, Settings as five folds of its own
-    assert.match(html, /id="admin-toggle"[^>]*aria-controls="admin">Admin</);
+    // three dots heard as Admin (Michal, 2026-10-31)
+    assert.match(html, /id="admin-toggle"[^>]*aria-label="Admin"[^>]*aria-controls="admin"><svg class="dots"/);
     assert.ok(!html.includes('id="settings-close"'), "Close is Admin's now");
     assert.ok(!html.includes('id="admin-title"'), "Admin has no title (docs/UI.md)");
     const admin = /<section id="admin"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
@@ -2065,13 +2066,13 @@ test("the header link says Snap while Admin is open, and its tap goes back to sn
     link.fire("click");
     assert.equal(nodes.get("admin").hidden, true);
     assert.equal(nodes.get("work").hidden, false);
-    assert.deepEqual(says(), ["Admin", null, "false"]);
+    assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
     // Close says the same
     link.fire("click");
     await settle();
     assert.equal(link.textContent, "Snap");
     nodes.get("admin-close").fire("click");
-    assert.deepEqual(says(), ["Admin", null, "false"]);
+    assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
 });
 
 // --- Admin: Settings and the inventory (Michal, 2026-10-06) ------------------------------

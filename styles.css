@@ -168,6 +168,9 @@ h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px
     font-weight: 700;
 }
 header .link { color: var(--head-ink); padding-left: 10px; }
+/* the three dots (Admin closed): a 44 px target, centred on the header's line, not on its baseline */
+header .link:has(> .dots) { align-self: center; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0; }
+header .link > .dots { display: block; }
 
 .header-right { display: flex; align-items: baseline; gap: 4px; margin-left: auto; white-space: nowrap; }
 

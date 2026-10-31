@@ -742,8 +742,8 @@ test("the Snap button says Snap Next once the item in hand has a posting up, goo
 test("the header link says Admin on the posting screens and Snap while Admin is open", () => {
     // Michal, 2026-10-17: "When I am on the Admin page, the Admin link up top should change to
     // Snap, so that it is more intuitive how to return to snapping a photo."
-    assert.deepEqual(adminLink(false), { text: "Admin", label: "" });
-    assert.deepEqual(adminLink(true), { text: "Snap", label: "Snap: close Admin and go back to snapping" });
+    assert.deepEqual(adminLink(false), { text: "", label: "Admin", dots: true });
+    assert.deepEqual(adminLink(true), { text: "Snap", label: "Snap: close Admin and go back to snapping", dots: false });
 });
 
 test("a tap on a busy venue button pauses it; continue carries on, reset drops the press as if never made", () => {
