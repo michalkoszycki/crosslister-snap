@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.42.2";
+import { VERSION } from "./version.js?v=2.42.3";
 import {
     adminLink,
     anyActive,
@@ -260,8 +260,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.42.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.2";
+} from "./core.js?v=2.42.3";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.42.3";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +317,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.42.2";
-import { shrinkPhoto } from "./shrink.js?v=2.42.2";
+} from "./pc.js?v=2.42.3";
+import { shrinkPhoto } from "./shrink.js?v=2.42.3";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +331,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.42.2";
-import { canScan, readIsbn } from "./scan.js?v=2.42.2";
+} from "./book.js?v=2.42.3";
+import { canScan, readIsbn } from "./scan.js?v=2.42.3";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5476,7 +5476,7 @@ function renderPolicies() {
     const several = Array.isArray(d.shipping);
     el.policyService.hidden = several;
     el.policyShipList.hidden = !several;
-    el.policyShipLabel.textContent = several ? SHIP_PICKS : "Shipping";
+    el.policyShipLabel.textContent = several ? (d.shipping.length > 1 ? SHIP_PICKS : SHIP_ONE) : "Shipping";
     if (several) renderShipRows(info, d, services);
     else el.policyShipNote.hidden = true;
     el.policyCostRow.hidden = several || d.shipping_cost_type !== "FLAT_RATE";
@@ -5564,6 +5564,8 @@ function renderShipRows(info, d, services) {
 const COST_WORDS = { CALCULATED: "Calculated", FLAT_RATE: "Flat rate", FREE: "Free shipping" };
 /** Edit's label for the services, a server with several (Michal, 2026-10-31). */
 const SHIP_PICKS = "Shipping options - buyer picks";
+/** ... with one ticked: no picking (Michal, 2026-10-31: "only write buyer picks if there is more than 1 option"). */
+const SHIP_ONE = "Shipping options";
 /** What every account gets besides the server's lines (ebay/seller_setup.py). */
 const POLICY_EXTRAS = ["Payment: paid through eBay's own checkout", "Books: a separate USPS Media Mail shipping policy"];
 

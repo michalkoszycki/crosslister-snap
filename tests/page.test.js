@@ -10020,7 +10020,8 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
     n.get("policy-pick").value = "shipping";
     n.get("policy-pick").fire("change");
 
-    assert.equal(n.get("policy-ship-label").textContent, "Shipping options - buyer picks");
+    // one ticked: no "buyer picks" (Michal, 2026-10-31: "only write buyer picks if there is more than 1 option")
+    assert.equal(n.get("policy-ship-label").textContent, "Shipping options");
     assert.deepEqual(["policy-lead", "policy-after"].map((id) => n.get(id).hidden), [true, true], "the step's words with the list only");
     assert.equal(n.get("policy-service").hidden, true, "the boxes in the one menu's place");
     const rows = () => n.get("policy-ship-list").children;
@@ -10033,10 +10034,11 @@ test("step 3's Edit: the picker of all Snap adds; Shipping options - buyer picks
         ["USPS Media Mail for media only", false],
     ]);
     assert.equal(rows()[2].children[0].children[1].children[2].className, "ship-thin");
-    // a second ticked
+    // a second ticked: the buyer picks
     box(1).checked = true;
     box(1).fire("change");
     assert.deepEqual(words().map(([, on]) => on), [true, true, false]);
+    assert.equal(n.get("policy-ship-label").textContent, "Shipping options - buyer picks");
     // the last one never unticked
     box(0).checked = false;
     box(0).fire("change");
