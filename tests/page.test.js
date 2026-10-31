@@ -7351,11 +7351,10 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     const landing = /<section id="landing"[^>]*>([\s\S]*?)<\/section>/.exec(html)[1];
     assert.match(
         landing,
-        /<h2 class="landing-name">Snap<\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">Photograph it, and it is listed on your venues with a price and a description\.<\/p>/
+        /<h2 class="landing-name">Snap<\/h2>\s*<p class="landing-tagline">a crosslisting app<\/p>\s*<p class="landing-what">From photo to live listing in seconds<\/p>/
     );
-    // Michal, 2026-10-08: three free postings per person, then prepaid; said small under the one-liner
-    assert.match(landing, /<p class="landing-what">[^<]*<\/p>\s*<p class="landing-price">Three postings free, then prepaid\.<\/p>/);
-    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.landing-price \{[^}]*font-size: 13px;[^}]*color: var\(--muted\);/);
+    // Michal, 2026-10-31: "eliminate the postings count info" from the landing
+    assert.ok(!landing.includes("landing-price"), "no postings count on the landing");
     // Sign in the big pill; I have a key and Install the small ones under it
     assert.match(landing, /<button type="button" id="landing-signin" class="big">Sign in</);
     assert.match(landing, /<button type="button" id="landing-key" class="secondary landing-small">I have a key</);

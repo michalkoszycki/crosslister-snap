@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.4") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.5") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1277,7 +1277,6 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 .pill.phone-install { margin-top: 12px; }
 .chip.option.phone-installed { display: inline-flex; align-items: center; margin: 12px 0 0; }
 /* the postings line under the landing's one-liner: small, a fact, not a pitch */
-.landing-price { margin: 6px auto 0; font-size: 13px; color: var(--muted); }
 /* under a venue button refused for want of postings: to Settings' Account block */
 .link.buy-link { display: block; min-height: 40px; padding: 8px 2px 0; font-size: 14px; text-decoration: underline; }
 .link.buy-link[hidden] { display: none; }
