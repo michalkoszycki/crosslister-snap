@@ -137,8 +137,9 @@ No Close at its foot (Michal, 2026-10-31: "take the exit button out"): the heade
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
-**Settings** opens as a grey card, as the inventory's, with its five parts as a row of
-chips at its top, the inventory filters' look; the pressed chip's part is the one shown
+**Settings** opens as its five parts as a row of chips on the page's ground (Michal,
+2026-10-31: "put the submenu items OUT of the gray background"), the chosen part in a grey
+card under them as the inventory's, the inventory filters' look; the pressed chip's part is the one shown
 under them, one at a time (Michal, 2026-10-31: "words in pill shaped buttons with the
 highlighted one deciding what is visible below"), the chosen one remembered on this phone,
 in this order. The first is named **Snap Account** (Michal, 2026-10-25), shown until another

@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.28.8">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.28.8" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.28.9">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.28.9" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -360,7 +360,7 @@
          I have a key before a key is saved), which ones are open remembered on this phone -->
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="settings">▸ Settings</button>
-    <div id="settings" class="card settings" hidden>
+    <div id="settings" class="settings" hidden>
       <!-- the parts as a row of chips, as the inventory's filters: the pressed one is the part
            shown under it, one at a time (Michal, 2026-10-31); Server only for a key account -->
       <div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings">
@@ -370,6 +370,8 @@
         <button type="button" id="settings-tab-server" class="chip" data-fold="server" aria-pressed="false">Server</button>
         <button type="button" id="settings-tab-phone" class="chip" data-fold="phone" aria-pressed="false">This phone</button>
       </div>
+      <!-- the parts in a grey card under the chips, the chips on the page's ground (Michal, 2026-10-31) -->
+      <div id="settings-body" class="card settings-body">
       <!-- 1. Snap Account: one card per account kept on this phone, the current one first and
            outlined (Michal, 2026-10-25: no sentence saying so), the others with Switch to this
            account and Remove from this phone (app.js, accounts-list); Add account under them -->
@@ -633,6 +635,7 @@
                 aria-controls="phone-install-steps" hidden>Install on the home screen</button>
         <p id="phone-install-steps" class="install-steps" hidden></p>
         <p id="phone-installed" class="chip option chosen phone-installed" hidden>Installed on home screen</p>
+      </div>
       </div>
     </div>
 
@@ -988,6 +991,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.28.8"></script>
+<script type="module" src="app.js?v=2.28.9"></script>
 </body>
 </html>

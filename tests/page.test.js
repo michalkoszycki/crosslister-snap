@@ -275,6 +275,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "settings-tab-posting",
         "settings-tab-server",
         "settings-tab-phone",
+        "settings-body",
         // 1. Snap Account: the current account's card, outlined: its name, "by key" on a key
         // account, Buy postings with the postings left beside it, the packs, its line, Sign in
         // again for one the server forgot; the owner's invite box (one label, one box, one
@@ -482,7 +483,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(html, /<div id="modes" class="modes" role="group"/);
     assert.match(css, /\.modes\[hidden\] \{ display: none; \}/);
     // Settings a grey card as the inventory's, its parts a row of chips (Michal, 2026-10-31)
-    assert.match(css, /\.card\.settings \{ padding: 10px 10px 16px; \}/);
+    assert.match(css, /\.settings-body \{ padding: 10px 10px 16px; \}/);
     // the full-size photo lies over everything, outside main
     const after = html.slice(html.indexOf("</main>"));
     assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
@@ -10984,7 +10985,9 @@ test("Settings' five parts: a grey card with a row of chips, the pressed one's p
     await openSettings(nodes);
     // Michal, 2026-10-31: "for the submenus of 'settings' lets go for that way of serving them. as
     // words in pill shaped buttons with the highlighted one deciding what is visible below"
-    assert.match(html, /<div id="settings" class="card settings" hidden>\s*(<!--[\s\S]*?-->\s*)?<div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings">/);
+    assert.match(html, /<div id="settings" class="settings" hidden>\s*(<!--[\s\S]*?-->\s*)?<div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings">/);
+    // the chips out of the grey card, the parts in it (Michal, 2026-10-31)
+    assert.match(html, /<\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="settings-body" class="card settings-body">/);
     assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.settings \.fold-toggle \{ display: none; \}/);
     const parts = ["account", "venues", "posting", "server", "phone"];
     const open = () => parts.filter((k) => !nodes.get(`fold-${k}`).hidden);
