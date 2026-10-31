@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { ADDRESS_NEEDED, ASK_MS, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
+import { ADDRESS_NEEDED, ASK_MS, PRICE_SAVE_MS, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
@@ -2747,7 +2747,10 @@ function press(btn) {
     return () => btn.fire("pointerup", { pointerId: 1 });
 }
 
-test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, the price from the server", async (t) => {
+test("a row's + and −: a dollar a tap at once, nothing shut; one quiet PATCH after the last tap", async (t) => {
+    // Michal, 2026-10-31: "reactions of the price number to the plus and minus clicks needs to be
+    // instantaneous and should not change any state anywhere. update should happen only if you
+    // click to sync to a venue."
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const draft = { status: "draft", id: "", url: "", listed_at: null };
     const none = { pricing: null, prices: { quick: null, market: null, high: null } };
@@ -2773,9 +2776,20 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     await settle();
     assert.deepEqual(pc.calls.slice(before), [], "nothing sent while the finger is down");
     lift();
-    assert.deepEqual([g1.up.disabled, g1.down.disabled], [true, true], "shut while the PATCH is on its way");
+    assert.deepEqual([g1.up.disabled, g1.down.disabled], [false, false], "never shut: the next tap counts at once");
+    // a second tap at once: a dollar more on the tile, still nothing sent
+    press(g1.up)();
+    assert.equal(listed(nodes)[0].line, "$26 G1");
     await settle();
-    assert.deepEqual(pc.calls.slice(before), ["PATCH /inventory/G1"]);
+    assert.deepEqual(pc.calls.slice(before), [], "nothing sent between taps");
+    press(g1.down)();
+    assert.equal(listed(nodes)[0].line, "$25 G1");
+    t.mock.timers.tick(PRICE_SAVE_MS - 1);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), []);
+    t.mock.timers.tick(1);
+    await settle();
+    assert.deepEqual(pc.calls.slice(before), ["PATCH /inventory/G1"], "one PATCH for the three taps");
     assert.deepEqual(pc.patches, [{ price: "25.00" }]);
     assert.equal(listed(nodes)[0].line, "$25 G1", "the server's price on the tile");
     g1 = stepsOf(nodes, 0);
@@ -2807,17 +2821,20 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
 
     // − from the keyboard (a click of its own, no press): a dollar down, sent at once
     stepsOf(nodes, 0).down.fire("click");
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.deepEqual(pc.patches.at(-1), { price: "24.00" });
     assert.equal(listed(nodes)[0].line, "$24 G1");
 
     // D1: from $1.50 down to $1, where − rests; a draft, so nothing falls behind
     press(stepsOf(nodes, 1).down)();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.deepEqual(pc.patches.at(-1), { price: "1.00" });
     assert.equal(listed(nodes)[1].line, "$1 D1");
     assert.equal(stepsOf(nodes, 1).down.disabled, true, "never below $1");
     press(stepsOf(nodes, 1).up)();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.deepEqual(pc.patches.at(-1), { price: "2.00" });
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"G1","venues":["ebay"]}]', "a draft has no listing to fall behind");
@@ -2827,6 +2844,7 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     const refused = press(stepsOf(nodes, 1).up);
     assert.equal(listed(nodes)[1].line, "$3 D1");
     refused();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.equal(nodes.get("inventory-status").textContent, "D1: price: the server is busy");
     assert.equal(listed(nodes)[1].line, "$2 D1");
@@ -2842,6 +2860,29 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     await settle();
     assert.equal(listed(nodes)[0].line, "$24 G1");
     assert.equal(ebayBadge(nodes, 0).tag, "button", "still behind eBay");
+});
+
+test("a sync tapped before a tile's price has gone sends the price first, then the push", async (t) => {
+    // Michal, 2026-10-31: "update should happen only if you click to sync to a venue"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("G1")], { G1: wholeRow("G1") });
+    const local = memoryStore({ ...NO_PHOTOS, "snap.inventory.unsynced": '[{"sku":"G1","venues":["ebay"]}]' });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    const before = pc.calls.length;
+    press(stepsOf(nodes, 0).up)();
+    assert.equal(listed(nodes)[0].line, "$25 G1");
+    ebayBadge(nodes, 0).fire("click");
+    await settle();
+    t.mock.timers.tick(SEND_DELAY_MS);
+    await settle();
+    const sent = pc.calls.slice(before).filter((c) => c.startsWith("PATCH") || c.startsWith("POST /jobs"));
+    assert.deepEqual(sent, ["PATCH /inventory/G1", "POST /jobs"], "the price, then the push");
+    assert.deepEqual(pc.patches, [{ price: "25.00" }]);
+    t.mock.timers.tick(PRICE_SAVE_MS);
+    await settle();
+    assert.equal(pc.patches.length, 1, "the wait let go: nothing sent twice");
 });
 
 test("a held + or − is an oven's dial: it repeats and speeds up, the tile live, one PATCH on release", async (t) => {
@@ -2868,6 +2909,7 @@ test("a held + or − is an oven's dial: it repeats and speeds up, the tile live
     assert.deepEqual(pc.patches, [], "nothing sent while held");
     assert.equal(up.disabled, false, "never shut under the finger");
     lift();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.deepEqual(pc.patches, [{ price: "253.00" }], "one PATCH, the price it stopped at");
     t.mock.timers.tick(2000);
@@ -2887,6 +2929,7 @@ test("a held + or − is an oven's dial: it repeats and speeds up, the tile live
     // the finger slides off the button: the dial stops there, as lifting it would
     down.fire("pointerleave", { pointerId: 2 });
     down.fire("pointerup", { pointerId: 2 });
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.equal(pc.patches.length, 2, "one PATCH for the whole hold");
     assert.deepEqual(pc.patches[1], { price: `${price().slice(1)}.00` });
@@ -2901,6 +2944,7 @@ test("a held + or − is an oven's dial: it repeats and speeds up, the tile live
     const at = Number(price().slice(1));
     up.fire("touchend", touch);
     up.fire("pointerup", { pointerId: 3 });
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.equal(pc.patches.length, 3);
     assert.deepEqual(pc.patches[2], { price: `${at}.00` }, "one dollar for the one touch");
@@ -2911,6 +2955,7 @@ test("a held + or − is an oven's dial: it repeats and speeds up, the tile live
     // a finger lifted off the page altogether ends a dial too
     up.fire("pointerdown", { pointerId: 4 });
     globalThis.window.fire("pointerup", { pointerId: 4 });
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.equal(pc.patches.length, 4);
 
@@ -3008,6 +3053,7 @@ test("a row's sync badge: pushes the row to its eBay listing as a job button; do
     // a push the server refuses says why, and the badge stays the sync one
     pc.refuse.push = "eBay is not connected: run crosslister ebay-login";
     press(stepsOf(nodes, 0).up)();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     ebayBadge(nodes, 0).fire("click");
     t.mock.timers.tick(SEND_DELAY_MS);
@@ -3030,6 +3076,7 @@ test("a row's craigslist badge syncs too, once a change left its listing behind;
     await settle();
     assert.deepEqual(listed(nodes)[0].badges, ["ebay listed (vbadge posted)", "craigslist listed (vbadge posted)"]);
     press(stepsOf(nodes, 0).up)();
+    t.mock.timers.tick(PRICE_SAVE_MS);
     await settle();
     assert.equal(local.getItem("snap.inventory.unsynced"), '[{"sku":"C1","venues":["ebay","craigslist"]}]');
     // the eBay sync badge and its reset, then craigslist's
@@ -7325,7 +7372,6 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "landing-install-steps",
         // another account kept on this phone, while the one in hand is signed out or gone
         "landing-accounts",
-        "landing-help",
         "landing-status",
         "signin",
         "signin-back",
@@ -7392,20 +7438,8 @@ test("a first open is the landing: Install, then a key; saved, the goods screen;
     assert.deepEqual(pc.signups, [{ auth: "none", origin: SERVER }], "but the product's own, whether it takes new accounts");
     assert.equal(nodes.get("landing-signin").textContent, "Sign in", "a 404: the words as they were");
 
-    // the help line under the buttons says what the hovered, focused or held one does
-    // (Michal, 2026-10-08: "key allows you to join a family account; in a similar way explain install")
-    assert.equal(nodes.get("landing-help").textContent, "");
-    nodes.get("landing-key").fire("mouseenter");
-    assert.match(nodes.get("landing-help").textContent, /^A key lets you join a family account/);
-    nodes.get("landing-key").fire("mouseleave");
-    assert.equal(nodes.get("landing-help").textContent, "");
-    nodes.get("landing-install").fire("touchstart");
-    assert.match(nodes.get("landing-help").textContent, /^Install puts Snap on your home screen/);
-    nodes.get("landing-install").fire("touchend");
-    nodes.get("landing-signin").fire("focus");
-    assert.match(nodes.get("landing-help").textContent, /^Sign in with your email/);
-    nodes.get("landing-signin").fire("blur");
-    assert.equal(nodes.get("landing-help").textContent, "");
+    // no help line under the buttons (Michal, 2026-10-31: "no tip is fine")
+    assert.ok(!html.includes("landing-help"));
 
     // not on the home screen, no prompt from the browser: Install unfolds the two taps
     assert.equal(nodes.get("landing-install").hidden, false);
@@ -10494,8 +10528,6 @@ test("accounts: a session the server forgot is shown signed out, with Sign in ag
     assert.equal(nodes.get("landing-accounts").hidden, false, "michal is still here");
     assert.deepEqual(kept(local).map((a) => [a.user, a.expired]), [["michal", false], ["wife", true]], "kept, marked");
     assert.equal(local.getItem("snap.session"), null, "nothing mirrored for it");
-    nodes.get("landing-accounts").fire("mouseenter");
-    assert.equal(nodes.get("landing-help").textContent, "Switch account: carry on as another account kept on this phone.");
 
     // Switch account: Settings at Snap Account; wife's card says signed out with its way back
     // in, michal's card a tap away

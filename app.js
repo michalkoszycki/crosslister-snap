@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.2";
+import { VERSION } from "./version.js?v=2.28.3";
 import {
     adminLink,
     anyActive,
@@ -147,6 +147,7 @@ import {
     venueName,
     venueStatus,
     DIAL_DELAY_MS,
+    PRICE_SAVE_MS,
     DIAL_REPEAT_MS,
     dialBody,
     dialPrice,
@@ -214,7 +215,6 @@ import {
     installSteps,
     isDesktopBrowser,
     isIosDevice,
-    landingHelp,
     FEEDBACK_SENT,
     feedbackBody,
     feedbackScreen,
@@ -247,8 +247,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.2";
+} from "./core.js?v=2.28.3";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.3";
 import {
     addVenue,
     applyWrap,
@@ -299,8 +299,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.2";
-import { shrinkPhoto } from "./shrink.js?v=2.28.2";
+} from "./pc.js?v=2.28.3";
+import { shrinkPhoto } from "./shrink.js?v=2.28.3";
 import {
     bookCard,
     bookPriceValue,
@@ -313,8 +313,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.2";
-import { canScan, readIsbn } from "./scan.js?v=2.28.2";
+} from "./book.js?v=2.28.3";
+import { canScan, readIsbn } from "./scan.js?v=2.28.3";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -576,6 +576,10 @@ const admin = {
     parts: new Map(),
     /** sku -> its row's job task (jobTask): a + or −'s PATCH on its way (`wait`), its sync badge's push */
     rowTasks: new Map(),
+    /** a tile's price waiting to go to the PC (PRICE_SAVE_MS after its last tap), by sku */
+    priceTimers: new Map(),
+    /** a tile's price on its way to the PC, by sku: what a sync waits for */
+    priceSaves: new Map(),
     /** the list's object URLs, revoked when the list changes */
     thumbs: [],
     shown: 0,
@@ -2915,8 +2919,9 @@ function paintTile(sku) {
     );
     const busy = rowTaskBusy(rowTask(sku));
     const held = !!dial && dial.sku === sku;
+    const now = parts.shown === null ? row.price : parts.shown;
     parts.up.disabled = busy;
-    parts.down.disabled = busy || (!held && dialPrice(row.price, -1, 1) >= (Number(row.price) || 0));
+    parts.down.disabled = busy || (!held && dialPrice(now, -1, 1) >= (Number(now) || 0));
     if (parts.unarchive) parts.unarchive.disabled = busy;
 }
 
@@ -2996,7 +3001,10 @@ function dialButton(sku, direction, word, label) {
 function startDial(sku, direction) {
     const parts = admin.parts.get(sku);
     if (dial || !parts || !settings() || (direction > 0 ? parts.up : parts.down).disabled) return;
-    dial = { sku, direction, price: dialPrice(parts.row.price, direction, 1), held: 0, timer: null };
+    clearTimeout(admin.priceTimers.get(sku));
+    admin.priceTimers.delete(sku);
+    const from = parts.shown === null ? parts.row.price : parts.shown;
+    dial = { sku, direction, price: dialPrice(from, direction, 1), held: 0, timer: null };
     parts.shown = dial.price;
     paintTile(sku);
     dial.timer = setTimeout(turnDial, DIAL_DELAY_MS);
@@ -3015,40 +3023,81 @@ function turnDial() {
     dial.timer = setTimeout(turnDial, DIAL_REPEAT_MS);
 }
 
-/** The finger off a tile's + or −: the dial stops where it is, and that price is sent. */
+/**
+ * The finger off a tile's + or −: the dial stops where it is, on the tile; the price goes to
+ * the PC PRICE_SAVE_MS after the last tap, so taps in a row are each shown at once and sent
+ * as one (Michal, 2026-10-31: "reactions of the price number to the plus and minus clicks
+ * needs to be instantaneous").
+ */
 function endDial(sku) {
     if (!dial || dial.sku !== sku) return;
     clearTimeout(dial.timer);
-    const { price } = dial;
     dial = null;
-    sendPrice(sku, price).catch(() => {});
+    paintTile(sku);
+    clearTimeout(admin.priceTimers.get(sku));
+    admin.priceTimers.set(
+        sku,
+        setTimeout(() => {
+            admin.priceTimers.delete(sku);
+            savePrice(sku).catch(() => {});
+        }, PRICE_SAVE_MS)
+    );
+}
+
+/** The tile's price to the PC now, if it differs from the row's; the save remembered for a sync to wait on. */
+function savePrice(sku) {
+    const parts = admin.parts.get(sku);
+    if (!parts || parts.shown === null) return Promise.resolve();
+    const going = sendPrice(sku, parts.shown).finally(() => {
+        if (admin.priceSaves.get(sku) === going) admin.priceSaves.delete(sku);
+    });
+    admin.priceSaves.set(sku, going);
+    return going;
+}
+
+/** Before a sync or the listing's page: a tile's price still waiting goes now, and one on its way is waited for. */
+async function flushPrice(sku) {
+    if (admin.priceTimers.has(sku)) {
+        clearTimeout(admin.priceTimers.get(sku));
+        admin.priceTimers.delete(sku);
+        await savePrice(sku).catch(() => {});
+    }
+    const going = admin.priceSaves.get(sku);
+    if (going) await going.catch(() => {});
+}
+
+/** A tile's price waiting to go, or on its way. */
+function pricePending(sku) {
+    return admin.priceTimers.has(sku) || admin.priceSaves.has(sku);
+}
+
+/** Every tile's price still waiting, before the venue block's Sync. */
+async function flushPrices() {
+    await Promise.all([...new Set([...admin.priceTimers.keys(), ...admin.priceSaves.keys()])].map(flushPrice));
 }
 
 /**
- * The price a dial stopped at, as one PATCH ({"price": "150.00"}); the price on the tile is
- * then the one the PC answers, and each listing up on a venue the change left behind offers
- * its sync on its badge. A change the PC refuses (400) says its words on the inventory's
- * line, and the tile its price as it was. A dial back where it started sends nothing.
+ * The price a tile was left at, as one PATCH ({"price": "150.00"}) to the PC's inventory, quietly:
+ * nothing on the tile shuts or greys while it goes (Michal, 2026-10-31), and no venue hears of
+ * it; each listing up on a venue the change left behind then offers its sync on its badge. A
+ * change the PC refuses (400) says its words on the inventory's line, and the tile its price as
+ * it was. A tile back where it started sends nothing. Taps made while it goes stay on the tile.
  */
 async function sendPrice(sku, price) {
     const parts = admin.parts.get(sku);
-    const task = rowTask(sku);
     const pc = settings();
     if (!parts) return;
-    if (!pc || rowTaskBusy(task) || price === Number(parts.row.price)) {
-        parts.shown = null;
+    if (!pc || price === Number(parts.row.price)) {
+        if (parts.shown === price) parts.shown = null;
         paintTile(sku);
         return;
     }
     const before = parts.row;
-    task.wait = "saving";
-    paintTile(sku);
     let whole;
     try {
         whole = await patchRow(pc, sku, dialBody(price));
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        task.wait = "";
         el.inventoryStatus.textContent = `${sku}: ${e.message}`;
         const shown = admin.parts.get(sku);
         if (shown) shown.shown = null;
@@ -3056,14 +3105,13 @@ async function sendPrice(sku, price) {
         return;
     }
     heard(200);
-    task.wait = "";
     markBehind(sku, before, whole);
     // the list as the PC now has it (a listing opened from it reads the row afresh)
     admin.rows = admin.rows.map((r) => (r.sku === sku ? followSummary(r, whole) : r));
     const shown = admin.parts.get(sku);
     if (shown) {
         shown.row = followSummary(shown.row, whole);
-        shown.shown = null;
+        if (shown.shown === price) shown.shown = null;
     }
     showCount();
     paintTile(sku);
@@ -3373,6 +3421,7 @@ function syncIcon(direction = "to") {
 async function pushTile(sku, venue) {
     const task = rowTask(sku);
     if (rowTaskBusy(task)) return;
+    if (pricePending(sku)) await flushPrice(sku); // the price the tile shows is the one pushed
     task.action = `push ${venue}`;
     task.note = null;
     task.job = null;
@@ -3542,6 +3591,7 @@ function onFilter(filter, value) {
  * first"). A reopened listing the PC no longer has is let go, and the list says so.
  */
 async function openRow(row, from) {
+    if (pricePending(row.sku)) await flushPrice(row.sku); // the page reads the price the tile shows
     admin.shown += 1;
     const mine = admin.shown;
     dropPictures();
@@ -4981,6 +5031,7 @@ async function startSync(direction, venue) {
         if (pressed(sync, action)) onTaskTap(sync, renderSync);
         return;
     }
+    if (direction === "to" && (admin.priceTimers.size || admin.priceSaves.size)) await flushPrices(); // the prices the tiles show are the ones sent
     const pc = settings();
     sync.job = null;
     if (!pc) {
@@ -6935,7 +6986,6 @@ function main() {
         landingInstallSteps: $("landing-install-steps"),
         landingKey: $("landing-key"),
         landingSignin: $("landing-signin"),
-        landingHelp: $("landing-help"),
         landingStatus: $("landing-status"),
         signin: $("signin"),
         signinBack: $("signin-back"),
@@ -7176,28 +7226,10 @@ function main() {
     // I have a key: Admin, which opens on Settings while none are saved
     el.landingKey.addEventListener("click", () => showAdmin(true));
     el.landingSignin.addEventListener("click", () => showSignin(true));
-    // the help line under the buttons: what the one under the pointer, the focus or a held
-    // finger does (Michal, 2026-10-08); gone when it leaves
-    // Add account's Back, and Switch account to Settings' list (Michal, 2026-10-18)
+    // Add account's Back, and Switch account to Settings' list (Michal, 2026-10-18); no help
+    // line under the buttons since 2026-10-31 (a phone has no hover: it only flashed)
     el.landingBack.addEventListener("click", stopAdding);
     el.landingAccounts.addEventListener("click", () => showAdmin(true));
-    for (const [which, button] of [
-        ["signin", el.landingSignin],
-        ["key", el.landingKey],
-        ["install", el.landingInstall],
-        ["accounts", el.landingAccounts],
-    ]) {
-        for (const type of ["mouseenter", "focus", "touchstart"]) {
-            button.addEventListener(type, () => {
-                el.landingHelp.textContent = landingHelp(which);
-            });
-        }
-        for (const type of ["mouseleave", "blur", "touchend", "touchcancel"]) {
-            button.addEventListener(type, () => {
-                el.landingHelp.textContent = "";
-            });
-        }
-    }
     el.signinBack.addEventListener("click", () => showSignin(false));
     el.signinSend.addEventListener("click", () => {
         sendLink().catch(() => {});

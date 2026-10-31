@@ -209,7 +209,6 @@ import {
     CODE_NEEDED,
     codeError,
     isDesktopBrowser,
-    landingHelp,
     LINK_SENT,
     signinNote,
     customizeDefaults,
@@ -4297,15 +4296,6 @@ test("a server that refuses a blank name (400): the photos wait for the name, as
     assert.equal(no.stalled, true);
     // a book never waits for a goods name
     assert.equal(waitsForName({ ...initialState("", "book"), needsName: true, photos: s.photos }), false);
-});
-test("landingHelp: what each of the landing's buttons does, under them (Michal, 2026-10-08)", () => {
-    assert.match(landingHelp("key"), /^A key lets you join a family account/);
-    assert.match(landingHelp("install"), /^Install puts Snap on your home screen/);
-    assert.match(landingHelp("signin"), /^Sign in with your email/);
-    // Switch account (2.23.0), under Install while another account kept on the phone is a way back in
-    assert.equal(landingHelp("accounts"), "Switch account: carry on as another account kept on this phone.");
-    assert.equal(landingHelp(""), "");
-    assert.equal(landingHelp("nothing"), "");
 });
 
 // --- a header and a footer on every listing (Michal, 2026-10-17) ------------------------------

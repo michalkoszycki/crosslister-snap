@@ -80,7 +80,8 @@ Top to bottom: "← Back" (only while adding an account); the big mark; "$nap" w
 crosslisting app"; one line of what it does, naming no venue ("From photo to live listing in seconds";
 Michal, 2026-10-31, who also took the postings count off the landing); **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
 key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only
-when another usable account is kept on this phone); the help line under the buttons; the
+when another usable account is kept on this phone); no help line under the buttons (a phone
+has no hover, so it only flashed; Michal, 2026-10-31: "no tip is fine"); the
 status line ("Signing you in...", "Your sign-in expired; send yourself a new link", "Your
 account was deleted."). Footer: "About and privacy", the version, at the foot of the screen at least: on a short page the spare room is white space, on the landing evenly above the mark and below the buttons (Michal, 2026-10-31).
 
@@ -253,7 +254,7 @@ venue makes the undo bar ask, "Archived <title>. Still live on ebay: end it ther
 **End listing** beside **Undo**, for 15 s (Michal, 2026-10-31); the count after "Inventory" small and muted, as the line
 under it said it before; every checkbox row on the page the box and its words on the smoke
 grey with no outline, Michal 2026-10-31; Michal, 2026-10-31: "move the search to Options. so it
-is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**. A row opens the
+is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**; a row's + and − change the price on the tile at once, nothing shut or grey, the price going quietly to the inventory 1.5 s after the last tap (at once when a sync or the listing's page needs it), and no venue hears of it before a sync (Michal, 2026-10-31). A row opens the
 listing's page: "← Back to inventory" above the grey card, on the page's ground (as the
 People page's "← Back to settings"; Michal, 2026-10-31), the heading and photos, **▾ customize** with
 Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in
