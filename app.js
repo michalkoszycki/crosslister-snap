@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.31.0";
+import { VERSION } from "./version.js?v=2.31.1";
 import {
     adminLink,
     anyActive,
@@ -253,8 +253,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.31.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.31.0";
+} from "./core.js?v=2.31.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.31.1";
 import {
     addVenue,
     applyWrap,
@@ -307,8 +307,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.31.0";
-import { shrinkPhoto } from "./shrink.js?v=2.31.0";
+} from "./pc.js?v=2.31.1";
+import { shrinkPhoto } from "./shrink.js?v=2.31.1";
 import {
     bookCard,
     bookPriceValue,
@@ -321,8 +321,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.31.0";
-import { canScan, readIsbn } from "./scan.js?v=2.31.0";
+} from "./book.js?v=2.31.1";
+import { canScan, readIsbn } from "./scan.js?v=2.31.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -4849,7 +4849,10 @@ function renderExtras() {
     el.feedback.hidden = card || !extras.feedback;
     // an admin's new entries, counted in the toggle and listed above the box
     const entries = me && me.admin ? inbox.entries : [];
-    fold(el.feedbackToggle, feedbackWord(entries.length), extras.feedback);
+    // the admin with an inbox the server gives; one it refuses (an older server) is as anyone's
+    const isAdmin = !!me && me.admin === true && !inbox.refused;
+    fold(el.feedbackToggle, feedbackWord(entries.length, isAdmin), extras.feedback);
+    el.feedbackBox.hidden = isAdmin;
     el.feedbackInbox.hidden = !entries.length;
     const stats = !card && !!me && me.admin && !extras.refused;
     el.statsToggle.hidden = !stats;
@@ -5013,7 +5016,7 @@ async function loadStats() {
     const figures = document.createElement("table");
     for (const [label, value] of rows) figures.append(tableRow("th", [label], value));
     const people = document.createElement("table");
-    people.append(tableRow("th", ["user", "actions", "posted", "cost"]));
+    people.append(tableRow("th", ["user", "posted", "cost", "actions"]));
     for (const [name, ...rest] of users) people.append(tableRow("td", [name, ...rest]));
     el.statsTable.replaceChildren(figures, ...(users.length ? [people] : []));
 }
@@ -5559,16 +5562,9 @@ function renderVenues() {
             const connected = !!ebay && ebay.connected;
             el.accountConnect.hidden = !ebay || connected;
             paintConnect(el.accountConnect, connected, connected ? ebay.user : "");
-            el.accountReconnect.hidden = true;
-            // connected, its line is the way to eBay's consent again (a token eBay let lapse)
-            block.status.classList.toggle("tap-line", connected);
-            if (connected) {
-                block.status.setAttribute("role", "button");
-                block.status.setAttribute("tabindex", "0");
-                block.status.setAttribute("aria-label", `${words}: tap to connect eBay again`);
-            } else {
-                for (const name of ["role", "tabindex", "aria-label"]) block.status.removeAttribute(name);
-            }
+            // connected, Reconnect on its page, a button as Connect eBay is (Michal, 2026-10-31)
+            el.accountReconnect.hidden = !connected;
+            el.accountReconnect.disabled = account.busy;
             block.note.textContent = ebay && !connected ? CONNECT_TO_POST : "";
             block.note.hidden = !block.note.textContent;
         } else block.ask.hidden = allowed || !settings();
@@ -7294,6 +7290,7 @@ function main() {
         feedback: $("feedback"),
         feedbackInbox: $("feedback-inbox"),
         feedbackText: $("feedback-text"),
+        feedbackBox: $("feedback-box"),
         feedbackJob: $("feedback-job"),
         feedbackSend: $("feedback-send"),
         feedbackStatus: $("feedback-status"),
@@ -7579,15 +7576,7 @@ function main() {
             connectEbay().catch(() => {});
         });
     }
-    // connected, eBay's "Connected" line: its consent again (Michal, 2026-10-31)
-    const again = () => {
-        const ebay = ebayNow();
-        if (ebay && ebay.connected && !account.busy) connectEbay().catch(() => {});
-    };
-    el.venueBlocks.ebay.status.addEventListener("click", again);
-    el.venueBlocks.ebay.status.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") again();
-    });
+
     // a venue's card: its own page; Back: the Venues part again (Michal, 2026-10-31)
     for (const venue of VENUES) el.venueCards[venue].card.addEventListener("click", () => showVenue(venue));
     el.venueBack.addEventListener("click", () => showVenue(""));

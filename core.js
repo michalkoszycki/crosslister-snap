@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.31.0";
+import { noteDirty, unsent } from "./queue.js?v=2.31.1";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.31.0";
+} from "./book.js?v=2.31.1";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1717,8 +1717,10 @@ export function inboxHead(entry, offsetMinutes) {
  * @param {number} count
  * @returns {string}
  */
-export function feedbackWord(count) {
-    return count > 0 ? `Feedback (${count})` : "Feedback";
+export function feedbackWord(count, admin = false) {
+    // the admin's: what comes in (Michal, 2026-10-31: "that menu should be called 'incoming feedback'")
+    const word = admin ? "Incoming feedback" : "Feedback";
+    return count > 0 ? `${word} (${count})` : word;
 }
 
 /** The Stats chips, in their order on screen; 30 days unless another is tapped. */
@@ -1747,8 +1749,9 @@ function costWord(x) {
 }
 
 /**
- * GET /stats drawn as Admin's small table: one line per figure, then one row per user
- * (name, actions, posted, model cost). Counts only: no listing's title ever reaches it. The
+ * GET /stats drawn as Admin's small table: one line per figure, Actions last, then one row per
+ * user (name, posted, model cost, actions; Michal, 2026-10-31: "put actions last. its the most
+ * ambiguous item"). Counts only: no listing's title ever reaches it. The
  * server's jobs are "Actions sent" on screen (Michal, 2026-10-08: "I don't understand the
  * jobs count on the stats."): each press that reached the server is one, a posting per venue,
  * an end, a refresh, a push, a sync; index.html's note under the table says so.
@@ -1757,23 +1760,24 @@ function costWord(x) {
  */
 export function statsTable(answer) {
     const a = answer && typeof answer === "object" ? /** @type {Record<string, any>} */ (answer) : {};
-    const jobs = a.jobs && typeof a.jobs === "object" ? a.jobs : {};
+    // the server's shape since 2026-10-25: "jobs" the count, "by_state" its done / failed /
+    // cancelled; an older one's {"jobs": {"total", "done", ...}} is read as well
+    const old = a.jobs && typeof a.jobs === "object" ? a.jobs : null;
+    const states = a.by_state && typeof a.by_state === "object" ? a.by_state : old || {};
+    const total = old ? countOf(old.total) : countOf(a.jobs);
     const posted = a.posted && typeof a.posted === "object" ? a.posted : {};
     /** @type {[string, string][]} */
     const rows = [
-        [
-            "Actions sent",
-            `${countOf(jobs.total)}: ${countOf(jobs.done)} done, ${countOf(jobs.failed)} failed, ${countOf(jobs.cancelled)} cancelled`,
-        ],
         ...Object.keys(posted).map((venue) => /** @type {[string, string]} */ ([`posted on ${venueName(venue)}`, String(countOf(posted[venue]))])),
         ["drafted", String(countOf(a.drafted))],
         ["ended", String(countOf(a.ended))],
         ["pushed", String(countOf(a.pushed))],
         ["model cost", costWord(a.model_cost)],
+        ["Actions sent", `${total}: ${countOf(states.done)} done, ${countOf(states.failed)} failed, ${countOf(states.cancelled)} cancelled`],
     ];
     const users = (Array.isArray(a.per_user) ? a.per_user : [])
         .filter((u) => u && typeof u === "object")
-        .map((u) => /** @type {[string, string, string, string]} */ ([plain(u.user), String(countOf(u.jobs)), String(countOf(u.posted)), costWord(u.model_cost)]));
+        .map((u) => /** @type {[string, string, string, string]} */ ([plain(u.user), String(countOf(u.posted)), costWord(u.model_cost), String(countOf(u.jobs))]));
     return { rows, users };
 }
 

@@ -372,6 +372,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "feedback",
         // an admin's inbox of new feedback, above the box (Michal, 2026-10-08)
         "feedback-inbox",
+        "feedback-box",
         "feedback-text",
         "feedback-job",
         "feedback-send",
@@ -8313,23 +8314,23 @@ test("Stats: an admin's only; 30d first, a chip asks again, a small table of cou
     // are the actions sent, and the note under the table says what each count is
     assert.deepEqual(tables, [
         [
-            ["th:Actions sent", "td:40: 31 done, 6 failed, 3 cancelled"],
             ["th:posted on eBay", "td:22"],
             ["th:posted on craigslist", "td:7"],
             ["th:drafted", "td:30"],
             ["th:ended", "td:4"],
             ["th:pushed", "td:9"],
             ["th:model cost", "td:$12.34"],
+            ["th:Actions sent", "td:40: 31 done, 6 failed, 3 cancelled"],
         ],
         [
-            ["th:user", "th:actions", "th:posted", "th:cost"],
-            ["td:michal", "td:30", "td:21", "td:$9.10"],
-            ["td:wife", "td:10", "td:8", "td:$3.24"],
+            ["th:user", "th:posted", "th:cost", "th:actions"],
+            ["td:michal", "td:21", "td:$9.10", "td:30"],
+            ["td:wife", "td:8", "td:$3.24", "td:10"],
         ],
     ]);
     assert.match(
         html,
-        /<div id="stats-table" class="stats-table"><\/div>\s*(<!--[\s\S]*?-->\s*)?<p id="stats-note" class="small stats-note">Actions: every press that reached the server \(a posting per venue, an end, a refresh, a push, a sync\)\. Posted: listings that went up\. Drafted: items the model wrote up\.<\/p>/
+        /<div id="stats-table" class="stats-table"><\/div>\s*(<!--[\s\S]*?-->\s*)?<p id="stats-note" class="small stats-note">Posted: listings that went up\. Drafted: items the model wrote up\. Actions: every press that reached the server \(a posting per venue, an end, a refresh, a push, a sync\)\.<\/p>/
     );
     assert.equal(nodes.get("stats-note").hidden, false, "under the table, inside Stats");
 
@@ -8518,7 +8519,7 @@ test("the account card shows what the server gives: unlimited, no packs, eBay co
         packs: null,
         ebay: "Connected as michal_sells",
         connect: null,
-        reconnect: false,
+        reconnect: true,
         status: "",
     });
     // payments not set up (no packs): the count and Buy postings all the same, for every account
@@ -8562,37 +8563,36 @@ test("the account card shows what the server gives: unlimited, no packs, eBay co
     assert.equal(none.credits, null);
 });
 
-test("eBay connected: the eBay block says Connected as, Connect eBay goes; its Connected line goes to eBay again", async (t) => {
+test("eBay connected: the eBay block says Connected as, Connect eBay goes; Reconnect, a button on its page, goes to eBay again", async (t) => {
     // Michal, 2026-10-10: "It better just say eBay connected on the same button, lit in green"
     // (the two steps' button keeps it); under Venues the status line says it (docs/UI.md)
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "irenurmenet0", policies: "ready" } } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await openSettings(nodes);
-    // no Reconnect link: the Connected line itself (Michal, 2026-10-31: "Pressing the 'Connected'
-    // text should give that capability")
-    const reconnect = nodes.get("account-ebay");
-    assert.equal(nodes.get("account-reconnect").hidden, true);
-    assert.equal(reconnect.classList.contains("tap-line"), true);
-    assert.equal(reconnect.attrs.role, "button");
+    // Reconnect a button on the venue's page, the Connected line plain words (Michal, 2026-10-31:
+    // "the connected text does not need to be an action live link")
+    const reconnect = nodes.get("account-reconnect");
+    assert.equal(reconnect.hidden, false);
+    assert.ok(!nodes.get("account-ebay").attrs.role, "plain words");
     assert.equal(nodes.get("account-ebay").textContent, "Connected as irenurmenet0");
     assert.equal(nodes.get("account-ebay").classList.contains("ok"), true);
     assert.equal(nodes.get("account-connect").hidden, true);
     assert.equal(nodes.get("venue-ebay-note").hidden, true);
-    assert.match(html, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="account-reconnect" class="link reconnect-link" hidden>Reconnect<\/button>/);
+    assert.match(html, /id="account-connect"[^>]*>Connect eBay<\/button>\s*(<!--[\s\S]*?-->\s*)?<button type="button" id="account-reconnect" class="pill pill-small" hidden>Reconnect<\/button>/);
     // the green a listed badge has, on the two steps' button, not faded as a disabled button is
     const css = readFileSync(join(root, "styles.css"), "utf8");
     assert.match(css, /button\.connected:disabled \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); opacity: 1; \}/);
     assert.match(css, /\.vbadge\.posted \{ background: var\(--ok\); border-color: var\(--ok\); color: var\(--ok-ink\); \}/, "the same green");
 
-    // the Connected line: eBay's consent again, for a token eBay let lapse; a tap while it goes
-    // does nothing more
+    // Reconnect: eBay's consent again, for a token eBay let lapse
     reconnect.fire("click");
     assert.equal(accountOf(nodes).status, "Opening eBay...");
-    reconnect.fire("click");
+    assert.equal(reconnect.disabled, true, "one at a time");
     await settle();
-    assert.deepEqual(pc.connects, ["key test-key-0123456789"], "one at a time");
+    assert.deepEqual(pc.connects, ["key test-key-0123456789"]);
     assert.equal(globalThis.location.assigned.at(-1), EBAY_CONSENT);
+    assert.equal(reconnect.disabled, false);
 
     // no name from the server: Connected alone; not connected: Connect eBay, no Reconnect
     const nameless = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: { ...ACCOUNT_ME, ebay: { connected: true, user: "", policies: "ready" } } }).fetch });
@@ -9549,7 +9549,7 @@ const INBOX = {
     ],
 };
 
-test("Feedback, for an admin: the new entries above the box, counted in its toggle; Reviewed takes one away", async (t) => {
+test("Incoming feedback, for an admin: the new entries, counted in its toggle, no box of their own; Reviewed takes one away", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = inventoryPc([summary("A1")]);
     pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
@@ -9559,14 +9559,15 @@ test("Feedback, for an admin: the new entries above the box, counted in its togg
     nodes.get("admin-toggle").fire("click");
     await settle();
     assert.deepEqual(pc.inboxAsks, ["key test-key-0123456789 ?new=1"]);
-    assert.equal(nodes.get("feedback-toggle").textContent, "▸ Feedback (2)");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▸ Incoming feedback (2)");
     assert.equal(nodes.get("feedback").hidden, true);
     nodes.get("feedback-toggle").fire("click");
     await settle();
     assert.equal(pc.inboxAsks.length, 2, "asked afresh as it opens");
-    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback (2)");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback (2)");
+    assert.equal(nodes.get("feedback-box").hidden, true, "the admin does not send themselves feedback (Michal, 2026-10-31)");
     assert.equal(nodes.get("feedback-inbox").hidden, false);
-    assert.match(html, /<div id="feedback" class="card" hidden>\s*<div id="feedback-inbox" class="feedback-inbox"[^>]*hidden><\/div>\s*<label class="field">/);
+    assert.match(html, /<div id="feedback" class="card" hidden>\s*<div id="feedback-inbox" class="feedback-inbox"[^>]*hidden><\/div>\s*(<!--[\s\S]*?-->\s*)?<div id="feedback-box">\s*<label class="field">/);
     const entries = () => nodes.get("feedback-inbox").children.map((box) => box.children.map((c) => c.textContent));
     const [first, second] = entries();
     // who, when (in the phone's own time), from where; the words; the job's error; Reviewed
@@ -9582,7 +9583,7 @@ test("Feedback, for an admin: the new entries above the box, counted in its togg
     await settle();
     assert.deepEqual(pc.reviews, [{ id: "f9", body: { reviewed: true }, auth: "key test-key-0123456789", type: "application/json" }]);
     assert.equal(entries().length, 1);
-    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback (1)");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback (1)");
     // refused: it stays, and the line says why
     pc.refuseReview = { status: 400, detail: "no such feedback" };
     reviewed().fire("click");
@@ -9594,7 +9595,7 @@ test("Feedback, for an admin: the new entries above the box, counted in its togg
     await settle();
     assert.deepEqual(pc.reviews.map((r) => r.id), ["f9", "f8", "f8"]);
     assert.equal(nodes.get("feedback-inbox").hidden, true, "nothing new: no inbox");
-    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Feedback");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback");
 
     // anyone else: the box alone, the inbox never asked for
     const wife = inventoryPc([summary("A1")]);
@@ -9621,6 +9622,7 @@ test("Feedback, for an admin: the new entries above the box, counted in its togg
     assert.equal(older.inboxAsks.length, 1);
     assert.equal(old.nodes.get("feedback-inbox").hidden, true);
     assert.equal(old.nodes.get("feedback-toggle").textContent, "▾ Feedback");
+    assert.equal(old.nodes.get("feedback-box").hidden, false, "as anyone's");
 });
 
 /** A new account, made at the first code (Michal, 2026-10-25): an ordinary account, its eBay not connected yet. */

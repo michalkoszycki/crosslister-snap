@@ -4001,24 +4001,30 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
         first: "2026-09-08",
         last: "2026-10-08",
     };
-    assert.deepEqual(statsTable(answer), {
+    // Actions last, the most ambiguous (Michal, 2026-10-31)
+    const expected = {
         rows: [
-            // Michal, 2026-10-08: "I don't understand the jobs count on the stats."
-            ["Actions sent", "40: 31 done, 6 failed, 3 cancelled"],
             ["posted on eBay", "22"],
             ["posted on craigslist", "7"],
             ["drafted", "30"],
             ["ended", "4"],
             ["pushed", "9"],
             ["model cost", "$12.34"],
+            // Michal, 2026-10-08: "I don't understand the jobs count on the stats."
+            ["Actions sent", "40: 31 done, 6 failed, 3 cancelled"],
         ],
         users: [
-            ["michal", "30", "21", "$9.10"],
-            ["wife", "10", "8", "—"],
+            ["michal", "21", "$9.10", "30"],
+            ["wife", "8", "—", "10"],
         ],
-    });
+    };
+    assert.deepEqual(statsTable(answer), expected);
+    // the server's shape since 2026-10-25: "jobs" the count, "by_state" beside it (the page read
+    // only the older one, and said "0: 0 done" with postings up: Michal, 2026-10-31)
+    const now = { ...answer, jobs: 40, by_state: { done: 31, failed: 6, cancelled: 3 } };
+    assert.deepEqual(statsTable(now), expected);
     // anything missing or odd reads as nothing, never a crash
-    assert.deepEqual(statsTable(null).rows[0], ["Actions sent", "0: 0 done, 0 failed, 0 cancelled"]);
+    assert.deepEqual(statsTable(null).rows.at(-1), ["Actions sent", "0: 0 done, 0 failed, 0 cancelled"]);
     assert.deepEqual(statsTable({ jobs: { total: "x" }, per_user: "no" }).users, []);
 });
 

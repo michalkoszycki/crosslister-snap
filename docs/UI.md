@@ -196,8 +196,8 @@ saved), and the phone remembers which were left open.
    buttons at the top. instead provide 3 cards for the venues ... same size with same options").
    Each card the same shape: the venue's name first, then its status line ("Connected" for
    every venue set up, Craigslist and Poshmark included, Michal 2026-10-31; eBay's "Connected"
-   line is tapped to connect again, no Reconnect link: "Pressing the 'Connected' text should
-   give that capability"; no line under a grey sync pair saying why: "no need for this
+   line plain words, connecting and reconnecting by the Connect eBay / Reconnect buttons on the
+   venue's own page: "the connected text does not need to be an action live link"; no line under a grey sync pair saying why: "no need for this
    comment")
    ("Connected as name · policies ready", "Signed in on the server", "Not available for
    your account yet", "Not connected" with the **Connect eBay** pill and "Connect eBay to
@@ -276,7 +276,7 @@ listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues 
 the listing"). A list row's listed badge still wears the sync-to half while its listing is
 behind and pushes that row when tapped.
 
-**Feedback.** The admin's inbox with a count (admin only); the Feedback box, "Include my
+**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else the Feedback box, "Include my
 last job", **Send**, "Thanks, sent."
 
 **Stats** (admin only). 7d / 30d / all chips, the table, the note.
