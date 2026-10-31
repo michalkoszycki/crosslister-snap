@@ -196,7 +196,7 @@ saved), and the phone remembers which were left open.
    available); its two sync buttons, **Sync from <venue>** and **Sync to <venue>**, the venue
    lowercase as on every button ("Sync from ebay"; Michal, 2026-10-26). **The sync buttons
    live here and nowhere else** (Michal, 2026-10-31): the inventory's green with **black**
-   words, then the font's own arrow, ← on Sync from and → on Sync to (Michal, 2026-10-31:
+   words, then an arrow drawn with a heavy stroke (the font's was too thin to see), ← on Sync from and → on Sync to (Michal, 2026-10-31:
    "the typical font arrow right (for sync to) and arrow left (for sync from)"; the same → after
    the venue on an inventory row's sync badge; no other sync symbol), every state exactly a
    listed badge's height (the ring in the arrow's room, "tap again to cancel" on the word's

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.28.1";
+import { VERSION } from "./version.js?v=2.28.2";
 import {
     adminLink,
     anyActive,
@@ -247,8 +247,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.28.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.1";
+} from "./core.js?v=2.28.2";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.2";
 import {
     addVenue,
     applyWrap,
@@ -299,8 +299,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.28.1";
-import { shrinkPhoto } from "./shrink.js?v=2.28.1";
+} from "./pc.js?v=2.28.2";
+import { shrinkPhoto } from "./shrink.js?v=2.28.2";
 import {
     bookCard,
     bookPriceValue,
@@ -313,8 +313,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.28.1";
-import { canScan, readIsbn } from "./scan.js?v=2.28.1";
+} from "./book.js?v=2.28.2";
+import { canScan, readIsbn } from "./scan.js?v=2.28.2";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -3334,16 +3334,33 @@ function syncBadge(sku, badge) {
 
 /**
  * The sync mark for `direction`, after the venue's name on a venue block's sync button and a
- * row's sync badge: the font's own arrow, → to the venue, ← from it, in the words' size so
- * the button is no taller (Michal, 2026-10-31: "lets go with the typical font arrow right
- * (for sync to) and arrow left (for sync from)"). Hidden from a screen reader, which hears
- * the button's label.
+ * row's sync badge: an arrow, right to the venue, left from it (Michal, 2026-10-31: "the
+ * typical font arrow right (for sync to) and arrow left (for sync from)"), drawn with a heavy
+ * stroke since the font's was too thin to see ("is there a thicker version"), the words'
+ * height so the button is no taller. Hidden from a screen reader, which hears the label.
  */
 function syncIcon(direction = "to") {
     const mark = document.createElement("span");
     mark.className = "sync-dir";
     mark.setAttribute("aria-hidden", "true");
-    mark.textContent = direction === "from" ? "←" : "→";
+    mark.setAttribute("data-dir", direction === "from" ? "from" : "to");
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({
+        viewBox: "0 0 24 24",
+        width: "12",
+        height: "12",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "3.6",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+    })) {
+        svg.setAttribute(k, v);
+    }
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", direction === "from" ? "M20 12H5M11 5l-7 7 7 7" : "M4 12h15M13 5l7 7-7 7");
+    svg.append(path);
+    mark.append(svg);
     return mark;
 }
 

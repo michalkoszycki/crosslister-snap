@@ -2560,7 +2560,8 @@ test("a venue block's sync buttons: from and to post their job, show its step an
         assert.equal(buttonSays(btn), `Sync ${direction} ebay`);
         // then the font's arrow (Michal, 2026-10-31): → to the venue, ← from it
         assert.equal(btn.children.at(-1).className, "sync-dir");
-        assert.equal(btn.children.at(-1).textContent, direction === "to" ? "→" : "←");
+        assert.equal(btn.children.at(-1).attrs["data-dir"], direction);
+        assert.equal(btn.children.at(-1).children[0].tag, "svg", "drawn, a heavy stroke (the font's arrow was too thin)");
         assert.equal(btn.children.at(-1).attrs["aria-hidden"], "true");
         assert.ok(!btn.textContent.includes("↻"));
     }
@@ -2792,13 +2793,13 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     // the venue, then → where the tick was (Michal, 2026-10-31: "the symbol shoud be AFTER the text naming the venue")
     assert.equal(badge.children[0], "ebay");
     assert.equal(badge.children[1].className, "sync-dir");
-    assert.equal(badge.children[1].textContent, "→");
+    assert.equal(badge.children[1].attrs["data-dir"], "to");
     assert.equal(wordOf(badge), "ebay");
     assert.ok(!badge.children.some((c) => c.tag === "svg"), "no tick while it is behind");
     assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay");
     // its reset beside it, hidden until a tap pauses it; the other badges as ever
     assert.deepEqual(listed(nodes)[0].badges, [
-        "ebay→ (vbadge posted vsync)",
+        "ebay (vbadge posted vsync)",
         "reset (reset-call)",
         "craigslist draft (vbadge draft)",
     ]);

@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.28.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.28.2") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -938,7 +938,8 @@ button.vbadge {
     padding: 4px 10px;
     font-size: 12px;
 }
-.sync-dir { flex: none; font-weight: 800; line-height: inherit; }
+.sync-dir { flex: none; display: inline-flex; align-items: center; }
+.sync-dir svg { display: block; width: 12px; height: 12px; }
 button.vbadge.busy { flex-wrap: nowrap; }
 button.vbadge.busy .sync-dir { display: none; }
 button.vbadge .tap-cancel { flex-basis: auto; font-size: 10px; line-height: inherit; }
