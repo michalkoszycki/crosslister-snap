@@ -67,7 +67,7 @@ Always present. Left: the camera mark and the "$nap" wordmark, as today. After t
 wordmark: **the current account's name** (`/me` `user`; there is no one signing up without
 an account since 2026-10-25, 4.3), muted; absent on the landing. Right: the server word ("server ok" green, "server off" and
 "wrong key" red, "checking server...", "server not set"), then the Admin button: three
-vertical dots, the way apps open their menu, heard as "Admin" (Michal, 2026-10-31); it reads
+dots in a row, the way apps open their menu, heard as "Admin" (Michal, 2026-10-31); it reads
 "Snap" while Admin is open and takes the person back. The server word appears here only;
 nowhere else on the page repeats it.
 
@@ -193,8 +193,11 @@ saved), and the phone remembers which were left open.
    available); its two sync buttons, **Sync from <venue>** and **Sync to <venue>**, the venue
    lowercase as on every button ("Sync from ebay"; Michal, 2026-10-26). **The sync buttons
    live here and nowhere else** (Michal, 2026-10-31): the inventory's green with **black**
-   words, the page's own half of the sync symbol after the words (`#sync-from-icon` on Sync
-   from, `#sync-to-icon` on Sync to; no ↻, the one sync symbol throughout); shown only once
+   words, then the font's own arrow, ← on Sync from and → on Sync to (Michal, 2026-10-31:
+   "the typical font arrow right (for sync to) and arrow left (for sync from)"; the same → after
+   the venue on an inventory row's sync badge; no other sync symbol), every state exactly a
+   listed badge's height (the ring in the arrow's room, "tap again to cancel" on the word's
+   line); shown only once
    the venue is connected or signed in (none for eBay before Connect eBay, none for a venue
    the account lacks: its status line says why); grey and disabled where a direction does not
    exist (Sync from craigslist, both for poshmark), with one muted line of reason under the

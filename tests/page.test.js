@@ -327,10 +327,6 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
             `sync-${v}-status`,
             `venue-${v}-cannot`,
         ]),
-        // the two halves of the sync symbol (Michal, 2026-10-07), after a sync button's words
-        // and in a row's sync badge
-        "sync-from-icon",
-        "sync-to-icon",
         // last under Venues (Michal, 2026-10-26: "the address box should be at the end of
         // venues"): the shared block, the venues' blocks
         "seller",
@@ -459,19 +455,17 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     assert.match(custom, /<label class="field-label" for="detail-pricing">Price<\/label>/);
     assert.match(custom, /<input id="detail-pricing" class="pricing" type="range" min="1" max="3" step="1"/);
     assert.ok(!/without asking|auto-post|post the item again/i.test(custom), "no post without asking, no read-only grade");
-    // the two halves of the sync symbol on one 24-unit box, hidden from a screen reader, kept
-    // out of sight for app.js to copy into a row's sync badge (Michal, 2026-10-07): to the top
-    // arc, its arrow at the right; from the bottom arc, its arrow at the left
-    const icons = /<div class="sync-icons" hidden>([\s\S]*?)<\/div>/.exec(html)[1];
-    const icon = (id) =>
-        new RegExp(`<span id="${id}" class="btn-icon"><svg\\s+aria-hidden="true" viewBox="0 0 24 24"[^>]*stroke="currentColor"[^>]*>([\\s\\S]*?)</svg></span>`).exec(icons);
-    assert.match(icon("sync-to-icon")[1], /<path d="M4 12a8 8 0 0 1 14-5\.5"><\/path>/);
-    assert.match(icon("sync-from-icon")[1], /<path d="M20 12a8 8 0 0 1-14 5\.5"><\/path>/);
+    // no drawn sync symbol any more: the font's arrows, made by app.js (Michal, 2026-10-31)
+    assert.ok(!html.includes("sync-icons"), "no hidden sync halves to copy");
     // a venue block's sync row: empty in the page, both buttons drawn by app.js
     for (const v of ["ebay", "craigslist", "poshmark"]) assert.match(html, new RegExp(`<div id="venue-${v}-sync" class="venue-sync"></div>`));
-    // the half of the sync symbol after a sync button's words out of sight while its ring turns;
-    // no round arrow any more (Michal, 2026-10-31: the page's own icons, the one sync symbol)
-    assert.match(css, /button\.vbadge\.busy \.btn-icon \{ display: none; \}/);
+    // the arrow after a sync button's words out of sight while its ring turns, and every state
+    // a listed badge's height (Michal, 2026-10-31): no tall minimum, the cancel note on the line
+    assert.match(css, /button\.vbadge\.busy \.sync-dir \{ display: none; \}/);
+    const vbadge = /\nbutton\.vbadge \{([^}]*)\}/.exec(css)[1];
+    assert.ok(!vbadge.includes("min-height"), "no taller than a listed badge");
+    assert.match(css, /button\.vbadge\.busy \{ flex-wrap: nowrap; \}/);
+    assert.match(css, /button\.vbadge \.tap-cancel \{ flex-basis: auto;/);
     assert.ok(!css.includes("sync-arrow"), "no ↻");
     // the sync buttons' green with black words
     assert.match(css, /\.vbadge\.posted\.sync-call \{ color: #0b0b0b; \}/);
@@ -2554,8 +2548,10 @@ test("a venue block's sync buttons: from and to post their job, show its step an
         const btn = drawn(nodes, `sync-${direction}-ebay`);
         assert.equal(btn.className, `vbadge posted vsync sync-call sync-${direction}`);
         assert.equal(buttonSays(btn), `Sync ${direction} ebay`);
-        assert.equal(btn.children.at(-1).cloneOf, nodes.get(`sync-${direction}-icon`));
-        assert.equal(btn.children.at(-1).id, "", "the copy carries no id");
+        // then the font's arrow (Michal, 2026-10-31): → to the venue, ← from it
+        assert.equal(btn.children.at(-1).className, "sync-dir");
+        assert.equal(btn.children.at(-1).textContent, direction === "to" ? "→" : "←");
+        assert.equal(btn.children.at(-1).attrs["aria-hidden"], "true");
         assert.ok(!btn.textContent.includes("↻"));
     }
     assert.deepEqual(nodes.get("venue-ebay-sync").children.map((n) => n.id), ["sync-from-ebay", "sync-to-ebay", "sync-from-ebay-reset", "sync-to-ebay-reset"]);
@@ -2783,14 +2779,16 @@ test("a row's + and −: a dollar a tap, whatever the grades; one PATCH each, th
     const badge = ebayBadge(nodes, 0);
     assert.equal(badge.tag, "button");
     assert.equal(badge.className, "vbadge posted vsync", "the same green bubble");
-    assert.equal(badge.children[0].cloneOf, nodes.get("sync-to-icon"), "the sync bar's to-eBay icon, where the tick was");
-    assert.equal(badge.children[0].id, "", "a copy, without the bar's id");
+    // the venue, then → where the tick was (Michal, 2026-10-31: "the symbol shoud be AFTER the text naming the venue")
+    assert.equal(badge.children[0], "ebay");
+    assert.equal(badge.children[1].className, "sync-dir");
+    assert.equal(badge.children[1].textContent, "→");
     assert.equal(wordOf(badge), "ebay");
     assert.ok(!badge.children.some((c) => c.tag === "svg"), "no tick while it is behind");
     assert.equal(badge.attrs["aria-label"], "ebay listed, sync to eBay");
     // its reset beside it, hidden until a tap pauses it; the other badges as ever
     assert.deepEqual(listed(nodes)[0].badges, [
-        "ebay (vbadge posted vsync)",
+        "ebay→ (vbadge posted vsync)",
         "reset (reset-call)",
         "craigslist draft (vbadge draft)",
     ]);

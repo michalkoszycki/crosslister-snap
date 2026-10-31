@@ -3275,20 +3275,25 @@ function syncBadge(sku, badge) {
         cancel: busy && taskCancel(task),
         paused: busy && task.paused,
         label: `${badge.said}, sync to ${venueName(badge.venue)}`,
-        lead: [syncIcon()],
+        trail: [syncIcon()],
         reset,
     });
     return [btn, reset];
 }
 
 /**
- * The sync symbol's half for `direction` ("to": the top arc, "from": the bottom), copied from
- * index.html's for a sync bar button or a sync badge (without its id: index.html keeps that).
+ * The sync mark for `direction`, after the venue's name on a venue block's sync button and a
+ * row's sync badge: the font's own arrow, → to the venue, ← from it, in the words' size so
+ * the button is no taller (Michal, 2026-10-31: "lets go with the typical font arrow right
+ * (for sync to) and arrow left (for sync from)"). Hidden from a screen reader, which hears
+ * the button's label.
  */
 function syncIcon(direction = "to") {
-    const icon = el.syncIcons[direction].cloneNode(true);
-    icon.removeAttribute("id");
-    return icon;
+    const mark = document.createElement("span");
+    mark.className = "sync-dir";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = direction === "from" ? "←" : "→";
+    return mark;
 }
 
 /**
@@ -3367,18 +3372,19 @@ function badgeNode(badge) {
 }
 
 /**
- * The header's Admin button while Admin is closed (adminLink): three vertical dots in the
- * header's ink, hidden from a screen reader, which hears the button's label, "Admin".
+ * The header's Admin button while Admin is closed (adminLink): three dots in a row in the
+ * header's ink (Michal, 2026-10-31: "the dots should be horizontal"), hidden from a screen
+ * reader, which hears the button's label, "Admin".
  */
 function dotsIcon() {
     const svg = document.createElementNS(SVG_NS, "svg");
     for (const [k, v] of Object.entries({ class: "dots", viewBox: "0 0 24 24", width: "24", height: "24", fill: "currentColor", "aria-hidden": "true" })) {
         svg.setAttribute(k, v);
     }
-    for (const cy of ["5", "12", "19"]) {
+    for (const cx of ["5", "12", "19"]) {
         const dot = document.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("cx", "12");
-        dot.setAttribute("cy", cy);
+        dot.setAttribute("cx", cx);
+        dot.setAttribute("cy", "12");
         dot.setAttribute("r", "2.25");
         svg.append(dot);
     }
@@ -6949,7 +6955,6 @@ function main() {
         detailFolds: Object.fromEntries(
             VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
         ),
-        syncIcons: { from: $("sync-from-icon"), to: $("sync-to-icon") },
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
         photoViewClose: $("photo-view-close"),

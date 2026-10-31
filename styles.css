@@ -901,9 +901,12 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
    listed' and an arrow") */
 a.vbadge { position: relative; z-index: 1; padding: 4px 10px; font-size: 12px; text-decoration: none; }
 /* a listed badge whose listing is behind the row (Michal, 2026-10-07: "there should be our
-   sync-to logo appearing on the ebay green button"): the same green bubble with the sync
-   bar's to-eBay icon before the venue, in the tick's place, a job button above the row's
-   tap; pressed, the ring takes the icon's room, as on the sync bar */
+   sync-to logo appearing on the ebay green button"): the same green bubble, the venue and
+   then → in the tick's place, a job button above the row's tap; the venue blocks' Sync from
+   and Sync to the same, ← and →. Exactly a listed badge's height in every state (Michal,
+   2026-10-31: "make sure that the buttons in any of their states DO NOT become taller than
+   the typical height"): the arrow is a letter of the words, pressed the ring takes its room,
+   and "tap again to cancel" stays on the word's line */
 button.vbadge {
     position: relative;
     z-index: 1;
@@ -911,15 +914,15 @@ button.vbadge {
     align-items: center;
     justify-content: center;
     gap: 4px;
-    min-height: 32px;
     padding: 4px 10px;
     font-size: 12px;
 }
-button.vbadge .btn-icon svg { width: 14px; height: 14px; }
-button.vbadge.busy .btn-icon { display: none; }
-button.vbadge .tap-cancel { font-size: 10px; }
+.sync-dir { flex: none; font-weight: 800; line-height: inherit; }
+button.vbadge.busy { flex-wrap: nowrap; }
+button.vbadge.busy .sync-dir { display: none; }
+button.vbadge .tap-cancel { flex-basis: auto; font-size: 10px; line-height: inherit; }
 button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
-.inv-badges .reset-call { position: relative; z-index: 1; min-height: 32px; padding: 4px 2px; font-size: 13px; }
+.inv-badges .reset-call { position: relative; z-index: 1; min-height: 0; padding: 4px 2px; font-size: 12px; line-height: 1.3; }
 /* the price's round + (top right) and − (bottom right) of each row (Michal, 2026-10-07):
    44 px, ink on smoke, above the row's tap, so a tap on a shut one opens nothing either;
    a thin white outline round each (Michal, 2026-10-08: "Add thin white outline around the
