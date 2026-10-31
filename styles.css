@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.42.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.42.2") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1207,7 +1207,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* a service's box and, ticked with a flat rate, its price beside it (Michal, 2026-10-31) */
 .ship-check { display: flex; align-items: center; gap: 8px; }
 .ship-check .pickup { flex: 1 1 auto; min-width: 0; margin-top: 0; min-height: 36px; padding: 4px 12px; gap: 10px; font-size: 14px; background: var(--field); }
-.ship-check .pickup input { width: 18px; height: 18px; }
+.ship-check .pickup input, .pickup.ship-pickup input { width: 18px; height: 18px; }
+.pickup.ship-pickup { min-height: 36px; margin-top: 2px; padding: 4px 12px; gap: 10px; font-size: 14px; background: var(--field); }
 /* "for media only" after Media Mail, thinner (Michal, 2026-10-31) */
 .ship-thin { font-weight: 400; color: var(--muted); }
 .policy-editor .ship-check input[type="text"].policy-cost { flex: none; width: 6.5em; }

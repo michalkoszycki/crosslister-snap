@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.42.1">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.42.1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.42.2">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.42.2" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -198,6 +198,12 @@
                  rate beside it (Michal, 2026-10-31: "provide them as a checkbox list. and first
                  checkbox should be 'check all'"); a server with one service: the menu above -->
             <div id="policy-ship-list" class="policy-ship-list" hidden></div>
+            <!-- Local pickup with them, outside eBay's four (Michal, 2026-10-31: "return this to
+                 this list ... it is a useful item when thinking of shipping") -->
+            <label class="pickup ship-pickup">
+              <input id="policy-pickup" type="checkbox">
+              <span>Local pickup <span class="ship-thin">the buyer collects it</span></span>
+            </label>
             <p id="policy-ship-note" class="small policy-ship-note" hidden></p>
           </div>
           <div class="field">
@@ -212,10 +218,6 @@
             <span class="field-label">Handling time</span>
             <div id="policy-handling" class="chips policy-chips" role="group" aria-label="Handling time"></div>
           </div>
-          <label class="pickup">
-            <input id="policy-pickup" type="checkbox">
-            <span>Offer local pickup</span>
-          </label>
           </div>
           <div id="policy-part-returns" hidden>
           <div class="field">
@@ -1141,6 +1143,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.42.1"></script>
+<script type="module" src="app.js?v=2.42.2"></script>
 </body>
 </html>
