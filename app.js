@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.32.0";
+import { VERSION } from "./version.js?v=2.33.0";
 import {
     adminLink,
     anyActive,
@@ -254,8 +254,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.32.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.32.0";
+} from "./core.js?v=2.33.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.33.0";
 import {
     addVenue,
     applyWrap,
@@ -310,8 +310,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.32.0";
-import { shrinkPhoto } from "./shrink.js?v=2.32.0";
+} from "./pc.js?v=2.33.0";
+import { shrinkPhoto } from "./shrink.js?v=2.33.0";
 import {
     bookCard,
     bookPriceValue,
@@ -324,8 +324,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.32.0";
-import { canScan, readIsbn } from "./scan.js?v=2.32.0";
+} from "./book.js?v=2.33.0";
+import { canScan, readIsbn } from "./scan.js?v=2.33.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -5397,6 +5397,7 @@ function renderPolicies() {
     choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
     el.policyBestOffer.checked = !!d.best_offer;
+    el.policyBestOfferTip.hidden = !d.best_offer;
     el.policySave.disabled = policies.busy;
 }
 
@@ -5488,9 +5489,9 @@ function renderSignup() {
     const ebay = ebayNow();
     paintConnect(el.signupConnect, connected, ebay ? ebay.user : "");
     el.signupStepAddress.classList.toggle("off", !connected);
-    // step 3 waits with step 2, and is ticked once eBay says the policies are made
+    // step 3 waits with step 2; never ticked: what Snap sets up, not a step done (Michal,
+    // 2026-10-31: "no checkmark")
     el.signupStepPolicies.classList.toggle("off", !connected);
-    el.signupStepPolicies.classList.toggle("done", !!ebay && ebay.policies === "ready");
     renderPolicies();
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
     // there (ticked; the address card still takes a correction while /me catches up)
@@ -5515,7 +5516,19 @@ function ebayNow() {
  * @param {string} user
  */
 function paintConnect(btn, connected, user) {
-    btn.textContent = connectLabel(connected, user);
+    if (connected && user) {
+        const word = document.createElement("span");
+        word.className = "connect-word";
+        word.textContent = connectLabel(true, "");
+        const name = document.createElement("span");
+        name.className = "connect-user";
+        name.textContent = user;
+        btn.replaceChildren(word, name);
+        btn.setAttribute("aria-label", connectLabel(true, user));
+    } else {
+        btn.textContent = connectLabel(connected, user);
+        btn.removeAttribute("aria-label");
+    }
     btn.classList.toggle("connected", connected);
     btn.disabled = connected || account.busy;
 }
@@ -7313,6 +7326,7 @@ function main() {
         policyPayer: $("policy-payer"),
         policyPickup: $("policy-pickup"),
         policyBestOffer: $("policy-best-offer"),
+        policyBestOfferTip: $("policy-best-offer-tip"),
         policySave: $("policy-save"),
         policyStatus: $("policy-status"),
         signupAddress: $("signup-address"),
@@ -7702,6 +7716,7 @@ function main() {
     });
     el.policyBestOffer.addEventListener("change", () => {
         if (policies.draft) policies.draft.best_offer = el.policyBestOffer.checked;
+        el.policyBestOfferTip.hidden = !el.policyBestOffer.checked;
     });
     el.signupConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});

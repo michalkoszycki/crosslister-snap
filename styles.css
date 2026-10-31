@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.32.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.33.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -739,6 +739,7 @@ input[type="text"]:disabled { color: var(--muted); }
 .pickup input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* a row with small print under its words (post without asking): a rounded sheet, not a pill */
 .pickup:has(small) { border-radius: var(--radius); }
+.pickup:has(small[hidden]) { border-radius: 999px; }
 .pickup small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); line-height: 1.35; }
 /* the price grade (Michal, 2026-10-06: "a slider for price preference (3 grade)"): three
    steps on a 44 px tall touch area with the yellow thumb, its three words under the track
@@ -1186,14 +1187,19 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* step 3's Edit: each choice a menu, in the page's words and chips (Michal, 2026-10-31) */
 .policy-editor { font-size: 15px; font-weight: 500; }
 .policy-editor .field:first-child { margin-top: 0; }
-.policy-select { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; }
+.policy-select, .policy-editor input[type="text"].policy-cost { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--field); color: var(--ink); font: inherit; font-size: 15px; }
 .policy-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .policy-chips .chip { min-height: 36px; padding: 4px 14px; font-size: 13px; border-radius: 999px; }
-.pill.policy-save { margin-top: 14px; }
+.secondary.policy-save { margin-top: 14px; }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
    say eBay connected on the same button, lit in green"): a listed badge's posted green, done
    with, so not faded as a disabled button is */
 button.connected:disabled { background: var(--ok); border-color: var(--ok); color: var(--ok-ink); opacity: 1; }
+/* connected, the word at the button's size and the eBay name small under it, the button as tall
+   as Connect eBay was (Michal, 2026-10-31) */
+button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-block: 8px; }
+.connect-word { line-height: 1.1; }
+.connect-user { font-size: 14px; font-weight: 600; letter-spacing: normal; opacity: 0.9; overflow-wrap: anywhere; }
 
 /* craigslist for an account without it (Michal, 2026-10-08: "Keep the Craigslist button gray
    and when tapped write 'contact developer'"): grey, yet it takes the tap that says why */

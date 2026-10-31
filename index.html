@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.32.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.32.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.33.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.33.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -185,7 +185,7 @@
           </div>
           <label id="policy-cost-row" class="field" hidden>
             <span class="field-label">Flat rate, $</span>
-            <input id="policy-cost" class="quantity" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+            <input id="policy-cost" class="policy-cost" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
           </label>
           <div class="field">
             <span class="field-label">Handling time</span>
@@ -205,9 +205,9 @@
           </label>
           <label class="pickup">
             <input id="policy-best-offer" type="checkbox">
-            <span>Accept best offers</span>
+            <span>Allow best offers<small id="policy-best-offer-tip" hidden>You will be able to review the offers before finalizing.</small></span>
           </label>
-          <button type="button" id="policy-save" class="pill pill-ink pill-small policy-save">Save</button>
+          <button type="button" id="policy-save" class="secondary policy-save">Save</button>
         </div>
         <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit</button>
         <p id="policy-status" class="small account-status" aria-live="polite"></p>
@@ -1073,6 +1073,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.32.0"></script>
+<script type="module" src="app.js?v=2.33.0"></script>
 </body>
 </html>

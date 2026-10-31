@@ -7490,6 +7490,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "policy-payer",
         "policy-pickup",
         "policy-best-offer",
+        "policy-best-offer-tip",
         "policy-save",
         "signup-policies-edit",
         "policy-status",
@@ -9746,10 +9747,12 @@ test("a new account: Finish setting up in place of the posting screens, the rest
         ]
     );
     assert.equal(n.get("signup-step-policies").classList.contains("off"), false);
-    assert.equal(n.get("signup-step-policies").classList.contains("done"), false, "not made yet");
+    assert.equal(n.get("signup-step-policies").classList.contains("done"), false, "never ticked (2026-10-31)");
     const connected = n.get("signup-connect");
     assert.equal(connected.hidden, false, "the button stays");
-    assert.equal(connected.textContent, "eBay connected: anna_sells");
+    // the word, then the eBay name small under it in the same button (Michal, 2026-10-31)
+    assert.deepEqual(connected.children.map((c) => [c.className, c.textContent]), [["connect-word", "eBay connected"], ["connect-user", "anna_sells"]]);
+    assert.equal(connected.attrs["aria-label"], "eBay connected: anna_sells");
     assert.equal(connected.classList.contains("connected"), true);
     assert.equal(connected.disabled, true, "a tap does nothing");
     assert.equal(n.get("signup-step-ebay").classList.contains("done"), false, "no tick: the button says it");
@@ -9857,8 +9860,11 @@ test("step 3's Edit: each choice a menu, Save sends what changed and the list co
     assert.equal(n.get("policy-payer-row").hidden, true);
     n.get("policy-service").value = "USPSPriority";
     n.get("policy-service").fire("change");
+    assert.equal(n.get("policy-best-offer-tip").hidden, true, "no tip while unticked");
     n.get("policy-best-offer").checked = true;
     n.get("policy-best-offer").fire("change");
+    // ticked: each offer waits for them (Michal, 2026-10-31)
+    assert.equal(n.get("policy-best-offer-tip").hidden, false);
     n.get("policy-save").fire("click");
     await settle();
     assert.deepEqual(pc.policySaves, [{ shipping_service: "USPSPriority", return_days: 0, best_offer: true }], "only what changed");
