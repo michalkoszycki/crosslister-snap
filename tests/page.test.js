@@ -9546,7 +9546,8 @@ test("a new account: Finish setting up in place of the posting screens, the rest
     assert.equal(nodes.get("signup-step-address").classList.contains("off"), true, "step 2 greyed");
     assert.equal(nodes.get("signup-address").disabled, true);
     assert.equal(nodes.get("about-link").hidden, false);
-    assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish setting up<\/h2>\s*<p class="landing-what">Two steps, once, and Snap lists for you\.<\/p>/);
+    assert.match(html, /<section id="signup-steps" class="landing signup" hidden>\s*<h2 class="landing-name">Finish setting up<\/h2>/);
+    assert.ok(!html.includes("Two steps, once"), "no line under the heading (Michal, 2026-10-31: \"take this out\")");
     assert.match(html, /id="signup-connect" class="big">Connect eBay</);
     // Michal, 2026-10-08: "then your address. what address?": step 2 says where, and what it is for
     const step2 = /<li id="signup-step-address"[^>]*>([\s\S]*?)<\/li>/.exec(html)[1];

@@ -97,7 +97,7 @@ The first code makes the account (Michal, 2026-10-25: "create the account EVEN i
 don't create a venue"). There is no "pending" person: from the first code on, the person
 is an ordinary account with a name in the top bar, an empty inventory and the whole of
 Admin. In place of the posting screens, until eBay is connected and the address saved:
-"Two steps, once, and Snap lists for you." Step 1 as a card: **Connect eBay**, which
+"Finish setting up" with no line under it (Michal, 2026-10-31: "take this out"). Step 1 as a card: **Connect eBay**, which
 becomes "eBay connected: name" in green. Step 2 as a card: the address where you ship
 from, prefilled from eBay once connected, **Looks right** or **Save address**. The same
 two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
