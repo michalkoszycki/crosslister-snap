@@ -1137,7 +1137,7 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `POST <pc>/inventory/<sku>/venues/<venue>`, an empty card's **Add <venue> to this item** (`poshmark` too) | no body | the whole row, the venue now in its `venues` |
 | `POST <pc>/jobs`, a card's **Post on <venue>** | `{"sku", "venue"}`, the same body as the other venue button's | the same as any job |
 | `POST <pc>/jobs`, a card's **Refresh status** / **End listing** (after **Yes, end it**), ebay or craigslist (never poshmark: the server only posts there) | `{"action": "refresh", "sku", "venue"}` / `{"action": "end", "sku", "venue"}`, e.g. `{"action": "end", "sku": "R5", "venue": "craigslist"}` | `{"job", "state": "queued", "ahead"}`; 400 `{"detail"}` when refused: the card says it and its End goes |
-| `POST <pc>/jobs`, a venue block's **Sync from <venue> ↻** / **Sync to <venue> ↻** under Settings, Venues (the sticky sync bar's until 2.25.0): both on every venue, grey where `/me`'s `syncable` does not name it or the account lacks the venue | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in that venue's block |
+| `POST <pc>/jobs`, a venue block's **Sync from <venue>** / **Sync to <venue>** under Settings, Venues, the only sync buttons (the sticky sync bar's until 2.25.0): both once the venue is connected or signed in, grey where `/me`'s `syncable` does not name the direction | `{"action": "sync", "direction": "from", "venue": "ebay"}` / `{"action": "sync", "direction": "to", "venue": "craigslist"}`; to a server whose `/me` has no `syncable`, eBay's two without `venue`, as before | the same; once done `summary` `"<n> listings updated, <m> unchanged, <k> failed"`; 400 `{"detail"}` when refused, 409 while another sync is unfinished, shown in that venue's block |
 | `POST <pc>/jobs`, a listing's customize **Sync to <venue>** (one row, as saved, onto its listing there; one button per venue in `syncable.to` the row is listed on, 2.20.0), the craigslist card's **Sync to craigslist**, or a list row's sync badge | `{"action": "push", "sku", "venue"}`, the venue as `/me` names it: `"ebay"`, `"craigslist"` (the craigslist push is the server's from 2026-10-08), or one the server adds | the same; 400 `{"detail"}` when the row is not listed there, or from a server that does not push to that venue yet, shown in customize's status line, the card's line (the badge's: on the inventory's line) |
 | `GET <pc>/jobs/<id>` of an action job (and a card's post), every 3 s until it ends | - | as above, plus `"action"`, `"direction"` and, once done, `"summary"` (`"ebay: listed"`, `"3 listings updated, 10 unchanged, 0 failed"`, a push's `"updated"` or `"unchanged"`), the line the card, customize or the bar shows |
 | `GET <pc>/me`, after the first good check of each load, after Save and check, after a sign-in, after every job ends and after a 402 | - | `{"user", "admin": true/false, "craigslist": true/false, "venues": [...], "credits": {"unlimited": true} or {"free_left": n, "bought_left": n}, "packs": [{"id": "10", "postings": 10, "price": "$5.00"}...], "ebay": {"connected": true/false, "user": "<ebay username or empty>", "policies": "ready" / "pending" / "failed: <why>"}}`; `craigslist: false` greys the craigslist button, `admin: true` shows Stats (and the Feedback inbox), the last three draw the account card and the eBay block (`packs` empty: payments not set up, no Buy postings); a key it does not say is as before (craigslist on, admin off), a part it does not give is not shown; 404 (an older server): everything as before, the card by the account's name alone. Since 2.14.0 also `"registered"` (false: the two steps in place of the posting screens; not said, registered); since 2.25.0 `"name"` (the person's chosen name), `"email"` and `"owner"` (false: a member, Leave this account in Delete account's place); `"pending"` is no longer read (an account is made at the first code). Since 2.20.0 also `"syncable": {"to": ["ebay", "craigslist"], "from": ["ebay"]}` (a plain seller's `{"to": ["ebay"], "from": ["ebay"]}`; `syncableOf`: names trimmed, each once, a list not given is none): the venues customize's Sync to <venue> and the venue blocks' sync buttons go to and from, in `venues`' order; not said: eBay's alone, as before |
@@ -1158,8 +1158,8 @@ not have), 409 while the same item is already being posted on that venue (the ot
 | `PATCH <pc>/me/address`, **Save address** (2.25.0) | `{"same": true, "shared": {...the five}}` or `{"same": false, "venues": {"ebay": {"line1", "city", "state", "zip"}, "craigslist": {"zip", "neighborhood"}}}` (`addressSaveBody`: trimmed, the state upper-cased, the ZIP five digits, a venue's box not right named with it and nothing sent) | the `GET` body; then `/me` again for the eBay policies, every 10 s while `pending`, three minutes at most; 400 `{"detail"}` (its sentence), 409 (a job running): the server's words under Save; 404: `Saving the address is not available yet.` |
 | `PATCH <pc>/me/seller`, **Save address** (or **Looks right**) while a new account is on step 2 of Finish setting up (the route that starts the eBay policy setup, and writes the shared address too) | `{"address": {"line1": "12 Oak St", "city": "Chicago", "state": "IL", "postal_code": "60601"}}` (`addressBody`) | any; the card read again from `GET /me/address`, then `/me` (registered: the goods screen); refusals as for `/me/address` |
 | `GET <pc>/me/wrap`, Settings opened (and after Save and check) (2.19.0) | - | `{"header": {"on": true/false, "text": "...", "venues": ["ebay"]}, "footer": {...}, "available": ["ebay"] or ["ebay", "craigslist"]}` (`wrapOf`: a part not given is off and empty, `available` naming none is eBay): the card under Posting defaults, each part's box and venue pills under its tick; 404 (an older server): no card |
-| `PATCH <pc>/me/wrap`, a part ticked or unticked, a venue pill, the card's one **Save** (2.19.0; one card since 2.25.0) | only what changed (`wrapBody`, `wrapTextsBody`): `{"header": {"on": true, "venues": ["ebay"]}}` (the first tick, one venue available), `{"footer": {"on": false}}`, `{"footer": {"venues": ["ebay", "craigslist"]}}`, and Save's texts, both parts in one body when both changed (`{"header": {"text": "Hello"}, "footer": {"text": "Bye"}}`, trimmed, at most 2000 characters each); nothing changed sends nothing | the `GET` body; 400 `{"detail"}`: its words on the card's line, a pill as it was; 404: `The header and footer are not available yet.` |
-| `POST <pc>/me/wrap/apply`, **Apply to all existing <venue> listings** (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as a sync button's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`); 400 `{"detail"}`: its words under the button |
+| `PATCH <pc>/me/wrap`, **Save for upcoming postings** (and before **Apply to existing postings**), and Add standard text to posts unticked (2.19.0; this shape since the minor after 2.25.0) | only what changed (`wrapDraftBody`): each part `on` while its box holds words, its `text` (trimmed, at most 2000 characters) and its `venues`, both parts in one body (`{"header": {"on": true, "text": "Hello", "venues": ["ebay"]}}`); unticked, `wrapOffBody`'s `{"header": {"on": false}, "footer": {"on": false}}` for the parts on, texts kept; nothing changed sends nothing | the `GET` body; 400 `{"detail"}`: its words on the card's line, a pill as it was; 404: `The header and footer are not available yet.` |
+| `POST <pc>/me/wrap/apply`, **Apply to existing postings**, once per venue a part goes on, after the save (2.19.0) | `{"venue": "ebay"}` | `{"job": "<id>"}`, polled at `GET /jobs/<id>` every 3 s as a sync button's, its `summary` once done (`"3 listings updated, 10 unchanged, 0 failed"`) on that venue's line under the card; 400 `{"detail"}`: its words there |
 | `GET <pc>/me/people`, Settings opened (2.25.0) | - | `{"you", "owner": {"email", "name", "you"}, "members": [{"email", "name", "added", "signed_in", "you"}]}` (`peopleOf`): the People link's count, the owner's invite box, the People page's cards by `name` (never the email); 404 or 403: no link, no box |
 | `GET <pc>/me/devices` (the owner: `?all=1`), after the people (2.25.0) | - | `{"you", "devices": [{"id", "device", "created", "last_seen", "remember", "this"}]}`, or for `?all=1` `{"you", "people": [{"email", "devices": [...]}]}` (`devicesOf`): each person's devices on their card, "this device" or "last used ..." |
 | `POST <pc>/me/people`, **Invite** (the owner's) | `{"email"}` alone (`inviteBody`; the server names them after its first part) | 202: `Invitation sent`, the box cleared, the people asked again; 403 / 409 `{"detail"}`: its words under Invite |
@@ -1322,13 +1322,13 @@ Empty. With capacity to generate that card from there."
   Done, that venue is let go and its badge is the plain listed one again, a
   link; the inventory's line says how it ended (`G1: updated`, or the server's
   words). A venue block's Sync to <venue> that ends done lets every mark of
-  that venue go (the others stay), customize's Sync to <venue> its own, and a
-  card's Sync to <venue> its own.
+  that venue go (the others stay). A listing's page has no Sync of its own since the
+  minor after 2.25.0: its saved changes say which venue block's Sync puts them up.
 - **The sync buttons** (the sticky sync bar under the inventory until 2.25.0) are in
-  each venue's block under Settings, Venues: **Sync from <venue> ↻** and **Sync to
-  <venue> ↻** on every venue, the inventory's small green badge with the round arrow
-  after the words, grey where `/me`'s `syncable` does not name it or the account lacks
-  the venue, one line saying why. A tap is a job button's, as a venue button's: the
+  each venue's block under Settings, Venues, and nowhere else: **Sync from <venue>** and
+  **Sync to <venue>**, the inventory's green with black words and the page's half-arrow
+  after them, shown once the venue is connected or signed in, grey where `/me`'s
+  `syncable` does not name the direction, one line saying why. A tap is a job button's, as a venue button's: the
   ring at once and **tap again to cancel**, the sync job a second later, its line in
   that venue's block (`queued`, the server's step, the summary `3 listings updated, 10
   unchanged, 0 failed` or its error, asked every 3 s); the others locked until it ends
@@ -1581,40 +1581,50 @@ do, Server for I have a key), and the phone remembers which were left open
 (`snap.settings.folds`).
 
 - **Snap Account**: one card per account on this phone, the current one first and outlined:
-  its name, "by key" on a key account, **Buy postings** with the postings left beside it,
-  the packs under it, its line; for the owner the invite box (one label, one box,
+  its name, "by key" on a key account, **Buy postings** (the press-me pill, for every
+  account whose postings are counted) with the postings left beside it, the packs under it,
+  its line; for the owner the invite box (one label, one box,
   **Invite**: `POST /me/people {"email"}`); **People on this account ›** with the count; and
   bottom right **Delete account** (the owner's; none for the admin, **Leave this account**
   for a member) and **Sign out**. The other accounts' cards have **Switch to this account**
-  (or **Sign in again**) and **Remove from this phone**; **Add account** under them. The
-  People link opens the **People page** in Admin's place: one card per person by the name
+  (or **Sign in again**) and **Remove from this phone**; **Add account** under them, in line
+  with their inner text. The People link opens the **People page** in Admin's place: one
+  bordered card per person by the name
   they chose (never the email), owner or member, you, invited and not signed in yet;
   **Change name** on your own, **Remove** on a member (the owner's); their devices with
   **Sign out** each (this device's is a sign-out), **Sign out all other devices** on your
   own; a member's page ends with **Leave this account**.
-- **Venues**: one block per venue in `/me`'s order: its status line, **Ships from ...**, its
+- **Venues**: a row of option chips, one per venue in `/me`'s order, a chip opening that
+  venue's block, one at a time, eBay's first: its status line, **Ships from ...**, its
   actions (Connect eBay or Reconnect; Ask for it in Feedback for a venue the account lacks),
-  **Sync from <venue> ↻** and **Sync to <venue> ↻** always both, grey with one line of
-  reason where the function or the venue is missing, the job's line. Last, the **Address
-  where you ship from** card: **Same address for every venue**, one block or, unticked, one
-  per venue that uses an address (`GET`/`PATCH /me/address`), **Save address**.
-- **Posting defaults**: the defaults every new item starts with (Quantity, Pickup only, the
-  Price slider, Post without asking, Compare with marketplace listings, Fix dark photos),
-  saved on this phone as each changes (`snap.customize.defaults`, `snap.photos.fixdark`);
-  the item's customize box starts from them and has no Save as default any more. Then the
-  **Header and footer on every listing** card: each part's tick, its box and venue pills only
-  under it, one **Save**, **Apply to all existing <venue> listings** per venue ticked.
+  **Sync from <venue>** and **Sync to <venue>**, the only sync buttons on the page (since
+  the minor after 2.25.0 the listing page has none): green with black words, the page's own
+  half-arrow after the words, shown once the venue is connected or signed in, grey with one
+  line of reason where a direction does not exist, the job's line. Last, with no card, the
+  **Address where you ship from**: one line ("1234 W Example St, Chicago, IL 60637") split
+  at the commas for `PATCH /me/address`, or, unticked, one line per venue that uses an
+  address; then **Save address** and **Same address for every venue** on one row.
+- **Posting defaults**: one muted line, then the defaults every new item starts with
+  (Quantity beside the Price slider, then Pickup only, Post without asking, Compare with
+  marketplace listings, Fix dark photos, one line each), saved on this phone as each changes
+  (`snap.customize.defaults`, `snap.photos.fixdark`); the item's customize box starts from
+  them. The fifth option, **Add standard text to posts**, unfolds the header and footer card
+  (`/me/wrap`): Header and Footer boxes, each with its venue chips (a blank box means none),
+  **Save for upcoming postings** and **Apply to existing postings** (saved, then `POST
+  /me/wrap/apply` per venue), dimmed until something changes; unticking turns both off and
+  keeps their texts.
 - **Server**: a key account's alone (an email account has nothing to type there). **Server
   address**: `https://<pc>.<tailnet>.ts.net`, the address `tailscale funnel` prints; only
   `https://*.ts.net` is accepted, plus `http://127.0.0.1` and `http://localhost` for trying
   the page on the server itself (the page's CSP allows exactly those). **Key**: one of the
   keys in `CROSSLISTER_KEYS` in the server's `.env`. **Save and check**, its line. The
   server word is in the top bar alone.
-- **This phone**: **Appearance**, **Dark** | **Light** | **Sync with device** (the default),
+- **This phone**: **Dark** | **Light** | **Sync with device** (option chips, the default chosen),
   applied at once and remembered (`data-theme` on `<html>`, both `theme-color` metas; the
   saved look applied before the page renders; the dark tokens written twice in
   `styles.css`, for the device and for Dark chosen, which a test keeps identical), and
-  **Install on the home screen** or "Installed on the home screen." Show photos stays in the
+  **Install on the home screen** (press-me) or the chosen chip "Installed on home screen".
+  Show photos stays in the
   inventory's Options.
 
 The accounts are stored in `localStorage` on the phone (`snap.accounts`, a JSON
