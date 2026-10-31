@@ -130,11 +130,12 @@ settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats**
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
-**Settings** has five parts, each a fold of its own inside Settings (Michal, 2026-10-25:
-a two-level fold), its heading larger than its contents, indented one step in from the
-Inventory / Settings / Feedback level with its tiles indented the same so the edges line
-up, in this order. The first is named **Snap Account** (Michal, 2026-10-25). Settings opens as
-the five closed headings; the one the person needs opens by itself (Account after a new
+**Settings** opens as a grey card, as the inventory's, with its five parts as a row of
+chips at its top, the inventory filters' look; the pressed chip's part is the one shown
+under them, one at a time (Michal, 2026-10-31: "words in pill shaped buttons with the
+highlighted one deciding what is visible below"), the chosen one remembered on this phone,
+in this order. The first is named **Snap Account** (Michal, 2026-10-25), shown until another
+is chosen; the one the person needs is chosen by itself (Account after a new
 sign-in, Venues while eBay is not yet connected, Server for "I have a key" before a key is
 saved), and the phone remembers which were left open.
 

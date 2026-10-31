@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.27.9";
+import { VERSION } from "./version.js?v=2.28.0";
 import {
     adminLink,
     anyActive,
@@ -247,8 +247,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.27.9";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.27.9";
+} from "./core.js?v=2.28.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.28.0";
 import {
     addVenue,
     applyWrap,
@@ -299,8 +299,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.27.9";
-import { shrinkPhoto } from "./shrink.js?v=2.27.9";
+} from "./pc.js?v=2.28.0";
+import { shrinkPhoto } from "./shrink.js?v=2.28.0";
 import {
     bookCard,
     bookPriceValue,
@@ -313,8 +313,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.27.9";
-import { canScan, readIsbn } from "./scan.js?v=2.27.9";
+} from "./book.js?v=2.28.0";
+import { canScan, readIsbn } from "./scan.js?v=2.28.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -2583,7 +2583,7 @@ function showAdmin(open, card = "") {
     // an account being added: Settings, for its key, as on a phone with none
     const ok = !!settings() && !adding;
     if (!ok) {
-        folds.server = true;
+        selectFold("server");
         showSettings(true);
         showInventory(false);
         return;
@@ -2593,8 +2593,8 @@ function showAdmin(open, card = "") {
     // phone, Venues while a new account's eBay is not connected or its address not saved
     const step = signupStep(me);
     if (freshSignin || step) {
-        if (freshSignin) folds.account = true;
-        if (step) folds.venues = true;
+        if (step) selectFold("venues");
+        if (freshSignin) selectFold("account");
         freshSignin = false;
         showSettings(true);
         showInventory(false);
@@ -2648,31 +2648,42 @@ function readFolds() {
 }
 
 /**
- * Settings' five folds (Michal, 2026-10-25): each open or closed as `folds` has it; the
- * Server fold only for a key account (an email account has no server to type), or while no
- * account is in hand or one is being added.
+ * Settings' five parts as a row of chips (Michal, 2026-10-31: "words in pill shaped buttons
+ * with the highlighted one deciding what is visible below"): one part shown, the first that
+ * `folds` has open, Snap Account when none is; the Server part and its chip only for a key
+ * account (an email account has no server to type), or while no account is in hand or one is
+ * being added.
  */
 function renderSettingsFolds() {
     const a = currentAccount();
     const server = adding || !a || !!a.key;
+    const shown = FOLDS.find(([key]) => !!folds[key] && (key !== "server" || server));
+    const chosen = shown ? shown[0] : "account";
     for (const [key, word] of FOLDS) {
-        const open = !!folds[key] && (key !== "server" || server);
+        const open = key === chosen;
         el.folds[key].toggle.hidden = key === "server" && !server;
         el.folds[key].body.hidden = !open;
         fold(el.folds[key].toggle, word, open);
+        el.folds[key].tab.hidden = key === "server" && !server;
+        el.folds[key].tab.setAttribute("aria-pressed", open ? "true" : "false");
     }
 }
 
-/** A fold's heading tapped: open or closed, remembered on this phone. */
+/** One part chosen, the others put away; `keep`: remembered on this phone (a chip's tap). */
+function selectFold(key, keep = false) {
+    folds = Object.fromEntries(FOLDS.map(([k]) => [k, k === key]));
+    if (keep) writeJson("localStorage", FOLDS_KEY, folds);
+}
+
+/** A part's chip (or its heading) tapped: that part shown, remembered on this phone. */
 function toggleFold(key) {
-    folds[key] = !folds[key];
-    writeJson("localStorage", FOLDS_KEY, folds);
+    selectFold(key, true);
     renderSettingsFolds();
 }
 
-/** A fold opened by itself (the one the person needs now), Settings open with it, Admin too. */
+/** A part opened by itself (the one the person needs now), Settings open with it, Admin too. */
 function openFold(key) {
-    folds[key] = true;
+    selectFold(key);
     showSettings(true);
     const body = el.folds[key].body;
     if (typeof body.scrollIntoView === "function") body.scrollIntoView({ block: "start" });
@@ -5453,7 +5464,7 @@ async function loadSeller() {
             seller.same = info.same;
             fillSeller(info);
             if (!info.same) drawAddressVenues(info);
-            if (sellerLine(info, ebayNow())) folds.venues = true;
+            if (sellerLine(info, ebayNow())) selectFold("venues");
             const ebay = ebayNow();
             if (ebay && ebay.policies === "pending") pollPolicies(true);
             // a new account whose address came all there from eBay: /me again, for the goods screen
@@ -6833,7 +6844,9 @@ function main() {
         headerUser: $("header-user"),
         settingsToggle: $("settings-toggle"),
         settings: $("settings"),
-        folds: Object.fromEntries(FOLDS.map(([key]) => [key, { toggle: $(`fold-${key}-toggle`), body: $(`fold-${key}`) }])),
+        folds: Object.fromEntries(
+            FOLDS.map(([key]) => [key, { toggle: $(`fold-${key}-toggle`), body: $(`fold-${key}`), tab: $(`settings-tab-${key}`) }])
+        ),
         pcAddress: $("pc-address"),
         pcKey: $("pc-key"),
         settingsSave: $("settings-save"),
@@ -7231,7 +7244,10 @@ function main() {
     el.accountPeople.addEventListener("click", () => showPeople(true));
     el.peopleBack.addEventListener("click", () => showPeople(false));
     // Settings' five folds: a tap opens or closes one, remembered on this phone
-    for (const [key] of FOLDS) el.folds[key].toggle.addEventListener("click", () => toggleFold(key));
+    for (const [key] of FOLDS) {
+        el.folds[key].toggle.addEventListener("click", () => toggleFold(key));
+        el.folds[key].tab.addEventListener("click", () => toggleFold(key));
+    }
     // the account card: Buy postings unfolds the packs (each pill a checkout)
     el.accountBuy.addEventListener("click", () => {
         account.packs = !account.packs;

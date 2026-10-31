@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.9") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.28.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -1185,7 +1185,12 @@ button.connected:disabled { background: var(--ok); border-color: var(--ok); colo
 /* Settings as five folds (Michal, 2026-10-25: "a two-level fold"): each heading larger than
    its contents, smaller than Settings', one step (12 px) in from the Inventory / Settings /
    Feedback level with its tiles indented the same, so the edges line up */
-.settings { padding: 0 0 0 12px; }
+/* Settings a grey card as the inventory's (Michal, 2026-10-31), its parts a row of chips at its
+   top, the pressed one's part under them; the parts' own headings are not shown */
+.card.settings { padding: 10px 10px 16px; }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.settings-tabs .chip { min-height: 36px; padding: 4px 12px; font-size: 13px; border-radius: 999px; }
+.settings .fold-toggle { display: none; }
 .link.fold-toggle { font-size: 16px; }
 .fold-body { padding: 0 0 8px; }
 .fold-body > .card { margin: 8px 0 0; }

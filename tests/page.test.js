@@ -268,6 +268,13 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         // Settings (Michal, 2026-10-25: "a two-level fold"): five folds of its own
         "settings-toggle",
         "settings",
+        // the parts as a row of chips, the pressed one's part under them (Michal, 2026-10-31)
+        "settings-tabs",
+        "settings-tab-account",
+        "settings-tab-venues",
+        "settings-tab-posting",
+        "settings-tab-server",
+        "settings-tab-phone",
         // 1. Snap Account: the current account's card, outlined: its name, "by key" on a key
         // account, Buy postings with the postings left beside it, the packs, its line, Sign in
         // again for one the server forgot; the owner's invite box (one label, one box, one
@@ -475,8 +482,8 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
     // the goods | book switch has an id, so Admin can hide it
     assert.match(html, /<div id="modes" class="modes" role="group"/);
     assert.match(css, /\.modes\[hidden\] \{ display: none; \}/);
-    // Settings' folds one step in from Inventory / Settings / Feedback, their tiles with them
-    assert.match(css, /\.settings \{ padding: 0 0 0 12px; \}/);
+    // Settings a grey card as the inventory's, its parts a row of chips (Michal, 2026-10-31)
+    assert.match(css, /\.card\.settings \{ padding: 10px 10px 16px; \}/);
     // the full-size photo lies over everything, outside main
     const after = html.slice(html.indexOf("</main>"));
     assert.match(after, /<div id="photo-view"[^>]*hidden>\s*<img id="photo-view-img"[^>]*>\s*<button type="button" id="photo-view-close"/);
@@ -10881,7 +10888,7 @@ test("people, a member's: no invite, no Delete account; their own devices only; 
     assert.deepEqual(pc.signouts, [], "their sessions ended with it");
 });
 
-test("Settings' five folds: closed until one is needed, each remembered on this phone; This phone holds the look and Install; the name in the top bar", async (t) => {
+test("Settings' five parts: a grey card with a row of chips, the pressed one's part shown, remembered on this phone; This phone holds the look and Install; the name in the top bar", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const css = readFileSync(join(root, "styles.css"), "utf8");
     // 18 px regular in the header's muted grey, cut off with an ellipsis before the server word
@@ -10891,14 +10898,22 @@ test("Settings' five folds: closed until one is needed, each remembered on this 
     const pc = fakePc({ me: structuredClone(ACCOUNT_ME) });
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     await openSettings(nodes);
-    const open = () => ["account", "venues", "posting", "server", "phone"].filter((k) => !nodes.get(`fold-${k}`).hidden);
-    assert.deepEqual(open(), [], "five closed headings");
-    nodes.get("fold-phone-toggle").fire("click");
-    nodes.get("fold-posting-toggle").fire("click");
-    assert.deepEqual(open(), ["posting", "phone"]);
-    assert.equal(nodes.get("fold-phone-toggle").textContent, "▾ This phone");
-    assert.equal(nodes.get("fold-phone-toggle").attrs["aria-expanded"], "true");
-    nodes.get("fold-posting-toggle").fire("click");
+    // Michal, 2026-10-31: "for the submenus of 'settings' lets go for that way of serving them. as
+    // words in pill shaped buttons with the highlighted one deciding what is visible below"
+    assert.match(html, /<div id="settings" class="card settings" hidden>\s*(<!--[\s\S]*?-->\s*)?<div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings">/);
+    assert.match(readFileSync(join(root, "styles.css"), "utf8"), /\.settings \.fold-toggle \{ display: none; \}/);
+    const parts = ["account", "venues", "posting", "server", "phone"];
+    const open = () => parts.filter((k) => !nodes.get(`fold-${k}`).hidden);
+    const pressed = () => parts.filter((k) => nodes.get(`settings-tab-${k}`).attrs["aria-pressed"] === "true");
+    assert.deepEqual(open(), ["account"], "Snap Account until another is chosen");
+    assert.deepEqual(pressed(), ["account"]);
+    nodes.get("settings-tab-posting").fire("click");
+    assert.deepEqual(open(), ["posting"]);
+    nodes.get("settings-tab-phone").fire("click");
+    assert.deepEqual(open(), ["phone"], "one part at a time");
+    assert.deepEqual(pressed(), ["phone"]);
+    nodes.get("settings-tab-phone").fire("click");
+    assert.deepEqual(open(), ["phone"], "a chip pressed again stays");
     assert.deepEqual(JSON.parse(local.getItem("snap.settings.folds")), { account: false, venues: false, posting: false, server: false, phone: true });
     // This phone: the look, and not installed in a browser tab
     assert.equal(nodes.get("phone-installed").hidden, true);
