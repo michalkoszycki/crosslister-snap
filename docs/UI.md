@@ -82,7 +82,7 @@ Michal, 2026-10-31, who also took the postings count off the landing); **Sign in
 key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only
 when another usable account is kept on this phone); the help line under the buttons; the
 status line ("Signing you in...", "Your sign-in expired; send yourself a new link", "Your
-account was deleted."). Footer: "About and privacy", the version.
+account was deleted."). Footer: "About and privacy", the version, at the foot of the screen at least: on a short page the spare room is white space, on the landing evenly above the mark and below the buttons (Michal, 2026-10-31).
 
 ### 4.2 Sign in
 

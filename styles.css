@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.27.6") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.27.7") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -125,6 +125,16 @@ main, footer {
     margin-inline: auto;
     padding-inline: 16px;
 }
+/* the footer at the foot of the screen at least (Michal, 2026-10-31: "the gray line above about
+   and privacy should be set below at the height of the screen minimum. when there is only few
+   elements on the screen just add white space"): the page a column the screen's height, main
+   taking the spare room; a page taller than the screen is as before */
+body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+body > main { flex: 1 0 auto; width: 100%; }
+body > footer { width: 100%; }
+/* on the landing the spare room goes above the mark and below the buttons, evenly */
+main:has(> #landing:not([hidden])) { display: flex; flex-direction: column; }
+main > #landing { margin-block: auto; }
 
 /* on the narrowest phones the server line and Settings drop under the name, right aligned */
 header {
