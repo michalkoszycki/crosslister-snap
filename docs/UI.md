@@ -6,7 +6,10 @@
 >
 > Draft 2026-10-22. The Settings part follows the mock Michal reviewed that day; its
 > decisions, listed at the end, were decided on 2026-10-26 and built in v2.25.0; his 26
-> comments on the mock (2026-10-26 to 2026-10-31) were built in the minor after it.
+> comments on the mock (2026-10-26 to 2026-10-31) were built in the minor after it. A further
+> batch (2026-11-01 to 2026-11-02) added the agreements page, the first-listing walk-through,
+> quick customize's half-open card and Save draft, and Settings' card look and Buy postings'
+> own page; built in the minor after that.
 
 ## 1. Rules that shape every screen
 
@@ -100,41 +103,107 @@ Admin. In place of the posting screens, until eBay is connected and the address 
 "Finish setting up" with no line under it (Michal, 2026-10-31: "take this out"). Step 1 as a card: **Connect eBay**, which
 becomes "eBay connected" in green, as tall and wide as before, the eBay name in small letters under it in the same button (Michal, 2026-10-31). Step 2 as a card: the address where you ship
 from in a box right there (Michal, 2026-10-31: "you should just be able to edit the address here"), prefilled from eBay once connected, US addresses only for now (a state US_STATES knows, else "Snap takes US addresses only for now: the state is two letters, as IL."; Michal, 2026-10-31: "dont allow international addresses. for now."), a green ✓ at the box's right end once saved and checked, gone at the first edit ("add a check on the right of this text field"); **Save** under it once it is typed in, **Looks right** for one prefilled and not yet confirmed, saved through PATCH /me/seller; saved, the button says **Saved** and the address goes light grey until it is typed in again (Michal, 2026-10-31). Step 3 (Michal,
-2026-10-31): "Review what Snap adds to your eBay account", never ticked, and no step gets a checkmark (Michal, 2026-10-31: "no checkmark . i dont like them here"): in step 2's words, "eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:", the server's policy lines with open round bullets (Michal, 2026-10-31), then what every account gets besides (Payment through eBay's own checkout; a separate USPS Media Mail policy for books) before the ship-from line, then "Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub." (Michal, 2026-10-31: "describe all here"). No policy names in it: Edit opens on a picker headed "Snap creates the following policies" (Michal, 2026-10-31), of each eBay policy Snap makes with something to see, its type before its name ("Shipping: Snap shipping", "Shipping: Snap pickup", "Returns: Snap returns", "Shipping: Snap books"; Michal, 2026-10-31: "specif the policy type"; payment, business policies and the ship-from left out: "no choices", "since above"); the picked one's **Name** first, to rename it, from a server that keeps the names (GET/PATCH /me/policies "policy_names", 64 characters at most, only the changed ones sent: "the first item of a policy should be NAME so that one can rename it"), then its choices, or a line saying what it is where there is nothing more to set; Return shipping paid by's chips "Buyer" and "Seller - free returns" (Michal, 2026-10-31) (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the picker"). **Looks good - let's start** (Edit's size, in yellow, before Edit; smoke while the address is not in; Michal, 2026-10-31) agrees to it as it is: POST /me/policies/confirm, the server sets it up and /me says registered (Michal, 2026-10-31: "if someone reads and likes what it is - they will just go ahead without editing"); a server that does not ask ("confirmed" absent) shows none and registers on the address as before. **Edit** under them (GET/PATCH /me/policies; not for the admin's, set on the server; shut until eBay is connected): each choice a menu in the list's place (Shipping service, or from a server with "shipping" **Shipping options** ("- buyer picks" after it once two or more are ticked; Michal, 2026-10-31): a small white row and box per service, cheapest first (shipOrder), Media Mail last with "for media only" after it in a thinner font, then Local pickup ("the buyer collects it", outside eBay's four, on by default; Michal, 2026-10-31: "return this to this list"), no Check all (Michal, 2026-10-31: "eliminate check all. order the options from cheapest down"), the server's default four ticked, a ticked one's flat rate beside it when the cost is flat, at least one always ticked, "max_services" at most ticked with the rest greyed and "eBay takes up to N." under them (Michal, 2026-10-31: "provide them as a checkbox list. and first checkbox should be 'check all'"; Save sends the list whole when it changed; the step's lead and closing lines hidden while Edit is open); Shipping cost calculated, flat or, from a server that offers it ("cost_types"), Free shipping (Michal, 2026-10-31: the server tells the price draft the price must cover postage), its flat rate box the shipping menu's size, Handling time, Returns, Return shipping paid by, Offer local pickup, Allow best offers, which once ticked says "You will be able to review the offers before finalizing."), **Save**, large and grey as Edit is, sends what changed (**Reset to defaults** under it, from a server that gives its defaults, puts them back in the menus for Save to keep; Michal, 2026-10-31) and the list comes back (Michal, 2026-10-31). Back from eBay's consent, a new account lands on
+2026-10-31): "Review what Snap adds to your eBay account", never ticked, and no step gets a checkmark (Michal, 2026-10-31: "no checkmark . i dont like them here"): in step 2's words, "eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:", the server's policy lines with open round bullets (Michal, 2026-10-31), then what every account gets besides (Payment through eBay's own checkout; a separate USPS Media Mail policy for books) before the ship-from line, then "Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub." (Michal, 2026-10-31: "describe all here"). No policy names in it: Edit opens on a picker headed "Snap creates the following policies" (Michal, 2026-10-31), of each eBay policy Snap makes with something to see, its type before its name ("Shipping: Snap shipping", "Shipping: Snap pickup", "Returns: Snap returns", "Shipping: Snap books"; Michal, 2026-10-31: "specif the policy type"; payment, business policies and the ship-from left out: "no choices", "since above"); the picked one's **Name** first, to rename it, from a server that keeps the names (GET/PATCH /me/policies "policy_names", 64 characters at most, only the changed ones sent: "the first item of a policy should be NAME so that one can rename it"), then its choices, or a line saying what it is where there is nothing more to set; Return shipping paid by's chips "Buyer" and "Seller - free returns" (Michal, 2026-10-31) (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the picker"). **Looks good - let's start** (Edit policies' size, in yellow, before Edit policies; smoke while the address is not in; Michal, 2026-10-31) agrees to it as it is: POST /me/policies/confirm, the server sets it up and /me says registered (Michal, 2026-10-31: "if someone reads and likes what it is - they will just go ahead without editing"), and the goods screen is theirs, the first-listing walk-through over it (4.4); a server that does not ask ("confirmed" absent) shows none and registers on the address as before. **Edit policies** under them (GET/PATCH /me/policies; not for the admin's, set on the server; shut until eBay is connected): each choice a menu in the list's place (Shipping service, or from a server with "shipping" **Shipping options** ("- buyer picks" after it once two or more are ticked; Michal, 2026-10-31): a small white row and box per service, cheapest first (shipOrder), Media Mail last with "for media only" after it in a thinner font, then Local pickup ("the buyer collects it", outside eBay's four, on by default; Michal, 2026-10-31: "return this to this list"), no Check all (Michal, 2026-10-31: "eliminate check all. order the options from cheapest down"), the server's default four ticked, a ticked one's flat rate beside it when the cost is flat, at least one always ticked, "max_services" at most ticked with the rest greyed and "eBay takes up to N." under them (Michal, 2026-10-31: "provide them as a checkbox list. and first checkbox should be 'check all'"; Save sends the list whole when it changed; the step's lead and closing lines hidden while Edit is open); Shipping cost calculated, flat or, from a server that offers it ("cost_types"), Free shipping (Michal, 2026-10-31: the server tells the price draft the price must cover postage), its flat rate box the shipping menu's size, Handling time, Returns, Return shipping paid by, Offer local pickup, Allow best offers, which once ticked says "You will be able to review the offers before finalizing."), **Save**, large and grey as Edit is, sends what changed (**Reset to defaults** under it, from a server that gives its defaults, puts them back in the menus for Save to keep; Michal, 2026-10-31) and the list comes back (Michal, 2026-10-31). Back from eBay's consent, a new account lands on
 this screen again (not Settings), step 1 green, its line saying "eBay connected". The same
 two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
 posting".
 
-### 4.4 Posting screens (goods and book)
+### 4.4 The first-listing walk-through
 
-The mode chips (goods, book); the install banner (until added; its x puts it away for a day, and from the third close it
-asks "Do not show this again?": Yes, never on this phone; No, a day; Michal 2026-10-31); the offline
-banner; the photos with the AI mark and delete; the User note; the **▸ customize** fold
-(Quantity, a small box as tall as the − and + beside it, never under 1, the same in every Quantity: Michal, 2026-10-31; Pickup only, the Price slider Quick sale / Fair price / Higher end, Post without
-asking, Compare with marketplace listings, Allow best offers (a posting choice, not a policy: on by default, "best_offer": false in the job only when unticked, "no best offers" under ebay then; Michal, 2026-10-31), Fix dark photos for goods; then **Save as default**, this item's values as every new item's, and "See Settings for more options." under it, customize's alone: it and Settings' Posting defaults are twins, a change to one made to the other, Michal, 2026-10-31); the title and price
-line once drafted, "See in inventory"; **one block per venue, in the same shape**: the
-button, "reset" while paused, the status line (before a press only what customize changed
-that is not the price: no price grade under the buttons, Michal 2026-10-31), "Buy postings"
-after a 402, the posting's link; the hint line; **NEXT** at the bottom. A venue the account lacks is grey and, when
-tapped, says it is not available for this account yet and points to Feedback. The book
-screen has the same venue blocks as the goods screen, not eBay alone. Books are the admin's
-alone (Michal, 2026-10-31): anyone else can switch to book and see its screen, all of it very
+After Looks good - let's start (4.3), or any time after from the footer's **How Snap
+works** (shown once registered, hidden while it is running itself): the goods screen walks
+him through it over itself, in its own place, no switch, no banner (Michal, 2026-11-01:
+"after the looks good on policies i want to see the expanded Snap page. with some arrows and
+instructions. kind of a brochure you scroll down through walking you through the process to
+your first listing"; 2026-11-02: "keep the comments minimal"). **How it works:** large and
+centred, alone for 1.5 s; under it **1 - 2 - 3**. Then, down the page past the Snap button,
+hand-written notes at an angle with a curving arrow, each fading in as it is scrolled to:
+"1. Snap some photos" over five example photos; "2. Choose which ones go to AI", under them,
+at which two of the five light as marked AI; "3. Tap the venue" over a narrow button named
+for the account's first venue, which, scrolled to, spins for 1 s and turns posted; under it
+"Posting is ready!", a big bobbing hand-drawn arrow, and a Snap-sized **Snap your first
+item**, which puts the walk-through away and, the first time on this phone, opens the
+agreements (4.5). The notes, the title and the buttons are hand-written (fonts/Caveat.woff2,
+OFL licence).
+
+### 4.5 Before you start (the agreements)
+
+Once, the first time **Snap your first item** (4.4) is tapped on this phone: a white page in
+the goods screen's place, **Before you start**, four notes (AI makes mistakes, check each
+listing's title, details and price; he is responsible for his postings and his dealings with
+buyers, the item, its shipping, returns and payment; each venue's rules apply; AI estimates
+weight and package size for calculated shipping, usually close, so tell it anything it
+should know, a bulky item's weight or "cord missing", in the note box when posting);
+**Post without asking** ticked by default (unticked, the next posting asks another tap
+between drafting and posting); a **Full terms and conditions** link, the terms in a tab of
+their own, the app staying put underneath; **I agree**, which keeps the box as he left it as
+Posting defaults' own Post without asking and opens the goods screen.
+
+### 4.6 Posting screens (goods and book)
+
+The mode chips (goods, book); the install banner (until added; its x snoozes it, 5 minutes,
+then 20, an hour, a day, counted from now, and from the fourth close it first asks "Do not
+show this again?": Yes, never on this phone; No, a day; Michal 2026-10-31, the steps
+2026-11-01); the offline banner; the photos with the AI mark (at most 4 marked; a fifth
+waits, and once four are marked a tip under the photos says "Max 4 photos"; until one is
+marked, NEXT's hint says to choose up to 4) and delete. No item name box (its room kept,
+never shown, so the listing's title always names it; Michal, 2026-11-02: "take it out but
+leave the snap button where it is on the page. i like it close to the thumb"). The User
+note, its placeholder ending "(Optional)". The **▸ customize** fold (Quantity, a small box
+as tall as the − and + beside it, never under 1, the same in every Quantity: Michal,
+2026-10-31; Pickup only, the Price slider Quick sale / Fair price / Higher end; the card ends
+there at first, a dark triangle under it turning to unfold the rest and fold it again,
+staying as he left it on this phone, Michal, 2026-11-01; **keep visible**, a tick on the
+toggle's own line while customize is open, open at every start and every DONE once ticked;
+below the fold, Post without asking, Allow best offers (a posting choice, not a policy: on
+by default, "best_offer": false in the job only when unticked, "no best offers" under ebay
+then; Michal, 2026-10-31), Fix dark photos for goods; no Compare with marketplace listings
+here any more, that tick lives in Settings, Posting defaults alone; then **Save as default**,
+this item's values as every new item's, and "See Settings for more options." under it,
+customize's alone: it and Settings' Posting defaults are twins, a change to one made to the
+other, Michal, 2026-10-31); the title and price line once drafted, a − and a + either side of
+the price while it is a saved draft or a posted item, a dollar a tap, never under his
+minimum price (4.7; Michal, 2026-11-02), "See in inventory" (opens the Inventory list, not
+the listing's own page, so the newest item is at the top; Michal, 2026-11-02); **one block
+per venue, in the same shape**: the button, "reset" while paused, the status line (before a
+press only what customize changed that is not the price: no price grade under the buttons,
+Michal 2026-10-31), "Buy postings" after a 402, the posting's link; the hint line; **NEXT**
+in Snap's colours (black on yellow, yellow on black in the dark, as Snap itself), its quiet
+note under it while a posting is on the way, "You can press NEXT to start your next item
+without waiting for the current item to finish posting." A venue the account lacks is grey
+and, when tapped, says it is not available for this account yet and points to Feedback.
+
+A venue's own press: a draft saved, not posted (auto-post off), says "drafted" on its status
+line, the button itself carrying a to-venue arrow and, small under its word, "tap again to
+post", which the next tap does. A venue posted shows a tick in the button. Once goods is
+posted on a venue with nothing of it on its way, the goods screen is its edit screen (Michal,
+2026-11-02): customize, the stepped price and a photo added since are all his to change;
+a + tile after the photos takes more, saved at once; a change turns that venue's button to
+"venue →", small under it "tap again to update", a tap pushing the change to the venue; the
+customize slider, moved, sets the stepped price to that grade's cached draft price, as if he
+had stepped it there himself.
+
+The book screen has the same venue blocks as the goods screen, not eBay alone, and the same
+customize (the half-open card, keep visible, no Compare tick). Books are the admin's alone
+(Michal, 2026-10-31): anyone else can switch to book and see its screen, all of it very
 milky light grey and inert, with one line on top, "Books are not open for your account yet.
 **Ask for it in Feedback**" (the link opens Admin at Feedback with "I would like to list
 books." in the box); goods takes them back.
 
 The customize fold holds this item's values. Its starting values come from Settings,
-Posting defaults (4.5). "Save as default" has left the fold; the defaults are edited in
+Posting defaults (4.7). "Save as default" has left the fold; the defaults are edited in
 Settings (decided 2026-10-26, section 6).
 
-### 4.5 Admin
+### 4.7 Admin
 
 Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
 settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only).
 No Close at its foot (Michal, 2026-10-31: "take the exit button out"): the header's button,
-"Snap" while Admin is open, is the way back. Inventory is folded as Admin first opens (Michal,
-2026-10-31: "it is no longer necessary for the inventory to be OPEN"), then as it was left
-during the visit; a listing left open still reopens. The sticky sync bar is gone: its buttons live in each venue's block (decided
+"Snap" while Admin is open, is the way back. The three dots always open on Settings with
+Inventory folded, never on a listing left open (Michal, 2026-11-02: "3 dots always gets you
+to the settings view - and you have to click to the inventory if you want to see it");
+**See in inventory** (4.6) is the one way in that lands on a listing, the inventory list
+opened to it. The sticky sync bar is gone: its buttons live in each venue's block (decided
 2026-10-26, section 6). Inventory, Feedback and Stats are hidden when no server is set (a
 new account sees the whole of Admin, 4.3).
 
@@ -146,31 +215,41 @@ highlighted one deciding what is visible below"), the chosen one remembered on t
 in this order. The first is named **Snap Account** (Michal, 2026-10-25), shown until another
 is chosen; the one the person needs is chosen by itself (Account after a new
 sign-in, Venues while eBay is not yet connected, Server for "I have a key" before a key is
-saved), and the phone remembers which were left open.
+saved), and the phone remembers which were left open. Each part's grey card carries its own
+title as a small grey row at its top, the chip's own words (Michal, 2026-11-02: "for each
+setting gray area. add a top row title ... same size as on the buttons choosing these
+submenus"); the People page and Buy postings' page (below) carry the same title row.
 
-1. **Snap Account.** One card per account kept on this phone, the current one outlined (no
-   sentence saying so: the outline, the missing "Switch to" and the top bar's name already
-   say it; Michal, 2026-10-25). A card shows the name, "by key" only on a key account
+1. **Snap Account.** One card per account kept on this phone, in the venue cards' plain
+   look, no outline on the current one (Michal, 2026-11-02: "dont need the black outline.
+   use same style as in venues": the missing "Switch to" and the top bar's name already say
+   it). A card shows the name — the owner's own name (editable in place: a tap opens it as a
+   box, Enter or looking away saves it, Escape keeps what it was, Michal, 2026-11-02), or,
+   for a member, "joined <owner>" (Michal, 2026-11-02: "when a person is part of a joined
+   account it should say joined michal. not just michal") — "by key" only on a key account
    (every new account is by email, so that is not said), for the current account its
    postings ("2 free postings left", on the same line as **Buy postings**, Michal
    2026-10-25; nothing for the admin), Buy postings the press-me pill, there for every
    account whose postings are counted however many are left (2026-10-31; with no packs on
-   the server its tap says "Buying postings is not available yet."), the packs under it, its status line directly
-   under those buttons, and on the other cards **Switch to this account** and **Remove
-   from this phone**, or "Sign in again" on an expired one. The last line of the current
-   card is right-aligned (Michal, 2026-10-25): **Delete account** in quiet red, then
-   **Sign out** at the bottom right. Delete account opens the confirmation view (the
+   the server its tap says "Buying postings is not available yet."), its own page now (below),
+   its status line directly under the pill, and on the other cards **Switch to this
+   account** and **Remove from this phone**, or "Sign in again" on an expired one. The last
+   line of the current card is right-aligned (Michal, 2026-10-25): **Delete account** (a
+   member: **Leave this account**) in quiet red, Sign out's own size (Michal, 2026-11-02),
+   then **Sign out** at the bottom right. Delete account opens the confirmation view (the
    three sentences, **Delete account** in red, **Keep my account**). Under the cards:
-   **Add account**, in line with the cards' inner text edge, a gap above it (Michal,
-   2026-10-31), which returns to the landing without dropping the others.
+   **Add another account**, right-aligned (Michal, 2026-11-02), a gap above it, which
+   returns to the landing without dropping the others.
 
    On the current card, for the owner, the invite box: one label "Invite someone to this
    account" in the field-label style, one box with "email" as its placeholder, one
    **Invite** button, nothing else (Michal, 2026-10-25/26: "the invite someone section
    should return here, above the people on this account", "don't ask for their name. just
-   email is fine … simple", "less is more"); the person's name starts as the first part of their email and
-   **Change name** alters it; then, for everyone, one link:
-   **People on this account ›** with the count ("2 people", "just you"). It opens the
+   email is fine … simple", "less is more"), black with yellow words once something is typed
+   in the box (Michal, 2026-11-02), and beside it **Manage members** (an owner), or
+   **Members** (a member), black with yellow words once anyone else is on the account
+   (Michal, 2026-11-02); the person's name starts as the first part of their email and
+   **Change name** alters it. It opens the
    **People page** (Michal, 2026-10-25: "let it be a
    simple separate page"), its own screen in Admin's place with **← Back to settings** at
    the top in the inventory card's shape, then the heading, then one card per person,
@@ -190,9 +269,17 @@ saved), and the phone remembers which were left open.
    you, open Settings and sign out all other devices"); removing a member ends their
    sessions, leaving ends your own, deleting the account ends all. Keys stay for the
    admin and scripts only; a family member is a member by email.
-2. **Venues.** A card is tapped to open that venue's own page (Michal, 2026-10-31: "when clicking the venue card ... we GET the full venue options as during signup ... with a back button"): "← Back to settings" above a grey card, the venue's name as its heading, its block (status, Connect, the sync pair), the address where you ship from where the venue uses one, and on eBay's the policies with Edit (the same as Finish setting up's step 3); Admin opens eBay's page by itself while eBay is to be connected or the address given. Under Venues itself: one white card per venue, its upper part the tap to its page and Sync from / Sync to under it, grey where a direction is not there (Michal, 2026-10-31: "these two buttons shoudl live on the main card"), the venue page without them and with room under its name (ebay, craigslist, poshmark, in `/me.venues` order),
-   all shown, each as tall as the tallest, no chip row (Michal, 2026-10-31: "eliminate the venue
-   buttons at the top. instead provide 3 cards for the venues ... same size with same options").
+
+   **Buy postings** is its own page now (Michal, 2026-11-02), opened from the pill: **← Back
+   to settings** above the card as the People page's, then big buttons, one a pack, Snap's
+   colours, each the pack's postings and its price (GET /me "packs"; no packs on the server,
+   the page says buying is not available yet): $1 for 4 (25c each), $2 for 9 (22c), $5 for 25
+   (20c), $20 for 125 (16c) — the price a posting falls as the pack grows.
+2. **Venues.** A card is tapped to open that venue's own page (Michal, 2026-10-31: "when clicking the venue card ... we GET the full venue options as during signup ... with a back button"): "← Back to settings" above a grey card, the venue's name as its heading, its block (status, Connect, the sync pair), the address where you ship from where the venue uses one, and on eBay's the policies with Edit policies (the same as Finish setting up's step 3); Admin opens eBay's page by itself while eBay is to be connected or the address given. Under Venues itself: one white card per venue, its upper part the tap to its page and Sync from / Sync to under it, grey where a direction is not there (Michal, 2026-10-31: "these two buttons shoudl live on the main card"), the venue page without them and with room under its name (ebay, craigslist, poshmark, in `/me.venues` order),
+   all shown, each only as tall as what it says, no chip row (Michal, 2026-10-31: "eliminate
+   the venue buttons at the top. instead provide 3 cards for the venues ... same size with
+   same options"; 2026-11-02: "these areas should only be as tall as the text inside them":
+   no equal rows, no room for empty lines).
    Each card the same shape: the venue's name first, then its status line ("Connected" for
    every venue set up, Craigslist and Poshmark included, Michal 2026-10-31; eBay's "Connected"
    line plain words, connecting and reconnecting by the Connect eBay / Reconnect buttons on the
@@ -231,11 +318,16 @@ saved), and the phone remembers which were left open.
 3. **Posting defaults** (Michal, 2026-10-26: "call this posting defaults"). The Snap page's
    customize field for field, its words and small print too (Michal, 2026-10-31: "make this card
    look like the customize menu on the snap page"), under one muted line at the top, "These will be your default settings. You can customize them per posting on the Snap page." (2026-10-31): **Quantity**; Pickup only, no shipping; the
-   **Price** slider, its three words and its line under them; Post without asking / Compare with
-   marketplace listings / Fix dark photos, each with customize's small print, each saved as it
-   changes and kept on this phone for now (the server has no place for them yet, so they do
-   not follow to a new phone: rule 6's exception until it does) / **Add standard text to
-   posts**. That fifth is the header and footer (`GET`/`PATCH /me/wrap`): unticked, just its
+   **Price** slider, its three words and its line under them; under it, **Minimum Price:**,
+   the box all but invisible on the grey, "$5" to start, the $ typed inside the box, no − or
+   + (Michal, 2026-11-01), under it "Nothing will be posted below this price." — this is the
+   one customize field the Snap page's own fold does not carry (it has no room for a per-item
+   floor): it is sent as every job's `min_price`, and a lower draft price is raised to it
+   just before posting; Post without asking / **Compare with marketplace listings** (this
+   tick's only home now: the Snap page's own customize dropped it, 4.6) / Fix dark photos,
+   each with customize's small print, each saved as it changes and kept on this phone for now
+   (the server has no place for them yet, so they do not follow to a new phone: rule 6's
+   exception until it does) / **Add standard text to posts**. That fifth is the header and footer (`GET`/`PATCH /me/wrap`): unticked, just its
    line; ticked, the gray card under it: "Header" (field label) and its text box, its venue
    chips (option chips, one per venue `/me/wrap` offers), "Footer" and its box and chips; no
    checkboxes on Header or Footer, a blank box means none; then two press-me pills, each on a
@@ -266,21 +358,36 @@ grey with no outline, Michal 2026-10-31; Michal, 2026-10-31: "move the search to
 is hidden at first. and change Options to 'Filters'"); the list, with swipe to archive and **Undo**; a row's + and − change the price on the tile at once, nothing shut or grey, the price going quietly to the inventory 1.5 s after the last tap (at once when a sync or the listing's page needs it), and no venue hears of it before a sync (Michal, 2026-10-31); the badge of each venue the row
 is live on dims from the tap and stays dim until its sync is done: green is in sync. A row opens the
 listing's page: "← Back to inventory" above the grey card, on the page's ground (as the
-People page's "← Back to settings"; Michal, 2026-10-31), the heading and photos, **▾ customize** with
-Quantity, Pickup only, the Price slider and **Save** (no Sync: the sync buttons live only in
-each venue's block under Settings, Venues, Michal 2026-10-31), then one card per venue with
-its status and actions (post, open, refresh, end, edit, add the venue; no Sync to <venue>),
-the same set for every venue that offers them. A save, an edit or a photo that leaves a
-listing behind says where its sync is ("saved; Sync to ebay in Settings, Venues puts it on
-the listing"). A list row's listed badge still wears the sync-to half while its listing is
-behind and pushes that row when tapped.
+People page's "← Back to settings"; Michal, 2026-10-31), the heading and photos, a + tile
+after them taking more, each added or removed at once, nothing to Save first (Michal,
+2026-11-02). **▾ quick customize** (Michal, 2026-11-02) with Quantity, Pickup only, the Price
+slider Quick sale / Fair price / Higher end and, under its words, the price itself, a − and a
++ either side of a plain number, no $ (Michal, 2026-11-02), the slider's move setting it to
+that grade's cached price; under them **Save draft**, grey, full width, centred, with "Tap
+individual venue buttons below to update venues." under it (Michal, 2026-11-02; no Sync here:
+the sync buttons live only in each venue's block under Settings, Venues, Michal 2026-10-31),
+Save's own status line under that ("saved", or, a venue it leaves behind syncing from
+Settings, Venues, "saved; Sync to ebay in Settings, Venues puts it on the listing"); then one
+card per venue with its status and actions (post, open, refresh, end, edit, add the venue; no
+Sync to <venue>), the same set for every venue that offers them; the eBay card's Model cost
+is the admin's alone to see (Michal, 2026-11-02). Each venue's row wears the list's own
+badge, doing what it does there, same style and same function (Michal, 2026-11-02) — a
+draft's badge the to-venue arrow, posting the draft on a tap, as the card's own Post does
+("tapping this 'ebay draft' button should post to ebay") — and, beside it, an eye of its own
+showing or hiding the card. A save, an edit or a photo that leaves a listing behind marks
+every venue it is listed on unsynced; if a later save returns it to what that venue already
+has, the mark lets go again and the badge is back to its plain green tick, nothing to sync
+(Michal, 2026-11-02: "when the changes RETURN to the original condition there is no need to
+sync and so the ebay button for instance should show a check"). A list row's listed badge
+still wears the sync-to half while its listing is behind and pushes that row when tapped.
 
-**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else, as a chat, what they sent above the Feedback box, oldest first, each in the admin inbox's own card headed "<name>'s feedback · <date>", and under each the admin marked a card of its own on grey, "Admin · <date>" over "Reviewed" (Michal, 2026-10-31: "match exactly the look of the admin side", "reply should be in a box too ... with a gray background ... a signature - admin and date") (GET /me/feedback; no replies, no email: Michal, 2026-10-31: "should look more like a chat"), a green dot on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"; "red was too alerty", "just change it to a green dot then"), the dots tapped while it is lit opening Admin on Feedback itself, the dot gone once Feedback opens (POST /me/feedback/seen); the box itself, "Include my
+**Feedback.** For the admin it is **Incoming feedback** (Michal, 2026-10-31), the new entries with a count and Reviewed on each, and no box of their own ("admin will not send themselves feedback"); for anyone else, as a chat, what they sent above the Feedback box, oldest first, each in the admin inbox's own card headed "<name>'s feedback · <date>", and under each the admin marked a card of its own on grey, "Admin · <date>" over "Reviewed" (Michal, 2026-10-31: "match exactly the look of the admin side", "reply should be in a box too ... with a gray background ... a signature - admin and date") (GET /me/feedback; no replies, no email: Michal, 2026-10-31: "should look more like a chat"), a green dot on the top button while a Reviewed mark is unseen (GET /me "feedback_unseen"; "red was too alerty", "just change it to a green dot then"), the dots tapped while it is lit opening Admin on Feedback itself, the dot gone once Feedback opens (POST /me/feedback/seen); the box itself, its placeholder "What happened" over "or what you wish it did" on two lines
+(Michal, 2026-11-02), "Include my
 last job", **Send**, "Thanks, sent."
 
 **Stats** (admin only). 7d / 30d / all chips, the table, the note.
 
-### 4.6 About and privacy
+### 4.8 About and privacy
 
 The mark; "← Back to Snap"; what Snap is, naming venues only as examples; Privacy (what the
 server keeps, Stripe, and that an account is deleted from Settings); Terms (three free
@@ -339,7 +446,7 @@ controls disabled, the row edits refused with the server's words); **an expired 
   settled what the text left open: no reason line under the sync buttons where the status
   line already says why; eBay's Connect eBay pill only while it is not connected (the
   status line says "Connected as …" after); Inventory and Feedback shown to a new account
-  (4.3 and section 5 over the older line in 4.5); Sign out all other devices only while
+  (4.3 and section 5 over the older line in 4.7); Sign out all other devices only while
   there is another device; the Posting defaults kept on the phone until the server keeps
   them.
 - 2026-10-31: Michal's 26 comments on the mock (2026-10-26 to 2026-10-31), built in the
@@ -361,3 +468,22 @@ controls disabled, the row edits refused with the server's words); **an expired 
   option look is the Settings chips' (the inventory's filter, sort and Stats chips keep
   theirs); Poshmark's address line keeps its capital ("Poshmark does not use a ship-from
   address.", the vocabulary's sentence form).
+- 2026-11-02: Michal's comments of 2026-11-01 to 2026-11-02, built in the minor after
+  v2.25.x: the first-listing walk-through (4.4) after Looks good or the footer's How Snap
+  works; the agreements (4.5), once per phone; the item name box gone from sight; AI marks
+  capped at 4 with a tip; notes' placeholders end "(Optional)"; customize half-open behind a
+  turning triangle, with keep visible, and Compare with marketplace listings dropped to
+  Posting defaults alone; NEXT in Snap's colours with its new waiting note; a drafted venue
+  button's "tap again to post" and to-venue arrow; a posted item as its own edit screen (the
+  − and + beside a held or posted price, floor his minimum price; "venue →" once something
+  changed; a + photo tile; the slider setting the stepped price to the grade's cached one);
+  See in inventory opening the list, not the card; the install banner's snooze steps (5 min,
+  20 min, 1 h, 24 h); Settings' grey cards each with their own title row; no outline on the
+  current account card; a member's card reading "joined <owner>"; the owner's name editable
+  in place; Invite and Manage members/Members black once there is something to act on; Add
+  another account right-aligned; Delete/Leave at Sign out's size; Buy postings its own page;
+  Minimum Price under the Price slider in Posting defaults; the listing page's quick
+  customize (its price under the slider's words, no $, with Save draft replacing the old
+  Save), its venue rows carrying the list's badge and an eye to show or hide the card, a
+  draft's badge posting on a tap, a returned-to-synced save letting its badge's mark go, and
+  Model cost in the eBay card for the admin alone.

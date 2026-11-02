@@ -246,5 +246,5 @@ test("ebay and craigslist open when every photo is on the PC and one is marked A
     assert.equal(venueButton(s, "ebay", true).enabled, true);
     // the AI mark is still needed once everything is there
     s = reduce(s, { type: "toggleAi", id: "p1" });
-    assert.match(venueButton(s, "ebay", true).hint, /Mark at least one photo AI/);
+    assert.match(venueButton(s, "ebay", true).hint, /^Choose at least one and up to 4 photos to send to the AI engine/);
 });

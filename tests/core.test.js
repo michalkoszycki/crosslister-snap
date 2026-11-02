@@ -294,6 +294,7 @@ import {
     UNDO_MS,
 } from "../core.js";
 import { WRAP_MAX, WRAP_PARTS, wrapBody, wrapError, wrapOf } from "../core.js";
+import { AI_HINT, AI_MAX, DEFAULT_MIN_PRICE, DRAFTED, INSTALL_ASK_AT, INSTALL_SNOOZES_MS, installSnooze, minPriceText, TAP_TO_POST } from "../core.js";
 import { ACCOUNT_DELETED, accountName, accountsOf, ADMIN_NO_DELETE, deleteError, newAccount, SIGNED_OUT } from "../core.js";
 import {
     NAME_WAIT_HINT,
@@ -575,7 +576,9 @@ test("without settings neither venue button works, and the hint says why", () =>
 
 test("a new item needs a photo, at most 24, and at least one AI mark", () => {
     assert.match(venueButton(initialState("x"), "ebay", true).hint, /Snap a photo/);
-    assert.match(venueButton(sent(2), "ebay", true).hint, /Mark at least one photo AI/);
+    // the hint says how many and which (Michal, 2026-11-02)
+    assert.equal(venueButton(sent(2), "ebay", true).hint, AI_HINT);
+    assert.equal(AI_HINT, "Choose at least one and up to 4 photos to send to the AI engine - overall, model numbers, brand tags, etc.");
     assert.equal(venueButton(sent(2), "ebay", true).enabled, false);
     assert.deepEqual(venueButton(sent(2, [2]), "ebay", true), { enabled: true, hint: "" });
     const many = sent(MAX_PHOTOS + 2, [1]);
@@ -605,7 +608,7 @@ test("NEXT needs a photo and does not wait for a listing the PC has taken", () =
     }
     assert.equal(
         NEXT_NOTE,
-        "A listing is still posting on the server; NEXT starts the next item without waiting for its link"
+        "You can press NEXT to start your next item without waiting for the current item to finish posting."
     );
     // only the moment the press is on its way, not yet the PC's: clearing would lose it
     const sending = reduce(s, { type: "jobSending", venue: "ebay", step: "sending" });
@@ -2186,7 +2189,9 @@ test("an ISBN no catalogue knows is kept for a reload, the miss with it", () => 
 // to edit the quantity and tick pickup only ("a pickup only item on eBay then").
 
 test("customize starts at one, shipped, a quick sale, posted, with comparisons, for goods and books alike", () => {
-    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: true, bestOffer: true });
+    // and a minimum price of $5 (Michal, 2026-11-01: "set the default to $5")
+    assert.deepEqual(initialCustomize(), { quantity: "1", pickupOnly: false, pricing: 1, autoPost: true, comps: true, bestOffer: true, minPrice: "5" });
+    assert.equal(DEFAULT_MIN_PRICE, "5");
     assert.deepEqual(initialState("x").customize, initialCustomize());
     assert.deepEqual(bookState().book.customize, initialCustomize());
     const goods = initialState("x");
@@ -2230,22 +2235,23 @@ test("a bad quantity shuts the venue buttons with the hint, in both modes", () =
 
 test("the job body carries quantity and pickup_only only when they are not the default", () => {
     assert.deepEqual(customizeBody(undefined), {});
-    assert.deepEqual(customizeBody(initialCustomize()), {});
+    // the minimum price goes with every body: a server hears of no floor otherwise
+    assert.deepEqual(customizeBody(initialCustomize()), { min_price: 5 });
     assert.deepEqual(customizeBody({ quantity: "2", pickupOnly: false }), { quantity: 2 });
     assert.deepEqual(customizeBody({ quantity: "1", pickupOnly: true }), { pickup_only: true });
 
     let s = sent(2, [2]);
     const body = (x) => jobRequest({ venue: "ebay", sku: x.sku, item: x.itemId, photos: x.photos, customize: customizeOf(x) });
-    // left alone: the body is exactly what it always was
-    assert.equal(JSON.stringify(body(s)), `{"item":"${ITEM}","venue":"ebay","ai":[2]}`);
+    // left alone: the body is what it always was, and the $5 floor
+    assert.equal(JSON.stringify(body(s)), `{"item":"${ITEM}","venue":"ebay","ai":[2],"min_price":5}`);
     s = reduce(s, { type: "setQuantity", text: "2" });
     s = reduce(s, { type: "setPickupOnly", on: true });
-    assert.deepEqual(body(s), { item: ITEM, venue: "ebay", ai: [2], quantity: 2, pickup_only: true });
+    assert.deepEqual(body(s), { item: ITEM, venue: "ebay", ai: [2], quantity: 2, pickup_only: true, min_price: 5 });
     // the saved row's job carries them too: the PC updates the row before it posts
     const saved = { ...s, sku: "B-9" };
     assert.deepEqual(
         jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(saved) }),
-        { sku: "B-9", venue: "craigslist", quantity: 2, pickup_only: true }
+        { sku: "B-9", venue: "craigslist", quantity: 2, pickup_only: true, min_price: 5 }
     );
     // a book: top-level, beside the book
     let b = reduce(foundBook(), { type: "setPickupOnly", on: true });
@@ -2376,7 +2382,8 @@ test("setPricing and setAutoPost: this kind's own, fixed while a job is on its w
 });
 
 test("the body carries pricing only when not 1 and auto_post only when off, in all three bodies", () => {
-    const c = (o) => ({ ...initialCustomize(), ...o });
+    // with no minimum price, so each body shows only what these add
+    const c = (o) => ({ ...initialCustomize(), minPrice: "", ...o });
     assert.deepEqual(customizeBody(c({ pricing: 1 })), {});
     assert.deepEqual(customizeBody(c({ pricing: 2 })), { pricing: 2 });
     assert.deepEqual(customizeBody(c({ pricing: 3, autoPost: false })), { pricing: 3, auto_post: false });
@@ -2389,13 +2396,14 @@ test("the body carries pricing only when not 1 and auto_post only when off, in a
     s = reduce(s, { type: "setAutoPost", on: false });
     assert.equal(
         JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })),
-        `{"item":"${ITEM}","venue":"ebay","ai":[2],"pricing":2,"auto_post":false}`
+        `{"item":"${ITEM}","venue":"ebay","ai":[2],"pricing":2,"auto_post":false,"min_price":5}`
     );
     assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), {
         sku: "B-9",
         venue: "craigslist",
         pricing: 2,
         auto_post: false,
+        min_price: 5,
     });
     const b = reduce(foundBook(), { type: "setPricing", grade: 3 });
     const bookBody = jobRequest({ venue: "ebay", item: b.itemId, book: bookForm(b), customize: customizeOf(b) });
@@ -2433,8 +2441,11 @@ test("auto-post off: done with no link is saved, not posted; the button opens an
         status: { state: "done", sku: "B-1", price: "14.00", title: "Lamp", links: {} },
     });
     assert.equal(savedNotPosted(s.jobs.ebay), true);
-    assert.deepEqual(venueLine(s.jobs.ebay), { text: "saved, not posted", link: "", kind: "ok" });
-    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, saved, not posted");
+    // under the button "drafted", and in it "tap again to post" (Michal, 2026-11-02)
+    assert.equal(DRAFTED, "drafted");
+    assert.equal(TAP_TO_POST, "tap again to post");
+    assert.deepEqual(venueLine(s.jobs.ebay), { text: "drafted", link: "", kind: "ok" });
+    assert.equal(venueLabel(s.jobs.ebay, "ebay"), "ebay, drafted");
     assert.deepEqual(venueButton(s, "ebay", true), { enabled: true, hint: "" });
     assert.equal(priceLine(s), "$14");
     // the next press posts: it is not held, so the body says nothing of auto_post
@@ -2442,7 +2453,7 @@ test("auto-post off: done with no link is saved, not posted; the button opens an
     assert.equal(again.jobs.ebay.held, false);
     assert.deepEqual(
         jobRequest({ venue: "ebay", sku: again.sku, customize: { ...customizeOf(again), autoPost: !again.jobs.ebay.held } }),
-        { sku: "B-1", venue: "ebay" }
+        { sku: "B-1", venue: "ebay", min_price: 5 }
     );
     // craigslist, still with auto-post off, is saved first too
     const cl = reduce(s, { type: "jobSending", venue: "craigslist", step: "sending" });
@@ -2468,7 +2479,7 @@ test("auto-post off: done with no link is saved, not posted; the button opens an
     book = reduce(book, { type: "jobSending", venue: "ebay" });
     book = reduce(book, { type: "jobStatus", venue: "ebay", status: { state: "done", sku: "B-2", links: {} } });
     assert.deepEqual(venueButton(book, "ebay", true), { enabled: true, hint: "" });
-    assert.equal(venueLine(book.jobs.ebay).text, "saved, not posted");
+    assert.equal(venueLine(book.jobs.ebay).text, "drafted");
 });
 
 test("the price grade and auto-post are kept for a reload only when not the default, and read back", () => {
@@ -2495,8 +2506,8 @@ test("the price grade and auto-post are kept for a reload only when not the defa
         // the PC saved the row unposted before the reload
         answer: { photos: [1, 2], sku: "B-1", jobs: [{ job: "j1", venue: "ebay", state: "done", sku: "B-1", links: {} }] },
     });
-    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: true, bestOffer: true });
-    assert.equal(venueLine(back.jobs.ebay).text, "saved, not posted");
+    assert.deepEqual(back.customize, { quantity: "1", pickupOnly: false, pricing: 3, autoPost: false, comps: true, bestOffer: true, minPrice: "5" });
+    assert.equal(venueLine(back.jobs.ebay).text, "drafted");
     assert.equal(venueButton(back, "ebay", true).enabled, true);
     // anything odd is the default
     const odd = reduce(initialState(""), {
@@ -2522,6 +2533,50 @@ test("the price grade and auto-post are kept for a reload only when not the defa
     assert.deepEqual(bookBack.book.customize, { ...initialCustomize(), pricing: 2 });
 });
 
+// --- customize: the minimum price (Michal, 2026-11-01: "set the default to $5") ----------
+
+test("the minimum price: $5 by default and in every body; typed with its $ or cents; blank or 0 sends none", () => {
+    for (const [typed, kept] of [
+        ["5", "5"],
+        ["$5", "5"],
+        [" $ 4.50 ", "4.50"],
+        ["4.", "4."],
+        ["", ""],
+        ["  ", ""],
+        ["$", ""],
+    ]) {
+        assert.equal(minPriceText(typed), kept, JSON.stringify(typed));
+    }
+    for (const bad of ["abc", "4.555", "-1", "5$", 5, null, undefined]) assert.equal(minPriceText(bad), null, JSON.stringify(bad));
+    const c = (minPrice) => ({ ...initialCustomize(), minPrice });
+    assert.deepEqual(customizeBody(c("5")), { min_price: 5 });
+    assert.deepEqual(customizeBody(c("4.50")), { min_price: 4.5 });
+    assert.deepEqual(customizeBody(c("")), {}, "a blank box: no minimum");
+    assert.deepEqual(customizeBody(c("0")), {}, "nor 0");
+    assert.deepEqual(customizeBody(c("lots")), {}, "nor anything that is not a price");
+    // kept for a reload only when not the $5, read back; odd is the $5
+    const s = reduce(initialState(""), { type: "recovered", itemName: "Boots", itemId: ITEM, customize: { quantity: "1", minPrice: "8" }, answer: { photos: [1] } });
+    assert.equal(s.customize.minPrice, "8");
+    assert.deepEqual(savedItem(s).customize, { quantity: "1", pickupOnly: false, minPrice: "8" });
+    assert.equal("customize" in savedItem(sent(1, [1])), false, "$5: saved as ever");
+    const odd = reduce(initialState(""), { type: "recovered", itemName: "Boots", itemId: ITEM, customize: { quantity: "1", minPrice: "x" }, answer: { photos: [1] } });
+    assert.equal(odd.customize.minPrice, DEFAULT_MIN_PRICE);
+});
+
+// --- customize: at most four photos for the AI (Michal, 2026-11-02) -----------------------
+
+test("at most four photos marked AI: a fifth mark waits until one comes off", () => {
+    assert.equal(AI_MAX, 4);
+    let s = sent(6, [1, 2, 3, 4]);
+    assert.equal(s.photos.filter((p) => p.ai).length, 4);
+    const fifth = s.photos[4].id;
+    assert.equal(reduce(s, { type: "toggleAi", id: fifth }), s, "the fifth waits");
+    s = reduce(s, { type: "toggleAi", id: s.photos[0].id });
+    assert.equal(s.photos.filter((p) => p.ai).length, 3, "a mark comes off");
+    s = reduce(s, { type: "toggleAi", id: fifth });
+    assert.deepEqual(s.photos.map((p) => p.ai), [false, true, true, true, true, false]);
+});
+
 // --- customize: the eBay comparisons (Michal, 2026-10-07; on by default, 2026-10-10) ------
 // "Let's abandon checking eBay for similar items (call 1) and put that toggle default
 // off, in customization." Then, after five real items re-drafted with and without it:
@@ -2530,15 +2585,15 @@ test("the price grade and auto-post are kept for a reload only when not the defa
 test("Compare with eBay listings: on by default; unticked, comps: false in every body and said under both buttons", () => {
     assert.equal(COMPS_NOTE, "without marketplace comparisons");
     assert.equal(customizeBody({ ...initialCustomize(), comps: true }).comps, undefined, "never comps: true");
-    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: false }), { comps: false });
+    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: false }), { comps: false, min_price: 5 });
     // best offers: a posting choice, sent only when unticked (Michal, 2026-10-31)
-    assert.deepEqual(customizeBody({ ...initialCustomize(), bestOffer: false }), { best_offer: false });
+    assert.deepEqual(customizeBody({ ...initialCustomize(), bestOffer: false }), { best_offer: false, min_price: 5 });
     assert.equal(customizeBody(initialCustomize()).best_offer, undefined, "never best_offer: true");
-    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "no" }), {}, "only false is false");
+    assert.deepEqual(customizeBody({ ...initialCustomize(), comps: "no" }), { min_price: 5 }, "only false is false");
 
     let s = sent(2, [2]);
     assert.equal(s.customize.comps, true);
-    assert.equal(JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })), `{"item":"${ITEM}","venue":"ebay","ai":[2]}`);
+    assert.equal(JSON.stringify(jobRequest({ venue: "ebay", item: s.itemId, photos: s.photos, customize: customizeOf(s) })), `{"item":"${ITEM}","venue":"ebay","ai":[2],"min_price":5}`);
     assert.equal(venueIdleNote(s, "ebay"), "", "left alone: nothing said");
     s = reduce(s, { type: "setComps", on: false });
     assert.equal(s.customize.comps, false);
@@ -2547,8 +2602,9 @@ test("Compare with eBay listings: on by default; unticked, comps: false in every
         venue: "ebay",
         ai: [2],
         comps: false,
+        min_price: 5,
     });
-    assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), { sku: "B-9", venue: "craigslist", comps: false });
+    assert.deepEqual(jobRequest({ venue: "craigslist", sku: "B-9", customize: customizeOf(s) }), { sku: "B-9", venue: "craigslist", comps: false, min_price: 5 });
     assert.equal(venueIdleNote(s, "ebay"), "without marketplace comparisons");
     assert.equal(venueIdleNote(s, "craigslist"), "without marketplace comparisons");
     const all = reduce(reduce(s, { type: "setPricing", grade: 2 }), { type: "setPickupOnly", on: true });
@@ -2820,7 +2876,8 @@ test("the parcel and name: value lines", () => {
 });
 
 test("the eBay card: the listing as eBay has it; the status and link are its status line", () => {
-    assert.deepEqual(venueFacts(ROW, "ebay"), [
+    // the model cost is the admin's alone (Michal, 2026-11-02)
+    assert.deepEqual(venueFacts(ROW, "ebay", true), [
         { label: "Title", value: "Brass lamp" },
         { label: "Price", value: "$24" },
         { label: "Condition", value: "Used" },
@@ -2836,6 +2893,9 @@ test("the eBay card: the listing as eBay has it; the status and link are its sta
         { label: "Package", value: "5 oz, 8 x 6 x 2 in" },
         { label: "Model cost", value: "$0.1046" },
     ]);
+    // anyone else: the same facts without it
+    assert.deepEqual(venueFacts(ROW, "ebay"), venueFacts(ROW, "ebay", true).slice(0, -1));
+    assert.deepEqual(venueFacts(ROW, "ebay", false).map((f) => f.label).includes("Model cost"), false);
     // a book: the ISBN; quantity and pickup only always, the rest only when there
     assert.deepEqual(venueFacts({ sku: "B", category: "Books", isbn: "9780306406157", model_cost: null }, "ebay"), [
         { label: "Category", value: "Books" },
@@ -3017,8 +3077,9 @@ test("a card never offers Sync to <venue>: an edit that left its listing behind 
     };
     assert.deepEqual(venueActions(up, "craigslist"), ["open", "refresh", "end", "edit"]);
     assert.deepEqual(venueActions(up, "ebay"), ["open", "refresh", "end", "edit"]);
-    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
-    assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; Sync to craigslist in Settings, Venues puts it on the listing", kind: "ok" });
+    // the sync is the venue's own badge on the listing's page since 2026-11-02 ("same style and same function")
+    assert.deepEqual(editSaved("ebay", ["ebay"]), { text: "saved; tap ebay → below to sync it", kind: "ok" });
+    assert.deepEqual(editSaved("craigslist", ["ebay", "craigslist"]), { text: "saved; tap craigslist → below to sync it", kind: "ok" });
     assert.equal(editSaved("ebay", ["craigslist"]), null, "its own listing not behind: the status line");
     // a draft has no listing to sync: Post puts the row up whole
     const draft = { ...up, statuses: { ...up.statuses, craigslist: { status: "draft" } } };
@@ -3142,9 +3203,11 @@ test("a listing's customize: the Price slider at the row's grade, each word with
     assert.deepEqual(cachedPrices(GRADED), ["18.00", "24.00", "31.50"]);
     assert.deepEqual(cachedPrices({ ...GRADED, prices: { quick: null, market: "30", high: "" } }), ["", "30", ""]);
     assert.deepEqual(cachedPrices(ROW), ["", "", ""], "a row from before the cache");
-    assert.deepEqual(rowCustomize(GRADED), { quantity: "2", pickupOnly: true, pricing: 2 });
-    assert.deepEqual(rowCustomize(ROW), { quantity: "2", pickupOnly: true, pricing: 0 });
-    assert.deepEqual(rowCustomize({ sku: "X", pricing: 7 }), { quantity: "1", pickupOnly: false, pricing: 0 });
+    // and its price box, whole dollars without the cents (Michal, 2026-11-02)
+    assert.deepEqual(rowCustomize(GRADED), { quantity: "2", pickupOnly: true, pricing: 2, price: "24" });
+    assert.deepEqual(rowCustomize(ROW), { quantity: "2", pickupOnly: true, pricing: 0, price: "24" });
+    assert.deepEqual(rowCustomize({ sku: "X", pricing: 7 }), { quantity: "1", pickupOnly: false, pricing: 0, price: "" });
+    assert.equal(rowCustomize({ ...ROW, price: "31.50" }).price, "31.50", "cents kept");
 
     // at the row's grade: the goods card's line for it
     const words = ["Quick sale $18", "Fair price $24", "Higher end $31.50"];
@@ -3159,12 +3222,13 @@ test("a listing's customize: the Price slider at the row's grade, each word with
     // a price the row has not cached shows a dash
     const some = { ...GRADED, prices: { quick: null, market: "24.00", high: null } };
     assert.deepEqual(sliderWords(some, 2).words, ["Quick sale —", "Fair price $24", "Higher end —"]);
-    // a row whose price follows no grade: at 1, nothing bold, and the line says so
+    // a row whose price follows no grade: at 1, nothing bold, and no line saying so (Michal,
+    // 2026-11-02: "people can see that")
     assert.deepEqual(sliderWords(ROW, 0), {
         value: "1",
         bold: 0,
         said: NOT_GRADED,
-        note: "not priced by grade yet",
+        note: "",
         words: ["Quick sale —", "Fair price —", "Higher end —"],
     });
     // moved on a row with no cached prices: Save has nothing to set
@@ -3195,12 +3259,20 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     assert.equal(customizeChanges(ROW, { ...rowCustomize(ROW), pricing: 3 }), null);
     assert.deepEqual(customizeChanges(ROW, { ...rowCustomize(ROW), quantity: "5", pricing: 3 }), { quantity: 5 });
     assert.throws(() => customizeChanges(GRADED, { ...same, quantity: "two" }), RangeError);
+    // a price typed or stepped in the box (Michal, 2026-11-02): sent as a dial's, over the slider
+    assert.deepEqual(customizeChanges(GRADED, { ...same, price: "30" }), { price: "30.00" });
+    assert.deepEqual(customizeChanges(GRADED, { ...same, price: "$ 29.5", pricing: 3 }), { price: "29.50" });
+    assert.equal(customizeChanges(GRADED, { ...same, price: "24.00" }), null, "the row's own price: no change");
+    assert.equal(customizeChanges(GRADED, { ...same, price: "0" }), null, "nor a price of nothing");
+    // the price the slider put in the box is that grade's cached one: sent as the grade
+    assert.deepEqual(customizeChanges(GRADED, { ...same, price: "31.50", pricing: 3 }), { pricing: 3 });
 
     // the foldout after the row is read again: what was not moved follows the row
-    const after = { ...GRADED, quantity: 3, pickup_only: false, pricing: 3 };
-    assert.deepEqual(followRow(GRADED, same, after), { quantity: "3", pickupOnly: false, pricing: 3 });
-    assert.deepEqual(followRow(GRADED, { ...same, pricing: 1 }, after), { quantity: "3", pickupOnly: false, pricing: 1 });
-    assert.deepEqual(followRow(GRADED, { ...same, quantity: "7" }, after), { quantity: "7", pickupOnly: true, pricing: 3 });
+    const after = { ...GRADED, quantity: 3, pickup_only: false, pricing: 3, price: "31.50" };
+    assert.deepEqual(followRow(GRADED, same, after), { quantity: "3", pickupOnly: false, pricing: 3, price: "31.50" });
+    assert.deepEqual(followRow(GRADED, { ...same, pricing: 1 }, after), { quantity: "3", pickupOnly: false, pricing: 1, price: "31.50" });
+    assert.deepEqual(followRow(GRADED, { ...same, quantity: "7" }, after), { quantity: "7", pickupOnly: true, pricing: 3, price: "31.50" });
+    assert.equal(followRow(GRADED, { ...same, price: "40" }, after).price, "40", "his price stays");
     assert.deepEqual(followRow(GRADED, { ...same, quantity: "x" }, after).quantity, "x", "as typed");
 
     // Sync to ebay: only a listing up on eBay has something to update
@@ -3228,7 +3300,7 @@ test("a listing's customize: Save sends only what changed, the slider as pricing
     assert.deepEqual(customizeLine({ ...idle, wait: "saving" }), { text: "saving", kind: "busy" });
     const refused = { text: "no cached fair price for this row: set the price by hand", kind: "bad" };
     assert.deepEqual(customizeLine({ ...idle, note: refused }), refused);
-    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
+    assert.deepEqual(customizeSaved(GRADED, ebay), { text: "saved; tap ebay → below to sync it", kind: "ok" });
     assert.deepEqual(customizeSaved(draft, ebay), { text: "saved", kind: "ok" });
 });
 
@@ -3249,10 +3321,11 @@ test("customize's Save names the Sync under Settings, Venues for each venue the 
     const three = { ...both, venues: ["ebay", "craigslist", "poshmark"], statuses: { ...both.statuses, poshmark: up } };
     assert.deepEqual(customizeVenues(three, ["ebay", "craigslist", "poshmark"]), ["ebay", "craigslist", "poshmark"]);
 
-    // saved: the one Sync by name, or "sync" for more than one
-    assert.deepEqual(customizeSaved(both, all), { text: "saved; sync in Settings, Venues puts it on the listings", kind: "ok" });
+    // saved: the one venue's badge by name, or "a venue's" for more than one (the badges sync
+    // since 2026-11-02)
+    assert.deepEqual(customizeSaved(both, all), { text: "saved; tap a venue's → below to sync it", kind: "ok" });
     assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: up } }, all), {
-        text: "saved; Sync to craigslist in Settings, Venues puts it on the listing",
+        text: "saved; tap craigslist → below to sync it",
         kind: "ok",
     });
     assert.deepEqual(customizeSaved({ ...both, statuses: { ebay: draft, craigslist: draft } }, all), { text: "saved", kind: "ok" });
@@ -3420,8 +3493,8 @@ test("the listings their venues have not caught up with: per sku and venue, each
     assert.deepEqual(photosBehind(both2), []);
     assert.equal(photoQuestion(3), "Remove photo 3 from this item?");
     assert.deepEqual(photoSaved("photo added", []), { text: "photo added", kind: "ok" });
-    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; Sync to ebay in Settings, Venues puts it on the listing", kind: "ok" });
-    assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; sync in Settings, Venues puts it on the listings", kind: "ok" });
+    assert.deepEqual(photoSaved("photo removed", ["ebay"]), { text: "photo removed; tap ebay → below to sync it", kind: "ok" });
+    assert.deepEqual(photoSaved("2 photos added", ["ebay", "craigslist"]), { text: "2 photos added; tap a venue's → below to sync it", kind: "ok" });
     // a changed condition (Michal, 2026-10-08): eBay's listing behind, as a price is, and
     // craigslist's when its word for it moved
     const parts = { ...both2, condition: "FOR_PARTS_OR_NOT_WORKING" };
@@ -3985,7 +4058,7 @@ test("a press refused for want of postings (402) is marked so; any other refusal
     assert.equal(errorText(402, detail), detail);
 });
 
-test("the install nudge: none from the home screen, a day's rest when dismissed, the prompt or the two taps", () => {
+test("the install nudge: none from the home screen, a longer rest at each close, the prompt or the two taps", () => {
     const now = Date.parse("2026-10-08T12:00:00Z");
     const base = { standalone: false, hasPrompt: false, isIos: false, dismissedAt: "", now };
     assert.equal(installState({ ...base, standalone: true, hasPrompt: true }), "hidden");
@@ -3993,10 +4066,24 @@ test("the install nudge: none from the home screen, a day's rest when dismissed,
     assert.equal(installState({ ...base, hasPrompt: true }), "prompt", "Chrome offered: its own prompt");
     assert.equal(installState({ ...base, hasPrompt: true, isIos: true }), "steps", "an iPhone is told the taps");
     const daysAgo = (d) => new Date(now - d * 24 * 60 * 60 * 1000).toISOString();
-    // a day's rest (Michal, 2026-10-31: "it should stay hidden for at least a day")
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.5) }), "hidden");
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.99) }), "hidden");
-    assert.equal(installState({ ...base, dismissedAt: daysAgo(1) }), "steps", "a day on, back");
+    const minutesAgo = (m) => new Date(now - m * 60 * 1000).toISOString();
+    // 5 minutes, 20, an hour, then a day each time after (Michal, 2026-11-01)
+    assert.deepEqual(INSTALL_SNOOZES_MS, [5 * 60 * 1000, 20 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000]);
+    assert.deepEqual([1, 2, 3, 4, 5, 9].map(installSnooze), [...INSTALL_SNOOZES_MS, INSTALL_SNOOZE_MS, INSTALL_SNOOZE_MS]);
+    assert.equal(installSnooze(0), INSTALL_SNOOZES_MS[0], "no count: the first close's");
+    assert.equal(installSnooze(undefined), INSTALL_SNOOZES_MS[0]);
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(4), count: 1 }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(5), count: 1 }), "steps", "five minutes on, back");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(5) }), "steps", "an older phone's plain date: one close");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(19), count: 2 }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(20), count: 2 }), "steps");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(59), count: 3 }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: minutesAgo(60), count: 3 }), "steps");
+    // from the fourth close a day's rest (Michal, 2026-10-31: "it should stay hidden for at least a day")
+    assert.equal(INSTALL_ASK_AT, 4, "the fourth close asks whether to show it again");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.5), count: 4 }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(0.99), count: 7 }), "hidden");
+    assert.equal(installState({ ...base, dismissedAt: daysAgo(1), count: 4 }), "steps", "a day on, back");
     assert.equal(installState({ ...base, dismissedAt: daysAgo(30), never: true }), "hidden", "Do not show again: never");
     // what the phone keeps: an older phone's plain date is one close
     assert.deepEqual(installDismissal(""), { dismissedAt: "", count: 0, never: false });
@@ -4093,15 +4180,19 @@ test("stats: the chips' query, and the answer as the small table, counts only", 
 test("Posting defaults: read leniently, the quantity with them; a new item starts from them", () => {
     // Michal, 2026-10-08: "in case someone wants to change something permanently"; in Settings,
     // Posting defaults since 2026-10-26, whose list has the quantity first
-    const plain = { quantity: "1", pricing: 1, autoPost: true, comps: true, pickupOnly: false, bestOffer: true };
+    const plain = { quantity: "1", pricing: 1, autoPost: true, comps: true, pickupOnly: false, bestOffer: true, minPrice: "5" };
     assert.deepEqual(customizeDefaults(null), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults("garbage"), { goods: plain, book: plain });
     assert.deepEqual(customizeDefaults({ goods: { quantity: "0", pricing: 7, autoPost: "no", comps: 0, pickupOnly: true } }), {
         goods: { ...plain, pickupOnly: true },
         book: plain,
     });
-    const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true };
+    const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true, minPrice: "5" };
     assert.deepEqual(defaultsOf({ ...goods, note: "not customize's" }), goods);
+    // the minimum price as typed; blank is none; odd, or a phone from before it, the $5
+    assert.equal(defaultsOf({ ...goods, minPrice: "$7.50" }).minPrice, "7.50");
+    assert.equal(defaultsOf({ ...goods, minPrice: "" }).minPrice, "");
+    assert.equal(defaultsOf({ ...goods, minPrice: "cheap" }).minPrice, "5");
     assert.deepEqual(defaultsOf({ ...goods, quantity: "two" }), { ...goods, quantity: "1" }, "a quantity that is not one is 1");
     // a phone from before (Save as default kept no quantity): 1
     assert.deepEqual(customizeDefaults({ goods: { pricing: 2, autoPost: false, comps: false, pickupOnly: true } }).goods, { ...goods, quantity: "1" });

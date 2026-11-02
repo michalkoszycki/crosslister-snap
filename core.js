@@ -3,7 +3,7 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.43.0";
+import { noteDirty, unsent } from "./queue.js?v=2.44.0";
 import {
     bookListings,
     bookPriceValue,
@@ -15,7 +15,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.43.0";
+} from "./book.js?v=2.44.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1662,11 +1662,29 @@ export function booksAllowed(me) {
 /** What Feedback's box holds when the book chip's link opened it. */
 export const BOOKS_ASK = "I would like to list books.";
 
-/** A dismissed home-screen banner stays away this long. */
-export const INSTALL_SNOOZE_MS = 24 * 60 * 60 * 1000;
+/**
+ * A dismissed home-screen banner stays away longer at each close: 5 minutes, 20, an hour, then
+ * a day every time after (Michal, 2026-11-01).
+ */
+export const INSTALL_SNOOZES_MS = [5 * 60 * 1000, 20 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000];
 
-/** From this close of the banner on, its x asks whether to show it ever again. */
-export const INSTALL_ASK_AT = 3;
+/** The longest a dismissed banner stays away: a day. */
+export const INSTALL_SNOOZE_MS = INSTALL_SNOOZES_MS[INSTALL_SNOOZES_MS.length - 1];
+
+/**
+ * How long the banner stays away after its `count`th close (an older phone's plain date: one).
+ * @param {number} count
+ */
+export function installSnooze(count) {
+    const step = Math.min(Math.max(Number.isInteger(count) ? count : 1, 1), INSTALL_SNOOZES_MS.length);
+    return INSTALL_SNOOZES_MS[step - 1];
+}
+
+/**
+ * From this close of the banner on its x asks whether to show it ever again: the fourth, after the
+ * hour-long step; a No then snoozes it a day (Michal, 2026-11-01: "move it to 4th").
+ */
+export const INSTALL_ASK_AT = INSTALL_SNOOZES_MS.length;
 
 /**
  * The banner's closes as this phone keeps them: when it was last put away, how many times,
@@ -1697,17 +1715,18 @@ export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen 
  * The install nudge (Michal, 2026-10-08: "If it is not on the home screen it should
  * direct towards that install. Can that be done even though I have already used it?
  * Would the website know?"): nothing from the home screen (display-mode standalone, or
- * an iPhone's navigator.standalone), nothing for a week after a dismissal, the browser's
+ * an iPhone's navigator.standalone), nothing for a while after a dismissal (installSnooze of its
+ * `count`th close), the browser's
  * own install prompt where Chrome offered one (kept from beforeinstallprompt), and the
  * two taps spelled out everywhere else. A desktop browser is not nudged at all (Michal,
  * 2026-10-08: Install below sign-in, smaller, and gone on a desktop).
- * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, desktop?:boolean, dismissedAt?:unknown, now:number}} o
+ * @param {{standalone:boolean, hasPrompt:boolean, isIos:boolean, desktop?:boolean, dismissedAt?:unknown, count?:number, never?:boolean, now:number}} o
  * @returns {"hidden"|"prompt"|"steps"}
  */
-export function installState({ standalone, hasPrompt, isIos, desktop = false, dismissedAt = "", never = false, now }) {
+export function installState({ standalone, hasPrompt, isIos, desktop = false, dismissedAt = "", count = 1, never = false, now }) {
     if (standalone || desktop || never) return "hidden";
     const at = typeof dismissedAt === "string" && dismissedAt ? Date.parse(dismissedAt) : NaN;
-    if (Number.isFinite(at) && now - at < INSTALL_SNOOZE_MS) return "hidden";
+    if (Number.isFinite(at) && now - at < installSnooze(count)) return "hidden";
     // Safari never offers the prompt: an iPhone is always told the two taps
     return hasPrompt && !isIos ? "prompt" : "steps";
 }
@@ -1996,6 +2015,12 @@ export const POST_ONLY = ["poshmark"];
 
 /** The most photos one item may carry (the service refuses more). */
 export const MAX_PHOTOS = 24;
+
+/** The most photos marked AI on one item: a fifth mark waits until one comes off (Michal, 2026-11-02). */
+export const AI_MAX = 4;
+
+/** Said under the buttons until a photo is marked AI, and in the walk-through (Michal, 2026-11-02). */
+export const AI_HINT = "Choose at least one and up to 4 photos to send to the AI engine - overall, model numbers, brand tags, etc.";
 
 /** How often a running job is asked for its status. */
 export const POLL_MS = 3000;
@@ -2292,11 +2317,14 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
  *                               by default since 2026-10-10 (off from 2026-10-07)
  * @property {boolean} bestOffer  eBay's Best Offer on the listing; on by default (Michal,
  *                               2026-10-31: a posting choice, not a policy)
+ * @property {string} minPrice   the lowest price posted, in dollars as typed ("5", the default);
+ *                               blank: none. The PC raises a lower draft price to it before it
+ *                               posts; the AI never hears of it (Michal, 2026-11-01)
  */
 
 /**
  * What customize adds to a job's body, each key only when it is not the default.
- * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:false, best_offer?:false}} CustomizeBody
+ * @typedef {{quantity?:number, pickup_only?:true, pricing?:2|3, auto_post?:false, comps?:false, best_offer?:false, min_price?:number}} CustomizeBody
  */
 
 /**
@@ -2312,9 +2340,25 @@ export const PRICING = [
 /** "1 by default": a quick sale, what the PC did before there was a slider. */
 export const DEFAULT_PRICING = 1;
 
+/** Nothing posted below $5 unless he says otherwise (Michal, 2026-11-01: "set the default to $5"). */
+export const DEFAULT_MIN_PRICE = "5";
+
+/**
+ * The minimum price box as kept: dollars, a "$" in front allowed, up to two decimals ("5",
+ * "4.50", "4." while typing); "" for a blank box (no minimum); null for anything else.
+ * @param {unknown} text
+ * @returns {string|null}
+ */
+export function minPriceText(text) {
+    if (typeof text !== "string") return null;
+    const bare = text.trim().replace(/^\$\s*/, "");
+    if (bare === "") return "";
+    return /^\d{1,6}(\.\d{0,2})?$/.test(bare) ? bare : null;
+}
+
 /** @returns {Customize} */
 export function initialCustomize() {
-    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: true, bestOffer: true };
+    return { quantity: "1", pickupOnly: false, pricing: DEFAULT_PRICING, autoPost: true, comps: true, bestOffer: true, minPrice: DEFAULT_MIN_PRICE };
 }
 
 /**
@@ -2344,6 +2388,12 @@ export function pricingOf(grade) {
  * posts that row by its sku.
  */
 export const SAVED_NOT_POSTED = "saved, not posted";
+
+/** Under a venue button whose press saved a draft without posting it (Michal, 2026-11-02). */
+export const DRAFTED = "drafted";
+
+/** In that button, small under the venue's word: its next tap posts the draft (Michal, 2026-11-02). */
+export const TAP_TO_POST = "tap again to post";
 
 /**
  * The PC saved this venue's row without publishing it (auto-post was off for the
@@ -2413,6 +2463,9 @@ export function customizeBody(customize) {
     if (customize.comps === false) out.comps = false;
     // only when unticked, as comps (Michal, 2026-10-31)
     if (customize.bestOffer === false) out.best_offer = false;
+    // the floor the PC raises a lower draft price to; a blank box, or 0, none (Michal, 2026-11-01)
+    const min = minPriceText(customize.minPrice);
+    if (min && Number(min) > 0) out.min_price = Number(min);
     return out;
 }
 
@@ -2448,6 +2501,8 @@ function recoveredCustomize(saved) {
     c.autoPost = saved.autoPost !== false;
     c.comps = saved.comps !== false;
     c.bestOffer = saved.bestOffer !== false;
+    const min = minPriceText(saved.minPrice);
+    c.minPrice = min === null ? DEFAULT_MIN_PRICE : min;
     return c;
 }
 
@@ -2459,7 +2514,7 @@ function recoveredCustomize(saved) {
 function savedCustomize(c) {
     const grade = pricingGrade(c.pricing) || DEFAULT_PRICING;
     const plainly = c.quantity === "1" && !c.pickupOnly && grade === DEFAULT_PRICING && c.autoPost !== false;
-    if (plainly && c.comps !== false && c.bestOffer !== false) return {};
+    if (plainly && c.comps !== false && c.bestOffer !== false && c.minPrice === DEFAULT_MIN_PRICE) return {};
     return {
         customize: {
             quantity: c.quantity,
@@ -2468,6 +2523,7 @@ function savedCustomize(c) {
             ...(c.autoPost === false ? { autoPost: false } : {}),
             ...(c.comps === false ? { comps: false } : {}),
             ...(c.bestOffer === false ? { bestOffer: false } : {}),
+            ...(c.minPrice === DEFAULT_MIN_PRICE ? {} : { minPrice: c.minPrice }),
         },
     };
 }
@@ -2480,7 +2536,7 @@ function savedCustomize(c) {
 
 /**
  * What the Posting fold keeps of a customize, and what a new item starts from.
- * @typedef {{quantity:string, pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean, bestOffer:boolean}} CustomizeDefaults
+ * @typedef {{quantity:string, pricing:1|2|3, autoPost:boolean, comps:boolean, pickupOnly:boolean, bestOffer:boolean, minPrice:string}} CustomizeDefaults
  */
 
 /** Said beside the Posting fold's defaults for a moment after a change. */
@@ -2498,7 +2554,7 @@ export const DEFAULTS_SAVED_MS = 2500;
 export function defaultsOf(c) {
     const r = recoveredCustomize(c);
     const quantity = quantityValue(r.quantity);
-    return { quantity: quantity ? String(quantity) : "1", pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly, bestOffer: r.bestOffer };
+    return { quantity: quantity ? String(quantity) : "1", pricing: /** @type {1|2|3} */ (r.pricing), autoPost: r.autoPost, comps: r.comps, pickupOnly: r.pickupOnly, bestOffer: r.bestOffer, minPrice: r.minPrice };
 }
 
 /**
@@ -2915,8 +2971,12 @@ export function reduce(state, action) {
             // the main photo gone: the mark goes back to the first one left
             return settleMain({ ...state, photos, deletes });
         }
-        case "toggleAi":
+        case "toggleAi": {
+            // at most AI_MAX marked: another mark waits until one comes off
+            const shot = state.photos.find((p) => p.id === action.id);
+            if (shot && !shot.ai && state.photos.filter((p) => p.ai).length >= AI_MAX) return state;
             return patchPhoto(state, action.id, (p) => ({ ...p, ai: !p.ai }));
+        }
         case "retry":
             return patchPhoto(state, action.id, (p) =>
                 p.status === "failed" ? { ...p, status: "waiting", error: "" } : p
@@ -3656,7 +3716,7 @@ export function venueLine(job, idle = "") {
         case "done":
             return job.link
                 ? { text: "", link: job.link, kind: "ok" }
-                : { text: job.held ? SAVED_NOT_POSTED : "done", link: "", kind: "ok" };
+                : { text: job.held ? DRAFTED : "done", link: "", kind: "ok" };
         case "failed":
             return { text: job.error || "failed", link: "", kind: "bad" };
         default:
@@ -3882,7 +3942,7 @@ export function waitsForName(state) {
  */
 export function venueLabel(job, venue) {
     if (isActive(job)) return `${venue}, posting`;
-    if (savedNotPosted(job)) return `${venue}, ${SAVED_NOT_POSTED}`;
+    if (savedNotPosted(job)) return `${venue}, ${DRAFTED}`;
     if (job.phase === "done") return `${venue}, posted`;
     return venue;
 }
@@ -3949,7 +4009,7 @@ export function venueButton(state, venue, settingsOk) {
     if (waitsForName(state)) return { enabled: false, hint: NAME_WAIT_HINT };
     if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
     if (!state.photos.some((p) => p.ai)) {
-        return { enabled: false, hint: "Mark at least one photo AI (bottom right of the photo)" };
+        return { enabled: false, hint: AI_HINT };
     }
     if (state.photos.some((p) => p.status === "failed")) {
         return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
@@ -4086,7 +4146,8 @@ export function doneButton(state) {
 export const NEXT_PAUSED = "NEXT waits: continue or reset the paused press";
 
 /** The quiet line under NEXT while a listing is posting on the PC. */
-export const NEXT_NOTE = "A listing is still posting on the server; NEXT starts the next item without waiting for its link";
+// Michal, 2026-11-02: "change it to - you can press NEXT to start your next item without waiting ..."
+export const NEXT_NOTE = "You can press NEXT to start your next item without waiting for the current item to finish posting.";
 
 /**
  * The line under NEXT: said once a job is on the PC and not finished, since
@@ -4692,9 +4753,10 @@ export function derivedFields(row, venue) {
  * The status and the link are the card's status line, above these.
  * @param {Record<string, any>} row
  * @param {string} venue
+ * @param {boolean} [admin] the model cost is shown to the admin alone (Michal, 2026-11-02)
  * @returns {Fact[]}
  */
-export function venueFacts(row, venue) {
+export function venueFacts(row, venue, admin = false) {
     if (venue === "craigslist") {
         const d = derivedFields(row, venue);
         return [
@@ -4707,7 +4769,8 @@ export function venueFacts(row, venue) {
     }
     if (venue !== "ebay") return [];
     const quantity = Number.isInteger(row.quantity) ? String(row.quantity) : "1";
-    const cost = plain(row.model_cost);
+    // what the model cost is the admin's to see alone (Michal, 2026-11-02)
+    const cost = admin ? plain(row.model_cost) : "";
     /** @type {Fact[]} */
     const facts = [
         { label: "Title", value: plain(row.title) },
@@ -5000,7 +5063,7 @@ export const NO_PRICE = "—";
 /**
  * The foldout as typed: the quantity box (a string), pickup only, and the Price
  * slider's grade (0 while it has not been moved on a row whose price follows no grade).
- * @typedef {{quantity:string, pickupOnly:boolean, pricing:0|1|2|3}} RowCustomize
+ * @typedef {{quantity:string, pickupOnly:boolean, pricing:0|1|2|3, price:string}} RowCustomize
  */
 
 /** "prices"' keys, in grade order: 1 a quick sale, 2 a fair (market) price, 3 the higher end. */
@@ -5029,6 +5092,7 @@ export function rowCustomize(row) {
         quantity: Number.isInteger(row.quantity) ? String(row.quantity) : "1",
         pickupOnly: row.pickup_only === true,
         pricing: pricingGrade(row.pricing),
+        price: (priceText(row.price) || "").replace(/\.00$/, ""), // whole dollars as 34, not 34.00
     };
 }
 
@@ -5048,7 +5112,8 @@ export function sliderWords(row, grade) {
     const g = pricingGrade(grade);
     const moved = g !== rowCustomize(row).pricing;
     const stuck = moved && !prices.some(Boolean);
-    if (!g) return { value: String(DEFAULT_PRICING), bold: 0, said: NOT_GRADED, note: NOT_GRADED, words };
+    // no grade: no word bold, and no line saying so (Michal, 2026-11-02: "people can see that")
+    if (!g) return { value: String(DEFAULT_PRICING), bold: 0, said: NOT_GRADED, note: "", words };
     return { value: String(g), bold: g, said: words[g - 1], note: stuck ? NO_CACHED : pricingOf(g).note, words };
 }
 
@@ -5058,21 +5123,27 @@ export function sliderWords(row, grade) {
  * it is not the row's; `pricing` never on a row with no cached prices (there is
  * nothing for the PC to set). null when nothing is left to send. The box must hold
  * a quantity (quantityValue): the foldout says so and keeps Save shut before this
- * is asked.
+ * is asked. A price typed or stepped in the box goes as `price` (a dial's "28.00") in the
+ * slider's place, unless it is the slider's grade's own cached price.
  * @param {Record<string, any>} row
  * @param {RowCustomize} values the foldout
- * @returns {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3} | null}
+ * @returns {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3, price?:string} | null}
  */
-export function customizeChanges(row, { quantity, pickupOnly, pricing }) {
+export function customizeChanges(row, { quantity, pickupOnly, pricing, price }) {
     const n = quantityValue(quantity);
     if (!n) throw new RangeError(EDIT_QUANTITY_HINT);
     const was = rowCustomize(row);
-    /** @type {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3}} */
+    /** @type {{quantity?:number, pickup_only?:boolean, pricing?:1|2|3, price?:string}} */
     const body = {};
     if (n !== Number(was.quantity)) body.quantity = n;
     if (pickupOnly !== was.pickupOnly) body.pickup_only = pickupOnly;
+    // a price typed or stepped (Michal, 2026-11-02) wins over the slider's grade: sent as a dial's
+    const typed = typeof price === "string" ? Number(price.trim().replace(/^\$\s*/, "")) : NaN;
+    if (Number.isFinite(typed) && typed > 0 && typed !== Number(was.price)) body.price = typed.toFixed(2);
     const grade = pricingGrade(pricing);
-    if (grade && grade !== was.pricing && cachedPrices(row).some(Boolean)) body.pricing = grade;
+    // the price the slider put in the box is the grade itself: sent as the grade, not a dial
+    if (body.price && grade && Number(cachedPrices(row)[grade - 1]) === typed) delete body.price;
+    if (!body.price && grade && grade !== was.pricing && cachedPrices(row).some(Boolean)) body.pricing = grade;
     return Object.keys(body).length ? body : null;
 }
 
@@ -5094,6 +5165,7 @@ export function followRow(before, values, after) {
         quantity: boxes ? now.quantity : values.quantity,
         pickupOnly: boxes ? now.pickupOnly : values.pickupOnly,
         pricing: values.pricing === was.pricing ? now.pricing : values.pricing,
+        price: values.price === was.price ? now.price : values.price,
     };
 }
 
@@ -5152,8 +5224,14 @@ export function customizeLine(card) {
     return { text: "", kind: "" };
 }
 
-/** Where a sync button is, said after a change that left a listing behind (Michal, 2026-10-31: only there). */
-const IN_VENUES = "in Settings, Venues";
+/**
+ * Where the sync is, said after a change that left a listing behind: the venue's own badge on
+ * the listing's page, which syncs since 2026-11-02 (Michal: "same style and same function").
+ * @param {string[]} venues
+ */
+function syncHint(venues) {
+    return venues.length > 1 ? "tap a venue's → below to sync it" : `tap ${venues[0]} → below to sync it`;
+}
 
 /**
  * Said once Save is through: the PC holds it, and on a listing up on a venue it syncs to, the
@@ -5167,8 +5245,7 @@ const IN_VENUES = "in Settings, Venues";
 export function customizeSaved(row, to) {
     const venues = customizeVenues(row, to);
     if (!venues.length) return { text: "saved", kind: "ok" };
-    if (venues.length > 1) return { text: `saved; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
-    return { text: `saved; ${actionWord("sync", venues[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
+    return { text: `saved; ${syncHint(venues)}`, kind: "ok" };
 }
 
 /**
@@ -5181,7 +5258,7 @@ export function customizeSaved(row, to) {
  * @returns {{text:string, kind:string} | null}
  */
 export function editSaved(venue, behind) {
-    return behind.includes(venue) ? { text: `saved; ${actionWord("sync", venue)} ${IN_VENUES} puts it on the listing`, kind: "ok" } : null;
+    return behind.includes(venue) ? { text: `saved; ${syncHint([venue])}`, kind: "ok" } : null;
 }
 
 /**
@@ -5205,8 +5282,7 @@ export function photoQuestion(n) {
  */
 export function photoSaved(done, behind) {
     if (!behind.length) return { text: done, kind: "ok" };
-    if (behind.length > 1) return { text: `${done}; sync ${IN_VENUES} puts it on the listings`, kind: "ok" };
-    return { text: `${done}; ${actionWord("sync", behind[0])} ${IN_VENUES} puts it on the listing`, kind: "ok" };
+    return { text: `${done}; ${syncHint(behind)}`, kind: "ok" };
 }
 
 // --- Admin: a list row's price, dialled on its tile -------------------------------------

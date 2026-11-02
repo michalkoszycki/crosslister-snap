@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.43.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.44.0") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -287,7 +287,9 @@ button, .big, .secondary {
    2026-10-05). */
 .snap, .done { min-height: 92px; font-size: 28px; }
 .snap .btn-icon svg { width: 30px; height: 30px; }
-.done { background: var(--signal); color: var(--on-signal); letter-spacing: 0.02em; }
+/* NEXT in Snap's colours: black with yellow words, yellow with black in the dark, as Snap (Michal,
+   2026-11-02: "next shoudl look like snap again" ... "since in dark mode both buttons are yellow") */
+.done { background: var(--accent); color: var(--accent-ink); letter-spacing: 0.02em; }
 /* Until the item has its first photo NEXT is plain smoke, not a faded yellow: nothing to
    finish yet (Michal, 2026-09-21). Overrides the shared 0.45 opacity of disabled buttons. */
 .done:disabled { background: var(--card); color: var(--muted); opacity: 1; }
@@ -492,6 +494,16 @@ button.badge.failed {
     margin-top: 18px;
 }
 .venue { min-width: 0; }
+/* only the account's venues; the rest behind a little grey circle at the row's right, eBay
+   alone centred and wider (Michal, 2026-10-31); opened, the others come in */
+.venues-more { align-self: start; justify-self: center; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-top: 18px; padding: 0; border: none; background: none; color: var(--line); }
+.venues-more svg { fill: currentColor; }
+.venues-more[hidden] { display: none; }
+/* eBay alone and wider: the word at Add from gallery's size (Michal, 2026-10-31) */
+.venues.venues-single .venue-btn { font-size: inherit; font-weight: 700; }
+.venue.venue-in { animation: venue-in 260ms ease-out; }
+@keyframes venue-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .venue.venue-in { animation: none; } }
 .venues .venue-btn { padding: 8px 2px; gap: 4px; font-size: clamp(14px, 4vw, 20px); border-radius: 32px; }
 .venues .tap-cancel { font-size: 11px; }
 .venues .venue-status, .venues .venue-link { font-size: 13px; }
@@ -554,6 +566,28 @@ button.busy::after {
 .reset-call:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 /* The row's price above the venue buttons, from the press on (Michal, 2026-09-30: "show
    the chosen price for the item above the buttons instead of replacing button text"). */
+/* the agreements: a white page over everything, big notes, the tick, I agree (Michal, 2026-11-02) */
+/* in the app, under its header, in the goods screen's place (Michal, 2026-11-02: "should still be
+   in the app not throw you out of it") */
+.agree { padding: 24px 0 40px; color: var(--ink); }
+.agree[hidden] { display: none; }
+body.agreeing #work, body.agreeing #book, body.agreeing #modes, body.agreeing #install-banner { display: none !important; }
+.agree-title { margin: 0 0 24px; font-size: 30px; font-weight: 800; line-height: 1.15; }
+/* the notes smaller and grey (Michal, 2026-11-02) */
+.agree-notes { margin: 0 0 24px; padding-left: 1.3em; font-size: 15px; line-height: 1.4; color: var(--muted); }
+.agree-notes li { margin-bottom: 12px; }
+/* Post without asking as a fourth note: the notes' grey and size, a bold lead, its box the size of
+   their numbers and where they stand, its words on their indent (Michal, 2026-11-02) */
+.agree .agree-auto { display: block; position: relative; margin: 0 0 28px; padding: 0 0 0 1.3em; min-height: 0; background: none; border-radius: 0; color: var(--muted); font-size: 15px; line-height: 1.4; }
+.agree .agree-auto input { position: absolute; left: 1px; top: 0.25em; width: 13px; height: 13px; accent-color: var(--muted); }
+.agree .agree-auto .agree-auto-word { font-weight: 700; }
+.agree-terms { margin: 0 0 18px; text-align: center; }
+.agree-terms a { color: var(--ink); font-weight: 700; }
+/* a held draft's price between its − and + (Michal, 2026-11-02) */
+.price-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.price-row .qty-btn[hidden] { display: none; }
+/* the price's − and + on the page's white, no grey behind (Michal, 2026-11-02: "liked these buttons without gray background") */
+.price-row .price-line { margin-left: 0; margin-right: 0; }
 .price-line {
     margin: 0 2px 10px;
     text-align: center;
@@ -570,6 +604,9 @@ button.busy::after {
 /* Posted: the button's word is at full strength in the posted green rather than
    faded like a button that cannot be pressed yet. */
 .venue-btn.posted { opacity: 1; color: var(--ok); border-color: var(--ok); }
+/* posted: a tick after the venue's word, as the list's badges and the saved address wear one,
+   the button as it is (Michal, 2026-11-02) */
+.venue-btn.posted:not(.busy)::after { content: ""; flex: none; width: 0.7em; height: 0.38em; margin: -0.2em 0 0 0.1em; border-left: 0.14em solid currentColor; border-bottom: 0.14em solid currentColor; transform: rotate(-45deg); }
 @media (prefers-reduced-motion: reduce) {
     button.busy::after { animation: none; }
 }
@@ -714,12 +751,111 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
     font-size: 15px;
 }
 .customize { padding: 2px 14px 14px; margin-bottom: 4px; }
+/* the name box's room, kept so Snap stays where the thumb is (Michal, 2026-11-02) */
+.name-field { visibility: hidden; }
+/* once there are photos they keep Snap low: the room goes (Michal, 2026-11-02) */
+#work:has(#strip > li) .name-field { display: none; }
+/* the first-listing walk-through (Michal, 2026-11-01; 2026-11-02: "dont make the animation. all
+   shoud just be stable. lots white space between elements and you scroll down to read next step.
+   big letters"; its notes "hand written font at an angle ... with arrows pointing to what they
+   talk about"): Snap where it always is, an example strip, the venue buttons, and under each a
+   hand-written note a long way from the next; the rest of the screen waits */
+@font-face {
+    font-family: "Caveat";
+    src: url("fonts/Caveat.woff2?v=2.44.0") format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+}
+body.touring #work { position: relative; pointer-events: none; }
+body.touring #work .tour-node { pointer-events: auto; }
+body.touring #work > :not(.tour-node, .tour-strip, .tour-venue, #snap-label) { display: none; }
+/* nothing but the title on top: no goods/book switch, no home-screen banner; no grey dots by the
+   venue buttons, and the buttons as they look once a photo is marked AI (Michal, 2026-11-02) */
+body.touring #modes, body.touring #install-banner, body.touring #venues-more { display: none !important; }
+body.touring .venue-btn:disabled { opacity: 1; }
+.tour-hand { font-family: "Caveat", "Bradley Hand", "Segoe Print", cursive; font-weight: 600; color: var(--ink); }
+.tour-steps { margin: 0 0 140px; font-size: 52px; font-weight: 700; line-height: 1; text-align: center; animation: tour-fade 1s ease 0.2s both; }
+.tour-head { margin: 90px 0 20px; font-size: 52px; font-weight: 700; line-height: 1; text-align: center; animation: tour-fade 1s ease 0.2s both; }
+@keyframes tour-fade { from { opacity: 0; translate: 0 20px; } to { opacity: 1; translate: none; } }
+/* the walk-through's venue button: shown, never pressed; it runs, then turns posted */
+.tour-venue { width: 62%; margin: 0 auto; pointer-events: none; }
+/* the tip above it, gone once it runs (Michal, 2026-11-02) */
+body.touring .tour-note.tour-reveal.tour-gone { opacity: 0; transition: opacity 0.5s ease; }
+/* under Snap, the photos a little way under it */
+body.touring #snap-label + .tour-note { margin: 24px 0 186px; }
+.tour-note { position: relative; margin: 10px 0 150px; padding: 34px 6px 0 64px; transform: rotate(-3deg); transform-origin: left top; }
+.tour-note p { margin: 0; font-size: 34px; line-height: 1.1; }
+.tour-note .tour-arrow { position: absolute; top: -4px; left: 12px; width: 50px; height: 62px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+/* "3. Tap the venue": centred over its button, the arrow turned to point down at it (Michal, 2026-11-02) */
+.tour-note-above { margin: 0 0 8px; padding: 0 6px 58px; text-align: center; }
+.tour-note-above .tour-arrow { top: auto; bottom: 0; left: calc(50% - 96px); transform: rotate(-45deg) scaleY(-1); }
+.tour-strip { margin: 0; pointer-events: none; }
+/* the example photos: a photo's size, grey, a faint picture in each */
+.tour-strip .shot { height: 134px; padding: 0; background: var(--line) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b9b9b6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='M21 16l-5-5-8 8'/%3E%3C/svg%3E") center 40% / 40px no-repeat; }
+.tour-end { margin: 130px 0 90px; text-align: center; }
+.tour-end p { margin: 0 0 80px; font-size: 46px; line-height: 1; transform: rotate(-2deg); }
+/* each part fades and rises in as it scrolls into view; the example photos pop in one by one,
+   then their AI marks light one by one (Michal, 2026-11-02) */
+body.touring .tour-reveal { opacity: 0; translate: 0 28px; transition: opacity 0.6s ease, translate 0.6s ease; }
+body.touring .tour-reveal.tour-in { opacity: 1; translate: none; }
+.tour-strip .shot { opacity: 0; }
+.tour-strip.tour-in .shot { animation: tour-pop 0.45s ease-out calc(0.2s + var(--i) * 0.18s) both; }
+/* the AI marks light once "2. Choose which ones go to AI" has faded in under them (tour-ai-go) */
+.tour-strip.tour-ai-go .tour-ai { border-color: var(--signal); transition: border-color 0.35s ease-out calc(0.9s + var(--j) * 0.5s); }
+.tour-strip.tour-ai-go .tour-ai .ai-mark { animation: tour-ai-word 0.35s ease-out calc(0.9s + var(--j) * 0.5s) both; }
+.tour-strip.tour-ai-go .tour-ai .ai-mark::before { animation: tour-ai-chip 0.35s ease-out calc(0.9s + var(--j) * 0.5s) both; }
+@keyframes tour-pop { from { opacity: 0; transform: scale(0.6); } 70% { opacity: 1; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes tour-ai-word { from { color: rgba(255, 255, 255, 0.85); } 50% { transform: scale(1.35); } to { color: var(--on-signal); transform: none; } }
+@keyframes tour-ai-chip { from { background: rgba(0, 0, 0, 0.45); border-color: rgba(255, 255, 255, 0.85); } to { background: var(--signal); border-color: var(--signal); } }
+/* a phone set to less motion: every part there at once, the marks already lit */
+@media (prefers-reduced-motion: reduce) {
+    body.touring .tour-reveal { opacity: 1; translate: none; transition: none; }
+    .tour-head, .tour-steps, .tour-nudge { animation: none; }
+    .tour-strip .shot { opacity: 1; }
+    .tour-strip.tour-in .shot,
+    .tour-strip.tour-ai-go .tour-ai .ai-mark,
+    .tour-strip.tour-ai-go .tour-ai .ai-mark::before { animation-duration: 1ms; animation-delay: 0s; }
+    .tour-strip.tour-ai-go .tour-ai { transition: none; }
+}
+/* the last button at Snap's size, a big arrow bobbing down at it */
+button.big.tour-done { min-height: 92px; font-size: 28px; margin-top: 10px; }
+.tour-nudge { display: block; width: 60px; height: 62px; margin: 0 auto; animation: tour-bob 1.1s ease-in-out infinite; }
+.tour-nudge svg { width: 100%; height: 100%; fill: none; stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes tour-bob { 0%, 100% { translate: 0 -8px; } 50% { translate: 0 8px; } }
+/* the minimum price: a box all but invisible on the grey, white only while typed in, no
+   outline, no − or + (Michal, 2026-11-01) */
+.min-price-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+/* "Minimum Price:" on the left, the box pushed right (Michal, 2026-11-02) */
+.min-price-label { margin: 0; }
+.min-price-row .min-price-box { margin-left: auto; }
+p.min-price-words { margin: 2px 0 0; }
+.min-price-box { display: inline-flex; align-items: center; font-size: 16px; font-weight: 700; }
+input[type="text"].min-price { width: 3.4em; text-align: right; min-height: 34px; padding: 0 4px; border: none; border-radius: 8px; background: transparent; font-size: 16px; font-weight: 700; box-shadow: none; }
+input[type="text"].min-price:focus, input[type="text"].min-price:focus-visible { background: var(--field); outline: none; }
+.min-price-words { color: var(--muted); }
+footer .link.tour-link { display: block; padding: 10px 0 0; text-decoration: underline; }
+/* keep visible, faint, on customize's line while it is open (Michal, 2026-11-01) */
+.customize-head { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+.customize-head .link.customize-toggle { margin-top: 0; }
+.keep-open { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+.keep-open[hidden] { display: none; }
+/* the dark arrow at the half-open card's foot: the rest of customize (Michal, 2026-11-01) */
+.customize-more-btn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 36px; margin: 4px 0 -8px; padding: 0; border: none; background: none; color: var(--ink); }
+.customize-more-btn[hidden] { display: none; }
+.customize-more-btn svg { fill: currentColor; transition: transform 0.15s ease; }
+.customize-more-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.customize-more-btn[aria-expanded="true"] { margin-bottom: 0; }
+.keep-open input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--muted); }
 .customize .field { margin-top: 10px; }
 /* Quantity: the small boxes' size, − and + beside it (Michal, 2026-10-31) */
 .qty-step { display: flex; align-items: center; gap: 8px; }
 input[type="text"].quantity { width: 3.6em; height: 40px; min-height: 40px; padding: 0 8px; font-size: 16px; border-width: 1.5px; text-align: center; }
 .qty-btn { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; background: var(--field); color: var(--ink); font-size: 22px; font-weight: 700; line-height: 1; }
 .qty-step:has(input:disabled) .qty-btn { opacity: 0.45; pointer-events: none; }
+/* a listing's price under its slider, stepped as the quantity (Michal, 2026-11-02) */
+.price-step { margin-top: 10px; }
+.price-box { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
+input[type="text"].quantity.price-input { width: 5em; }
 input[type="text"]:disabled { color: var(--muted); }
 /* a checkbox row (Pickup only and every other tick): the box and its words on the smoke grey,
    no outline in any state, the whole row the target (Michal, 2026-10-31: "a style for a
@@ -781,7 +917,7 @@ input[type="range"].pricing:focus-visible { outline: 3px solid var(--accent); ou
 /* the search, small (Michal, 2026-10-08: "Inventory list options need to be all small"):
    36 px tall, its words kept at 16 px, the size under which a phone zooms in on a box */
 .field-small { margin: 10px 0 4px; }
-input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size: 16px; border-width: 1.5px; }
+input[type="text"].small-input, input[type="email"].small-input { min-height: 36px; padding: 5px 12px; font-size: 16px; border-width: 1.5px; }
 /* Options, folded under the search: the filters, the sort and Show photos, all small,
    13 px chips 36 px tall (a thumb's target still, with their padding) */
 /* the inventory card's tools, top right: round icon buttons, the open one pressed (Michal, 2026-10-31) */
@@ -943,6 +1079,12 @@ input[type="text"].small-input { min-height: 36px; padding: 5px 12px; font-size:
    larger for a thumb; no arrow since its tick (Michal, 2026-10-08: "Instead of 'ebay
    listed' and an arrow") */
 a.vbadge { position: relative; z-index: 1; padding: 4px 10px; font-size: 12px; text-decoration: none; }
+/* a listing's venue rows: the list's badge, then its eye (Michal, 2026-11-02) */
+.detail-venue-head { display: flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 8px; }
+.detail-venue-head[hidden] { display: none; }
+.detail-venue-badge { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.eye-btn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: none; background: none; color: var(--ink); }
+.eye-btn svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* a listed badge whose listing is behind the row (Michal, 2026-10-07: "there should be our
    sync-to logo appearing on the ebay green button"): the same green bubble, the venue and
    then → in the tick's place, a job button above the row's tap; the venue blocks' Sync from
@@ -1226,6 +1368,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .policy-name { font-size: 12px; color: var(--muted); }
 .policy-chips .chip { min-height: 36px; padding: 4px 14px; font-size: 13px; border-radius: 999px; }
 .secondary.policy-save { margin-top: 14px; }
+/* something changed: the go-ahead's black, as Looks good (Michal, 2026-10-31) */
+.secondary.policy-save.changed { background: var(--accent); color: var(--accent-ink); }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
    say eBay connected on the same button, lit in green"): a listed badge's posted green, done
    with, so not faded as a disabled button is */
@@ -1262,13 +1406,16 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 .settings .fold-toggle { display: none; }
 .link.fold-toggle { font-size: 16px; }
 .fold-body { padding: 0 0 8px; }
+/* the card's top row: the chip's words, the chip's size, subdued (Michal, 2026-11-02) */
+.fold-title { margin: 2px 4px 14px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.people > .fold-title { margin-top: 12px; }
 .fold-body > .card { margin: 8px 0 0; }
 .fold-body > .field:first-child { margin-top: 6px; }
 .card-name { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
-/* the account cards (Michal, 2026-10-25): the current one first and outlined, the others with
-   Switch to this account and Remove from this phone; Add account under them */
+/* the account cards (Michal, 2026-10-25): the current one first, the others with Switch to this
+   account and Remove from this phone; Add account under them. No outline on the current one: the
+   venue cards' plain look (Michal, 2026-11-02: "dont need the black outline. use same style as in venues") */
 .account { padding: 14px; }
-.card.current { outline: 2px solid var(--accent); }
 .account-user { margin: 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
 .account-kind { margin: 2px 0 0; }
 .account-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
@@ -1284,12 +1431,28 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 .accounts-list .card { padding: 12px 14px; }
 .accounts-list .account-row { margin-top: 6px; }
 /* Add account: in line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) */
-.pill.add-account { margin: 14px 0 0 14px; }
+/* on the right, under the account cards (Michal, 2026-11-02) */
+.pill.add-account { display: flex; margin: 14px 0 0 auto; }
 .link.account-action { padding-left: 0; font-size: 13px; color: var(--muted); text-decoration: underline; }
 /* the invite box on the owner's card, above the People link: one label, one box, one button
    (Michal, 2026-10-26: "less is more"); the link, with its count */
 .invite { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .invite .pill { margin-top: 8px; }
+/* Buy postings' page: one big button a pack, Snap's colours (Michal, 2026-11-02) */
+#packs-page > .fold-title { margin-top: 12px; }
+#packs-page .account-packs { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 8px; }
+#packs-page .account-packs[hidden] { display: none; }
+.big.pack-btn { margin-top: 0; min-height: 64px; font-size: 20px; }
+/* a listing's Save draft: grey, the card's width; its line under it (Michal, 2026-11-02) */
+#detail-customize-actions { justify-content: center; }
+button.detail-save { width: 100%; }
+p.detail-save-words { margin: 6px 0 0; color: var(--muted); text-align: center; }
+/* the owner's name: a tap edits it where it is (Michal, 2026-11-02) */
+.account-user.editable { cursor: text; }
+input[type="text"].account-user-edit { width: 100%; font-size: 16px; font-weight: 800; }
+/* Invite and Manage members side by side (Michal, 2026-11-02) */
+.invite-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.invite-row .pill[hidden], #invite-field[hidden] { display: none; }
 .link.people-link { display: block; min-height: 44px; margin-top: 4px; padding: 10px 0; font-size: 15px; }
 .people-count { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 /* the inventory's count after its heading: the word's size, grey, in parentheses, a little apart (Michal, 2026-10-31) */
@@ -1307,7 +1470,8 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 .device .link { padding: 6px 0; font-size: 13px; text-decoration: underline; }
 .people .delete-link { display: block; margin-top: 12px; }
 /* Delete account / Leave this account, bottom right of the card: the red link, small; its confirmation under it */
-.link.delete-link { font-size: 13px; color: var(--bad); }
+/* Leave this account / Delete account: Sign out's size (Michal, 2026-11-02) */
+.link.delete-link { color: var(--bad); }
 .delete-confirm { margin-top: 10px; }
 .delete-words { margin: 0 0 10px; font-size: 14px; }
 .link.delete-keep { display: block; min-height: 44px; padding: 10px 0; }
@@ -1317,7 +1481,11 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 /* The venue blocks under Venues (docs/UI.md, 2026-10-25): one card each, the same shape, the
    chosen venue chip's alone under the chips (Michal, 2026-10-31) */
 /* the three cards one size: each row as tall as the tallest (Michal, 2026-10-31) */
-.venue-blocks { display: grid; grid-auto-rows: 1fr; gap: 8px; margin-top: 8px; }
+/* each card only as tall as what it says, the same room above and below (Michal, 2026-11-02: "these
+   areas should only be as tall as the text inside them"): no equal rows, no room for empty lines */
+.venue-blocks { display: grid; gap: 8px; margin-top: 8px; }
+.venue-card .sync-status:empty, .venue-card .venue-ships:empty, .venue-card .venue-line:empty { display: none; }
+.venue-sync:not(:has(> :not([hidden]))) { display: none; }
 .venue-block { padding: 12px 14px; }
 /* a venue's summary card under Venues: the whole card the way to its page (Michal, 2026-10-31) */
 .venue-card { display: flex; flex-direction: column; align-items: stretch; width: 100%; color: var(--ink); }
@@ -1326,8 +1494,10 @@ button.connected:has(.connect-user) { flex-direction: column; gap: 0; padding-bl
 .venue-card .card-name { margin: 0 0 4px; }
 .venue-page .venue-full { display: grid; gap: 8px; }
 .venue-page .venue-block .venue-name { display: none; } /* the page's heading says it */
+/* the address card below says where it ships from: no line of it in the block (Michal, 2026-10-31) */
+.venue-full .venue-ships { display: none; }
 .venue-page .address-card { margin-top: 14px; }
-.venue-page .policy-block { margin-top: 14px; }
+.venue-page .policy-block { margin-top: 14px; padding: 0 14px; } /* in line with the address card above (Michal, 2026-10-31) */
 .venue-page .signup-policy-list { margin: 0 0 8px; }
 .venue-line { margin: 0; }
 .venue-line.ok { color: var(--ok); font-weight: 700; }
@@ -1425,3 +1595,30 @@ footer p { margin: 6px 0; }
 .about p, .about li { margin: 8px 0; font-size: 16px; }
 .about ul { padding-left: 1.2em; }
 .about a { color: var(--ink); font-weight: 700; }
+
+/* the venues this account does not use, the row opened: ghosts, dotted as an absent venue in the
+   inventory, the page's own background, all light grey (Michal, 2026-10-31: "make them even
+   less apparent ... ghosty buttons") */
+.venue-btn.venue-ghost { border: 2px dashed var(--line); background: none; color: var(--line); }
+
+/* a listing's venue badges at Save's size, every venue alike (Michal, 2026-11-02: "as big as the
+   save above . and btw all the venue buttons shouild have that size") */
+.detail-venue-badge > a.vbadge, .detail-venue-badge > span.vbadge, .detail-venue-badge > button.vbadge { min-height: 44px; height: auto; padding: 8px 16px; font-size: 15px; gap: 6px; border-width: 2px; }
+.detail-venue-badge .vbadge .tick, .detail-venue-badge .vbadge .sync-dir svg { width: 15px; height: 15px; }
+
+/* the walk-through's example photos: one present documented from five sides, as a seller would
+   (Michal, 2026-11-02: "the same PRESENT ... just from different angles. image 3 should show
+   some model number or bar code"): its front, three quarters, its label close up, its top, its back */
+.tour-strip .shot:nth-child(1) { background: #FFF1E6 url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20x%3D%2210%22%20y%3D%2227%22%20width%3D%2244%22%20height%3D%2229%22%20rx%3D%224%22%20fill%3D%22%23FF6B6B%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%2219%22%20width%3D%2252%22%20height%3D%2211%22%20rx%3D%223%22%20fill%3D%22%23FF8787%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2219%22%20width%3D%228%22%20height%3D%2237%22%20fill%3D%22%23FFD43B%22%2F%3E%3Cpath%20transform%3D%22translate(32%2019)%20scale(1)%22%20d%3D%22M0%200c-5-10-17-9-14-3%202%203%208%203%2014%203zM0%200c5-10%2017-9%2014-3-2%203-8%203-14%203z%22%20fill%3D%22%23FAB005%22%2F%3E%3C%2Fsvg%3E") center 42% / 66px no-repeat; }
+.tour-strip .shot:nth-child(2) { background: #FFF1E6 url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Cpath%20d%3D%22M32%2014%2054%2024%2032%2034%2010%2024z%22%20fill%3D%22%23FF8787%22%2F%3E%3Cpath%20d%3D%22M10%2024%2032%2034v22L10%2046z%22%20fill%3D%22%23FF6B6B%22%2F%3E%3Cpath%20d%3D%22M32%2034%2054%2024v22L32%2056z%22%20fill%3D%22%23E03131%22%2F%3E%3Cpath%20d%3D%22M21%2019%2043%2029M43%2019%2021%2029%22%20stroke%3D%22%23FFD43B%22%20stroke-width%3D%224%22%2F%3E%3Cpath%20d%3D%22M21%2029v22M43%2029v22%22%20stroke%3D%22%23FFD43B%22%20stroke-width%3D%224%22%2F%3E%3Cpath%20transform%3D%22translate(32%2022)%20scale(0.8)%22%20d%3D%22M0%200c-5-10-17-9-14-3%202%203%208%203%2014%203zM0%200c5-10%2017-9%2014-3-2%203-8%203-14%203z%22%20fill%3D%22%23FAB005%22%2F%3E%3C%2Fsvg%3E") center 42% / 66px no-repeat; }
+.tour-strip .shot:nth-child(3) { background: #FFF1E6 url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20x%3D%222%22%20y%3D%222%22%20width%3D%2260%22%20height%3D%2260%22%20rx%3D%226%22%20fill%3D%22%23FF6B6B%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%222%22%20width%3D%228%22%20height%3D%2260%22%20fill%3D%22%23FFD43B%22%2F%3E%3Crect%20x%3D%2219%22%20y%3D%2216%22%20width%3D%2240%22%20height%3D%2232%22%20rx%3D%223%22%20fill%3D%22%23fff%22%2F%3E%3Ctext%20x%3D%2222%22%20y%3D%2225%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%224.8%22%20font-weight%3D%22700%22%20fill%3D%22%23212529%22%3EMODEL%20GX-204%3C%2Ftext%3E%3Crect%20x%3D%2224%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2225.5%22%20y%3D%2230%22%20width%3D%221.4%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2227.7%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2229.2%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2230.7%22%20y%3D%2230%22%20width%3D%222.0999999999999996%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2233.6%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2235.1%22%20y%3D%2230%22%20width%3D%221.4%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2237.300000000000004%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2238.800000000000004%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2240.300000000000004%22%20y%3D%2230%22%20width%3D%221.4%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2242.50000000000001%22%20y%3D%2230%22%20width%3D%222.0999999999999996%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2245.400000000000006%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2246.900000000000006%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2248.400000000000006%22%20y%3D%2230%22%20width%3D%221.4%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2250.60000000000001%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2252.10000000000001%22%20y%3D%2230%22%20width%3D%222.0999999999999996%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2255.00000000000001%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2256.50000000000001%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2258.00000000000001%22%20y%3D%2230%22%20width%3D%221.4%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3Crect%20x%3D%2260.20000000000001%22%20y%3D%2230%22%20width%3D%220.7%22%20height%3D%2213%22%20fill%3D%22%23212529%22%2F%3E%3C%2Fsvg%3E") center 42% / 66px no-repeat; }
+.tour-strip .shot:nth-child(4) { background: #FFF1E6 url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20x%3D%2210%22%20y%3D%2210%22%20width%3D%2244%22%20height%3D%2244%22%20rx%3D%224%22%20fill%3D%22%23FF8787%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2210%22%20width%3D%228%22%20height%3D%2244%22%20fill%3D%22%23FFD43B%22%2F%3E%3Crect%20x%3D%2210%22%20y%3D%2228%22%20width%3D%2244%22%20height%3D%228%22%20fill%3D%22%23FFD43B%22%2F%3E%3Cpath%20transform%3D%22translate(32%2033)%20scale(1)%22%20d%3D%22M0%200c-5-10-17-9-14-3%202%203%208%203%2014%203zM0%200c5-10%2017-9%2014-3-2%203-8%203-14%203z%22%20fill%3D%22%23FAB005%22%2F%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2232%22%20r%3D%223.5%22%20fill%3D%22%23F08C00%22%2F%3E%3C%2Fsvg%3E") center 42% / 66px no-repeat; }
+.tour-strip .shot:nth-child(5) { background: #FFF1E6 url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20x%3D%2210%22%20y%3D%2227%22%20width%3D%2244%22%20height%3D%2229%22%20rx%3D%224%22%20fill%3D%22%23E03131%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%2219%22%20width%3D%2252%22%20height%3D%2211%22%20rx%3D%223%22%20fill%3D%22%23FF6B6B%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2219%22%20width%3D%228%22%20height%3D%2237%22%20fill%3D%22%23FFD43B%22%2F%3E%3Cpath%20d%3D%22M36%2030q6%203%207%208%22%20stroke%3D%22%23868E96%22%20stroke-width%3D%221.2%22%20fill%3D%22none%22%2F%3E%3Crect%20x%3D%2240%22%20y%3D%2237%22%20width%3D%2213%22%20height%3D%229%22%20rx%3D%222%22%20fill%3D%22%23fff%22%20transform%3D%22rotate(-12%2046%2041)%22%2F%3E%3C%2Fsvg%3E") center 42% / 66px no-repeat; }
+
+/* a posted item changed: its button's tick gives way to the sync arrow (Michal, 2026-11-02) */
+.venue-btn.posted.behind::after { display: none; }
+/* the posted item's + at the end of its photos, as the inventory card's */
+.strip .add-shot { display: flex; align-items: stretch; height: 134px; padding: 0; border-style: dashed; background: none; }
+.strip .add-shot label { display: flex; flex: 1; align-items: center; justify-content: center; font-size: 40px; font-weight: 300; cursor: pointer; }
+/* a drafted venue button: "tap again to post" small under the word (Michal, 2026-11-02) */
+.venue-btn:has(> .tap-cancel) { flex-wrap: wrap; row-gap: 2px; }

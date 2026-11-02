@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.43.0";
+import { VERSION } from "./version.js?v=2.44.0";
 import {
     adminLink,
     anyActive,
@@ -39,6 +39,7 @@ import {
     pricingGrade,
     pricingOf,
     savedNotPosted,
+    TAP_TO_POST,
     progressLine,
     raiseCount,
     reduce,
@@ -130,6 +131,7 @@ import {
     rowTitle,
     rowVenues,
     sliderWords,
+    cachedPrices,
     busyLine,
     syncJob,
     syncLine,
@@ -140,6 +142,7 @@ import {
     syncWord,
     unsyncedList,
     unsyncedWith,
+    isUnsynced,
     unsyncedWithout,
     venueActions,
     venueBadge,
@@ -151,6 +154,7 @@ import {
     DIAL_REPEAT_MS,
     dialBody,
     dialPrice,
+    minPriceText,
     dialStep,
     DEFAULT_SERVER,
     checkEmail,
@@ -169,6 +173,8 @@ import {
     meOf,
     venueOff,
     venueAllowed,
+    AI_MAX,
+    AI_HINT,
     accountError,
     accountKind,
     creditsLine,
@@ -260,8 +266,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.43.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.43.0";
+} from "./core.js?v=2.44.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.0";
 import {
     addVenue,
     applyWrap,
@@ -317,8 +323,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.43.0";
-import { shrinkPhoto } from "./shrink.js?v=2.43.0";
+} from "./pc.js?v=2.44.0";
+import { shrinkPhoto } from "./shrink.js?v=2.44.0";
 import {
     bookCard,
     bookPriceValue,
@@ -331,8 +337,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.43.0";
-import { canScan, readIsbn } from "./scan.js?v=2.43.0";
+} from "./book.js?v=2.44.0";
+import { canScan, readIsbn } from "./scan.js?v=2.44.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -343,8 +349,14 @@ const THEME_KEY = "snap.theme";
 const PHOTOS_KEY = "snap.inventory.photos";
 /** The inventory's Options foldout: folded unless he left it open on this phone ("open"). */
 const OPTIONS_KEY = "snap.inventory.options";
+/** customize's keep visible, per kind: ticked on this phone ("on"), it opens at every start and every DONE. */
+const KEEP_KEYS = { goods: "snap.customize.keep", book: "snap.book.customize.keep" };
+/** customize's lower part as he last left it on this phone, per kind ("open" or "closed"). */
+const MORE_KEYS = { goods: "snap.customize.more", book: "snap.book.customize.more" };
 /** The listing open in Admin, by sku, so Admin opens back onto it; gone on Back. */
 const CARD_KEY = "snap.admin.card";
+/** What each listing marked behind had when it was in step, by "<sku>:<venue>" (settleSynced). */
+const SYNCED_KEY = "snap.inventory.synced";
 /**
  * The listings this phone changed since their venue last had them, by sku and venue
  * (unsyncedList): their list badge for that venue offers its sync until a push of theirs
@@ -434,6 +446,195 @@ let scan = "";
  * folded on every load and every DONE; the values themselves live in the state.
  */
 const customizeOpen = { goods: false, book: false };
+/** The price he stepped a saved, not posted draft to (dollars), per kind; null: as drafted. */
+const heldPrice = { goods: null, book: null };
+
+/**
+ * A draft saved, not posted, or an item posted and nothing on its way: its price may be stepped
+ * (Michal, 2026-11-02: the − and + "which before we had only for pre-posting").
+ */
+function priceAdjustable(m) {
+    const st = slots[m];
+    if (anyActive(st)) return false;
+    return VENUES.some((v) => savedNotPosted(st.jobs[v])) || isPostedItem(m);
+}
+
+/** In a posted venue button, small under the word, once something changed (Michal, 2026-11-02). */
+const TAP_TO_UPDATE = "tap again to update";
+
+/**
+ * Once the goods item is posted the screen is its edit screen (Michal, 2026-11-02): `sku` the
+ * row, `base` its customize and `snap` everything as posted (or last updated), `row` the row as
+ * the PC has it (its grades' prices), `extra` the photos added since (their pictures), `busy`
+ * while an update is on its way, `venue` its venue, `status` what it ended with.
+ */
+const postedEdit = { sku: "", base: null, snap: "", row: null, extra: [], busy: false, venue: "", status: "", posted: false };
+
+/** The goods item is up on a venue, nothing of it on its way. */
+function isPostedItem(m) {
+    const st = slots[m];
+    return m === "goods" && !!st.sku && !anyActive(st) && VENUES.some((v) => st.jobs[v].phase === "done" && !savedNotPosted(st.jobs[v]));
+}
+
+/** What the edit screen holds now: customize, the stepped price, the photos added. */
+function editKey() {
+    return JSON.stringify([customizeOf(slots.goods), heldPrice.goods, postedEdit.extra.length]);
+}
+
+/** Something changed since it was posted (or last updated). */
+function postedDirty() {
+    return isPostedItem("goods") && postedEdit.sku === slots.goods.sku && postedEdit.snap !== editKey();
+}
+
+/**
+ * The slider moved on a saved draft or a posted item: the price line takes that grade's draft
+ * price, as if stepped there (Michal, 2026-11-02: "when i play with this toggle the price below
+ * in the preview should update").
+ */
+function gradePrice(m) {
+    if (m !== "goods" || !postedEdit.row || !priceAdjustable("goods")) return;
+    const grade = pricingGrade(customizeOf(slots.goods).pricing);
+    const price = Number(cachedPrices(postedEdit.row)[grade - 1]);
+    if (!price) return;
+    heldPrice.goods = Math.round(price);
+    render();
+}
+
+/** The posted item taken up as the edit screen's, the row asked for its grades' prices; let go after NEXT. */
+function syncPostedEdit() {
+    const st = slots.goods;
+    // a draft saved, not posted, takes the row up too: its grades' prices for the slider
+    if (!priceAdjustable("goods")) {
+        if (!st.sku && postedEdit.sku) Object.assign(postedEdit, { sku: "", base: null, snap: "", row: null, extra: [], status: "", posted: false });
+        return;
+    }
+    // posted just now (after a draft): what it went up as is the baseline from here
+    if (postedEdit.sku === st.sku && isPostedItem("goods") && !postedEdit.posted) {
+        Object.assign(postedEdit, { base: { ...customizeOf(st) }, snap: editKey(), posted: true });
+        return;
+    }
+    if (postedEdit.sku === st.sku) return;
+    Object.assign(postedEdit, { sku: st.sku, base: { ...customizeOf(st) }, snap: editKey(), row: null, extra: [], status: "", posted: isPostedItem("goods") });
+    const pc = settings();
+    if (!pc) return;
+    const sku = st.sku;
+    getRow(pc, sku)
+        .then((row) => {
+            if (postedEdit.sku !== sku) return;
+            postedEdit.row = row;
+            render();
+        })
+        .catch(() => {});
+}
+
+/**
+ * The posted venue button tapped with something changed: the changes on the row (PATCH), then
+ * the row put on that venue's listing (a push job), as the inventory's sync badge does.
+ */
+async function updatePosted(venue) {
+    const pe = postedEdit;
+    const st = slots.goods;
+    const pc = settings();
+    if (!pc || pe.busy || !st.sku) return;
+    pe.busy = true;
+    pe.venue = venue;
+    pe.status = "updating...";
+    render();
+    try {
+        const c = customizeOf(st);
+        const base = pe.base || c;
+        /** @type {Record<string, unknown>} */
+        const body = {};
+        if (heldPrice.goods !== null) Object.assign(body, dialBody(heldPrice.goods));
+        const q = quantityValue(c.quantity);
+        if (q && q !== quantityValue(base.quantity)) body.quantity = q;
+        if (c.pickupOnly !== base.pickupOnly) body.pickup_only = c.pickupOnly === true;
+        const g = pricingGrade(c.pricing);
+        if (heldPrice.goods === null && g && g !== pricingGrade(base.pricing)) body.pricing = g;
+        if (Object.keys(body).length) await patchRow(pc, st.sku, body);
+        await sendJob(pc, actionJob("push", { sku: st.sku, venue }));
+        heard(200);
+        pe.base = { ...c };
+        pe.snap = editKey();
+        pe.status = "updated";
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        pe.status = `not updated: ${e.message}`;
+    } finally {
+        pe.busy = false;
+        render();
+    }
+}
+
+/** The + at the end of the posted item's photos: each added to the row, its picture shown in the strip. */
+async function addPostedPhotos(files) {
+    const pe = postedEdit;
+    const pc = settings();
+    if (!pc || !pe.sku || !files.length) return;
+    for (const file of files) {
+        try {
+            const { jpeg } = await shrinkPhoto(file, { fixDark });
+            await addRowPhoto(pc, pe.sku, jpeg);
+            pe.extra.push(URL.createObjectURL(jpeg));
+        } catch (e) {
+            if (e.status === 0 || e.status === 401) heard(e.status);
+            pe.status = e.message || "could not add the photo";
+            break;
+        }
+    }
+    render();
+}
+
+/** The posted item's added photos, then the + tile, after the strip's own. */
+function stripPostedExtras(strip) {
+    if (!isPostedItem("goods")) return;
+    for (const url of postedEdit.extra) {
+        const li = document.createElement("li");
+        li.className = "shot";
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "added photo";
+        li.append(img);
+        strip.append(li);
+    }
+    const li = document.createElement("li");
+    li.className = "shot add-shot";
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.className = "sr-only";
+    input.setAttribute("aria-label", "Add photos to this item");
+    input.addEventListener(
+        "change",
+        onFiles((files) => {
+            addPostedPhotos(Array.from(files || [])).catch(() => {});
+        })
+    );
+    const plus = document.createElement("span");
+    plus.setAttribute("aria-hidden", "true");
+    plus.textContent = "+";
+    label.append(plus, input);
+    li.append(label);
+    strip.append(li);
+}
+/** customize's lower part unfolded by its dark arrow, folded by the one under it; as last left (MORE_KEYS). */
+const customizeMore = { goods: false, book: false };
+/** The first-listing walk-through on the goods screen: from Looks good until its last button or Skip. */
+let touring = false;
+/** The walk-through's own nodes in the goods screen, taken out again when it ends. */
+let tourNodes = [];
+/** Watches the walk-through's parts come into view, each faded in once it does. */
+let tourSeen = null;
+/** The walk-through's timers (the venue button running, then posted), cleared when it ends. */
+let tourTimers = [];
+
+/** The venue the walk-through's button names: this account's first. */
+function tourVenue() {
+    const own = VENUES.filter((v) => venueAllowed(me, v) && (!me || !Array.isArray(me.venues) || me.venues.includes(v)));
+    return own[0] || "ebay";
+}
 
 /** The server check: what the PC last said (null: not asked yet), the next check, one at a time. */
 let serverStatus = null;
@@ -563,6 +764,18 @@ let defaultsTimer = null;
 let signupAddressDirty = false;
 /** Step 2's box saved and not typed in since: Saved on its button, the address light grey. */
 let signupAddressSaved = false;
+/** The goods row opened to every venue by its grey dots; folded again at NEXT or a ghost's tap. */
+let venuesOpen = false;
+/** The tip line's words while the row shows the venues this account does not use. */
+const VENUES_NOT_AVAILABLE = "Venues not available";
+/** How long the opened row waits before it folds itself (Michal, 2026-10-31: "fade and fold back away after some seconds"). */
+const VENUES_OPEN_MS = 6000;
+let venuesTimer = null;
+/** The row folded (a ghost's tap, NEXT, or the wait run out): the tip line its own words again. */
+function foldVenues() {
+    clearTimeout(venuesTimer);
+    venuesOpen = false;
+}
 /** customize's Save as default, and its word a moment after a press. */
 const SAVE_AS_DEFAULT = "Save as default";
 const SAVED_AS_DEFAULT = "Saved as default";
@@ -1172,6 +1385,11 @@ function readDefaults() {
 }
 
 /** Fix dark photos as the Posting fold left it on this phone: on unless he saved it off. */
+/** customize kept open on this phone (its keep visible ticked) for kind `m`. */
+function keptOpen(m) {
+    return readText("localStorage", KEEP_KEYS[m]) === "on";
+}
+
 function savedFixDark() {
     return readText("localStorage", FIXDARK_KEY) !== "off";
 }
@@ -1234,6 +1452,8 @@ function render() {
     for (const kid of el.book.children || []) if (kid !== el.booksOff) kid.inert = booksOff;
     el.booksOff.hidden = !booksOff;
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
+    // How Snap works, once there is a goods screen of his to walk through
+    el.tourLink.hidden = !(me && me.registered) || touring;
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
     // screen is below. That should not be there"); both items carry on out of sight
@@ -1278,6 +1498,7 @@ function render() {
 }
 
 function renderGoods() {
+    syncPostedEdit();
     const state = slots.goods;
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
     el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
@@ -1315,7 +1536,13 @@ function renderGoods() {
     const ok = !!settings();
     // the row's price, above both buttons: one job's answer serves the other too
     renderPriceLine(el.titleLine, titleLine(state));
-    renderPriceLine(el.priceLine, priceLine(state));
+    // a held draft's price, stepped: said as stepped, the − and + either side while it may be
+    const drafted = priceLine(state);
+    const adjustable = priceAdjustable("goods");
+    if (!adjustable) heldPrice.goods = null;
+    renderPriceLine(el.priceLine, heldPrice.goods !== null ? `$${heldPrice.goods}` : drafted);
+    el.priceLess.hidden = !adjustable || !drafted;
+    el.priceMore.hidden = !adjustable || !drafted;
     el.seeInventory.hidden = !inventorySku(state);
     let hint = "";
     for (const venue of VENUES) {
@@ -1329,10 +1556,48 @@ function renderGoods() {
         });
         hint ||= said;
     }
-    el.venueHint.textContent = hint;
-    el.venueHint.hidden = !hint;
+    // the AI photo hint under the photos it is about, in the tip line there, not under the
+    // buttons (Michal, 2026-11-02)
+    const aiHint = hint === AI_HINT;
+    el.venueHint.textContent = aiHint ? "" : hint;
+    el.venueHint.hidden = !hint || aiHint;
+    if (aiHint) {
+        el.aiTip.textContent = AI_HINT;
+        el.aiTip.hidden = false;
+    }
+    renderVenueRow(state);
 
     renderNext(state, el.nextBtn, el.doneHint, el.nextNote);
+}
+
+/**
+ * The goods row: the venues this account uses (and any with a job of this item's), the rest
+ * folded behind the grey circle until it is tapped (Michal, 2026-10-31); one shown sits centred
+ * and wider, the circle at its right. Opened, the others come in (venue-in) as they were before.
+ */
+function renderVenueRow(state) {
+    const own = VENUES.filter((v) => venueAllowed(me, v) || state.jobs[v].phase !== "idle");
+    const folded = !venuesOpen && own.length < VENUES.length;
+    for (const v of VENUES) {
+        const col = el.venueCols[v];
+        const show = !folded || own.includes(v);
+        el[`${v}Btn`].classList.toggle("venue-ghost", show && !own.includes(v));
+        if (show && col.hidden) col.classList.add("venue-in");
+        col.hidden = !show;
+        col.style.gridColumn = folded && own.length === 1 && own[0] === v ? "2" : "";
+    }
+    el.venuesMore.hidden = !folded;
+    // eBay alone and wider: its word the size of Add from gallery's
+    el.venueRow.classList.toggle("venues-single", folded && own.length === 1);
+
+    // the others shown: the tip line under the row says they are not available; folded, its own words
+    if (!folded && own.length < VENUES.length) {
+        el.venueHint.textContent = VENUES_NOT_AVAILABLE;
+        el.venueHint.hidden = false;
+    }
+    el.venuesMore.setAttribute("aria-expanded", folded ? "false" : "true");
+    el.venueRow.style.gridTemplateColumns = !folded ? "" : own.length === 1 ? "28px minmax(0, 1fr) 28px" : `repeat(${own.length}, minmax(0, 1fr)) 28px`;
+    el.venuesMore.style.gridColumn = folded && own.length === 1 ? "3" : "";
 }
 
 /** NEXT, the line above it (why it waits) and the quiet one under it (a listing left posting). */
@@ -1454,6 +1719,8 @@ function customizeNodes(m) {
     return m === "book"
         ? {
               toggle: el.bookCustomizeToggle,
+              keepRow: el.bookCustomizeKeepRow,
+              keep: el.bookCustomizeKeep,
               card: el.bookCustomize,
               quantity: el.bookQuantity,
               pickup: el.bookPickupOnly,
@@ -1461,11 +1728,14 @@ function customizeNodes(m) {
               pricingWords: el.bookPricingWords,
               pricingNote: el.bookPricingNote,
               autoPost: el.bookAutoPost,
-              comps: el.bookComps,
+              more: el.bookCustomizeMore,
+              rest: el.bookCustomizeRest,
               bestOffer: el.bookBestOffer,
           }
         : {
               toggle: el.customizeToggle,
+              keepRow: el.customizeKeepRow,
+              keep: el.customizeKeep,
               card: el.customize,
               quantity: el.quantity,
               pickup: el.pickupOnly,
@@ -1473,7 +1743,8 @@ function customizeNodes(m) {
               pricingWords: el.pricingWords,
               pricingNote: el.pricingNote,
               autoPost: el.autoPost,
-              comps: el.comps,
+              more: el.customizeMore,
+              rest: el.customizeRest,
               bestOffer: el.bestOffer,
           };
 }
@@ -1511,6 +1782,8 @@ function renderPosting() {
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
     el.postingBestOffer.checked = d.bestOffer !== false;
+    // its $ inside the box, put back once he leaves it (Michal, 2026-11-02)
+    if (document.activeElement !== el.postingMinPrice) el.postingMinPrice.value = d.minPrice ? `$${d.minPrice}` : "";
     el.postingFixDark.checked = savedFixDark();
 }
 
@@ -1527,6 +1800,7 @@ function savePostingDefaults() {
         autoPost: el.postingAutoPost.checked,
         comps: el.postingComps.checked,
         bestOffer: el.postingBestOffer.checked,
+        minPrice: el.postingMinPrice.value.replace(/^\s*\$\s*/, "").trim(),
     });
     writeJson("localStorage", DEFAULTS_KEY, { goods: d, book: d });
     writeText("localStorage", FIXDARK_KEY, el.postingFixDark.checked ? "on" : "off");
@@ -1553,10 +1827,15 @@ function savePostingDefaults() {
  */
 function renderCustomize(m) {
     const nodes = customizeNodes(m);
-    const open = customizeOpen[m];
+    // the walk-through shows customize open all the way, without changing what he left
+    const shown = touring && m === "goods";
+    const open = customizeOpen[m] || shown;
     nodes.toggle.textContent = open ? "▾ customize" : "▸ customize";
     nodes.toggle.setAttribute("aria-expanded", open ? "true" : "false");
     nodes.card.hidden = !open;
+    // keep visible: on the toggle's line while it is open (Michal, 2026-11-01)
+    nodes.keepRow.hidden = !open;
+    nodes.keep.checked = keptOpen(m);
     const fixed = restoring[m] || anyActive(slots[m]);
     const c = customizeOf(slots[m]);
     nodes.quantity.disabled = fixed;
@@ -1566,12 +1845,21 @@ function renderCustomize(m) {
     nodes.pricing.disabled = fixed;
     nodes.pricing.value = String(grade.grade);
     nodes.pricing.setAttribute("aria-valuetext", grade.word);
-    PRICING.forEach((p, i) => nodes.pricingWords[i].classList.toggle("on", p.grade === grade.grade));
+    // posted: each grade's word with the AI draft's price for it (Michal, 2026-11-02)
+    const priced = m === "goods" && priceAdjustable(m) && postedEdit.row ? sliderWords(postedEdit.row, grade.grade).words : null;
+    PRICING.forEach((p, i) => {
+        nodes.pricingWords[i].classList.toggle("on", p.grade === grade.grade);
+        nodes.pricingWords[i].textContent = priced ? priced[i] : p.word;
+    });
     nodes.pricingNote.textContent = grade.note;
     nodes.autoPost.disabled = fixed;
     nodes.autoPost.checked = c.autoPost;
-    nodes.comps.disabled = fixed;
-    nodes.comps.checked = c.comps;
+    // the card half open at first: up to the price, then the dark arrow (Michal, 2026-11-01)
+    const more = customizeMore[m] || shown;
+    nodes.more.hidden = false;
+    nodes.more.setAttribute("aria-expanded", more ? "true" : "false");
+    nodes.more.setAttribute("aria-label", more ? "Fewer options" : "More options");
+    nodes.rest.hidden = !more;
     nodes.bestOffer.disabled = fixed;
     nodes.bestOffer.checked = c.bestOffer !== false;
 }
@@ -1619,16 +1907,35 @@ function renderVenue(m, venue, ok, nodes) {
     // it takes the tap that pauses, continues, or says it is too late
     const busy = isActive(job);
     nodes.btn.disabled = !button.enabled && !busy;
+    // a draft saved, not posted: "tap again to post" small under the word (Michal, 2026-11-02)
+    const drafted = savedNotPosted(job);
+    const cancel = cancelButton(state, venue);
     paintJobButton(nodes.btn, venue, {
         busy,
-        cancel: cancelButton(state, venue),
+        cancel: cancel || drafted,
         // "credits will be lost" once the press has left the phone (Michal, 2026-10-17)
-        note: cancelNote(job),
+        note: cancel ? cancelNote(job) : TAP_TO_POST,
         paused: job.paused,
         label: venueLabel(job, venue),
         reset: nodes.reset,
+        trail: drafted && !cancel ? [syncIcon()] : [],
     });
     nodes.btn.classList.toggle("posted", job.phase === "done" && !savedNotPosted(job));
+    const posted = m === "goods" && job.phase === "done" && !savedNotPosted(job);
+    const updating = posted && postedEdit.busy && postedEdit.venue === venue;
+    const behind = posted && !updating && postedDirty();
+    nodes.btn.classList.toggle("behind", behind || updating);
+    if (behind || updating) {
+        nodes.btn.disabled = updating;
+        paintJobButton(nodes.btn, venue, {
+            busy: updating,
+            cancel: behind,
+            note: TAP_TO_UPDATE,
+            // paintJobButton says the note after the label itself: "ebay, posted, tap again to update"
+            label: venueLabel(job, venue),
+            trail: [syncIcon()],
+        });
+    }
 
     // before the press, what customize changed ("pickup only · fair price"): he sees it took
     const late = lates.get(`${m}:${venue}`);
@@ -1636,9 +1943,11 @@ function renderVenue(m, venue, ok, nodes) {
         busy && late && late.late
             ? { text: TOO_LATE, link: "", kind: "busy" }
             : venueLine(job, venueIdleNote(state, venue));
-    nodes.status.textContent = line.text;
-    nodes.status.className = `venue-status ${line.kind}`;
-    nodes.status.hidden = !line.text;
+    // a posted item's update: what it ended with, under its venue (Michal, 2026-11-02)
+    const said = posted && postedEdit.venue === venue && postedEdit.status ? postedEdit.status : line.text;
+    nodes.status.textContent = said;
+    nodes.status.className = `venue-status ${said === line.text ? line.kind : postedEdit.status.startsWith("not") ? "bad" : "ok"}`;
+    nodes.status.hidden = !said;
     // no postings left (a 402): the server's words, and under them the way to buy more
     nodes.buy.hidden = !(job.phase === "failed" && job.credit);
     nodes.link.hidden = !line.link;
@@ -1697,6 +2006,12 @@ function tooLate(holder, paint) {
 function renderStrip(m, strip, locked) {
     const state = slots[m];
     strip.replaceChildren();
+    // four marked AI: the others' marks wait, dimmed, until one comes off (AI_MAX)
+    const aiFull = state.photos.filter((p) => p.ai).length >= AI_MAX;
+    if (m === "goods") {
+        el.aiTip.textContent = AI_FULL_TIP;
+        el.aiTip.hidden = !aiFull;
+    }
     for (const p of state.photos) {
         const lead = m === "book" && p.n === state.book.main;
         const card = document.createElement("li");
@@ -1758,7 +2073,7 @@ function renderStrip(m, strip, locked) {
             ai.type = "button";
             ai.className = p.ai ? "ai-mark on" : "ai-mark";
             ai.textContent = "AI";
-            ai.disabled = locked;
+            ai.disabled = locked || (aiFull && !p.ai);
             ai.setAttribute("aria-pressed", p.ai ? "true" : "false");
             ai.setAttribute("aria-label", `Send ${p.name} to the AI`);
             ai.addEventListener("click", () =>
@@ -1791,6 +2106,7 @@ function renderStrip(m, strip, locked) {
 
         strip.append(card);
     }
+    if (m === "goods") stripPostedExtras(strip);
 }
 
 /**
@@ -2344,6 +2660,8 @@ async function send(m, venue) {
     // the second goods button reuses the saved row, and so does the press after
     // "saved, not posted" (a book's too); otherwise a book is always sent whole
     const reuse = !!slots[m].sku && (m === "goods" || savedNotPosted(slots[m].jobs[venue]));
+    // the held draft's stepped price, taken now: the render jobSending brings lets heldPrice go
+    const stepped = m === "goods" && reuse ? heldPrice.goods : null;
     setState(m, reduce(slots[m], { type: "jobSending", venue, step: "sending" }));
     if (!reuse && !(await noteReady(m))) {
         if (taken()) return;
@@ -2374,6 +2692,16 @@ async function send(m, venue) {
         // auto-post off: the press saves the row (held), and the one after posts it
         customize: { ...customizeOf(s), autoPost: !s.jobs[venue].held },
     });
+    // the held draft's price stepped: set on the row first, so it goes up at that price (Michal, 2026-11-02)
+    if (stepped !== null && s.sku) {
+        try {
+            await patchRow(pc, s.sku, dialBody(stepped));
+        } catch (e) {
+            if (e.status === 0 || e.status === 401) heard(e.status);
+            setState(m, reduce(slots[m], { type: "jobRefused", venue, error: `the price did not reach the server: ${e.message}` }));
+            return;
+        }
+    }
     try {
         const answer = await sendJob(pc, body);
         if (presses.get(key) !== press) {
@@ -2401,10 +2729,21 @@ async function send(m, venue) {
 function onVenueTap(m, venue) {
     if (m === "book" && !booksAllowed(me)) return; // the book screen is only to see (render)
     const key = `${m}:${venue}`;
+    // a ghost on the opened goods row: the row folds and says why (Michal, 2026-10-31)
+    if (m === "goods" && venuesOpen && !venueAllowed(me, venue) && slots[m].jobs[venue].phase === "idle") {
+        foldVenues();
+        render();
+        return;
+    }
     if (!venueAllowed(me, venue) && slots[m].jobs[venue].phase === "idle") {
         // nothing is sent: the line under it says the account has no such venue
         offTaps.add(key);
         render();
+        return;
+    }
+    // the posted item changed: the tap sends the update (Michal, 2026-11-02)
+    if (m === "goods" && postedDirty() && slots[m].jobs[venue].phase === "done" && !savedNotPosted(slots[m].jobs[venue])) {
+        updatePosted(venue).catch(() => {});
         return;
     }
     const tap = venueTap(slots[m], venue);
@@ -2669,12 +3008,12 @@ function showAdmin(open, card = "") {
         return;
     }
     showSettings(false);
-    const sku = card || readText("localStorage", CARD_KEY);
-    // Admin opens with Inventory folded at first (Michal, 2026-10-31: "it is no longer necessary for
-    // the inventory to be OPEN when you go to the admin options"), then as it was left this visit;
-    // a listing left open still reopens
+    // the three dots open Settings, Inventory folded, never a listing left open (Michal, 2026-11-02:
+    // "3 dots always gets you to the settings view - and you have to click to the inventory if you
+    // want to see it"); only See in inventory lands on a listing
+    const sku = card;
     if (!sku) {
-        showInventory(admin.inventoryOpen);
+        showInventory(false);
         return;
     }
     admin.inventoryOpen = true;
@@ -3024,14 +3363,57 @@ function readUnsynced() {
     return unsyncedList(readJson("localStorage", UNSYNCED_KEY, []));
 }
 
-/** A listing's `venue` marked as not having the row (`on`), or let go once it has. */
-function markUnsynced(sku, venue, on) {
-    writeJson("localStorage", UNSYNCED_KEY, unsyncedWith(readUnsynced(), sku, venue, on));
+/**
+ * A listing's `venue` marked as not having the row (`on`), or let go once it has. Marked from a
+ * row in step with the venue (`before`), what the venue has is kept beside the mark (SYNCED_KEY),
+ * so a change taken back lets it go again (settleSynced).
+ */
+function markUnsynced(sku, venue, on, before = null) {
+    const list = readUnsynced();
+    const kept = readJson("localStorage", SYNCED_KEY, {});
+    const key = `${sku}:${venue}`;
+    if (!on) delete kept[key];
+    else if (before && !isUnsynced(list, sku, venue) && !kept[key]) kept[key] = syncedFace(before, venue);
+    writeJson("localStorage", SYNCED_KEY, kept);
+    writeJson("localStorage", UNSYNCED_KEY, unsyncedWith(list, sku, venue, on));
 }
 
-/** Each listing a change the PC answered left behind (leftUnsynced), marked. */
+/**
+ * What `venue`'s listing shows of a row, as far as a change on this phone can move it: craigslist's
+ * own fields too (the card's Edit), which override the eBay ones there.
+ */
+function syncedFace(row, venue) {
+    const said = (x) => String(x ?? "").trim();
+    const own = venue === "craigslist" && row.craigslist && typeof row.craigslist === "object" ? row.craigslist : null;
+    return {
+        price: Number(String(row.price ?? "").replace(/[^0-9.]/g, "")) || 0,
+        quantity: Number.isInteger(row.quantity) ? row.quantity : 1,
+        pickup: row.pickup_only === true,
+        fields: ["title", "description", "condition_note"].map((k) => said(row[k])),
+        condition: said(row.condition),
+        ...(own ? { craigslist: ["title", "price", "description", "category"].map((k) => said(own[k])) } : {}),
+    };
+}
+
+/**
+ * Each venue of the row marked behind whose kept face the row has again, its photos not behind
+ * there: in step after all, its mark let go (Michal, 2026-11-02: "when the changes RETURN to the
+ * original condition there is no need to sync and so the ebay button for instance should show a
+ * check").
+ */
+function settleSynced(sku, after) {
+    const kept = readJson("localStorage", SYNCED_KEY, {});
+    const photos = photosBehind(after);
+    for (const venue of VENUES) {
+        const face = kept[`${sku}:${venue}`];
+        if (face && JSON.stringify(face) === JSON.stringify(syncedFace(after, venue)) && !photos.includes(venue)) markUnsynced(sku, venue, false);
+    }
+}
+
+/** Each listing a change the PC answered left behind (leftUnsynced), marked; one taken back let go. */
 function markBehind(sku, before, after) {
-    for (const venue of leftUnsynced(before, after)) markUnsynced(sku, venue, true);
+    for (const venue of leftUnsynced(before, after)) markUnsynced(sku, venue, true, before);
+    settleSynced(sku, after);
 }
 
 // --- a tile's + and −, a dial ---------------------------------------------------------
@@ -3444,6 +3826,7 @@ function syncBadge(sku, badge) {
     const action = `push ${badge.venue}`;
     const paint = () => {
         paintTile(sku);
+        if (admin.row && admin.row.sku === sku) renderFolds();
         // the row has no line of its own: a tap from the publishing step on is said on the list's
         if (task.late) el.inventoryStatus.textContent = `${sku}: ${TOO_LATE}`;
     };
@@ -3835,7 +4218,7 @@ function renderCards() {
 function renderRowCustomize() {
     const c = admin.custom;
     const row = admin.row;
-    fold(el.detailCustomizeToggle, "customize", c.open);
+    fold(el.detailCustomizeToggle, "quick customize", c.open);
     el.detailCustomizeToggle.hidden = !row;
     el.detailCustomize.hidden = !row || !c.open;
     if (!row) return;
@@ -3844,6 +4227,9 @@ function renderRowCustomize() {
     el.detailQuantity.disabled = busy;
     el.detailPickupOnly.checked = c.values.pickupOnly;
     el.detailPickupOnly.disabled = busy;
+    // the number alone, no $ (Michal, 2026-11-02)
+    if (el.detailPrice.value !== c.values.price && document.activeElement !== el.detailPrice) el.detailPrice.value = c.values.price;
+    el.detailPrice.disabled = busy;
     const slider = sliderWords(row, c.values.pricing);
     el.detailPricing.value = slider.value;
     el.detailPricing.disabled = busy;
@@ -3917,6 +4303,10 @@ async function saveRowCustomize() {
     c.wait = "";
     c.note = customizeSaved(whole, syncVenues(me, "to"));
     markBehind(row.sku, row, whole);
+    // anything saved here leaves every listing it is up on behind until synced (Michal, 2026-11-02)
+    const pushable = syncVenues(me, "to");
+    for (const b of rowBadges(whole)) if (b.tick && pushable.includes(b.venue)) markUnsynced(row.sku, b.venue, true, row);
+    settleSynced(row.sku, whole);
     admin.changed = true;
     refreshRow({ ...whole, sku: row.sku });
 }
@@ -3927,13 +4317,66 @@ async function saveRowCustomize() {
  */
 function renderFolds() {
     const row = admin.row;
-    for (const [venue, { toggle, card }] of Object.entries(el.detailFolds)) {
+    for (const [venue, { toggle, card, head, badge }] of Object.entries(el.detailFolds)) {
         const open = admin.folds[venue] === true;
-        toggle.hidden = !row;
+        head.hidden = !row;
         card.hidden = !row || !open;
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        toggle.replaceChildren(...(row ? [badgeNode(venueBadge(row, venue)), ` ${open ? "▾" : "▸"}`] : []));
+        toggle.setAttribute("aria-label", `${open ? "Hide" : "Show"} ${venueName(venue)}`);
+        toggle.replaceChildren(eyeIcon(open));
+        badge.replaceChildren(...(row ? detailBadge(row, venue) : []));
     }
+}
+
+/**
+ * A listing's venue badge, the list's own and doing what it does there (Michal, 2026-11-02:
+ * "same style and same function"): listed, a link to the listing; behind it, the green sync
+ * button that pushes this listing to the venue; not on it, the dashed "not added".
+ */
+function detailBadge(row, venue) {
+    const listed = rowBadges(row, readUnsynced()).find((b) => b.venue === venue);
+    if (!listed) return [badgeNode(venueBadge(row, venue))];
+    if (listed.sync) return syncBadge(row.sku, listed);
+    return venueActions(row, venue).includes("post") ? draftBadge(venue, listed) : [badgeNode(listed)];
+}
+
+/**
+ * A draft's badge on a listing: the badge with the to-venue arrow after it, a tap posting the
+ * draft, as the card's own Post does (Michal, 2026-11-02: "tapping this 'ebay draft' button
+ * should post to ebay"); the card opens so its status line follows the post.
+ */
+function draftBadge(venue, badge) {
+    const c = admin.cards[venue];
+    const posting = pressed(c, "post");
+    const btn = actionButton("", `vbadge ${badge.kind} vsync${posting ? " busy" : ""}`, posting || rowBusy(), () => {
+        admin.folds[venue] = true;
+        onAction(venue, "post");
+    });
+    btn.append(document.createTextNode(posting ? `${venue} posting` : badge.text), ...(posting ? [] : [syncIcon()]));
+    btn.setAttribute("aria-label", `${badge.said}, post to ${venueName(venue)}`);
+    return [btn];
+}
+
+/**
+ * The eye beside a listing's venue badge: open while its card shows, shut (struck through)
+ * while it is hidden, the usual pair (Michal, 2026-11-02).
+ * @param {boolean} open
+ */
+function eyeIcon(open) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", width: "22", height: "22", "aria-hidden": "true" })) svg.setAttribute(k, v);
+    const shapes = open
+        ? [["path", { d: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" }], ["circle", { cx: "12", cy: "12", r: "3" }]]
+        : [
+              ["path", { d: "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" }],
+              ["line", { x1: "1", y1: "1", x2: "23", y2: "23" }],
+          ];
+    for (const [tag, attrs] of shapes) {
+        const shape = document.createElementNS(SVG_NS, tag);
+        for (const [k, v] of Object.entries(attrs)) shape.setAttribute(k, v);
+        svg.append(shape);
+    }
+    return svg;
 }
 
 /**
@@ -3959,7 +4402,7 @@ function cardNodes(venue) {
     const nodes = [c.line];
     const url = venueStatus(row, venue).url;
     if (url) nodes.push(linkNode(url, "venue-link", url));
-    nodes.push(c.edit ? editNode(venue, busy) : factsNode(venueFacts(row, venue)), actionsNode(venue, busy));
+    nodes.push(c.edit ? editNode(venue, busy) : factsNode(venueFacts(row, venue, !!me && me.admin === true)), actionsNode(venue, busy));
     if (c.edit && c.edit.error) {
         const refused = document.createElement("p");
         refused.className = "edit-error";
@@ -4354,9 +4797,10 @@ async function runAction(venue, action) {
     const waited = pressWait(c);
     renderCards();
     if (!(await waited) || mine !== admin.shown) return;
+    const floor = Number(minPriceText(readDefaults().goods.minPrice) || 0);
     const body =
         action === "post"
-            ? jobRequest({ venue, sku: row.sku })
+            ? { ...jobRequest({ venue, sku: row.sku }), ...(floor > 0 ? { min_price: floor } : {}) }
             : actionJob(action, { sku: row.sku, venue });
     let answer;
     try {
@@ -4845,7 +5289,7 @@ function showCard(on) {
     if (on) visit.sawCard = true;
     el.inventoryBrowse.hidden = on;
     el.inventoryDetail.hidden = !on;
-    el.inventoryBack.hidden = !on || people.open;
+    el.inventoryBack.hidden = !on || people.open || account.packs;
     renderExtras();
 }
 
@@ -4855,17 +5299,19 @@ function showCard(on) {
  * (docs/UI.md).
  */
 function renderAdminPage() {
-    const page = !el.inventoryDetail.hidden || people.open || !!venuePage;
+    const page = !el.inventoryDetail.hidden || people.open || account.packs || !!venuePage;
     const ok = !!settings() && !adding;
     if (!ok) admin.inventoryOpen = false;
     el.inventoryToggle.hidden = page || !ok;
-    el.inventory.hidden = !admin.inventoryOpen || people.open || !!venuePage;
+    el.inventory.hidden = !admin.inventoryOpen || people.open || account.packs || !!venuePage;
     el.settingsToggle.hidden = page;
     el.settings.hidden = page || !settingsOpen;
     el.people.hidden = !people.open;
     // each page's Back above its card, on the page's ground (Michal, 2026-10-31)
-    el.inventoryBack.hidden = el.inventoryDetail.hidden || people.open || !!venuePage;
+    el.inventoryBack.hidden = el.inventoryDetail.hidden || people.open || account.packs || !!venuePage;
     el.peopleBack.hidden = !people.open;
+    el.packsPage.hidden = !account.packs;
+    el.packsBack.hidden = !account.packs;
     el.venueBack.hidden = !venuePage;
     el.venuePage.hidden = !venuePage;
     // no one signed in: Back to sign-in above Settings (Michal, 2026-10-31)
@@ -4901,7 +5347,7 @@ function showVenue(venue) {
  */
 function renderExtras() {
     renderAdminPage();
-    const card = !el.inventoryDetail.hidden || people.open || !!venuePage || !settings() || adding;
+    const card = !el.inventoryDetail.hidden || people.open || account.packs || !!venuePage || !settings() || adding;
     el.feedbackToggle.hidden = card;
     el.feedback.hidden = card || !extras.feedback;
     // an admin's new entries, counted in the toggle and listed above the box
@@ -5496,6 +5942,7 @@ function renderPolicies() {
     choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller - free returns"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
     el.policySave.disabled = policies.busy;
+    markPolicySave();
     el.policyReset.hidden = !(info.defaults && typeof info.defaults === "object");
     el.policyReset.disabled = policies.busy;
 }
@@ -5558,6 +6005,7 @@ function renderShipRows(info, d, services) {
                 cost.value = r.cost || "";
                 cost.addEventListener("input", () => {
                     r.cost = cost.value.trim() || null;
+                    markPolicySave();
                 });
                 line.append(cost);
             }
@@ -5601,9 +6049,248 @@ const POLICY_PARTS = [
     { value: "books", type: "Shipping", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing more to set here." },
 ];
 
+// --- the first-listing walk-through (Michal, 2026-11-01: "after the looks good on policies i
+// want to see the expanded Snap page. with some arrows and instructions. kind of a brochure you
+// scroll down through walking you through the process to your first listing") ---------------
+
+/** The agreements were agreed to on this phone ("yes"). */
+const AGREED_KEY = "snap.agreed";
+
+/**
+ * The agreements page, in the app in the goods screen's place: its notes, Post without asking
+ * (ticked; unticked, each item a draft first, posted on the next tap) and I agree, which keeps
+ * his choice as the posting default (Michal, 2026-11-02).
+ * @param {boolean} on
+ */
+function showAgree(on) {
+    el.agree.hidden = !on;
+    document.body.classList.toggle("agreeing", on);
+    if (on) {
+        // ticked to start with: he unticks it for drafts first (Michal, 2026-11-02)
+        el.agreeAuto.checked = true;
+        window.scrollTo(0, 0);
+    }
+}
+
+/** The owner's name as typed on the account card: PATCH /me/people/me, /me again; a refusal said on the card. */
+async function renameAccount(raw) {
+    const made = nameBody(raw);
+    const pc = settings();
+    if (!pc) return;
+    if (!made.ok) {
+        account.status = made.error;
+        renderAccount();
+        return;
+    }
+    account.status = "Saving...";
+    renderAccount();
+    try {
+        await renameMe(pc, made.body);
+        heard(200);
+        account.status = "";
+        await loadMe();
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        account.status = e.message;
+    }
+    renderAccount();
+}
+
+/** Under the photos once four are marked AI (Michal, 2026-11-02). */
+const AI_FULL_TIP = "Max 4 photos";
+
+/** The People page's way in, beside Invite: the owner's words, and a member's. */
+const MANAGE_MEMBERS = "Manage members";
+const MEMBERS = "Members";
+
+/** The walk-through's words, few (Michal, 2026-11-02: "keep the comments minimal"). */
+const TOUR_TITLE = "How it works:";
+const TOUR_SNAP = "1. Snap some photos";
+const TOUR_AI = "2. Choose which ones go to AI";
+const TOUR_TAP = "3. Tap the venue";
+/** Under the title (Michal, 2026-11-02). */
+const TOUR_STEPS = "1 - 2 - 3";
+/** The venue button, scrolled to: it runs this long after coming into view, then this long more to posted. */
+const TOUR_TAP_MS = 1200;
+/** How long the title has the screen to itself before anything else comes in. */
+const TOUR_TITLE_MS = 1500;
+
+const TOUR_POSTING_MS = 1000;
+const TOUR_READY = "Posting is ready!";
+const TOUR_END = "Snap your first item";
+/** The example strip: five photos, two of them marked AI (Michal, 2026-11-02). */
+const TOUR_PHOTOS = 5;
+const TOUR_AI_MARKED = [1, 3];
+/** A note's hand-drawn arrow, curving up at what the note is about. */
+const TOUR_ARROW =
+    '<svg class="tour-arrow" viewBox="0 0 50 62" aria-hidden="true"><path d="M42 58 C 20 55, 9 40, 12 7"/><path d="M3 17 L12 5 L22 15"/></svg>';
+
+/** A node of the walk-through: `tag` with `className`, kept in tourNodes to come out at the end. */
+function tourNode(tag, className) {
+    const node = document.createElement(tag);
+    node.className = className;
+    tourNodes.push(node);
+    return node;
+}
+
+/** A hand-written note at an angle, its arrow up at what sits above it (`above`: the note sits
+ * above what it is about, its arrow pointing down at it). */
+function tourNote(words, above = false) {
+    const note = tourNode("div", above ? "tour-node tour-note tour-note-above tour-hand" : "tour-node tour-note tour-hand");
+    note.innerHTML = TOUR_ARROW;
+    const line = document.createElement("p");
+    line.textContent = words;
+    note.append(line);
+    return note;
+}
+
+/**
+ * Looks good done, or How Snap works: "How it works?" on top, then the goods screen's Snap and
+ * venue buttons alone; under Snap an example of eight photos, four marked AI; a hand-written
+ * note at each, a long way apart, read by scrolling down, and its last button to the screen.
+ */
+function startTour() {
+    if (touring) return;
+    touring = true;
+    tourNodes = [];
+    if (mode !== "goods") setMode("goods");
+    // the title alone on top, large and centred: no switch, no banner (Michal, 2026-11-02)
+    const head = tourNode("h2", "tour-node tour-head tour-hand");
+    head.textContent = TOUR_TITLE;
+    el.work.insertBefore(head, el.work.firstChild);
+    const steps = tourNode("p", "tour-node tour-steps tour-hand");
+    steps.textContent = TOUR_STEPS;
+    head.after(steps);
+    // "1. Snap some photos" under Snap, the photos under it, "2. Choose which ones go to AI" under them
+    const first = tourNote(TOUR_SNAP);
+    el.snapLabel.after(first);
+    const strip = tourNode("ul", "strip tour-strip");
+    strip.setAttribute("aria-hidden", "true");
+    // the photos pop in one after another, then the marked ones' AI lights, one after another
+    let marked = 0;
+    for (let n = 1; n <= TOUR_PHOTOS; n += 1) {
+        const ai = TOUR_AI_MARKED.includes(n);
+        const shot = document.createElement("li");
+        shot.className = ai ? "shot tour-ai" : "shot";
+        shot.style.setProperty("--i", String(n - 1));
+        if (ai) shot.style.setProperty("--j", String(marked++));
+        const mark = document.createElement("span");
+        mark.className = "ai-mark";
+        mark.textContent = "AI";
+        shot.append(mark);
+        strip.append(shot);
+    }
+    first.after(strip);
+    const pick = tourNote(TOUR_AI);
+    strip.after(pick);
+    // the venue: "Tap the venue" above its button; scrolled to, the button runs and turns posted,
+    // "Posting is ready!" under it, the tip staying (Michal, 2026-11-02)
+    const tap = tourNote(TOUR_TAP, true);
+    pick.after(tap);
+    const venue = tourNode("button", "big venue-btn tour-venue");
+    venue.type = "button";
+    venue.tabIndex = -1;
+    venue.textContent = tourVenue();
+    tap.after(venue);
+    const end = tourNode("div", "tour-node tour-end tour-reveal");
+    const ready = document.createElement("p");
+    ready.className = "tour-hand";
+    ready.textContent = TOUR_READY;
+    // a big hand-drawn arrow bobbing down at the last button, Snap's size (Michal, 2026-11-02)
+    const nudge = document.createElement("span");
+    nudge.className = "tour-nudge";
+    nudge.innerHTML =
+        '<svg viewBox="0 0 60 62" aria-hidden="true"><path d="M30 6 C 25 22, 35 36, 30 54"/><path d="M15 38 L30 56 L45 38"/></svg>';
+    const done = document.createElement("button");
+    done.type = "button";
+    done.id = "tour-done";
+    done.className = "big tour-done";
+    done.textContent = TOUR_END;
+    done.addEventListener("click", () => {
+        endTour();
+        // the agreements next, the first time on this phone (Michal, 2026-11-02)
+        if (readText("localStorage", AGREED_KEY) !== "yes") showAgree(true);
+    });
+    end.append(ready, nudge, done);
+    venue.after(end);
+    const posting = () => {
+        tourTimers.push(
+            setTimeout(() => {
+                venue.classList.add("busy");
+            }, TOUR_TAP_MS)
+        );
+        tourTimers.push(
+            setTimeout(() => {
+                venue.classList.remove("busy");
+                venue.classList.add("posted");
+                end.classList.add("tour-in");
+            }, TOUR_TAP_MS + TOUR_POSTING_MS)
+        );
+    };
+    // each part fades in as it scrolls into view (Michal, 2026-11-02: "each element appears as you
+    // scroll"); the title on its own as the page opens
+    const parts = [el.snapLabel, first, strip, pick, tap, venue];
+    for (const part of parts) part.classList.add("tour-reveal");
+    const shown = (part) => {
+        part.classList.add("tour-in");
+        // the AI marks wait for their note (Michal, 2026-11-02)
+        if (part === pick) strip.classList.add("tour-ai-go");
+        if (part === venue) posting();
+    };
+    tourSeen =
+        typeof IntersectionObserver === "function"
+            ? new IntersectionObserver(
+                  (seen) => {
+                      for (const one of seen) {
+                          if (!one.isIntersecting || !tourSeen) continue;
+                          tourSeen.unobserve(one.target);
+                          shown(one.target);
+                      }
+                  },
+                  { threshold: 0.3 }
+              )
+            : null;
+    // the title first, alone; the rest only once it is in (Michal, 2026-11-02: "how it works should
+    // appear first. before anything else")
+    tourTimers.push(
+        setTimeout(() => {
+            for (const part of parts) {
+                if (tourSeen) tourSeen.observe(part);
+                else shown(part);
+            }
+        }, TOUR_TITLE_MS)
+    );
+    // a browser that never says a part came into view: all of them, rather than a blank page
+    tourTimers.push(
+        setTimeout(() => {
+            if (touring && !parts.some((part) => part.classList.contains("tour-in"))) for (const part of parts) shown(part);
+        }, TOUR_TITLE_MS + 3000)
+    );
+    document.body.classList.add("touring");
+    render();
+    window.scrollTo(0, 0);
+}
+
+/** Skip or the last button: the notes gone, the goods screen as he left it, from the top. */
+function endTour() {
+    if (!touring) return;
+    touring = false;
+    if (tourSeen) tourSeen.disconnect();
+    tourSeen = null;
+    for (const timer of tourTimers) clearTimeout(timer);
+    tourTimers = [];
+    for (const node of tourNodes) node.remove();
+    tourNodes = [];
+    for (const node of [el.snapLabel, el.venueRow]) node.classList.remove("tour-reveal", "tour-in");
+    document.body.classList.remove("touring");
+    render();
+    window.scrollTo(0, 0);
+}
+
 /**
  * Looks good: the choices agreed to as they are (POST /me/policies/confirm), the server sets
- * them up on eBay, /me says registered and the goods screen is theirs.
+ * them up on eBay, /me says registered and the goods screen is theirs, the first-listing
+ * walk-through over it (startTour).
  */
 async function confirmPoliciesNow() {
     const pc = settings();
@@ -5614,6 +6301,7 @@ async function confirmPoliciesNow() {
     try {
         policies.info = await confirmPolicies(pc);
         await loadMe();
+        if (me && me.registered) startTour();
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         policies.status = e.message;
@@ -5659,6 +6347,19 @@ function resetPolicies() {
     }
     policies.status = "";
     renderPolicies();
+}
+
+/** Save in the go-ahead's black once something in the draft differs from the server's (Michal, 2026-10-31). */
+function markPolicySave() {
+    const info = policies.info;
+    const d = policies.draft;
+    let changed = false;
+    if (info && d) {
+        const changes = policyChanges(info, d);
+        if (d.shipping_cost_type !== "FLAT_RATE") delete changes.shipping_cost;
+        changed = Object.keys(changes).length > 0;
+    }
+    el.policySave.classList.toggle("changed", changed);
 }
 
 /** Edit tapped: the choices as menus, a draft of them as they are. */
@@ -5836,7 +6537,14 @@ function renderAccount() {
     const canBuy = !!settings() && !!credits && !credits.unlimited;
     const left = settings() ? creditsLine(credits) : "";
     el.account.hidden = !a;
-    el.accountUser.textContent = a ? accountName(a) : "";
+    // a member's card says whose account they joined (Michal, 2026-11-02: "when a person is part of a
+    // joined account it should say joined michal. not just michal")
+    const joined = !!a && !!me && me.owner === false && !!a.user;
+    // the owner goes by the name he gave (/me's name), and may change it with a tap (Michal, 2026-11-02)
+    const ownName = !!a && !!me && me.owner !== false && !joined;
+    el.accountUser.textContent = a ? (joined ? `joined ${accountName(a)}` : (ownName && me.name) || accountName(a)) : "";
+    el.accountUser.classList.toggle("editable", ownName);
+    el.accountUser.hidden = !el.accountUserEdit.hidden;
     const kind = a ? accountKind(a) : "";
     el.accountKind.textContent = kind;
     el.accountKind.hidden = !kind;
@@ -5851,7 +6559,7 @@ function renderAccount() {
         ...packs.map((pack) => {
             const pill = document.createElement("button");
             pill.type = "button";
-            pill.className = "pill pill-ink pill-small";
+            pill.className = "big pack-btn";
             pill.textContent = packLabel(pack);
             pill.disabled = account.busy;
             pill.addEventListener("click", () => {
@@ -5861,6 +6569,7 @@ function renderAccount() {
         })
     );
     el.accountStatus.textContent = account.status;
+    el.packsStatus.textContent = account.packs ? account.status : "";
     renderVenues();
     renderSeller();
     renderPeopleLink();
@@ -6497,11 +7206,18 @@ function dropPeople() {
 function renderPeopleLink() {
     const info = settings() ? people.info : null;
     const owner = !!info && info.owner;
-    el.invite.hidden = !owner;
+    // the invite part for the owner; Manage members (Members for a member) for anyone on it
+    el.invite.hidden = !info;
+    el.inviteField.hidden = !owner;
+    el.inviteSend.hidden = !owner;
     el.inviteSend.disabled = people.busy;
+    // something typed: Invite turns black with yellow words (Michal, 2026-11-02)
+    el.inviteSend.classList.toggle("pill-ink", el.inviteEmail.value.trim() !== "");
     el.inviteStatus.textContent = people.inviteStatus;
     el.accountPeople.hidden = !info;
-    el.peopleCount.textContent = info ? peopleCount(info.people.length) : "";
+    el.accountPeople.textContent = owner ? MANAGE_MEMBERS : MEMBERS;
+    // black with yellow words once anyone else is on the account (Michal, 2026-11-02)
+    el.accountPeople.classList.toggle("pill-ink", !!info && info.people.length > 1);
 }
 
 /**
@@ -7006,7 +7722,7 @@ function renderInstall(away) {
     el.landingInstallSteps.textContent = steps;
     el.landingInstallSteps.hidden = onLanding !== "steps" || !stepsOpen.landing;
     const kept = installDismissal(readText("localStorage", INSTALL_KEY));
-    const banner = installAsking ? "asking" : installState({ ...base, dismissedAt: kept.dismissedAt, never: kept.never });
+    const banner = installAsking ? "asking" : installState({ ...base, dismissedAt: kept.dismissedAt, count: kept.count, never: kept.never });
     el.installBanner.hidden = away || banner === "hidden";
     // the question in the banner's place while it asks
     for (const node of [el.installWords, el.installAdd, el.installDismiss]) node.hidden = installAsking;
@@ -7048,8 +7764,9 @@ async function onInstall(where) {
 let installAsking = false;
 
 /**
- * The banner's x: away for a day (INSTALL_SNOOZE_MS), counted from now; from the third
- * close (INSTALL_ASK_AT) it first asks whether to show it again at all (Michal, 2026-10-31).
+ * The banner's x: away for 5 minutes, then 20, an hour, a day (installSnooze), counted from now;
+ * from the fourth close (INSTALL_ASK_AT, after the hour-long one) it first asks whether to show it
+ * again at all (Michal, 2026-10-31; the steps 2026-11-01).
  */
 function dismissInstall() {
     const kept = installDismissal(readText("localStorage", INSTALL_KEY));
@@ -7284,7 +8001,9 @@ async function nextItem(m, { snapping = false } = {}) {
     clearItem(m);
     say("");
     keepSaved[m] = false;
-    customizeOpen[m] = false; // the next item starts folded, at one, from his defaults (Save as default)
+    heldPrice[m] = null;
+    if (m === "goods") Object.assign(postedEdit, { sku: "", base: null, snap: "", row: null, extra: [], status: "", posted: false });
+    customizeOpen[m] = keptOpen(m); // the next item starts folded (or open, kept visible), at one, from his defaults (Save as default)
     if (m === "goods") fixDark = savedFixDark();
     setState(m, freshState(m));
     fillCustomize(m);
@@ -7293,7 +8012,6 @@ async function nextItem(m, { snapping = false } = {}) {
     pushTo(readHistory().length + 1);
     for (const k of MODES) if (viewing[k]) bringUp(k, null).catch(() => {});
     // a book starts with Scan, not the keyboard; Snap Next starts with the camera
-    if (m === "goods" && !snapping) el.itemInput.focus();
 }
 
 /**
@@ -7509,18 +8227,25 @@ function main() {
         deleteStatus: $("delete-status"),
         account: $("account"),
         accountUser: $("account-user"),
+        accountUserEdit: $("account-user-edit"),
         accountKind: $("account-kind"),
         accountCredits: $("account-credits"),
         accountBuy: $("account-buy"),
         accountPacks: $("account-packs"),
+        packsPage: $("packs-page"),
+        agree: $("agree"),
+        agreeAuto: $("agree-auto"),
+        agreeOk: $("agree-ok"),
+        packsBack: $("packs-back"),
+        packsStatus: $("packs-status"),
         accountStatus: $("account-status"),
         accountSigninAgain: $("account-signin-again"),
         invite: $("invite"),
         inviteEmail: $("invite-email"),
+        inviteField: $("invite-field"),
         inviteSend: $("invite-send"),
         inviteStatus: $("invite-status"),
         accountPeople: $("account-people"),
-        peopleCount: $("people-count"),
         people: $("people"),
         peopleBack: $("people-back"),
         peopleStatus: $("people-status"),
@@ -7563,6 +8288,8 @@ function main() {
         postingAutoPost: $("posting-auto-post"),
         postingComps: $("posting-comps"),
         postingBestOffer: $("posting-best-offer"),
+        postingMinPrice: $("posting-min-price"),
+        tourLink: $("tour-link"),
         postingFixDark: $("posting-fix-dark"),
         postingStatus: $("posting-status"),
         phoneInstall: $("phone-install"),
@@ -7696,6 +8423,7 @@ function main() {
         detailCustomizeToggle: $("detail-customize-toggle"),
         detailCustomize: $("detail-customize"),
         detailQuantity: $("detail-quantity"),
+        detailPrice: $("detail-price"),
         detailPickupOnly: $("detail-pickup-only"),
         detailPricing: $("detail-pricing"),
         detailPricingWords: PRICING.map(({ grade }) => $(`detail-pricing-${grade}`)),
@@ -7704,7 +8432,10 @@ function main() {
         detailCustomizeSave: $("detail-customize-save"),
         detailCustomizeStatus: $("detail-customize-status"),
         detailFolds: Object.fromEntries(
-            VENUES.map((v) => [v, { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`) }])
+            VENUES.map((v) => [
+                v,
+                { toggle: $(`detail-${v}-toggle`), card: $(`detail-${v}`), head: $(`detail-${v}-head`), badge: $(`detail-${v}-badge`) },
+            ])
         ),
         photoView: $("photo-view"),
         photoViewImg: $("photo-view-img"),
@@ -7721,6 +8452,7 @@ function main() {
         hint: $("hint"),
         snapInput: $("snap-input"),
         snapLabel: $("snap-label"),
+        aiTip: $("ai-tip"),
         snapText: $("snap-word"),
         galleryInput: $("gallery-input"),
         galleryLabel: $("gallery-label"),
@@ -7730,6 +8462,8 @@ function main() {
         noteStatus: $("note-status"),
         titleLine: $("title-line"),
         priceLine: $("price-line"),
+        priceLess: $("price-less"),
+        priceMore: $("price-more"),
         seeInventory: $("see-inventory"),
         ebayBtn: $("ebay-btn"),
         ebayReset: $("ebay-reset"),
@@ -7747,6 +8481,10 @@ function main() {
         poshmarkBuy: $("poshmark-buy"),
         poshmarkLink: $("poshmark-link"),
         customizeToggle: $("customize-toggle"),
+        customizeKeepRow: $("customize-keep-row"),
+        customizeKeep: $("customize-keep"),
+        customizeMore: $("customize-more"),
+        customizeRest: $("customize-rest"),
         customize: $("customize"),
         quantity: $("quantity"),
         pickupOnly: $("pickup-only"),
@@ -7754,11 +8492,13 @@ function main() {
         pricingWords: PRICING.map(({ grade }) => $(`pricing-${grade}`)),
         pricingNote: $("pricing-note"),
         autoPost: $("auto-post"),
-        comps: $("comps"),
         bestOffer: $("best-offer"),
         fixDark: $("fix-dark"),
         customizeSaveDefault: $("customize-save-default"),
         venueHint: $("venue-hint"),
+        venueRow: $("venue-row"),
+        venuesMore: $("venues-more"),
+        venueCols: Object.fromEntries(VENUES.map((v) => [v, $(`venue-col-${v}`)])),
         doneHint: $("done-hint"),
         nextBtn: $("next-item"),
         nextNote: $("next-note"),
@@ -7793,6 +8533,10 @@ function main() {
         bookFlaws: $("book-flaws"),
         bookNoteStatus: $("book-note-status"),
         bookCustomizeToggle: $("book-customize-toggle"),
+        bookCustomizeKeepRow: $("book-customize-keep-row"),
+        bookCustomizeKeep: $("book-customize-keep"),
+        bookCustomizeMore: $("book-customize-more"),
+        bookCustomizeRest: $("book-customize-rest"),
         bookCustomize: $("book-customize"),
         bookQuantity: $("book-quantity"),
         bookPickupOnly: $("book-pickup-only"),
@@ -7800,7 +8544,6 @@ function main() {
         bookPricingWords: PRICING.map(({ grade }) => $(`book-pricing-${grade}`)),
         bookPricingNote: $("book-pricing-note"),
         bookAutoPost: $("book-auto-post"),
-        bookComps: $("book-comps"),
         bookBestOffer: $("book-best-offer"),
         bookTitleLine: $("book-title-line"),
         bookPriceLine: $("book-price-line"),
@@ -7922,6 +8665,7 @@ function main() {
     el.inviteSend.addEventListener("click", () => {
         invite().catch(() => {});
     });
+    el.inviteEmail.addEventListener("input", () => el.inviteSend.classList.toggle("pill-ink", el.inviteEmail.value.trim() !== ""));
     el.inviteEmail.addEventListener("keydown", (e) => {
         if (e.key === "Enter") invite().catch(() => {});
     });
@@ -7933,13 +8677,52 @@ function main() {
         el.folds[key].tab.addEventListener("click", () => toggleFold(key));
     }
     // the account card: Buy postings unfolds the packs (each pill a checkout)
-    el.accountBuy.addEventListener("click", () => {
-        account.packs = !account.packs;
-        // no packs offered (payments not set up on the server): said, nothing to unfold
+    // Buy postings: its own page, the packs big buttons, Back to settings above (Michal, 2026-11-02)
+    const showPacks = (on) => {
+        account.packs = on;
+        // no packs offered (payments not set up on the server): said on the page
         const none = !me || !me.packs.length;
-        if (none) account.status = account.packs ? accountError("pay", 404, "") : "";
+        account.status = on && none ? accountError("pay", 404, "") : "";
+        renderExtras();
         renderAccount();
+        if (on && typeof globalThis.window.scrollTo === "function") globalThis.window.scrollTo({ top: 0 });
+    };
+    el.accountBuy.addEventListener("click", () => showPacks(true));
+    // the owner's name: a tap opens its box where it stands (Michal, 2026-11-02)
+    el.accountUser.addEventListener("click", () => {
+        if (!el.accountUser.classList.contains("editable")) return;
+        el.accountUserEdit.value = el.accountUser.textContent;
+        el.accountUserEdit.hidden = false;
+        el.accountUser.hidden = true;
+        el.accountUserEdit.focus();
+        el.accountUserEdit.select();
     });
+    let nameKept = false;
+    const closeName = (save) => {
+        if (el.accountUserEdit.hidden) return;
+        const typed = el.accountUserEdit.value;
+        el.accountUserEdit.hidden = true;
+        el.accountUser.hidden = false;
+        if (save && typed.trim() && typed.trim() !== el.accountUser.textContent) renameAccount(typed).catch(() => {});
+    };
+    el.accountUserEdit.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") closeName(true);
+        if (e.key === "Escape") {
+            nameKept = true;
+            closeName(false);
+        }
+    });
+    el.accountUserEdit.addEventListener("blur", () => {
+        if (nameKept) nameKept = false;
+        else closeName(true);
+    });
+    el.agreeOk.addEventListener("click", () => {
+        writeText("localStorage", AGREED_KEY, "yes");
+        el.postingAutoPost.checked = el.agreeAuto.checked;
+        savePostingDefaults();
+        showAgree(false);
+    });
+    el.packsBack.addEventListener("click", () => showPacks(false));
     // the eBay block: Connect eBay, and, connected, Reconnect: eBay's consent again (a token
     // eBay let lapse)
     for (const node of [el.accountConnect, el.accountReconnect]) {
@@ -7969,7 +8752,8 @@ function main() {
     });
     // the Posting defaults: every box saved as it changes
     for (const node of [el.postingPickupOnly, el.postingAutoPost, el.postingComps, el.postingBestOffer, el.postingFixDark]) node.addEventListener("change", savePostingDefaults);
-    for (const node of [el.postingQuantity, el.postingPricing]) node.addEventListener("input", savePostingDefaults);
+    for (const node of [el.postingQuantity, el.postingPricing, el.postingMinPrice]) node.addEventListener("input", savePostingDefaults);
+    el.postingMinPrice.addEventListener("blur", renderPosting);
     // This phone: Install on the home screen, as the landing's
     el.phoneInstall.addEventListener("click", () => {
         onInstall("phone").catch(() => {});
@@ -7992,8 +8776,11 @@ function main() {
     // See in inventory: Admin on the listing the item became, as its row's tap opens it
     for (const [m, node] of [["goods", el.seeInventory], ["book", el.bookSeeInventory]]) {
         node.addEventListener("click", () => {
-            const sku = inventorySku(slots[m]);
-            if (sku) showAdmin(true, sku);
+            // the inventory list, not the listing's own page (Michal, 2026-11-02: "this link should bring
+            // you to the inventory list not the card itself"): newest first, so it is at the top
+            if (!inventorySku(slots[m])) return;
+            showAdmin(true);
+            showInventory(true);
         });
     }
     // Finish setting up: Connect eBay, as the eBay block's; then the address, at the end of Venues
@@ -8003,11 +8790,16 @@ function main() {
     el.policyName.addEventListener("input", () => {
         const d = policies.draft;
         if (d && d.policy_names) d.policy_names = { ...d.policy_names, [policies.part]: el.policyName.value };
+        markPolicySave();
     });
     el.policyName.addEventListener("change", () => renderPolicies());
     el.policyPick.addEventListener("change", () => {
         policies.part = el.policyPick.value;
         renderPolicies();
+    });
+    el.tourLink.addEventListener("click", () => {
+        if (!el.admin.hidden) adminShown(false);
+        startTour();
     });
     el.policiesOk.addEventListener("click", () => {
         confirmPoliciesNow().catch(() => {});
@@ -8017,12 +8809,15 @@ function main() {
     });
     el.policyService.addEventListener("change", () => {
         if (policies.draft) policies.draft.shipping_service = el.policyService.value;
+        markPolicySave();
     });
     el.policyCost.addEventListener("input", () => {
         if (policies.draft) policies.draft.shipping_cost = el.policyCost.value.trim() || null;
+        markPolicySave();
     });
     el.policyPickup.addEventListener("change", () => {
         if (policies.draft) policies.draft.local_pickup = el.policyPickup.checked;
+        markPolicySave();
     });
     el.signupConnect.addEventListener("click", () => {
         connectEbay().catch(() => {});
@@ -8124,8 +8919,33 @@ function main() {
         renderRowCustomize();
     });
     el.detailQuantity.addEventListener("input", () => onCustomizeInput({ quantity: el.detailQuantity.value }));
+    el.detailPrice.addEventListener("input", () => onCustomizeInput({ price: el.detailPrice.value.replace(/^\s*\$\s*/, "").trim() }));
+    el.detailPrice.addEventListener("blur", renderRowCustomize);
+    // a held draft's price, a dollar a tap, never under his minimum price (Michal, 2026-11-02)
+    for (const [node, by] of /** @type {[HTMLElement, number][]} */ ([[el.priceLess, -1], [el.priceMore, 1]])) {
+        node.addEventListener("click", () => {
+            if (!priceAdjustable("goods")) return;
+            const from = heldPrice.goods !== null ? heldPrice.goods : Number(priceLine(slots.goods).replace(/[^0-9.]/g, "")) || 1;
+            const floor = Number(minPriceText(customizeOf(slots.goods).minPrice) || 0) || 1;
+            heldPrice.goods = Math.max(Math.ceil(floor), dialPrice(from, by, 1));
+            render();
+        });
+    }
+    // the price's − and +: a dollar at a time, as a list tile's (Michal, 2026-11-02)
+    for (const [side, by] of /** @type {[string, number][]} */ ([["less", -1], ["more", 1]])) {
+        $(`detail-price-${side}`).addEventListener("click", () => {
+            if (el.detailPrice.disabled) return;
+            el.detailPrice.value = String(dialPrice(el.detailPrice.value.replace(/^\s*\$\s*/, ""), by, 1));
+            el.detailPrice.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    }
     el.detailPickupOnly.addEventListener("change", () => onCustomizeInput({ pickupOnly: el.detailPickupOnly.checked }));
-    el.detailPricing.addEventListener("input", () => onCustomizeInput({ pricing: pricingGrade(el.detailPricing.value) }));
+    // the slider sets the price box to that grade's cached price (Michal, 2026-11-02)
+    el.detailPricing.addEventListener("input", () => {
+        const pricing = pricingGrade(el.detailPricing.value);
+        const cached = admin.row && pricing ? cachedPrices(admin.row)[pricing - 1] : "";
+        onCustomizeInput(cached ? { pricing, price: cached.replace(/\.00$/, "") } : { pricing });
+    });
     el.detailCustomizeSave.addEventListener("click", () => {
         saveRowCustomize().catch(() => {});
     });
@@ -8164,7 +8984,19 @@ function main() {
         });
     }
     el.nextBtn.addEventListener("click", () => {
+        foldVenues();
         nextItem("goods").catch(() => {});
+    });
+    el.venuesMore.addEventListener("click", () => {
+        clearTimeout(venuesTimer);
+        venuesOpen = true;
+        render();
+        // opened and left alone: it folds itself back after a few seconds (Michal, 2026-10-31)
+        venuesTimer = setTimeout(() => {
+            if (!venuesOpen) return;
+            foldVenues();
+            render();
+        }, VENUES_OPEN_MS);
     });
 
     el.bookScanInput.addEventListener(
@@ -8206,10 +9038,13 @@ function main() {
 
     for (const m of MODES) {
         const nodes = customizeNodes(m);
+        customizeOpen[m] = keptOpen(m);
+        customizeMore[m] = readText("localStorage", MORE_KEYS[m]) === "open";
         nodes.toggle.addEventListener("click", () => {
             customizeOpen[m] = !customizeOpen[m];
             render();
         });
+        nodes.keep.addEventListener("change", () => writeText("localStorage", KEEP_KEYS[m], nodes.keep.checked ? "on" : "off"));
         nodes.quantity.addEventListener("input", () =>
             setState(m, reduce(slots[m], { type: "setQuantity", text: nodes.quantity.value }))
         );
@@ -8217,14 +9052,18 @@ function main() {
             setState(m, reduce(slots[m], { type: "setPickupOnly", on: nodes.pickup.checked }))
         );
         nodes.pricing.addEventListener("input", () =>
-            setState(m, reduce(slots[m], { type: "setPricing", grade: nodes.pricing.value }))
+            setState(m, reduce(slots[m], { type: "setPricing", grade: nodes.pricing.value })) || gradePrice(m)
         );
         nodes.autoPost.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setAutoPost", on: nodes.autoPost.checked }))
         );
-        nodes.comps.addEventListener("change", () =>
-            setState(m, reduce(slots[m], { type: "setComps", on: nodes.comps.checked }))
-        );
+        // the dark triangle under the price: down unfolds the rest, up folds it, in the same
+        // place either way; this phone remembers which (Michal, 2026-11-01)
+        nodes.more.addEventListener("click", () => {
+            customizeMore[m] = !customizeMore[m];
+            writeText("localStorage", MORE_KEYS[m], customizeMore[m] ? "open" : "closed");
+            render();
+        });
         nodes.bestOffer.addEventListener("change", () =>
             setState(m, reduce(slots[m], { type: "setBestOffer", on: nodes.bestOffer.checked }))
         );

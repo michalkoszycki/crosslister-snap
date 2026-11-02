@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.43.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.43.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.44.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.44.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -246,7 +246,7 @@
         <!-- agreed to as it is (Michal, 2026-10-31: "if someone reads and likes what it is - they
              will just go ahead without editing"): POST /me/policies/confirm, then the goods screen -->
         <button type="button" id="signup-policies-ok" class="secondary policies-ok" hidden>Looks good - let's start</button>
-        <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit</button>
+        <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit policies</button>
         <p id="policy-status" class="small account-status" aria-live="polite"></p>
         </div>
         </div>
@@ -404,7 +404,7 @@
              "There is a button push to eBay, so add a button push to Craigslist next to it"),
              drawn by app.js after Save from GET /me's "syncable" -->
         <button type="button" id="detail-customize-toggle" class="link customize-toggle" aria-expanded="true"
-                aria-controls="detail-customize">▾ customize</button>
+                aria-controls="detail-customize">▾ quick customize</button>
         <div id="detail-customize" class="card customize fold">
           <div class="field">
             <label class="field-label" for="detail-quantity">Quantity</label>
@@ -428,24 +428,41 @@
               <span id="detail-pricing-2">Fair price</span>
               <span id="detail-pricing-3">Higher end</span>
             </div>
+            <!-- the price itself, under the grades' words, no $ (Michal, 2026-11-02) -->
+            <span class="qty-step price-step">
+              <button type="button" id="detail-price-less" class="qty-btn" aria-label="A dollar less">−</button>
+              <input id="detail-price" class="quantity price-input"
+                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Price">
+              <button type="button" id="detail-price-more" class="qty-btn" aria-label="A dollar more">+</button>
+            </span>
             <p id="detail-pricing-note" class="pricing-note"></p>
           </div>
           <div id="detail-customize-actions" class="venue-actions">
-            <button type="button" id="detail-customize-save" class="pill pill-ink">Save</button>
+            <button type="button" id="detail-customize-save" class="secondary detail-save">Save draft</button>
           </div>
+          <p class="small detail-save-words">Tap individual venue buttons below to update venues.</p>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
-        <!-- the venue cards, folded as a listing opens; each toggle is the list's badge for
-             that venue, then the arrow (Michal, 2026-10-07: "I want them to look like they
-             did on the inventory list. Inside a green bubble if listed"), written by app.js -->
-        <button type="button" id="detail-ebay-toggle" class="link customize-toggle" aria-expanded="false"
-                aria-controls="detail-ebay">▸ ebay</button>
+        <!-- the venue cards, folded as a listing opens; each row the list's badge for that venue,
+             doing what it does there (Michal, 2026-10-07; 2026-11-02: "same style and same
+             function"), then an eye of its own showing or hiding the card, written by app.js -->
+        <div id="detail-ebay-head" class="detail-venue-head">
+          <span id="detail-ebay-badge" class="detail-venue-badge"></span>
+          <button type="button" id="detail-ebay-toggle" class="eye-btn" aria-expanded="false"
+                  aria-controls="detail-ebay" aria-label="Show ebay"></button>
+        </div>
         <div id="detail-ebay" class="card fold" hidden></div>
-        <button type="button" id="detail-craigslist-toggle" class="link customize-toggle" aria-expanded="false"
-                aria-controls="detail-craigslist">▸ craigslist</button>
+        <div id="detail-craigslist-head" class="detail-venue-head">
+          <span id="detail-craigslist-badge" class="detail-venue-badge"></span>
+          <button type="button" id="detail-craigslist-toggle" class="eye-btn" aria-expanded="false"
+                  aria-controls="detail-craigslist" aria-label="Show craigslist"></button>
+        </div>
         <div id="detail-craigslist" class="card fold" hidden></div>
-        <button type="button" id="detail-poshmark-toggle" class="link customize-toggle" aria-expanded="false"
-                aria-controls="detail-poshmark">▸ poshmark</button>
+        <div id="detail-poshmark-head" class="detail-venue-head">
+          <span id="detail-poshmark-badge" class="detail-venue-badge"></span>
+          <button type="button" id="detail-poshmark-toggle" class="eye-btn" aria-expanded="false"
+                  aria-controls="detail-poshmark" aria-label="Show poshmark"></button>
+        </div>
         <div id="detail-poshmark" class="card fold" hidden></div>
       </div>
     </div>
@@ -476,8 +493,14 @@
       <button type="button" id="fold-account-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-account">▸ Snap Account</button>
       <div id="fold-account" class="fold-body" hidden>
+        <!-- the grey card's top row: its chip's words, small and grey (Michal, 2026-11-02: "for each setting
+             gray area. add a top row title ... same size as on the buttons choosing these submenus") -->
+        <p class="fold-title" aria-hidden="true">Snap Account</p>
         <div id="account" class="card account current" hidden>
           <p id="account-user" class="account-user"></p>
+          <!-- the owner's name, edited where it is: a tap on it, Enter or away saves, Escape keeps it (Michal, 2026-11-02) -->
+          <input id="account-user-edit" class="small-input account-user-edit" type="text" autocomplete="off"
+                 autocapitalize="words" spellcheck="false" aria-label="Your name" hidden>
           <p id="account-kind" class="small account-kind" hidden></p>
           <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25),
                Buy postings there for every account whose postings are counted, however many are
@@ -487,7 +510,6 @@
                     aria-controls="account-packs" hidden>Buy postings</button>
             <span id="account-credits" class="small account-line" hidden></span>
           </div>
-          <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
           <p id="account-status" class="small account-status" aria-live="polite"></p>
           <!-- a session the server forgot: its way back in (Michal, 2026-10-18) -->
           <button type="button" id="account-signin-again" class="pill pill-small" hidden>Sign in again</button>
@@ -495,16 +517,19 @@
                should return here, above the people on this account"; "don't ask for their name.
                just email is fine"): their email alone -->
           <div id="invite" class="invite" hidden>
-            <label class="field field-small">
+            <label id="invite-field" class="field field-small">
               <span class="field-label">Invite someone to this account</span>
               <input id="invite-email" class="small-input" type="email" inputmode="email" autocomplete="off"
                      autocapitalize="off" spellcheck="false" placeholder="email">
             </label>
-            <button type="button" id="invite-send" class="pill pill-small">Invite</button>
+            <!-- Invite, and beside it the People page's way in, Manage members (Michal, 2026-11-02);
+                 a member sees Members alone (app.js) -->
+            <div class="invite-row">
+              <button type="button" id="invite-send" class="pill pill-small">Invite</button>
+              <button type="button" id="account-people" class="pill pill-small" hidden>Manage members</button>
+            </div>
             <p id="invite-status" class="small account-status" aria-live="polite"></p>
           </div>
-          <!-- the People page's way in, with the count (app.js) -->
-          <button type="button" id="account-people" class="link people-link" hidden>People on this account ›<span id="people-count" class="people-count"></span></button>
           <!-- the last line, right-aligned (Michal, 2026-10-25): Delete account in quiet red (Leave
                this account for a member; neither for the admin), then Sign out -->
           <div class="account-foot">
@@ -530,7 +555,7 @@
              line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) -->
         <div id="accounts" class="accounts" hidden>
           <ul id="accounts-list" class="accounts-list"></ul>
-          <button type="button" id="accounts-add" class="pill pill-small add-account">Add account</button>
+          <button type="button" id="accounts-add" class="pill pill-small add-account">Add another account</button>
         </div>
       </div>
 
@@ -544,6 +569,7 @@
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
+        <p class="fold-title" aria-hidden="true">Venues</p>
         <!-- the venues' cards, one each, the same size and the same parts, its name first
              (Michal, 2026-10-31: "eliminate the venue buttons at the top. instead provide 3
              cards for the venues") -->
@@ -592,6 +618,7 @@
       <button type="button" id="fold-posting-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
+        <p class="fold-title" aria-hidden="true">Posting defaults</p>
         <div id="posting-defaults" class="posting-defaults">
           <p id="posting-lead" class="small posting-lead">These will be your default settings. You can customize them per posting on the Snap page.</p>
           <!-- the Snap page's customize as it is, field for field, its small print too (Michal,
@@ -620,6 +647,14 @@
               <span id="posting-pricing-3">Higher end</span>
             </div>
             <p id="posting-pricing-note" class="pricing-note">sell what we have this week</p>
+            <!-- the lowest price Snap posts at (Michal, 2026-11-01): the box all but invisible on
+                 the grey, editable on a tap, no − or +; the PC raises a lower draft price to it -->
+            <div class="min-price-row">
+              <label class="field-label min-price-label" for="posting-min-price">Minimum Price:</label>
+              <span class="min-price-box"><input id="posting-min-price" class="min-price"
+                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="$5"></span>
+            </div>
+            <p class="small min-price-words">Nothing will be posted below this price.</p>
           </div>
           <label class="pickup">
             <input id="posting-auto-post" type="checkbox" checked>
@@ -676,6 +711,7 @@
       <button type="button" id="fold-server-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-server" hidden>▸ Server</button>
       <div id="fold-server" class="fold-body" hidden>
+        <p class="fold-title" aria-hidden="true">Server</p>
         <label class="field">
           <span class="field-label">Server address</span>
           <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
@@ -698,6 +734,7 @@
       <button type="button" id="fold-phone-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-phone">▸ This phone</button>
       <div id="fold-phone" class="fold-body" hidden>
+        <p class="fold-title" aria-hidden="true">This phone</p>
         <div id="theme" class="chips option-chips" role="group" aria-label="Appearance">
           <button type="button" id="theme-dark" class="chip option" data-value="dark"
                   aria-pressed="false">Dark</button>
@@ -729,7 +766,7 @@
       <label class="field">
         <span class="field-label">Feedback</span>
         <textarea id="feedback-text" rows="4" autocomplete="off" autocapitalize="sentences"
-                  placeholder="What happened, or what you wish it did"></textarea>
+                  placeholder="What happened&#10;or what you wish it did"></textarea>
       </label>
       <label class="pickup">
         <input id="feedback-job" type="checkbox" checked>
@@ -823,10 +860,19 @@
     <!-- its Back above the card, as a listing's (2026-10-31) -->
     <button type="button" id="people-back" class="link back-link" hidden>← Back to settings</button>
     <div id="people" class="card inventory people" hidden>
-      <h2 class="detail-heading">People on this account</h2>
+      <!-- the Settings cards' small grey top-row title (Michal, 2026-11-02) -->
+      <h2 class="fold-title">People on this account</h2>
       <p id="people-status" class="small account-status" aria-live="polite"></p>
       <ul id="people-list" class="people-list"></ul>
       <button type="button" id="people-leave" class="link delete-link" hidden>Leave this account</button>
+    </div>
+    <!-- Buy postings: a page of its own, its Back above the card as the People page's, the packs
+         big buttons (Michal, 2026-11-02) -->
+    <button type="button" id="packs-back" class="link back-link" hidden>← Back to settings</button>
+    <div id="packs-page" class="card inventory people" hidden>
+      <h2 class="fold-title">Buy postings</h2>
+      <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
+      <p id="packs-status" class="small account-status" aria-live="polite"></p>
     </div>
 
   </section>
@@ -836,10 +882,11 @@
          the app." The name is optional: left empty, the listing's title names the item -->
     <!-- no word over the box: its placeholder says it (Michal, 2026-10-31: "can take it out.
          tips are in the text field already"); a screen reader still hears Item name -->
-    <label class="field">
-      <span class="sr-only">Item name</span>
-      <input id="item-name" type="text" inputmode="text" autocomplete="off"
-             autocapitalize="sentences" placeholder="Name (optional): the listing's title names it">
+    <!-- the name box is gone from sight (Michal, 2026-11-02: "take it out but leave the snap
+         button where it is on the page. i like it close to the thumb"): its room kept, and the
+         box itself, never filled, so every item is an unnamed one and its title names it -->
+    <label class="field name-field" aria-hidden="true">
+      <input id="item-name" type="text" tabindex="-1" autocomplete="off">
     </label>
     <p id="cleaned" class="small mono" hidden></p>
     <p id="hint" class="small" hidden></p>
@@ -848,6 +895,9 @@
          button should sit where the shutter was, about three quarters down the screen) -->
     <p id="progress" class="progress"></p>
     <ul id="strip" class="strip"></ul>
+    <!-- four photos marked AI, the others' marks dimmed: why (Michal, 2026-11-02: "add a comment
+         below - like a tip that we have here and there - 'Max 4 photos'") -->
+    <p id="ai-tip" class="small hint-line" hidden>Max 4 photos</p>
 
     <!-- app.js writes the word (Snap / Snap Again / Snap Next) into #snap-word; the icon stays -->
     <label id="snap-label" class="big snap" for="snap-input"><span class="btn-icon" aria-hidden="true"><svg
@@ -865,14 +915,18 @@
     <label class="field">
       <span class="sr-only">User note</span>
       <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
-                placeholder="Size, flaws, brand, anything the listing should say."></textarea>
+                placeholder="Size, flaws, brand, anything that the listing should say but the AI may miss from your photos (Optional)"></textarea>
       <span id="note-status" class="note-status note-status-under"></span>
     </label>
 
     <!-- customize: folded away, most items are one of a kind and shipped
          (Michal, 2026-09-28: "a little arrow with the word customize") -->
-    <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
-            aria-controls="customize">▸ customize</button>
+    <div class="customize-head">
+      <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
+              aria-controls="customize">▸ customize</button>
+      <!-- open every time on this phone (Michal, 2026-11-01: "keep visible") -->
+      <label id="customize-keep-row" class="keep-open" hidden><input type="checkbox" id="customize-keep"> keep visible</label>
+    </div>
     <div id="customize" class="card customize" hidden>
       <div class="field">
         <label class="field-label" for="quantity">Quantity</label>
@@ -900,16 +954,14 @@
         </div>
         <p id="pricing-note" class="pricing-note">sell what we have this week</p>
       </div>
+      <!-- the card ends at the price at first; a dark triangle under it unfolds the rest and, turned
+           up, folds it again, staying put (Michal, 2026-11-01) -->
+      <button type="button" id="customize-more" class="customize-more-btn" aria-label="More options" aria-expanded="false"
+              aria-controls="customize-rest"><svg viewBox="0 0 16 10" width="16" height="10" aria-hidden="true"><path d="M1 1h14L8 9z"/></svg></button>
+      <div id="customize-rest" hidden>
       <label class="pickup">
         <input id="auto-post" type="checkbox" checked>
         <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
-      </label>
-      <!-- Michal, 2026-10-07: "Let's abandon checking eBay for similar items (call 1) and put
-           that toggle default off, in customization." Then on by default, 2026-10-10, after five
-           real items re-drafted with and without it: "Yes keep comparables on". -->
-      <label class="pickup">
-        <input id="comps" type="checkbox">
-        <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
       </label>
       <!-- a posting choice, not a policy (Michal, 2026-10-31): each item's, Posting defaults' too -->
       <label class="pickup">
@@ -927,20 +979,27 @@
            2026-10-31: "any comments i make on this menu should trickle to its twin in settings") -->
       <button type="button" id="customize-save-default" class="secondary">Save as default</button>
       <p class="small customize-more">See Settings for more options.</p>
+      </div>
     </div>
 
     <!-- the row's price, once a press has one, above both buttons -->
     <!-- the listing's title as the PC saved it, small, for a look (Michal, 2026-10-02) -->
     <p id="title-line" class="title-line" aria-live="polite" hidden></p>
-    <p id="price-line" class="price-line" aria-live="polite" hidden></p>
+    <!-- a draft saved, not posted: − and + either side of its price, a dollar a tap; the next press
+         posts it at that price (Michal, 2026-11-02) -->
+    <div class="price-row">
+      <button type="button" id="price-less" class="qty-btn" aria-label="A dollar less" hidden>−</button>
+      <p id="price-line" class="price-line" aria-live="polite" hidden></p>
+      <button type="button" id="price-more" class="qty-btn" aria-label="A dollar more" hidden>+</button>
+    </div>
     <!-- once a venue has it up (Michal, 2026-10-08: "After something is posted you should see
          'see in inventory' below the price."): Admin on that listing, as its row's tap opens it -->
     <button type="button" id="see-inventory" class="link see-inventory" hidden>See in inventory</button>
     <!-- under each button its reset, shown while a tap has paused its press (Michal,
          2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
          button should change to 'continue'") -->
-    <div class="venues">
-      <div class="venue">
+    <div id="venue-row" class="venues">
+      <div id="venue-col-ebay" class="venue">
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
         <button type="button" id="ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
         <p id="ebay-status" class="venue-status" aria-live="polite"></p>
@@ -948,7 +1007,7 @@
         <button type="button" id="ebay-buy" class="link buy-link" hidden>Buy postings</button>
         <a id="ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
-      <div class="venue">
+      <div id="venue-col-craigslist" class="venue">
         <button type="button" id="craigslist-btn" class="big venue-btn">craigslist</button>
         <button type="button" id="craigslist-reset" class="reset-call" aria-label="reset craigslist" hidden>reset</button>
         <p id="craigslist-status" class="venue-status" aria-live="polite"></p>
@@ -957,13 +1016,16 @@
       </div>
       <!-- Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it
            available only to me": grey for everyone else, a tap saying why, as craigslist's -->
-      <div class="venue">
+      <div id="venue-col-poshmark" class="venue">
         <button type="button" id="poshmark-btn" class="big venue-btn">poshmark</button>
         <button type="button" id="poshmark-reset" class="reset-call" aria-label="reset poshmark" hidden>reset</button>
         <p id="poshmark-status" class="venue-status" aria-live="polite"></p>
         <button type="button" id="poshmark-buy" class="link buy-link" hidden>Buy postings</button>
         <a id="poshmark-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
+      <!-- the venues this account does not use, folded behind a small grey circle; a tap opens
+           the row to all three (Michal, 2026-10-31) -->
+      <button type="button" id="venues-more" class="venues-more" aria-label="Show the other venues" aria-expanded="false" hidden><svg viewBox="0 0 18 8" width="18" height="8" aria-hidden="true"><circle cx="4.5" cy="4" r="3.3"/><circle cx="13.5" cy="4" r="3.3"/></svg></button>
     </div>
     <p id="venue-hint" class="small hint-line"></p>
 
@@ -981,6 +1043,25 @@
        A book with no ISBN: the small No ISBN opens its title, author, year and
        format, and the PC looks it up by those instead. After an ISBN no catalogue
        knows, No ISBN is the next step and keeps that ISBN (#book-isbn-kept says so). -->
+  <!-- before the first item: the agreements, a white page of its own, once on this phone
+       (Michal, 2026-11-02) -->
+  <section id="agree" class="agree" hidden>
+    <h2 class="agree-title">Before you start</h2>
+    <ol class="agree-notes">
+      <li><strong>AI makes mistakes.</strong> Check each listing's title, details and price.</li>
+      <li><strong>You are responsible for your postings</strong> and for your dealings with buyers: the item, its shipping, returns and payment.</li>
+      <li><strong>Each venue's rules apply.</strong></li>
+      <li><strong>AI estimates weight and package size</strong> for calculated shipping, and is usually close. Tell it anything it should know, like a bulky item's weight or &ldquo;cord missing&rdquo;, in the note box when you post.</li>
+    </ol>
+    <label class="pickup agree-auto">
+      <input id="agree-auto" type="checkbox" checked>
+      <span><span class="agree-auto-word">Post without asking.</span> You can edit postings in your inventory anytime. Unchecking the box will ask for another tap between drafting and posting.</span>
+    </label>
+    <!-- the full terms in a tab of their own: the app stays where it is underneath -->
+    <p class="agree-terms"><a href="about.html" target="_blank" rel="noopener">Full terms and conditions</a></p>
+    <button type="button" id="agree-ok" class="big">I agree</button>
+  </section>
+
   <section id="book" hidden>
     <!-- books are the admin's (Michal, 2026-10-31): anyone else sees this screen milky and
          inert, this line on top with the way to ask, and goes back with goods (app.js) -->
@@ -1078,11 +1159,14 @@
         <span id="book-note-status" class="note-status"></span>
       </span>
       <textarea id="book-flaws" rows="3" autocomplete="off" autocapitalize="sentences"
-                placeholder="Wear, marks, writing inside, anything a buyer should know."></textarea>
+                placeholder="Wear, marks, writing inside, anything a buyer should know (Optional)"></textarea>
     </label>
 
-    <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
-            aria-controls="book-customize">▸ customize</button>
+    <div class="customize-head">
+      <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
+              aria-controls="book-customize">▸ customize</button>
+      <label id="book-customize-keep-row" class="keep-open" hidden><input type="checkbox" id="book-customize-keep"> keep visible</label>
+    </div>
     <div id="book-customize" class="card customize" hidden>
       <div class="field">
         <label class="field-label" for="book-quantity">Quantity</label>
@@ -1108,18 +1192,20 @@
         </div>
         <p id="book-pricing-note" class="pricing-note">sell what we have this week</p>
       </div>
+      <!-- the card ends at the price at first; a dark triangle under it unfolds the rest and, turned
+           up, folds it again, staying put (Michal, 2026-11-01) -->
+      <button type="button" id="book-customize-more" class="customize-more-btn" aria-label="More options" aria-expanded="false"
+              aria-controls="book-customize-rest"><svg viewBox="0 0 16 10" width="16" height="10" aria-hidden="true"><path d="M1 1h14L8 9z"/></svg></button>
+      <div id="book-customize-rest" hidden>
       <label class="pickup">
         <input id="book-auto-post" type="checkbox" checked>
         <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <label class="pickup">
-        <input id="book-comps" type="checkbox">
-        <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
-      </label>
-      <label class="pickup">
         <input id="book-best-offer" type="checkbox" checked>
         <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
       </label>
+      </div>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
@@ -1151,10 +1237,12 @@
   <!-- what Snap is, its privacy and its terms, a page of its own (the address eBay's developer
        console takes as the privacy policy): under the landing and under Admin, not under the
        posting screens (app.js) -->
+  <!-- the first-listing walk-through again, for a registered account (Michal, 2026-11-01) -->
+  <button type="button" id="tour-link" class="link about-link tour-link" hidden>How Snap works</button>
   <a id="about-link" class="about-link" href="about.html">About and privacy</a>
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.43.0"></script>
+<script type="module" src="app.js?v=2.44.0"></script>
 </body>
 </html>
