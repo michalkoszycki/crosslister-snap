@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.44.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.44.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.44.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.44.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -652,7 +652,7 @@
             <div class="min-price-row">
               <label class="field-label min-price-label" for="posting-min-price">Minimum Price:</label>
               <span class="min-price-box"><input id="posting-min-price" class="min-price"
-                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="$5"></span>
+                     type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="$5"></span>
             </div>
             <p class="small min-price-words">Nothing will be posted below this price.</p>
           </div>
@@ -1243,6 +1243,6 @@
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 
-<script type="module" src="app.js?v=2.44.0"></script>
+<script type="module" src="app.js?v=2.44.1"></script>
 </body>
 </html>
