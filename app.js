@@ -400,11 +400,11 @@ const FIXDARK_KEY = "snap.photos.fixdark";
 const FOLDS_KEY = "snap.settings.folds";
 /** Settings' five folds, in their order, each with its heading. */
 const FOLDS = [
-    ["account", "Snap Account"],
-    ["venues", "Venues"],
-    ["posting", "Posting defaults"],
-    ["server", "Server"],
-    ["phone", "This phone"],
+    ["account", tKey("Snap Account")],
+    ["venues", tKey("Venues")],
+    ["posting", tKey("Posting defaults")],
+    ["server", tKey("Server")],
+    ["phone", tKey("This phone")],
 ];
 /** Where each kind of item is kept for a reload: the goods key is the one it always was. */
 const SAVED_KEYS = { goods: "snap.item", book: "snap.book" };
@@ -472,8 +472,11 @@ function priceAdjustable(m) {
     return VENUES.some((v) => savedNotPosted(st.jobs[v])) || isPostedItem(m);
 }
 
+/** A photo's badge (badgeText in queue.js) in words; "failed" reports a failure and stays English. */
+const BADGE_WORDS = { waiting: tKey("waiting"), sent: tKey("sent") };
+
 /** In a posted venue button, small under the word, once something changed (Michal, 2026-11-02). */
-const TAP_TO_UPDATE = "tap again to update";
+const TAP_TO_UPDATE = tKey("tap again to update");
 
 /**
  * Once the goods item is posted the screen is its edit screen (Michal, 2026-11-02): `sku` the
@@ -551,7 +554,7 @@ async function updatePosted(venue) {
     if (!pc || pe.busy || !st.sku) return;
     pe.busy = true;
     pe.venue = venue;
-    pe.status = "updating...";
+    pe.status = t("updating...");
     render();
     try {
         const c = customizeOf(st);
@@ -569,7 +572,7 @@ async function updatePosted(venue) {
         heard(200);
         pe.base = { ...c };
         pe.snap = editKey();
-        pe.status = "updated";
+        pe.status = t("updated");
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         pe.status = `not updated: ${e.message}`;
@@ -606,7 +609,7 @@ function stripPostedExtras(strip) {
         li.className = "shot";
         const img = document.createElement("img");
         img.src = url;
-        img.alt = "added photo";
+        img.alt = t("added photo");
         li.append(img);
         strip.append(li);
     }
@@ -618,7 +621,7 @@ function stripPostedExtras(strip) {
     input.accept = "image/*";
     input.multiple = true;
     input.className = "sr-only";
-    input.setAttribute("aria-label", "Add photos to this item");
+    input.setAttribute("aria-label", t("Add photos to this item"));
     input.addEventListener(
         "change",
         onFiles((files) => {
@@ -642,6 +645,8 @@ let tourNodes = [];
 let tourSeen = null;
 /** The walk-through's timers (the venue button running, then posted), cleared when it ends. */
 let tourTimers = [];
+/** The walk-through's words on screen, each node with its English, for a language changed meanwhile. */
+let tourWords = [];
 
 /** The venue the walk-through's button names: this account's first. */
 function tourVenue() {
@@ -723,8 +728,8 @@ let folds = {};
  */
 const policies = { info: null, asked: false, editing: false, draft: null, busy: false, status: "" };
 /** Add standard text to posts, greyed: signed out, or a server without it (Michal, 2026-10-31). */
-const WRAP_SIGN_IN = "Sign in to add a header and footer to your posts.";
-const WRAP_MISSING = "Your server does not offer this yet.";
+const WRAP_SIGN_IN = tKey("Sign in to add a header and footer to your posts.");
+const WRAP_MISSING = tKey("Your server does not offer this yet.");
 /** A sender's own feedback as GET /me/feedback last said (null: not asked, or an older server). */
 let mine = null;
 /** The venue whose own page is open under Settings ("" none; Michal, 2026-10-31). */
@@ -780,7 +785,7 @@ let signupAddressSaved = false;
 /** The goods row opened to every venue by its grey dots; folded again at NEXT or a ghost's tap. */
 let venuesOpen = false;
 /** The tip line's words while the row shows the venues this account does not use. */
-const VENUES_NOT_AVAILABLE = "Venues not available";
+const VENUES_NOT_AVAILABLE = tKey("Venues not available");
 /** How long the opened row waits before it folds itself (Michal, 2026-10-31: "fade and fold back away after some seconds"). */
 const VENUES_OPEN_MS = 6000;
 let venuesTimer = null;
@@ -790,8 +795,8 @@ function foldVenues() {
     venuesOpen = false;
 }
 /** customize's Save as default, and its word a moment after a press. */
-const SAVE_AS_DEFAULT = "Save as default";
-const SAVED_AS_DEFAULT = "Saved as default";
+const SAVE_AS_DEFAULT = tKey("Save as default");
+const SAVED_AS_DEFAULT = tKey("Saved as default");
 let savedDefaultTimer = null;
 
 /** The last job this page sent (any POST /jobs), for Feedback's Include my last job. */
@@ -914,6 +919,16 @@ const el = {};
 
 function $(id) {
     return document.getElementById(id);
+}
+
+/**
+ * Words a core.js function gave (in the chosen language, once it translates them), taken for the
+ * English they stand for: logic never compares translated words with English ones.
+ * @param {string} words
+ * @param {string} english
+ */
+function says(words, english) {
+    return words === english || words === t(english);
 }
 
 function other(m) {
@@ -1313,9 +1328,9 @@ function accountCard(a) {
     row.className = "account-row";
     row.append(
         a.expired
-            ? actionButton("Sign in again", "pill pill-small", false, () => startAdding(true))
-            : actionButton("Switch to this account", "pill pill-small", false, () => switchAccount(a.id)),
-        actionButton("Remove from this phone", "link account-action", false, () => removeAccount(a.id))
+            ? actionButton(t("Sign in again"), "pill pill-small", false, () => startAdding(true))
+            : actionButton(t("Switch to this account"), "pill pill-small", false, () => switchAccount(a.id)),
+        actionButton(t("Remove from this phone"), "link account-action", false, () => removeAccount(a.id))
     );
     li.append(row);
     return li;
@@ -1371,7 +1386,7 @@ async function confirmDelete() {
     const a = currentAccount();
     if (!s || !a || deleting.busy) return;
     deleting.busy = true;
-    deleting.status = "Deleting your account...";
+    deleting.status = t("Deleting your account...");
     renderDelete();
     try {
         await deleteMe(s);
@@ -1385,10 +1400,10 @@ async function confirmDelete() {
     Object.assign(deleting, { open: false, busy: false, status: "" });
     removeAccount(a.id, false);
     if (settings()) {
-        deleting.status = ACCOUNT_DELETED;
+        deleting.status = t(ACCOUNT_DELETED);
         renderDelete();
     } else {
-        el.landingStatus.textContent = ACCOUNT_DELETED;
+        el.landingStatus.textContent = t(ACCOUNT_DELETED);
     }
 }
 
@@ -1417,7 +1432,7 @@ async function leaveThisAccount() {
     const a = currentAccount();
     if (!s || !a || people.busy) return;
     people.busy = true;
-    deleting.status = "Leaving the account...";
+    deleting.status = t("Leaving the account...");
     renderDelete();
     try {
         await leaveAccount(s);
@@ -1432,10 +1447,10 @@ async function leaveThisAccount() {
     deleting.status = "";
     removeAccount(a.id, false);
     if (settings()) {
-        deleting.status = LEFT_ACCOUNT;
+        deleting.status = t(LEFT_ACCOUNT);
         renderDelete();
     } else {
-        el.landingStatus.textContent = LEFT_ACCOUNT;
+        el.landingStatus.textContent = t(LEFT_ACCOUNT);
     }
 }
 
@@ -1514,7 +1529,7 @@ function renderGoods() {
     syncPostedEdit();
     const state = slots.goods;
     el.cleaned.hidden = !state.itemName || state.itemName === el.itemInput.value;
-    el.cleaned.textContent = state.itemName ? `Item: ${state.itemName}` : "";
+    el.cleaned.textContent = state.itemName ? t("Item: {name}", { name: state.itemName }) : "";
     // the item's folder on the PC is named once, when it is made; an unnamed one's box
     // stays open for a name the history calls it by
     el.itemInput.readOnly = restoring.goods || (!!state.itemId && !state.unnamed);
@@ -1529,16 +1544,16 @@ function renderGoods() {
     // the word only: the camera icon beside it in the label stays
     const word = snapWord(state, { earlier: !!viewing.goods });
     el.snapText.textContent = word;
-    const snapReady = word === "Snap Next" ? onwardReady("goods") : ready;
+    const snapReady = says(word, "Snap Next") ? onwardReady("goods") : ready;
     el.snapLabel.classList.toggle("disabled", !snapReady);
     el.galleryLabel.classList.toggle("disabled", !ready);
     el.snapInput.disabled = !snapReady;
     el.galleryInput.disabled = !ready;
     el.hint.hidden = snapReady;
-    if (restoring.goods) el.hint.textContent = "Reading this item back from the server...";
-    else if (locked) el.hint.textContent = "These photos went with the listing. NEXT starts the next item.";
+    if (restoring.goods) el.hint.textContent = t("Reading this item back from the server...");
+    else if (locked) el.hint.textContent = t("These photos went with the listing. NEXT starts the next item.");
     else if (taken) el.hint.textContent = taken;
-    else el.hint.textContent = named ? "" : TYPE_NAME_HINT;
+    else el.hint.textContent = named ? "" : t(TYPE_NAME_HINT);
 
     el.noteStatus.textContent = noteStatusText(state);
     el.progress.textContent = progressLine(state);
@@ -1571,11 +1586,11 @@ function renderGoods() {
     }
     // the AI photo hint under the photos it is about, in the tip line there, not under the
     // buttons (Michal, 2026-11-02)
-    const aiHint = hint === AI_HINT;
+    const aiHint = says(hint, AI_HINT);
     el.venueHint.textContent = aiHint ? "" : hint;
     el.venueHint.hidden = !hint || aiHint;
     if (aiHint) {
-        el.aiTip.textContent = AI_HINT;
+        el.aiTip.textContent = t(AI_HINT);
         el.aiTip.hidden = false;
     }
     renderVenueRow(state);
@@ -1605,7 +1620,7 @@ function renderVenueRow(state) {
 
     // the others shown: the tip line under the row says they are not available; folded, its own words
     if (!folded && own.length < VENUES.length) {
-        el.venueHint.textContent = VENUES_NOT_AVAILABLE;
+        el.venueHint.textContent = t(VENUES_NOT_AVAILABLE);
         el.venueHint.hidden = false;
     }
     el.venuesMore.setAttribute("aria-expanded", folded ? "false" : "true");
@@ -1686,7 +1701,7 @@ function renderBook() {
     const ready = !locked && !busy;
     const word = snapWord(state, { earlier: !!viewing.book });
     el.bookSnapText.textContent = word;
-    const snapReady = word === "Snap Next" ? onwardReady("book") : ready;
+    const snapReady = says(word, "Snap Next") ? onwardReady("book") : ready;
     el.bookSnapLabel.classList.toggle("disabled", !snapReady);
     el.bookGalleryLabel.classList.toggle("disabled", !ready);
     el.bookSnapInput.disabled = !snapReady;
@@ -1775,10 +1790,10 @@ function saveCustomizeAsDefault() {
     writeJson("localStorage", DEFAULTS_KEY, { goods: d, book: d });
     writeText("localStorage", FIXDARK_KEY, el.fixDark.checked ? "on" : "off");
     renderPosting();
-    el.customizeSaveDefault.textContent = SAVED_AS_DEFAULT;
+    el.customizeSaveDefault.textContent = t(SAVED_AS_DEFAULT);
     clearTimeout(savedDefaultTimer);
     savedDefaultTimer = setTimeout(() => {
-        el.customizeSaveDefault.textContent = SAVE_AS_DEFAULT;
+        el.customizeSaveDefault.textContent = t(SAVE_AS_DEFAULT);
     }, DEFAULTS_SAVED_MS);
 }
 
@@ -1789,9 +1804,9 @@ function renderPosting() {
     el.postingPickupOnly.checked = d.pickupOnly;
     const grade = pricingOf(d.pricing);
     el.postingPricing.value = String(grade.grade);
-    el.postingPricing.setAttribute("aria-valuetext", grade.word);
+    el.postingPricing.setAttribute("aria-valuetext", t(grade.word));
     PRICING.forEach((p, i) => el.postingPricingWords[i].classList.toggle("on", p.grade === grade.grade));
-    el.postingPricingNote.textContent = grade.note;
+    el.postingPricingNote.textContent = t(grade.note);
     el.postingAutoPost.checked = d.autoPost;
     el.postingComps.checked = d.comps;
     el.postingBestOffer.checked = d.bestOffer !== false;
@@ -1824,7 +1839,7 @@ function savePostingDefaults() {
         setState(m, applyDefaults(s, { goods: d, book: d }));
         fillCustomize(m);
     }
-    el.postingStatus.textContent = DEFAULTS_SAVED;
+    el.postingStatus.textContent = t(DEFAULTS_SAVED);
     clearTimeout(defaultsTimer);
     defaultsTimer = setTimeout(() => {
         el.postingStatus.textContent = "";
@@ -1843,7 +1858,7 @@ function renderCustomize(m) {
     // the walk-through shows customize open all the way, without changing what he left
     const shown = touring && m === "goods";
     const open = customizeOpen[m] || shown;
-    nodes.toggle.textContent = open ? "▾ customize" : "▸ customize";
+    nodes.toggle.textContent = `${open ? "▾" : "▸"} ${t("customize")}`;
     nodes.toggle.setAttribute("aria-expanded", open ? "true" : "false");
     nodes.card.hidden = !open;
     // keep visible: on the toggle's line while it is open (Michal, 2026-11-01)
@@ -1857,21 +1872,21 @@ function renderCustomize(m) {
     const grade = pricingOf(c.pricing);
     nodes.pricing.disabled = fixed;
     nodes.pricing.value = String(grade.grade);
-    nodes.pricing.setAttribute("aria-valuetext", grade.word);
+    nodes.pricing.setAttribute("aria-valuetext", t(grade.word));
     // posted: each grade's word with the AI draft's price for it (Michal, 2026-11-02)
     const priced = m === "goods" && priceAdjustable(m) && postedEdit.row ? sliderWords(postedEdit.row, grade.grade).words : null;
     PRICING.forEach((p, i) => {
         nodes.pricingWords[i].classList.toggle("on", p.grade === grade.grade);
-        nodes.pricingWords[i].textContent = priced ? priced[i] : p.word;
+        nodes.pricingWords[i].textContent = priced ? priced[i] : t(p.word);
     });
-    nodes.pricingNote.textContent = grade.note;
+    nodes.pricingNote.textContent = t(grade.note);
     nodes.autoPost.disabled = fixed;
     nodes.autoPost.checked = c.autoPost;
     // the card half open at first: up to the price, then the dark arrow (Michal, 2026-11-01)
     const more = customizeMore[m] || shown;
     nodes.more.hidden = false;
     nodes.more.setAttribute("aria-expanded", more ? "true" : "false");
-    nodes.more.setAttribute("aria-label", more ? "Fewer options" : "More options");
+    nodes.more.setAttribute("aria-label", more ? t("Fewer options") : t("More options"));
     nodes.rest.hidden = !more;
     nodes.bestOffer.disabled = fixed;
     nodes.bestOffer.checked = c.bestOffer !== false;
@@ -1954,7 +1969,7 @@ function renderVenue(m, venue, ok, nodes) {
     const late = lates.get(`${m}:${venue}`);
     const line =
         busy && late && late.late
-            ? { text: TOO_LATE, link: "", kind: "busy" }
+            ? { text: t(TOO_LATE), link: "", kind: "busy" }
             : venueLine(job, venueIdleNote(state, venue));
     // a posted item's update: what it ended with, under its venue (Michal, 2026-11-02)
     const said = posted && postedEdit.venue === venue && postedEdit.status ? postedEdit.status : line.text;
@@ -1981,8 +1996,10 @@ function renderVenue(m, venue, ok, nodes) {
  * change to 'continue'"), the word is CONTINUE and the ring stops; its `reset`, the
  * small red control beside it, shows only then.
  */
-function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = false, label = word, lead = [], trail = [], reset = null }) {
-    const kids = [...lead, paused ? CONTINUE : word, ...trail];
+function paintJobButton(btn, word, { busy, cancel, note: english = TAP_AGAIN, paused = false, label = word, lead = [], trail = [], reset = null }) {
+    // the notes and CONTINUE in the chosen language; the word and label come as they are shown
+    const note = t(english);
+    const kids = [...lead, paused ? t(CONTINUE) : word, ...trail];
     if (cancel) {
         const small = document.createElement("small");
         small.className = "tap-cancel";
@@ -1993,7 +2010,7 @@ function paintJobButton(btn, word, { busy, cancel, note = TAP_AGAIN, paused = fa
     const ring = busy && !paused;
     btn.classList.toggle("busy", ring);
     btn.setAttribute("aria-busy", ring ? "true" : "false");
-    const said = paused ? `${word}, ${PAUSED}, ${CONTINUE}` : cancel ? `${label}, ${note}` : label;
+    const said = paused ? `${word}, ${t(PAUSED)}, ${t(CONTINUE)}` : cancel ? `${label}, ${note}` : label;
     btn.setAttribute("aria-label", said);
     if (reset) reset.hidden = !paused;
 }
@@ -2022,7 +2039,7 @@ function renderStrip(m, strip, locked) {
     // four marked AI: the others' marks wait, dimmed, until one comes off (AI_MAX)
     const aiFull = state.photos.filter((p) => p.ai).length >= AI_MAX;
     if (m === "goods") {
-        el.aiTip.textContent = AI_FULL_TIP;
+        el.aiTip.textContent = t(AI_FULL_TIP);
         el.aiTip.hidden = !aiFull;
     }
     for (const p of state.photos) {
@@ -2044,7 +2061,7 @@ function renderStrip(m, strip, locked) {
             // the PC could not give it
             const there = document.createElement("span");
             there.className = "shot-remote";
-            there.textContent = "on the server";
+            there.textContent = t("on the server");
             card.append(there);
         }
 
@@ -2065,7 +2082,7 @@ function renderStrip(m, strip, locked) {
         } else {
             const badge = document.createElement("span");
             badge.className = `badge ${word}`;
-            badge.textContent = word;
+            badge.textContent = t(BADGE_WORDS[word] ?? word);
             card.append(badge);
         }
 
@@ -2075,7 +2092,7 @@ function renderStrip(m, strip, locked) {
             x.type = "button";
             x.className = "kill";
             x.textContent = "×";
-            x.setAttribute("aria-label", `Delete ${p.name}`);
+            x.setAttribute("aria-label", t("Delete {name}", { name: p.name }));
             x.addEventListener("click", () => removePhoto(m, p.id));
             card.append(x);
         }
@@ -2088,7 +2105,7 @@ function renderStrip(m, strip, locked) {
             ai.textContent = "AI";
             ai.disabled = locked || (aiFull && !p.ai);
             ai.setAttribute("aria-pressed", p.ai ? "true" : "false");
-            ai.setAttribute("aria-label", `Send ${p.name} to the AI`);
+            ai.setAttribute("aria-label", t("Send {name} to the AI", { name: p.name }));
             ai.addEventListener("click", () =>
                 setState("goods", reduce(slots.goods, { type: "toggleAi", id: p.id }))
             );
@@ -2101,11 +2118,11 @@ function renderStrip(m, strip, locked) {
             main.type = "button";
             main.id = `book-main-${p.n}`;
             main.className = lead ? "main-mark on" : "main-mark";
-            main.textContent = "main";
+            main.textContent = t("main");
             main.disabled = locked;
             main.setAttribute("data-value", String(p.n));
             main.setAttribute("aria-pressed", lead ? "true" : "false");
-            main.setAttribute("aria-label", `Lead the listing with ${p.name}`);
+            main.setAttribute("aria-label", t("Lead the listing with {name}", { name: p.name }));
             main.addEventListener("click", () =>
                 setState("book", reduce(slots.book, { type: "bookMain", id: p.id }))
             );
@@ -2132,9 +2149,9 @@ function litMark(held, name) {
     const lit = document.createElement("button");
     lit.type = "button";
     lit.className = held.before ? "lit-mark before" : "lit-mark";
-    lit.textContent = "lit";
+    lit.textContent = t("lit");
     lit.setAttribute("aria-pressed", held.before ? "false" : "true");
-    lit.setAttribute("aria-label", held.before ? `${name}, as taken: show it brightened` : `${name}, brightened: show it as taken`);
+    lit.setAttribute("aria-label", held.before ? t("{name}, as taken: show it brightened", { name }) : t("{name}, brightened: show it as taken", { name }));
     lit.addEventListener("click", () => {
         held.before = !held.before;
         render();
@@ -2262,7 +2279,7 @@ function snapUnderThumb() {
 function acceptFiles(m, fileList) {
     const s = slots[m];
     if (m === "goods" && !s.itemName && s.needsName) {
-        say(TYPE_NAME_HINT, "warn");
+        say(t(TYPE_NAME_HINT), "warn");
         return;
     }
     if (m === "goods" && s.nameTaken) {
@@ -2909,7 +2926,7 @@ async function poll(m, venue, mine) {
 
 /** The inventory foldout's arrow and word, the list's count after it once there is one. */
 function inventoryFold(open) {
-    foldCounted(el.inventoryToggle, "Inventory", inventoryTally(admin.counted ? admin.rows.length : null), open);
+    foldCounted(el.inventoryToggle, t("Inventory"), inventoryTally(admin.counted ? admin.rows.length : null), open);
 }
 
 /** The list's count after the Inventory foldout's word, and under it only what the count cannot say. */
@@ -2952,13 +2969,17 @@ function adminShown(open) {
     el.admin.hidden = !open;
     showMessage();
     el.adminToggle.setAttribute("aria-expanded", open ? "true" : "false");
-    // Snap while Admin is open, the way back to snapping (Michal, 2026-10-17)
+    paintAdminLink(open);
+    render();
+}
+
+/** The header's Admin button: three dots while Admin is closed, Snap while it is open (Michal, 2026-10-17). */
+function paintAdminLink(open) {
     const link = adminLink(open);
     if (link.dots) el.adminToggle.replaceChildren(dotsIcon());
-    else el.adminToggle.textContent = link.text;
-    if (link.label) el.adminToggle.setAttribute("aria-label", link.label);
+    else el.adminToggle.textContent = t(link.text);
+    if (link.label) el.adminToggle.setAttribute("aria-label", t(link.label));
     else el.adminToggle.removeAttribute("aria-label");
-    render();
 }
 
 /**
@@ -3056,7 +3077,7 @@ function showSettings(open) {
     if (open && el.admin.hidden) adminShown(true);
     settingsOpen = open;
     el.settings.hidden = !open;
-    fold(el.settingsToggle, "Settings", open);
+    fold(el.settingsToggle, t("Settings"), open);
     if (open) {
         fillSettings();
         el.settingsStatus.textContent = "";
@@ -3094,7 +3115,7 @@ function renderSettingsFolds() {
         const open = key === chosen;
         el.folds[key].toggle.hidden = key === "server" && !server;
         el.folds[key].body.hidden = !open;
-        fold(el.folds[key].toggle, word, open);
+        fold(el.folds[key].toggle, t(word), open);
         el.folds[key].tab.hidden = key === "server" && !server;
         el.folds[key].tab.setAttribute("aria-pressed", open ? "true" : "false");
     }
@@ -3173,9 +3194,58 @@ function chooseLanguage(lang) {
     redrawWords();
 }
 
-/** Every part that writes its own words, drawn again after a language change. */
+/**
+ * Every part that writes its own words, drawn again after a language change (nothing asked of
+ * the server, nothing of the state changed). A line said once at an event (a Save's "saved", a
+ * job's line, the stats table) keeps the language it was said in until it is said again.
+ */
 function redrawWords() {
     render();
+    renderServer();
+    paintAdminLink(!el.admin.hidden);
+    renderSettingsFolds();
+    fold(el.settingsToggle, t("Settings"), settingsOpen);
+    inventoryFold(admin.inventoryOpen);
+    renderInbox();
+    renderAccount();
+    renderPosting();
+    renderWrap();
+    renderPeople();
+    renderPolicyLines();
+    rewordRows();
+    if (admin.row) {
+        el.detailHeading.textContent = rowHeading(admin.row);
+        renderCards();
+        for (const p of rowPhotos(admin.row)) {
+            const tile = admin.photoTiles.get(p.n);
+            if (tile) tile.setAttribute("aria-label", t("{name}, full size", { name: p.name }));
+        }
+    }
+    for (const [node, english] of tourWords) node.textContent = t(english);
+}
+
+/** What Snap sets up on her eBay, listed under the address boxes (2026-10-31): fixed, its words the language's. */
+function renderPolicyLines() {
+    el.sellerPolicyList.replaceChildren(
+        ...POLICY_LINES.map((line) => {
+            const li = document.createElement("li");
+            li.textContent = t(line);
+            return li;
+        })
+    );
+}
+
+/** The list's rows' own words again, in place: their pictures stay (rowNode, paintTile). */
+function rewordRows() {
+    for (const [sku, parts] of admin.parts) {
+        parts.up.setAttribute("aria-label", t("price up"));
+        parts.down.setAttribute("aria-label", t("price down"));
+        if (parts.unarchive) parts.unarchive.textContent = t("Unarchive");
+        if (parts.panel) parts.panel.textContent = t("Archive");
+        const tile = admin.tiles.get(sku);
+        if (tile && !(Number(parts.row.photos) > 0)) tile.textContent = t("no photo");
+        paintTile(sku);
+    }
 }
 
 /** At start: each marked element's English kept as index.html wrote it, then the language this phone chose. */
@@ -3246,10 +3316,10 @@ async function loadInventory(lead = "") {
     const mine = admin.asked;
     const pc = settings();
     if (!pc) {
-        el.inventoryStatus.textContent = "Set the server address and key under Settings first.";
+        el.inventoryStatus.textContent = t("Set the server address and key under Settings first.");
         return;
     }
-    el.inventoryStatus.textContent = "Asking the server...";
+    el.inventoryStatus.textContent = t("Asking the server...");
     let answer;
     try {
         answer = await getInventory(pc, {
@@ -3317,7 +3387,7 @@ function rowNode(row, photos) {
         // a blank tile until photo 1 comes (fetchThumbs), or for a row with none
         const tile = document.createElement("span");
         tile.className = "inv-thumb";
-        tile.textContent = Number(row.photos) > 0 ? "" : "no photo";
+        tile.textContent = Number(row.photos) > 0 ? "" : t("no photo");
         admin.tiles.set(row.sku, tile);
         card.append(tile);
     }
@@ -3338,29 +3408,30 @@ function rowNode(row, photos) {
     // a row the Archived chip lists comes back with Unarchive, in place of the swipe
     const unarchive =
         admin.status === "archived"
-            ? actionButton("Unarchive", "pill pill-small inv-unarchive", false, () => {
+            ? actionButton(t("Unarchive"), "pill pill-small inv-unarchive", false, () => {
                   unarchiveRow(row.sku).catch(() => {});
               })
             : null;
     if (unarchive) words.append(unarchive);
     const steps = document.createElement("div");
     steps.className = "inv-steps";
-    const up = dialButton(row.sku, 1, "+", "price up");
-    const down = dialButton(row.sku, -1, "−", "price down");
+    const up = dialButton(row.sku, 1, "+", t("price up"));
+    const down = dialButton(row.sku, -1, "−", t("price down"));
     steps.append(up, down);
     card.append(words, steps);
+    let panel = null;
     if (unarchive) li.append(card);
     else {
-        const panel = document.createElement("span");
+        panel = document.createElement("span");
         panel.className = "inv-archive";
         panel.setAttribute("aria-hidden", "true");
-        panel.textContent = "Archive";
+        panel.textContent = t("Archive");
         li.append(panel, card);
     }
     // the row as the PC last gave it: a dial's PATCH puts its answer here; `shown`, the
     // price a dial is at (held, or its PATCH on its way), null otherwise; `swiped`, a finger
     // moved on it since it went down, so the click it may end with opens nothing
-    const parts = { row, li, card, line, badges, up, down, unarchive, shown: null, swiped: false };
+    const parts = { row, li, card, line, badges, up, down, unarchive, panel, shown: null, swiped: false };
     open.addEventListener("click", () => {
         if (parts.swiped) {
             parts.swiped = false;
@@ -3748,7 +3819,7 @@ async function archiveSwiped(sku, direction) {
     const task = rowTask(sku);
     const pc = settings();
     if (!parts || !pc) return;
-    task.wait = "archiving";
+    task.wait = t("archiving");
     slideRow(parts, 0);
     parts.li.classList.add("leaving");
     parts.li.classList.toggle("toward-right", direction > 0);
@@ -3785,7 +3856,7 @@ function offerUndo(entry) {
     entry.live = liveVenues(entry.row);
     el.inventoryUndoText.textContent = archivedLine(rowTitle(entry.row), entry.live);
     el.inventoryEndBtn.hidden = !entry.live.length;
-    el.inventoryEndBtn.textContent = entry.live.length > 1 ? "End listings" : "End listing";
+    el.inventoryEndBtn.textContent = entry.live.length > 1 ? t("End listings") : t("End listing");
     el.inventoryUndo.hidden = false;
     undo.timer = setTimeout(dropUndo, entry.live.length ? ASK_MS : UNDO_MS);
 }
@@ -3855,7 +3926,7 @@ async function unarchiveRow(sku) {
     const task = rowTask(sku);
     const pc = settings();
     if (!pc || rowTaskBusy(task)) return;
-    task.wait = "archiving";
+    task.wait = t("archiving");
     paintTile(sku);
     try {
         await archiveRow(pc, sku, false);
@@ -3889,23 +3960,23 @@ function syncBadge(sku, badge) {
         paintTile(sku);
         if (admin.row && admin.row.sku === sku) renderFolds();
         // the row has no line of its own: a tap from the publishing step on is said on the list's
-        if (task.late) el.inventoryStatus.textContent = `${sku}: ${TOO_LATE}`;
+        if (task.late) el.inventoryStatus.textContent = `${sku}: ${t(TOO_LATE)}`;
     };
     const btn = actionButton("", `vbadge ${badge.kind} vsync`, false, () => {
         if (pressed(task, action)) onTaskTap(task, paint);
         else pushTile(sku, badge.venue).catch(() => {});
     });
-    const reset = actionButton(RESET, "reset-call", false, () => {
+    const reset = actionButton(t(RESET), "reset-call", false, () => {
         resetTask(task, paint).catch(() => {});
     });
-    reset.setAttribute("aria-label", `${RESET} the sync of ${sku}`);
+    reset.setAttribute("aria-label", t("reset the sync of {sku}", { sku }));
     const busy = pressed(task, action);
     btn.disabled = busy ? !taskTap(task) : rowTaskBusy(task);
     paintJobButton(btn, badge.text, {
         busy,
         cancel: busy && taskCancel(task),
         paused: busy && task.paused,
-        label: `${badge.said}, sync to ${venueName(badge.venue)}`,
+        label: t("{badge}, sync to {venue}", { badge: badge.said, venue: venueName(badge.venue) }),
         trail: [syncIcon()],
         reset,
     });
@@ -3958,7 +4029,7 @@ async function pushTile(sku, venue) {
     task.note = null;
     task.job = null;
     task.stopping = false;
-    task.wait = "sending";
+    task.wait = t("sending");
     const waited = pressWait(task);
     paintTile(sku);
     if (!(await waited)) return;
@@ -4007,11 +4078,11 @@ async function askTile(sku) {
  */
 function badgeNode(badge) {
     const kind = `vbadge ${badge.kind}`;
-    const words = badge.tick ? [badge.text, tickIcon(), hiddenWord(" listed")] : [badge.text];
+    const words = badge.tick ? [badge.text, tickIcon(), hiddenWord(` ${t("listed")}`)] : [badge.text];
     if (badge.link) {
         const a = linkNode(badge.link, kind, "");
         a.replaceChildren(...words);
-        a.setAttribute("aria-label", `${badge.said}: open the listing`);
+        a.setAttribute("aria-label", t("{badge}: open the listing", { badge: badge.said }));
         return a;
     }
     const b = document.createElement("span");
@@ -4145,10 +4216,10 @@ async function openRow(row, from) {
     if (view && typeof view.scrollTo === "function") view.scrollTo({ top: 0, left: 0, behavior: "instant" });
     const pc = settings();
     if (!pc) {
-        detailLine("Set the server address and key under Settings first.");
+        detailLine(t("Set the server address and key under Settings first."));
         return;
     }
-    detailLine(`Reading ${row.sku} from the server...`);
+    detailLine(t("Reading {sku} from the server...", { sku: row.sku }));
     let whole;
     try {
         whole = await getRow(pc, row.sku);
@@ -4279,7 +4350,7 @@ function renderCards() {
 function renderRowCustomize() {
     const c = admin.custom;
     const row = admin.row;
-    fold(el.detailCustomizeToggle, "quick customize", c.open);
+    fold(el.detailCustomizeToggle, t("quick customize"), c.open);
     el.detailCustomizeToggle.hidden = !row;
     el.detailCustomize.hidden = !row || !c.open;
     if (!row) return;
@@ -4346,7 +4417,7 @@ async function saveRowCustomize() {
     const mine = admin.shown;
     c.note = null;
     c.job = null;
-    c.wait = "saving";
+    c.wait = t("saving");
     renderCards();
     let whole;
     try {
@@ -4383,7 +4454,7 @@ function renderFolds() {
         head.hidden = !row;
         card.hidden = !row || !open;
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        toggle.setAttribute("aria-label", `${open ? "Hide" : "Show"} ${venueName(venue)}`);
+        toggle.setAttribute("aria-label", open ? t("Hide {venue}", { venue: venueName(venue) }) : t("Show {venue}", { venue: venueName(venue) }));
         toggle.replaceChildren(eyeIcon(open));
         badge.replaceChildren(...(row ? detailBadge(row, venue) : []));
     }
@@ -4413,8 +4484,8 @@ function draftBadge(venue, badge) {
         admin.folds[venue] = true;
         onAction(venue, "post");
     });
-    btn.append(document.createTextNode(posting ? `${venue} posting` : badge.text), ...(posting ? [] : [syncIcon()]));
-    btn.setAttribute("aria-label", `${badge.said}, post to ${venueName(venue)}`);
+    btn.append(document.createTextNode(posting ? t("{venue} posting", { venue }) : badge.text), ...(posting ? [] : [syncIcon()]));
+    btn.setAttribute("aria-label", t("{badge}, post to {venue}", { badge: badge.said, venue: venueName(venue) }));
     return [btn];
 }
 
@@ -4503,14 +4574,14 @@ function factsNode(facts) {
     list.className = "facts";
     for (const f of facts) {
         const label = document.createElement("dt");
-        label.textContent = f.label;
+        label.textContent = t(f.label);
         const value = document.createElement("dd");
         value.className = [f.pre && "pre", f.mono && "mono", f.derived && "derived"].filter(Boolean).join(" ");
         value.textContent = f.value;
         if (f.derived) {
             const note = document.createElement("span");
             note.className = "derived-note";
-            note.textContent = DERIVED;
+            note.textContent = t(DERIVED);
             value.append(note);
         }
         list.append(label, value);
@@ -4548,10 +4619,10 @@ function actionsNode(venue, busy) {
         ask.textContent = endQuestion(venue);
         box.append(
             ask,
-            actionButton("Yes, end it", "pill pill-small pill-bad", busy, () => {
+            actionButton(t("Yes, end it"), "pill pill-small pill-bad", busy, () => {
                 runAction(venue, "end").catch(() => {});
             }),
-            actionButton("Keep it", "pill pill-small", false, () => {
+            actionButton(t("Keep it"), "pill pill-small", false, () => {
                 c.confirm = false;
                 renderCards();
             })
@@ -4560,10 +4631,10 @@ function actionsNode(venue, busy) {
     }
     if (c.edit) {
         box.append(
-            actionButton("Save", "pill pill-ink", busy, () => {
+            actionButton(t("Save"), "pill pill-ink", busy, () => {
                 saveEdit(venue).catch(() => {});
             }),
-            actionButton("Cancel", "pill", !!c.wait, () => {
+            actionButton(t("Cancel"), "pill", !!c.wait, () => {
                 c.edit = null;
                 renderCards();
             })
@@ -4587,10 +4658,10 @@ function actionsNode(venue, busy) {
                 if (mine === admin.shown) renderCards();
             };
             const node = actionButton(word, look, true, () => onTaskTap(c, paint));
-            const reset = actionButton(RESET, "reset-call", false, () => {
+            const reset = actionButton(t(RESET), "reset-call", false, () => {
                 resetTask(c, paint).catch(() => {});
             });
-            reset.setAttribute("aria-label", `${RESET} ${word}`);
+            reset.setAttribute("aria-label", t("reset {what}", { what: word }));
             c.button = { node, word, reset };
             paintTaskButton(c, c.button);
             box.append(node, reset);
@@ -4677,12 +4748,12 @@ function choiceNode(venue, f) {
     head.className = "field-head";
     const label = document.createElement("span");
     label.className = "field-label";
-    label.textContent = f.label;
+    label.textContent = t(f.label);
     head.append(label);
     const box = document.createElement("div");
     box.className = "chips chips-conditions";
     box.setAttribute("role", "group");
-    box.setAttribute("aria-label", f.label);
+    box.setAttribute("aria-label", t(f.label));
     admin.cards[venue].edit.choiceField = { field, head, box, key: f.key };
     paintChoices(venue);
     return field;
@@ -4730,7 +4801,7 @@ function fieldNode(venue, f, from, locked) {
     head.className = "field-head";
     const label = document.createElement("span");
     label.className = "field-label";
-    label.textContent = f.label;
+    label.textContent = t(f.label);
     head.append(label);
     const input = document.createElement(f.kind === "text" ? "textarea" : "input");
     if (f.kind === "text") {
@@ -4739,7 +4810,7 @@ function fieldNode(venue, f, from, locked) {
         input.type = "text";
     }
     if (f.kind === "price") input.setAttribute("inputmode", "decimal");
-    input.setAttribute("aria-label", f.label);
+    input.setAttribute("aria-label", t(f.label));
     input.setAttribute("autocomplete", "off");
     input.value = String(values[f.key]);
     input.disabled = locked;
@@ -4750,7 +4821,7 @@ function fieldNode(venue, f, from, locked) {
     if (venue === "craigslist") {
         // "" clears the override: the PC derives the field from eBay again
         head.append(
-            actionButton("clear", "link clear", locked, () => {
+            actionButton(t("clear"), "link clear", locked, () => {
                 values[f.key] = "";
                 input.value = "";
             })
@@ -4778,7 +4849,7 @@ async function saveEdit(venue) {
         return;
     }
     const mine = admin.shown;
-    c.wait = "saving";
+    c.wait = t("saving");
     c.edit.error = "";
     c.edit.choiceError = "";
     renderCards();
@@ -4813,7 +4884,7 @@ async function addTo(venue) {
     if (!row || !pc || rowBusy()) return;
     const mine = admin.shown;
     c.note = null;
-    c.wait = `adding ${venue}`;
+    c.wait = t("adding {venue}", { venue });
     renderCards();
     let whole;
     try {
@@ -4854,7 +4925,7 @@ async function runAction(venue, action) {
     c.note = null;
     c.job = null;
     c.stopping = false;
-    c.wait = "sending";
+    c.wait = t("sending");
     const waited = pressWait(c);
     renderCards();
     if (!(await waited) || mine !== admin.shown) return;
@@ -4967,7 +5038,7 @@ async function resetTask(task, paint) {
     if (task.press) {
         takeBack(task);
         task.wait = "";
-        task.note = { text: CANCELLED, kind: "bad" };
+        task.note = { text: t(CANCELLED), kind: "bad" };
         paint();
         return;
     }
@@ -5079,7 +5150,7 @@ function renderDetailPhotos(row) {
     if (photos.length === 0) {
         const none = document.createElement("p");
         none.className = "small";
-        none.textContent = whole ? "No photos." : "Reading the photos...";
+        none.textContent = whole ? t("No photos.") : t("Reading the photos...");
         kids.push(none);
     }
     const strip = document.createElement("ul");
@@ -5092,7 +5163,7 @@ function renderDetailPhotos(row) {
         tile.className = "thumb";
         tile.disabled = true;
         tile.textContent = "...";
-        tile.setAttribute("aria-label", `${p.name}, full size`);
+        tile.setAttribute("aria-label", t("{name}, full size", { name: p.name }));
         tile.addEventListener("click", () => {
             const url = admin.pictures.get(p.n);
             if (url) openPhoto(url, p.name, tile);
@@ -5105,7 +5176,7 @@ function renderDetailPhotos(row) {
                 admin.photoEdit.note = null;
                 paintPhotoEdit();
             });
-            x.setAttribute("aria-label", `Remove ${p.name}`);
+            x.setAttribute("aria-label", t("Remove {name}", { name: p.name }));
             admin.photoEdit.controls.push(x);
             li.append(x);
         }
@@ -5158,7 +5229,7 @@ async function addRowPhotos(files) {
     let added = 0;
     let stop = files.length > going.length ? { text: `an item holds at most ${MAX_PHOTOS} photos`, kind: "bad" } : null;
     for (const [i, file] of going.entries()) {
-        pe.wait = going.length > 1 ? `adding photo ${i + 1} of ${going.length}...` : "adding the photo...";
+        pe.wait = going.length > 1 ? t("adding photo {n} of {count}...", { n: i + 1, count: going.length }) : t("adding the photo...");
         renderCards();
         let whole;
         try {
@@ -5185,7 +5256,7 @@ async function addRowPhotos(files) {
     }
     admin.changed = true;
     refreshRow(current);
-    const done = added > 1 ? `${added} photos added` : "photo added";
+    const done = added > 1 ? t("{n} photos added", { n: added }) : t("photo added");
     showRowPhotos(pc, mine, stop || photoSaved(done, photosBehind(current)));
 }
 
@@ -5201,7 +5272,7 @@ async function removeRowPhoto(n) {
     const mine = admin.shown;
     pe.ask = 0;
     pe.note = null;
-    pe.wait = "removing the photo...";
+    pe.wait = t("removing the photo...");
     renderCards();
     let whole;
     try {
@@ -5221,7 +5292,7 @@ async function removeRowPhoto(n) {
     admin.changed = true;
     const current = { ...whole, sku: row.sku };
     refreshRow(current);
-    showRowPhotos(pc, mine, photoSaved("photo removed", photosBehind(current)));
+    showRowPhotos(pc, mine, photoSaved(t("photo removed"), photosBehind(current)));
 }
 
 /** The + tile: a label round a hidden file input, the phone's own chooser (camera or gallery). */
@@ -5235,7 +5306,7 @@ function addPhotoNode() {
     input.accept = "image/*";
     input.multiple = true;
     input.className = "sr-only";
-    input.setAttribute("aria-label", "Add photos to this item");
+    input.setAttribute("aria-label", t("Add photos to this item"));
     admin.photoEdit.controls.push(input);
     input.addEventListener(
         "change",
@@ -5268,10 +5339,10 @@ function paintPhotoEdit() {
         const n = pe.ask;
         line.replaceChildren(
             ask,
-            actionButton("Yes, remove", "pill pill-small pill-bad", busy, () => {
+            actionButton(t("Yes, remove"), "pill pill-small pill-bad", busy, () => {
                 removeRowPhoto(n).catch(() => {});
             }),
-            actionButton("Keep it", "pill pill-small", false, () => {
+            actionButton(t("Keep it"), "pill pill-small", false, () => {
                 pe.ask = 0;
                 paintPhotoEdit();
             })
@@ -5303,7 +5374,7 @@ async function fetchRowPhotos(pc, mine) {
             blob = await getRowPhoto(pc, row.sku, p.n);
         } catch (e) {
             if (e.status === 0 || mine !== admin.shown) return;
-            tile.textContent = "not on the server";
+            tile.textContent = t("not on the server");
             continue;
         }
         if (mine !== admin.shown) return;
@@ -5421,7 +5492,7 @@ function renderExtras() {
     // oldest first, the newest nearest the box, as a chat reads
     const sent = (mine || []).slice().reverse();
     el.feedbackMine.hidden = isAdmin || !sent.length;
-    const who = me && me.user ? `${me.user}'s feedback` : "Your feedback";
+    const who = me && me.user ? t("{name}'s feedback", { name: me.user }) : t("Your feedback");
     const mineCard = (className, head, text) => {
         const box = document.createElement("div");
         box.className = className;
@@ -5438,7 +5509,7 @@ function renderExtras() {
         ...sent.map((e) => {
             const li = document.createElement("li");
             const parts = [mineCard("inbox-entry", [who, listedAtWord(e.created)].filter(Boolean).join(" · "), e.text)];
-            if (e.reviewed) parts.push(mineCard("inbox-entry mine-reply", ["Admin", listedAtWord(e.reviewedAt)].filter(Boolean).join(" · "), "Reviewed"));
+            if (e.reviewed) parts.push(mineCard("inbox-entry mine-reply", [t("Admin"), listedAtWord(e.reviewedAt)].filter(Boolean).join(" · "), t("Reviewed")));
             li.replaceChildren(...parts);
             return li;
         })
@@ -5447,7 +5518,7 @@ function renderExtras() {
     const stats = !card && !!me && me.admin && !extras.refused;
     el.statsToggle.hidden = !stats;
     el.stats.hidden = !stats || !extras.stats;
-    fold(el.statsToggle, "Stats", extras.stats);
+    fold(el.statsToggle, t("Stats"), extras.stats);
     for (const { value, node } of el.statsChips) node.setAttribute("aria-pressed", value === extras.since ? "true" : "false");
 }
 
@@ -5507,7 +5578,7 @@ function renderUnseen() {
 async function sendFeedback() {
     const pc = settings();
     if (!pc) {
-        el.feedbackStatus.textContent = "Set the server address and key under Settings first.";
+        el.feedbackStatus.textContent = t("Set the server address and key under Settings first.");
         return;
     }
     const body = feedbackBody({
@@ -5521,12 +5592,12 @@ async function sendFeedback() {
         return;
     }
     el.feedbackSend.disabled = true;
-    el.feedbackStatus.textContent = "Sending...";
+    el.feedbackStatus.textContent = t("Sending...");
     try {
         await postFeedback(pc, body);
         heard(200);
         el.feedbackText.value = "";
-        el.feedbackStatus.textContent = FEEDBACK_SENT;
+        el.feedbackStatus.textContent = t(FEEDBACK_SENT);
         loadMine().catch(() => {});
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -5580,7 +5651,7 @@ function renderInbox() {
             box.append(line("inbox-head", inboxHead(entry)), line("inbox-text", entry.text));
             if (entry.error) box.append(line("inbox-error", `Job error: ${entry.error}`));
             box.append(
-                actionButton("Reviewed", "pill pill-small", inbox.busy.has(entry.id), () => {
+                actionButton(t("Reviewed"), "pill pill-small", inbox.busy.has(entry.id), () => {
                     reviewEntry(entry.id).catch(() => {});
                 })
             );
@@ -5618,7 +5689,7 @@ async function loadStats() {
     if (!pc) return;
     extras.asked += 1;
     const mine = extras.asked;
-    el.statsStatus.textContent = "Asking the server...";
+    el.statsStatus.textContent = t("Asking the server...");
     let answer;
     try {
         answer = await getStats(pc, extras.since);
@@ -5640,7 +5711,7 @@ async function loadStats() {
     const figures = document.createElement("table");
     for (const [label, value] of rows) figures.append(tableRow("th", [label], value));
     const people = document.createElement("table");
-    people.append(tableRow("th", ["user", "posted", "cost", "actions"]));
+    people.append(tableRow("th", [t("user"), t("posted"), t("cost"), t("actions")]));
     for (const [name, ...rest] of users) people.append(tableRow("td", [name, ...rest]));
     el.statsTable.replaceChildren(figures, ...(users.length ? [people] : []));
 }
@@ -5717,7 +5788,7 @@ async function startSync(direction, venue) {
     sync.job = null;
     if (!pc) {
         sync.venue = "";
-        sync.note = { text: "Set the server address and key under Settings first.", kind: "bad" };
+        sync.note = { text: t("Set the server address and key under Settings first."), kind: "bad" };
         renderSync();
         return;
     }
@@ -5725,7 +5796,7 @@ async function startSync(direction, venue) {
     sync.venue = venue;
     sync.note = null;
     sync.stopping = false;
-    sync.wait = "sending";
+    sync.wait = t("sending");
     const waited = pressWait(sync);
     renderSync();
     if (!(await waited)) return;
@@ -5798,6 +5869,9 @@ function renderSync() {
                 trail: [nodes.icon],
                 reset: nodes.reset,
             });
+            // the reset's words follow the language (it is made once)
+            nodes.reset.textContent = t(RESET);
+            nodes.reset.setAttribute("aria-label", t("reset {what}", { what: syncWord(/** @type {"from"|"to"} */ (direction), venue) }));
             return nodes;
         });
         if (!block.syncDrawn) {
@@ -5827,12 +5901,12 @@ function syncNodes(direction, venue) {
             startSync(direction, venue).catch(() => {});
         });
         btn.id = `sync-${direction}-${venue}`;
-        const reset = actionButton(RESET, "reset-call", false, () => {
+        const reset = actionButton(t(RESET), "reset-call", false, () => {
             resetTask(sync, renderSync).catch(() => {});
         });
         reset.id = `sync-${direction}-${venue}-reset`;
         reset.hidden = true;
-        reset.setAttribute("aria-label", `${RESET} ${syncWord(direction, venue)}`);
+        reset.setAttribute("aria-label", t("reset {what}", { what: syncWord(direction, venue) }));
         syncDrawn.nodes.set(key, { btn, icon: syncIcon(direction), reset });
     }
     return syncDrawn.nodes.get(key);
@@ -5954,12 +6028,12 @@ function renderPolicies() {
     // each eBay policy by its type and its name ("Returns: Snap returns"), the name its own
     // (GET /me/policies "policy_names") where the server keeps them
     const names = policies.draft && policies.draft.policy_names && typeof policies.draft.policy_names === "object" ? policies.draft.policy_names : null;
-    const nameOf = (p) => (names && typeof names[p.value] === "string" && names[p.value].trim()) || p.label;
+    const nameOf = (p) => (names && typeof names[p.value] === "string" && names[p.value].trim()) || t(p.label);
     el.policyPick.replaceChildren(
         ...POLICY_PARTS.map((p) => {
             const option = document.createElement("option");
             option.value = p.value;
-            option.textContent = p.type ? `${p.type}: ${nameOf(p)}` : p.label;
+            option.textContent = p.type ? `${t(p.type)}: ${nameOf(p)}` : t(p.label);
             if (p.value === part.value) option.setAttribute("selected", "");
             return option;
         })
@@ -5970,7 +6044,7 @@ function renderPolicies() {
     if (part.type && names && document.activeElement !== el.policyName) el.policyName.value = nameOf(part);
     el.policyPartShipping.hidden = part.value !== "shipping";
     el.policyPartReturns.hidden = part.value !== "returns";
-    el.policyPartWords.textContent = part.words || "";
+    el.policyPartWords.textContent = part.words ? t(part.words) : "";
     el.policyPartWords.hidden = !part.words;
     const d = policies.draft;
     const services = Array.isArray(info.shipping_services) ? info.shipping_services : [];
@@ -5985,12 +6059,12 @@ function renderPolicies() {
     );
     el.policyService.value = d.shipping_service;
     const types = Array.isArray(info.cost_types) ? info.cost_types.filter((v) => COST_WORDS[v]) : ["CALCULATED", "FLAT_RATE"];
-    choiceRow(el.policyCostType, types.map((v) => [v, COST_WORDS[v]]), d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
+    choiceRow(el.policyCostType, types.map((v) => [v, t(COST_WORDS[v])]), d.shipping_cost_type, (v) => (d.shipping_cost_type = v));
     // several services, a row each, the buyer picking one (2026-10-31); else the one menu
     const several = Array.isArray(d.shipping);
     el.policyService.hidden = several;
     el.policyShipList.hidden = !several;
-    el.policyShipLabel.textContent = several ? (d.shipping.length > 1 ? SHIP_PICKS : SHIP_ONE) : "Shipping";
+    el.policyShipLabel.textContent = several ? t(d.shipping.length > 1 ? SHIP_PICKS : SHIP_ONE) : t("Shipping");
     if (several) renderShipRows(info, d, services);
     else el.policyShipNote.hidden = true;
     el.policyCostRow.hidden = several || d.shipping_cost_type !== "FLAT_RATE";
@@ -6000,7 +6074,7 @@ function renderPolicies() {
     const returns = Array.isArray(info.return_choices) ? info.return_choices : [d.return_days];
     choiceRow(el.policyReturns, returns.map((n) => [n, returnsWord(n)]), d.return_days, (v) => (d.return_days = v));
     el.policyPayerRow.hidden = d.return_days === 0;
-    choiceRow(el.policyPayer, [["BUYER", "Buyer"], ["SELLER", "Seller - free returns"]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
+    choiceRow(el.policyPayer, [["BUYER", t("Buyer")], ["SELLER", t("Seller - free returns")]], d.return_shipping_paid_by, (v) => (d.return_shipping_paid_by = v));
     el.policyPickup.checked = !!d.local_pickup;
     el.policySave.disabled = policies.busy;
     markPolicySave();
@@ -6048,7 +6122,7 @@ function renderShipRows(info, d, services) {
             if (sv.code === MEDIA_MAIL) {
                 const thin = document.createElement("span");
                 thin.className = "ship-thin";
-                thin.textContent = "for media only";
+                thin.textContent = t("for media only");
                 word.replaceChildren(sv.name, " ", thin);
             } else word.textContent = sv.name;
             label.replaceChildren(box, word);
@@ -6061,7 +6135,7 @@ function renderShipRows(info, d, services) {
                 cost.setAttribute("inputmode", "decimal");
                 cost.setAttribute("autocomplete", "off");
                 cost.setAttribute("placeholder", "$");
-                cost.setAttribute("aria-label", `Flat rate for ${sv.name}, $`);
+                cost.setAttribute("aria-label", t("Flat rate for {service}, $", { service: sv.name }));
                 const r = ticked.get(sv.code);
                 cost.value = r.cost || "";
                 cost.addEventListener("input", () => {
@@ -6074,28 +6148,31 @@ function renderShipRows(info, d, services) {
         })
     );
     // more services than eBay takes: say so
-    el.policyShipNote.textContent = services.length > most ? `eBay takes up to ${most}.` : "";
+    el.policyShipNote.textContent = services.length > most ? t("eBay takes up to {n}.", { n: most }) : "";
     el.policyShipNote.hidden = services.length <= most;
 }
 
 /** Shipping cost's chips, those the server offers (GET /me/policies "cost_types"); Free shipping since 2026-10-31. */
-const COST_WORDS = { CALCULATED: "Calculated", FLAT_RATE: "Flat rate", FREE: "Free shipping" };
+const COST_WORDS = { CALCULATED: tKey("Calculated"), FLAT_RATE: tKey("Flat rate"), FREE: tKey("Free shipping") };
 /** Edit's label for the services, a server with several (Michal, 2026-10-31). */
-const SHIP_PICKS = "Shipping options - buyer picks";
+const SHIP_PICKS = tKey("Shipping options - buyer picks");
 /** ... with one ticked: no picking (Michal, 2026-10-31: "only write buyer picks if there is more than 1 option"). */
-const SHIP_ONE = "Shipping options";
+const SHIP_ONE = tKey("Shipping options");
 /** What every account gets besides the server's lines (ebay/seller_setup.py). */
-const POLICY_EXTRAS = ["Payment: paid through eBay's own checkout", "Books: a separate USPS Media Mail shipping policy"];
+const POLICY_EXTRAS = [tKey("Payment: paid through eBay's own checkout"), tKey("Books: a separate USPS Media Mail shipping policy")];
 
 /** Step 3's summary: the server's lines, POLICY_EXTRAS before the ship-from one. */
 function policySummary(info) {
+    // the page's own lines (POLICY_LINES) come translated: their English decides where things go
+    const fixed = !(info && Array.isArray(info.lines) && info.lines.some((l) => typeof l === "string" && l));
     // no Best offer line from an older server: a posting choice now (Michal, 2026-10-31)
-    const lines = policyRowsOf(info)
-        .map((r) => r.line)
-        .filter((l) => !l.startsWith("Best offer"));
-    const at = lines.findIndex((l) => l.startsWith("Your ship-from"));
-    const cut = at < 0 ? lines.length : at;
-    return [...lines.slice(0, cut), ...POLICY_EXTRAS, ...lines.slice(cut)];
+    const rows = policyRowsOf(info)
+        .map((r, i) => ({ line: r.line, english: fixed ? POLICY_LINES[i] || r.line : r.line }))
+        .filter((r) => !r.english.startsWith("Best offer"));
+    const at = rows.findIndex((r) => r.english.startsWith("Your ship-from"));
+    const cut = at < 0 ? rows.length : at;
+    const lines = rows.map((r) => r.line);
+    return [...lines.slice(0, cut), ...POLICY_EXTRAS.map((line) => t(line)), ...lines.slice(cut)];
 }
 
 /**
@@ -6104,10 +6181,20 @@ function policySummary(info) {
  * they are (ebay/seller_setup.py, ebay/account.py).
  */
 const POLICY_PARTS = [
-    { value: "shipping", type: "Shipping", label: "Snap shipping", words: "" },
-    { value: "pickup", type: "Shipping", label: "Snap pickup", words: "For items you mark pickup only: local pickup, no shipping. Nothing more to set here." },
-    { value: "returns", type: "Returns", label: "Snap returns", words: "" },
-    { value: "books", type: "Shipping", label: "Snap books", words: "Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing more to set here." },
+    { value: "shipping", type: tKey("Shipping"), label: tKey("Snap shipping"), words: "" },
+    {
+        value: "pickup",
+        type: tKey("Shipping"),
+        label: tKey("Snap pickup"),
+        words: tKey("For items you mark pickup only: local pickup, no shipping. Nothing more to set here."),
+    },
+    { value: "returns", type: tKey("Returns"), label: tKey("Snap returns"), words: "" },
+    {
+        value: "books",
+        type: tKey("Shipping"),
+        label: tKey("Snap books"),
+        words: tKey("Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing more to set here."),
+    },
 ];
 
 // --- the first-listing walk-through (Michal, 2026-11-01: "after the looks good on policies i
@@ -6143,7 +6230,7 @@ async function renameAccount(raw) {
         renderAccount();
         return;
     }
-    account.status = "Saving...";
+    account.status = t("Saving...");
     renderAccount();
     try {
         await renameMe(pc, made.body);
@@ -6158,17 +6245,17 @@ async function renameAccount(raw) {
 }
 
 /** Under the photos once four are marked AI (Michal, 2026-11-02). */
-const AI_FULL_TIP = "Max 4 photos";
+const AI_FULL_TIP = tKey("Max 4 photos");
 
 /** The People page's way in, beside Invite: the owner's words, and a member's. */
-const MANAGE_MEMBERS = "Manage members";
-const MEMBERS = "Members";
+const MANAGE_MEMBERS = tKey("Manage members");
+const MEMBERS = tKey("Members");
 
 /** The walk-through's words, few (Michal, 2026-11-02: "keep the comments minimal"). */
-const TOUR_TITLE = "How it works:";
-const TOUR_SNAP = "1. Snap some photos";
-const TOUR_AI = "2. Choose which ones go to AI";
-const TOUR_TAP = "3. Tap the venue";
+const TOUR_TITLE = tKey("How it works:");
+const TOUR_SNAP = tKey("1. Snap some photos");
+const TOUR_AI = tKey("2. Choose which ones go to AI");
+const TOUR_TAP = tKey("3. Tap the venue");
 /** Under the title (Michal, 2026-11-02). */
 const TOUR_STEPS = "1 - 2 - 3";
 /** The venue button, scrolled to: it runs this long after coming into view, then this long more to posted. */
@@ -6177,8 +6264,8 @@ const TOUR_TAP_MS = 1200;
 const TOUR_TITLE_MS = 1500;
 
 const TOUR_POSTING_MS = 1000;
-const TOUR_READY = "Posting is ready!";
-const TOUR_END = "Snap your first item";
+const TOUR_READY = tKey("Posting is ready!");
+const TOUR_END = tKey("Snap your first item");
 /** The example strip: five photos, two of them marked AI (Michal, 2026-11-02). */
 const TOUR_PHOTOS = 5;
 const TOUR_AI_MARKED = [1, 3];
@@ -6200,7 +6287,8 @@ function tourNote(words, above = false) {
     const note = tourNode("div", above ? "tour-node tour-note tour-note-above tour-hand" : "tour-node tour-note tour-hand");
     note.innerHTML = TOUR_ARROW;
     const line = document.createElement("p");
-    line.textContent = words;
+    line.textContent = t(words);
+    tourWords.push([line, words]);
     note.append(line);
     return note;
 }
@@ -6214,10 +6302,12 @@ function startTour() {
     if (touring) return;
     touring = true;
     tourNodes = [];
+    tourWords = [];
     if (mode !== "goods") setMode("goods");
     // the title alone on top, large and centred: no switch, no banner (Michal, 2026-11-02)
     const head = tourNode("h2", "tour-node tour-head tour-hand");
-    head.textContent = TOUR_TITLE;
+    head.textContent = t(TOUR_TITLE);
+    tourWords.push([head, TOUR_TITLE]);
     el.work.insertBefore(head, el.work.firstChild);
     const steps = tourNode("p", "tour-node tour-steps tour-hand");
     steps.textContent = TOUR_STEPS;
@@ -6256,7 +6346,8 @@ function startTour() {
     const end = tourNode("div", "tour-node tour-end tour-reveal");
     const ready = document.createElement("p");
     ready.className = "tour-hand";
-    ready.textContent = TOUR_READY;
+    ready.textContent = t(TOUR_READY);
+    tourWords.push([ready, TOUR_READY]);
     // a big hand-drawn arrow bobbing down at the last button, Snap's size (Michal, 2026-11-02)
     const nudge = document.createElement("span");
     nudge.className = "tour-nudge";
@@ -6266,7 +6357,8 @@ function startTour() {
     done.type = "button";
     done.id = "tour-done";
     done.className = "big tour-done";
-    done.textContent = TOUR_END;
+    done.textContent = t(TOUR_END);
+    tourWords.push([done, TOUR_END]);
     done.addEventListener("click", () => {
         endTour();
         // the agreements next, the first time on this phone (Michal, 2026-11-02)
@@ -6342,6 +6434,7 @@ function endTour() {
     tourTimers = [];
     for (const node of tourNodes) node.remove();
     tourNodes = [];
+    tourWords = [];
     for (const node of [el.snapLabel, el.venueRow]) node.classList.remove("tour-reveal", "tour-in");
     document.body.classList.remove("touring");
     render();
@@ -6453,7 +6546,7 @@ async function savePolicies() {
         return;
     }
     policies.busy = true;
-    policies.status = "saving";
+    policies.status = t("saving");
     renderPolicies();
     try {
         policies.info = await patchPolicies(pc, changes);
@@ -6503,7 +6596,7 @@ function renderSignup() {
     // Michal, 2026-10-08: the server prefills it from eBay on connect: confirmed, or already all
     // there (ticked; the address card still takes a correction while /me catches up)
     const address = connected ? addressState(seller.info) : "empty";
-    el.signupAddressWord.textContent = address === "prefilled" ? CONFIRM_SHIP_FROM : SHIP_FROM;
+    el.signupAddressWord.textContent = t(address === "prefilled" ? CONFIRM_SHIP_FROM : SHIP_FROM);
     el.signupStepAddress.classList.toggle("done", address === "complete");
     // the box in place, the server's address in it until it is typed in; Save once edited,
     // Looks right for one prefilled from eBay (Michal, 2026-10-31)
@@ -6514,14 +6607,14 @@ function renderSignup() {
     }
     el.signupAddressLine.disabled = !connected || !info || !info.editable;
     const saved = signupAddressSaved && !signupAddressDirty;
-    el.signupAddress.textContent = saved ? "Saved" : !signupAddressDirty && address === "prefilled" ? "Looks right" : "Save";
+    el.signupAddress.textContent = saved ? t("Saved") : !signupAddressDirty && address === "prefilled" ? t("Looks right") : t("Save");
     el.signupAddress.hidden = !saved && !signupAddressDirty && address !== "prefilled";
     el.signupAddress.disabled = saved || !connected || seller.busy;
     el.signupAddressLine.classList.toggle("saved", saved);
     // saved and checked, or all there from the server and untouched: the tick in the box
     el.signupAddressOk.hidden = !(connected && !signupAddressDirty && (saved || address === "complete"));
     // the button says it once saved; the line keeps what went wrong
-    el.signupAddressStatus.textContent = connected && !saved ? seller.status : "";
+    el.signupAddressStatus.textContent = connected && !saved ? t(seller.status) : "";
     el.signupStatus.textContent = step ? account.status : "";
 }
 
@@ -6603,7 +6696,7 @@ function renderAccount() {
     const joined = !!a && !!me && me.owner === false && !!a.user;
     // the owner goes by the name he gave (/me's name), and may change it with a tap (Michal, 2026-11-02)
     const ownName = !!a && !!me && me.owner !== false && !joined;
-    el.accountUser.textContent = a ? (joined ? `joined ${accountName(a)}` : (ownName && me.name) || accountName(a)) : "";
+    el.accountUser.textContent = a ? (joined ? t("joined {name}", { name: accountName(a) }) : (ownName && me.name) || accountName(a)) : "";
     el.accountUser.classList.toggle("editable", ownName);
     el.accountUser.hidden = !el.accountUserEdit.hidden;
     const kind = a ? accountKind(a) : "";
@@ -6679,7 +6772,7 @@ function renderVenues() {
             // connected, Reconnect on its page, a button as Connect eBay is (Michal, 2026-10-31)
             el.accountReconnect.hidden = !connected;
             el.accountReconnect.disabled = account.busy;
-            block.note.textContent = ebay && !connected ? CONNECT_TO_POST : "";
+            block.note.textContent = ebay && !connected ? t(CONNECT_TO_POST) : "";
             block.note.hidden = !block.note.textContent;
         } else block.ask.hidden = allowed || !settings();
     }
@@ -6708,7 +6801,7 @@ function renderSeller() {
     el.seller.hidden = !info || !venuePage || (Array.isArray(info.uses && info.uses[venuePage]) && !info.uses[venuePage].length);
     if (!info) return;
     const note = sellerLine(info, ebayNow());
-    el.sellerNote.textContent = note || (info.editable ? "" : ADDRESS_ON_SERVER);
+    el.sellerNote.textContent = note || (info.editable ? "" : t(ADDRESS_ON_SERVER));
     el.sellerNote.hidden = !el.sellerNote.textContent;
     el.addressSame.checked = seller.same;
     el.addressSame.disabled = !info.editable;
@@ -6717,10 +6810,11 @@ function renderSeller() {
     el.sellerLine.setAttribute("placeholder", addressHint(sharedUses(info)));
     el.addressVenues.hidden = seller.same;
     el.sellerPolicies.hidden = !note;
-    el.sellerSave.textContent = addressState(info) === "prefilled" ? "Looks right" : "Save address";
+    el.sellerSave.textContent = addressState(info) === "prefilled" ? t("Looks right") : t("Save address");
     el.sellerSave.disabled = seller.busy;
     el.sellerSave.hidden = !info.editable;
-    el.sellerStatus.textContent = seller.status;
+    // "Saving..." and "saved" in the chosen language; a refusal, the server's words, as they came
+    el.sellerStatus.textContent = t(seller.status);
 }
 
 /** The venues of the account, in /me's order (every venue while /me does not say). */
@@ -6881,7 +6975,7 @@ async function saveSeller() {
         return;
     }
     seller.busy = true;
-    seller.status = "Saving...";
+    seller.status = tKey("Saving...");
     // a poll still on its way is for the address before this one
     clearTimeout(seller.poll);
     seller.poll = null;
@@ -6892,7 +6986,7 @@ async function saveSeller() {
         const answer = step2 ? addressOf(await patchSeller(pc, made.body).then(() => getAddress(pc))) : addressOf(await patchAddress(pc, made.body));
         // Admin closed meanwhile (or another account): the next visit asks afresh
         if (mine !== seller.asked) return;
-        seller.status = "saved";
+        seller.status = tKey("saved");
         if (answer) {
             seller.info = answer;
             seller.same = answer.same;
@@ -6974,7 +7068,7 @@ function renderWrap() {
     // always there, greyed with its reason until the server gives it (Michal, 2026-10-31)
     el.wrapOn.disabled = !info;
     const why = info ? "" : !settings() ? WRAP_SIGN_IN : wrap.missing ? WRAP_MISSING : "";
-    el.wrapWhy.textContent = why;
+    el.wrapWhy.textContent = t(why);
     el.wrapWhy.hidden = !why;
     el.wrapOn.checked = !!info && wrap.open;
     el.wrap.hidden = !info || !wrap.open;
@@ -6996,7 +7090,8 @@ function renderWrap() {
     const applying = Object.values(wrap.apply).some((task) => !!task.wait || jobRunning(task.job));
     el.wrapSave.disabled = wrap.busy || !wrap.open || !changed;
     el.wrapApply.disabled = wrap.busy || !wrap.open || !changed || applying;
-    el.wrapStatus.textContent = wrap.status;
+    // "Saving..." and "saved" in the chosen language; a refusal as it came
+    el.wrapStatus.textContent = t(wrap.status);
     const said = VENUES.flatMap((venue) => {
         const task = wrap.apply[venue];
         const line = task ? busyLine(task) : null;
@@ -7132,7 +7227,7 @@ async function saveWrap() {
     }
     if (!Object.keys(made.body).length) return true;
     wrap.busy = true;
-    wrap.status = "Saving...";
+    wrap.status = tKey("Saving...");
     wrap.asked += 1;
     const mine = wrap.asked;
     renderWrap();
@@ -7145,7 +7240,7 @@ async function saveWrap() {
                 if (el.wrapParts[part].text.value === sent[part].text) fillWrap(answer, [part]);
             }
         }
-        wrap.status = "saved";
+        wrap.status = tKey("saved");
         return true;
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -7178,7 +7273,7 @@ async function startApply(venue) {
     if (task.wait || jobRunning(task.job)) return;
     const pc = settings();
     if (!pc) return;
-    Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: "sending" });
+    Object.assign(task, { action: "apply", job: null, note: null, stopping: false, wait: t("sending") });
     renderWrap();
     let answer;
     try {
@@ -7276,7 +7371,7 @@ function renderPeopleLink() {
     el.inviteSend.classList.toggle("pill-ink", el.inviteEmail.value.trim() !== "");
     el.inviteStatus.textContent = people.inviteStatus;
     el.accountPeople.hidden = !info;
-    el.accountPeople.textContent = owner ? MANAGE_MEMBERS : MEMBERS;
+    el.accountPeople.textContent = t(owner ? MANAGE_MEMBERS : MEMBERS);
     // black with yellow words once anyone else is on the account (Michal, 2026-11-02)
     el.accountPeople.classList.toggle("pill-ink", !!info && info.people.length > 1);
 }
@@ -7330,7 +7425,7 @@ function renderPeople() {
             actions.className = "person-actions";
             if (p.you) {
                 actions.append(
-                    actionButton("Change name", "link person-action", people.busy, () => {
+                    actionButton(t("Change name"), "link person-action", people.busy, () => {
                         people.renaming = !people.renaming;
                         renderPeople();
                     })
@@ -7338,7 +7433,7 @@ function renderPeople() {
             }
             if (!p.owner && info.owner) {
                 actions.append(
-                    actionButton("Remove", "link person-action", people.busy, () => {
+                    actionButton(t("Remove"), "link person-action", people.busy, () => {
                         removePerson(p).catch(() => {});
                     })
                 );
@@ -7349,14 +7444,14 @@ function renderPeople() {
                 field.className = "field field-small";
                 const label = document.createElement("span");
                 label.className = "field-label";
-                label.textContent = "Your name";
+                label.textContent = t("Your name");
                 const input = document.createElement("input");
                 input.className = "small-input";
                 input.type = "text";
                 input.id = "person-name-input";
                 input.value = p.name;
                 field.append(label, input);
-                const save = actionButton("Save", "pill pill-ink pill-small", people.busy, () => {
+                const save = actionButton(t("Save"), "pill pill-ink pill-small", people.busy, () => {
                     rename(input.value).catch(() => {});
                 });
                 save.id = "person-name-save";
@@ -7371,7 +7466,7 @@ function renderPeople() {
                     row.className = "device";
                     const line = document.createElement("span");
                     line.textContent = deviceLine(d, now);
-                    const out = actionButton("Sign out", "link device-signout", people.busy, () => {
+                    const out = actionButton(t("Sign out"), "link device-signout", people.busy, () => {
                         signOutOne(d).catch(() => {});
                     });
                     out.id = `device-${d.id}-signout`;
@@ -7382,7 +7477,7 @@ function renderPeople() {
             }
             // only where there is another device of yours to sign out (a key has no sessions)
             if (p.you && devices.some((d) => !d.thisDevice)) {
-                const others = actionButton("Sign out all other devices", "link person-action", people.busy, () => {
+                const others = actionButton(t("Sign out all other devices"), "link person-action", people.busy, () => {
                     signOutRest().catch(() => {});
                 });
                 others.id = "people-signout-others";
@@ -7431,11 +7526,11 @@ async function invite() {
         return;
     }
     people.busy = true;
-    people.inviteStatus = "Inviting...";
+    people.inviteStatus = t("Inviting...");
     renderPeopleLink();
     try {
         await inviteMember(pc, made.body);
-        people.inviteStatus = INVITE_SENT;
+        people.inviteStatus = t(INVITE_SENT);
         el.inviteEmail.value = "";
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -7449,7 +7544,7 @@ async function invite() {
 
 /** Remove, on a member's card (the owner's): DELETE /me/people/<email>; their sessions end with them. */
 function removePerson(p) {
-    return peopleAction("Could not remove them", `Removing ${p.name}...`, (pc) => removeMember(pc, p.email));
+    return peopleAction("Could not remove them", t("Removing {name}...", { name: p.name }), (pc) => removeMember(pc, p.email));
 }
 
 /** Change name's Save: PATCH /me/people/me (nameBody); the page says the new name. */
@@ -7460,7 +7555,7 @@ async function rename(raw) {
         renderPeople();
         return;
     }
-    const done = await peopleAction("Could not change the name", "Saving...", (pc) => renameMe(pc, made.body));
+    const done = await peopleAction("Could not change the name", t("Saving..."), (pc) => renameMe(pc, made.body));
     if (done) people.renaming = false;
     renderPeople();
 }
@@ -7471,14 +7566,14 @@ async function rename(raw) {
  */
 async function signOutOne(d) {
     if (!d.thisDevice) {
-        await peopleAction("Could not sign out the device", "Signing out...", (pc) => signOutDevice(pc, d.id));
+        await peopleAction("Could not sign out the device", t("Signing out..."), (pc) => signOutDevice(pc, d.id));
         return;
     }
     const pc = settings();
     const a = currentAccount();
     if (!pc || !a || people.busy) return;
     people.busy = true;
-    people.status = "Signing out...";
+    people.status = t("Signing out...");
     renderPeople();
     try {
         await signOutDevice(pc, d.id);
@@ -7496,7 +7591,7 @@ async function signOutOne(d) {
 /** Sign out all other devices: POST /me/devices/sign-out-others, "Signed out n other devices". */
 async function signOutRest() {
     let said = "";
-    await peopleAction("Could not sign out the other devices", "Signing out...", async (pc) => {
+    await peopleAction("Could not sign out the other devices", t("Signing out..."), async (pc) => {
         said = signedOutOthers((await signOutOthers(pc)).signed_out);
     });
     if (said) {
@@ -7528,14 +7623,14 @@ function openAccount(packs) {
 async function buyPack(pack) {
     const pc = settings();
     if (!pc || account.busy) return;
-    await leaveFor("pay", "Opening the payment page...", () => checkout(pc, pack.id));
+    await leaveFor("pay", t("Opening the payment page..."), () => checkout(pc, pack.id));
 }
 
 /** Connect eBay: GET /ebay/connect, and the browser to eBay's consent page. */
 async function connectEbay() {
     const pc = settings();
     if (!pc || account.busy) return;
-    await leaveFor("connect", "Opening eBay...", () => ebayConnect(pc));
+    await leaveFor("connect", t("Opening eBay..."), () => ebayConnect(pc));
 }
 
 /**
@@ -7620,7 +7715,7 @@ function forgetServer() {
 function renderSignOut() {
     const a = currentAccount();
     el.settingsSignout.hidden = !a;
-    el.settingsSignout.textContent = "Sign out";
+    el.settingsSignout.textContent = t("Sign out");
 }
 
 // --- the way in: the landing, sign-in, the home screen ------------------------------
@@ -7668,10 +7763,10 @@ async function sendLink() {
         return;
     }
     el.signinSend.disabled = true;
-    el.signinStatus.textContent = "Sending...";
+    el.signinStatus.textContent = t("Sending...");
     try {
         await askLink(DEFAULT_SERVER, { email: checked.email, remember: el.signinRemember.checked });
-        el.signinStatus.textContent = LINK_SENT;
+        el.signinStatus.textContent = t(LINK_SENT);
         codeOpen = true;
         render();
     } catch (e) {
@@ -7686,7 +7781,7 @@ async function sendLink() {
  * /auth/session), kept as keepSession keeps it.
  */
 async function signIn(token) {
-    el.landingStatus.textContent = "Signing you in...";
+    el.landingStatus.textContent = t("Signing you in...");
     render();
     let made = null;
     try {
@@ -7718,7 +7813,7 @@ async function sendCode() {
         return;
     }
     el.signinCodeSend.disabled = true;
-    el.signinStatus.textContent = "Signing you in...";
+    el.signinStatus.textContent = t("Signing you in...");
     let made = null;
     try {
         made = sessionOf(await codeSession(DEFAULT_SERVER, { email: checked.email, code }));
@@ -7911,7 +8006,7 @@ async function saveSettings() {
             "Could not save on this phone (private mode?). The buttons need it saved.";
         return;
     }
-    el.settingsStatus.textContent = "Saved. Checking the server...";
+    el.settingsStatus.textContent = t("Saved. Checking the server...");
     // new settings, maybe another account: /me, the address, the header and footer and the
     // people are asked afresh
     letGoAccount();
@@ -7922,7 +8017,7 @@ async function saveSettings() {
     try {
         await checkPc(s);
         heard(200);
-        el.settingsStatus.textContent = "Saved. The server answers and knows this key.";
+        el.settingsStatus.textContent = t("Saved. The server answers and knows this key.");
         loadMe().catch(() => {});
         loadSettingsParts();
     } catch (e) {
@@ -8043,7 +8138,7 @@ async function fetchPictures(m, pc) {
 async function nextItem(m, { snapping = false } = {}) {
     if (!doneButton(slots[m]).enabled) return;
     if (slots[m].itemId && !(await noteReady(m))) {
-        say("The user note has not reached the server yet. NEXT again once it has.", "warn");
+        say(t("The user note has not reached the server yet. NEXT again once it has."), "warn");
         return;
     }
     // the note's wait may have let something change: check again before clearing
@@ -8089,7 +8184,7 @@ function onwardReady(m) {
 }
 
 function onSnapTap(m) {
-    if (snapWord(slots[m], { earlier: !!viewing[m] }) !== "Snap Next" || !onwardReady(m)) return;
+    if (!says(snapWord(slots[m], { earlier: !!viewing[m] }), "Snap Next") || !onwardReady(m)) return;
     onward[m] = nextItem(m, { snapping: true }).catch(() => {});
 }
 
@@ -8203,7 +8298,7 @@ function onPopState(e) {
     const at = walkPosition(e.state, list.length);
     if (at < 0 || at === cursor) return; // not the walk's, or the step back off the floor
     if (at === 0) {
-        say(HISTORY_END);
+        say(t(HISTORY_END));
         globalThis.history.go(1);
         return;
     }
@@ -8653,17 +8748,7 @@ function main() {
     renderExtras();
     renderAccount();
     renderPosting();
-    // what Snap sets up on her eBay, listed under the address boxes and as Finish setting up's
-    // step 3 (2026-10-31): fixed, so written once
-    for (const list of [el.sellerPolicyList]) {
-        list.replaceChildren(
-            ...POLICY_LINES.map((line) => {
-                const li = document.createElement("li");
-                li.textContent = line;
-                return li;
-            })
-        );
-    }
+    renderPolicyLines();
 
     // the way in: the landing's Sign in, key and Install, the sign-in screen, the banner's Add and x
     // I have a key: Admin, which opens on Settings while none are saved
