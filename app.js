@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.44.1";
+import { VERSION } from "./version.js?v=2.44.2";
 import {
     adminLink,
     anyActive,
@@ -266,8 +266,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.44.1";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.1";
+} from "./core.js?v=2.44.2";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.2";
 import {
     addVenue,
     applyWrap,
@@ -324,8 +324,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.44.1";
-import { shrinkPhoto } from "./shrink.js?v=2.44.1";
+} from "./pc.js?v=2.44.2";
+import { shrinkPhoto } from "./shrink.js?v=2.44.2";
 import {
     bookCard,
     bookPriceValue,
@@ -338,8 +338,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.44.1";
-import { canScan, readIsbn } from "./scan.js?v=2.44.1";
+} from "./book.js?v=2.44.2";
+import { canScan, readIsbn } from "./scan.js?v=2.44.2";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -1463,6 +1463,8 @@ function render() {
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
     // How Snap works, once there is a goods screen of his to walk through
     el.tourLink.hidden = !(me && me.registered) || touring;
+    // share: the owner's way to invite, from any screen (Michal, 2026-11-02)
+    el.shareLink.hidden = !settings() || !me || !me.owner;
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
     // screen is below. That should not be there"); both items carry on out of sight
@@ -7397,6 +7399,40 @@ async function peopleAction(lead, meanwhile, run) {
     return true;
 }
 
+/** The invite window over the screen, or put away; opened, its box empty and taking the typing. */
+function showShare(on) {
+    el.shareSheet.hidden = !on;
+    if (!on) return;
+    el.shareEmail.value = "";
+    el.shareStatus.textContent = "";
+    el.shareSend.disabled = false;
+    if (typeof el.shareEmail.focus === "function") el.shareEmail.focus();
+}
+
+/** The window's Invite: as Settings' (POST /me/people, inviteBody), said in the window; sent, the box cleared. */
+async function shareInvite() {
+    const pc = settings();
+    if (!pc || el.shareSend.disabled) return;
+    const made = inviteBody({ email: el.shareEmail.value });
+    if (!made.ok) {
+        el.shareStatus.textContent = made.error;
+        return;
+    }
+    el.shareSend.disabled = true;
+    el.shareStatus.textContent = "Inviting...";
+    try {
+        await inviteMember(pc, made.body);
+        el.shareStatus.textContent = INVITE_SENT;
+        el.shareEmail.value = "";
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        el.shareStatus.textContent = peopleError("Could not invite", e.status, e.message);
+    } finally {
+        el.shareSend.disabled = false;
+    }
+    if (people.info) loadPeople().catch(() => {});
+}
+
 /** Invite: POST /me/people with their email (inviteBody); 202: "Invitation sent", the box cleared. */
 async function invite() {
     const pc = settings();
@@ -8382,6 +8418,12 @@ function main() {
         postingBestOffer: $("posting-best-offer"),
         postingMinPrice: $("posting-min-price"),
         tourLink: $("tour-link"),
+        shareLink: $("share-link"),
+        shareSheet: $("share-sheet"),
+        shareClose: $("share-close"),
+        shareEmail: $("share-email"),
+        shareSend: $("share-send"),
+        shareStatus: $("share-status"),
         postingFixDark: $("posting-fix-dark"),
         postingStatus: $("posting-status"),
         phoneInstall: $("phone-install"),
@@ -9057,6 +9099,19 @@ function main() {
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
     el.photoViewClose.addEventListener("click", closePhoto);
+    // the share icon's window: Invite, Enter too; ×, a tap on the dimmed screen or Escape puts it away
+    el.shareLink.addEventListener("click", () => showShare(true));
+    el.shareClose.addEventListener("click", () => showShare(false));
+    el.shareSheet.addEventListener("click", (e) => {
+        if (e.target === el.shareSheet) showShare(false);
+    });
+    el.shareSend.addEventListener("click", () => {
+        shareInvite().catch(() => {});
+    });
+    el.shareEmail.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") shareInvite().catch(() => {});
+        if (e.key === "Escape") showShare(false);
+    });
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closePhoto();
     });

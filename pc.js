@@ -159,7 +159,7 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.44.1";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.44.2";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
