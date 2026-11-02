@@ -19,16 +19,22 @@
 // miss No ISBN is the next step, and it keeps the ISBN: the title, author, year
 // and format are typed, the book is searched by title as above, and the job
 // carries the ISBN and the typed fields both, so the ISBN stays on the listing.
+//
+// The words the book screen shows go through t() (i18n.js, docs/UI.md rule 8); the values the
+// PC is sent stay English, and so do the lines that say something failed.
+
+import { t, tKey } from "./i18n.js?v=2.44.0";
 
 /**
  * The four conditions eBay's book category takes, in the order the chips show
- * them. The value is what the PC is sent; the label is what the chip says.
+ * them. The value is what the PC is sent; the label is what the chip says (its
+ * English, marked: t() where it is shown).
  */
 export const CONDITIONS = [
-    { value: "like_new", label: "Like new" },
-    { value: "very_good", label: "Very good" },
-    { value: "good", label: "Good" },
-    { value: "acceptable", label: "Acceptable" },
+    { value: "like_new", label: tKey("Like new") },
+    { value: "very_good", label: tKey("Very good") },
+    { value: "good", label: tKey("Good") },
+    { value: "acceptable", label: tKey("Acceptable") },
 ];
 
 /** Most used books he sells are read once and shelved: "good" is the honest default. */
@@ -53,15 +59,15 @@ export const SEARCH_DEBOUNCE_MS = 600;
 
 /** The two chips of a book with no ISBN, in the order they show; the value is what the PC is sent. */
 export const FORMATS = [
-    { value: "paperback", label: "Paperback" },
-    { value: "hardcover", label: "Hardcover" },
+    { value: "paperback", label: tKey("Paperback") },
+    { value: "hardcover", label: tKey("Hardcover") },
 ];
 
 /** Most books he sells are paperbacks. */
 export const DEFAULT_FORMAT = "paperback";
 
 /** What the line above the ISBN button adds: the picture is for the number, not for the listing. */
-export const SCAN_IS_NOT_A_PHOTO = "A close-up of the barcode is enough; it is not a listing photo.";
+export const SCAN_IS_NOT_A_PHOTO = tKey("A close-up of the barcode is enough; it is not a listing photo.");
 
 // --- the ISBN ------------------------------------------------------------------
 
@@ -156,10 +162,10 @@ export function bookSearch(book) {
     return { title: words(book.title), author: words(book.author), year: bookYear(book.year) };
 }
 
-/** "Paperback" for "paperback": what the chip says. */
+/** "Paperback" for "paperback": what the chip says, in the page's language. */
 function formatLabel(value) {
     const f = FORMATS.find((x) => x.value === value);
-    return f ? f.label : "";
+    return f ? t(f.label) : "";
 }
 
 // --- the price -----------------------------------------------------------------
@@ -203,17 +209,17 @@ export function priceNote(lookup) {
     const parts = [];
     const l = lookup.listings;
     if (l && l.count > 0) {
-        let seen = `eBay: ${l.count === 1 ? "1 listing" : `${l.count} listings`}`;
+        let seen = l.count === 1 ? t("eBay: 1 listing") : t("eBay: {n} listings", { n: l.count });
         const low = money(l.low);
         const high = money(l.high);
         if (low && high) seen += low === high ? `, ${low}` : `, ${low}–${high}`;
         parts.push(seen);
-        if (lookup.price) parts.push(`suggested ${money(lookup.price)}`);
+        if (lookup.price) parts.push(t("suggested {price}", { price: money(lookup.price) }));
     } else {
-        parts.push("no eBay listings found — set a price");
+        parts.push(t("no eBay listings found — set a price"));
     }
     if (lookup.price && Number(lookup.price) < LOW_PRICE) {
-        parts.push(`under $${LOW_PRICE}: a lot or a buyback site may be better`);
+        parts.push(t("under {price}: a lot or a buyback site may be better", { price: `$${LOW_PRICE}` }));
     }
     return parts.join(" · ");
 }
@@ -257,14 +263,14 @@ export function bookListings(listings) {
 }
 
 /** The small line under a book found by its title. */
-export const MATCHED = "matched in the catalogues";
+export const MATCHED = tKey("matched in the catalogues");
 /** ... and under one no catalogue knows: not a dead end. */
-export const LISTED_AS_TYPED = "Not in the catalogues: it will be listed as typed";
+export const LISTED_AS_TYPED = tKey("Not in the catalogues: it will be listed as typed");
 /**
  * The card after an ISBN no catalogue knows. Not "post it as goods" any more:
  * No ISBN takes the title and keeps the ISBN for the listing.
  */
-export const ISBN_MISS = "Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing.";
+export const ISBN_MISS = tKey("Not in the catalogues. Tap No ISBN and type the title — the ISBN stays on the listing.");
 
 /**
  * The small line at the top of the No ISBN fields once they were opened after
@@ -274,7 +280,7 @@ export const ISBN_MISS = "Not in the catalogues. Tap No ISBN and type the title 
  * @returns {string} "" when there is no ISBN to keep
  */
 export function isbnKept(book) {
-    return book.manual && book.isbnMiss && book.isbn ? `ISBN ${book.isbn} kept: it goes on the listing` : "";
+    return book.manual && book.isbnMiss && book.isbn ? t("ISBN {isbn} kept: it goes on the listing", { isbn: book.isbn }) : "";
 }
 
 /**
@@ -304,7 +310,7 @@ export function bookCard(book) {
                     title: typed.title,
                     authors: typed.author,
                     details: [typed.year, formatLabel(book.format)].filter(Boolean).join(" · "),
-                    note: LISTED_AS_TYPED,
+                    note: t(LISTED_AS_TYPED),
                 };
             }
             const r = lookup.record || bookRecord({});
@@ -313,21 +319,22 @@ export function bookCard(book) {
                 ...empty,
                 title: r.subtitle ? `${r.title}: ${r.subtitle}` : r.title || fallback,
                 authors: r.authors.join(", "),
-                details: [r.publisher, r.year, r.format, r.pages ? `${r.pages} pages` : ""]
+                details: [r.publisher, r.year, r.format, r.pages ? t("{n} pages", { n: r.pages }) : ""]
                     .filter(Boolean)
                     .join(" · "),
-                note: typed ? MATCHED : "",
+                note: typed ? t(MATCHED) : "",
             };
         }
         case "missing":
-            return { ...empty, status: ISBN_MISS, kind: "bad", note: lookup.error };
+            // what to do next, in the page's language; the PC's own words under it stay as sent
+            return { ...empty, status: t(ISBN_MISS), kind: "bad", note: lookup.error };
         case "failed":
             return { ...empty, status: lookup.error || "the book was not looked up", kind: "bad" };
         default:
             // idle with an ISBN (or a title) is the moment before the lookup goes
             return {
                 ...empty,
-                status: typed ? `Looking up “${typed.title}”…` : `Looking up ${book.isbn}…`,
+                status: typed ? t("Looking up “{title}”…", { title: typed.title }) : t("Looking up {isbn}…", { isbn: book.isbn }),
                 kind: "busy",
             };
     }
@@ -352,13 +359,14 @@ export function bookCard(book) {
  * @returns {string} "" when there is nothing to say
  */
 export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = false, kept = false }) {
-    if (restoring) return "Reading this book back from the server...";
-    if (locked) return "These photos went with the listing. NEXT starts the next book.";
-    if (scan === "reading") return "Reading the barcode...";
+    if (restoring) return t("Reading this book back from the server...");
+    if (locked) return t("These photos went with the listing. NEXT starts the next book.");
+    if (scan === "reading") return t("Reading the barcode...");
+    // a scan that failed: English, as every line that says something went wrong (docs/UI.md rule 8)
     if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
     if (hasItem) return "";
-    if (manual && kept) return "Type the title as the cover has it. The server finds a price; the ISBN stays on the listing.";
-    if (manual) return "No ISBN: type the title as the cover has it. The server finds the book and a price.";
-    if (!canScan) return "This phone cannot read barcodes; type the ISBN";
-    return `Tap ISBN to read the barcode on the back cover, or type the ISBN. ${SCAN_IS_NOT_A_PHOTO}`;
+    if (manual && kept) return t("Type the title as the cover has it. The server finds a price; the ISBN stays on the listing.");
+    if (manual) return t("No ISBN: type the title as the cover has it. The server finds the book and a price.");
+    if (!canScan) return t("This phone cannot read barcodes; type the ISBN");
+    return `${t("Tap ISBN to read the barcode on the back cover, or type the ISBN.")} ${t(SCAN_IS_NOT_A_PHOTO)}`;
 }
