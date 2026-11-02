@@ -16,8 +16,13 @@ import { dirname, join } from "node:path";
 import { ADDRESS_NEEDED, ASK_MS, PRICE_SAVE_MS, itemIdFor, NAME_CHECK_MS, POLL_MS, SELLER_POLL_MAX, SELLER_POLL_MS, SEND_DELAY_MS, TOO_LATE_MS, UNDO_MS } from "../core.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const html = readFileSync(join(root, "index.html"), "utf8");
-const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js"];
+// index.html as written, its translation marks (data-t, data-t-<attribute>; docs/UI.md rule 8)
+// included: the stub's querySelectorAll reads them
+const markedHtml = readFileSync(join(root, "index.html"), "utf8");
+// what the static checks read: the page with those marks left out, so a check of its markup and
+// its English stays one of markup and English (the marks have tests of their own)
+const html = markedHtml.replace(/ data-t(?:-[\w-]+)?(?=[\s>])/g, "");
+const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js", "i18n.js", "lang/zh.js", "lang/es.js"];
 
 function idsIn(source) {
     return new Set([...source.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
@@ -28,6 +33,40 @@ function referencedFiles(source) {
     for (const m of source.matchAll(/(?:src|href)="([^"]+)"/g)) {
         const v = m[1];
         if (!v.startsWith("http") && !v.startsWith("#")) out.add(v.split("?")[0]);
+    }
+    return out;
+}
+
+/** HTML text as a browser's textContent gives it: the few entities the page writes, decoded. */
+function decoded(text) {
+    return text.replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", nbsp: " " })[e]);
+}
+
+/**
+ * The elements index.html marks for translation (data-t, data-t-<attribute>), as
+ * querySelectorAll finds them: the stub's node for one with an id, a node of its own for one
+ * without; each with its data-t attributes, the attributes they name and, for data-t, its text.
+ */
+function markedIn(source, nodes) {
+    const page = source.replace(/<!--[\s\S]*?-->/g, "");
+    const out = [];
+    for (const m of page.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
+        const tagAttrs = m[2];
+        if (!/\sdata-t(?:-[\w-]+)?(?=[\s>=/]|$)/.test(tagAttrs)) continue;
+        const id = /\bid="([^"]+)"/.exec(tagAttrs);
+        const node = id ? nodes.get(id[1]) : fakeElement("", m[1]);
+        for (const a of tagAttrs.matchAll(/\s(data-t(?:-[\w-]+)?)(?=[\s>=/]|$)/g)) {
+            node.attrs[a[1]] = "";
+            if (a[1] === "data-t") {
+                const close = page.indexOf(`</${m[1]}>`, m.index + m[0].length);
+                node.textContent = decoded(page.slice(m.index + m[0].length, close));
+            } else {
+                const name = a[1].slice("data-t-".length);
+                const value = new RegExp(`\\s${name}="([^"]*)"`).exec(tagAttrs);
+                if (value) node.attrs[name] = decoded(value[1]);
+            }
+        }
+        out.push(node);
     }
     return out;
 }
@@ -422,6 +461,11 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "theme-dark",
         "theme-light",
         "theme-device",
+        // the language, each named in its own (Michal, 2026-11-02)
+        "language-phone",
+        "language-phone-en",
+        "language-phone-zh",
+        "language-phone-es",
         "phone-install",
         "phone-install-steps",
         "phone-installed",
@@ -824,6 +868,12 @@ function fakeElement(id = "", tag = "") {
         setAttribute(k, v) {
             attrs[k] = String(v);
         },
+        getAttribute(k) {
+            return k in attrs ? attrs[k] : null;
+        },
+        hasAttribute(k) {
+            return k in attrs;
+        },
         removeAttribute(k) {
             delete attrs[k];
             if (k === "id") this.id = "";
@@ -984,6 +1034,7 @@ function installDom({
         if (m[0].startsWith("<meta") && content) nodes.get(m[1]).content = content[1];
     }
     const asked = new Set();
+    const marked = markedIn(markedHtml, nodes);
     globalThis.document = {
         documentElement: fakeElement("", "html"),
         // the agreements and the walk-through mark the page itself (body.agreeing, body.touring)
@@ -991,6 +1042,12 @@ function installDom({
         getElementById(id) {
             asked.add(id);
             return nodes.get(id) ?? null;
+        },
+        // the one query app.js makes: the elements index.html marks for translation (data-t,
+        // data-t-<attribute>), the language's start (startLanguage)
+        querySelectorAll(selector) {
+            assert.equal(selector, "[data-t], [data-t-placeholder], [data-t-aria-label], [data-t-title]");
+            return marked;
         },
         createElement: (tag) => fakeElement("", tag),
         // a text node is its words, as replaceChildren and wordOf read a string child
@@ -1263,6 +1320,48 @@ test("Appearance: a look saved wrong (or by an older page) is the device's", asy
     const { nodes } = await loadPage({ local: memoryStore({ "snap.theme": "sepia" }) });
     assert.equal(globalThis.document.documentElement.attrs["data-theme"], undefined);
     assert.deepEqual(pressed(nodes), ["device"]);
+});
+
+// --- Language (Michal, 2026-11-02: English, Chinese, Spanish, English the default; "keep it as
+// language names") ----------------------------------------------------------------------------
+
+/** Words in a language as the catalogs have them, the English where they have none yet. */
+async function said(lang, english, vars = {}) {
+    const { CATALOGS } = await import("../i18n.js");
+    const words = lang === "en" ? english : (CATALOGS[lang][english] ?? english);
+    return words.replace(/\{(\w+)\}/g, (_, k) => vars[k]);
+}
+
+test("Language: a chip on the landing words the page at once and is kept on this phone; This phone's chips agree", async () => {
+    const local = memoryStore();
+    const { nodes } = await loadPage({ local });
+    const page = globalThis.document.documentElement;
+    const chosen = (place) => ["en", "zh", "es"].filter((v) => nodes.get(`language-${place}-${v}`).attrs["aria-pressed"] === "true");
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(page.lang, "en", "English by default");
+    assert.deepEqual(chosen("landing"), ["en"]);
+    assert.equal(nodes.get("landing-key").textContent, "I have a key");
+    assert.equal(nodes.get("language-landing").attrs["aria-label"], "Language");
+
+    nodes.get("language-landing-zh").fire("click");
+    assert.equal(local.getItem("snap.language"), "zh");
+    assert.equal(page.lang, "zh-Hans");
+    assert.deepEqual(chosen("landing"), ["zh"]);
+    assert.deepEqual(chosen("phone"), ["zh"], "the chips under This phone agree");
+    assert.equal(nodes.get("landing-key").textContent, await said("zh", "I have a key"));
+    assert.equal(nodes.get("language-landing").attrs["aria-label"], await said("zh", "Language"));
+
+    // a reload keeps it; the chips under This phone choose too, English back as it was
+    const again = await loadPage({ local });
+    assert.equal(globalThis.document.documentElement.lang, "zh-Hans");
+    assert.equal(again.nodes.get("landing-key").textContent, await said("zh", "I have a key"));
+    again.nodes.get("language-phone-es").fire("click");
+    assert.equal(local.getItem("snap.language"), "es");
+    assert.equal(again.nodes.get("landing-key").textContent, await said("es", "I have a key"));
+    again.nodes.get("language-phone-en").fire("click");
+    assert.equal(local.getItem("snap.language"), "en");
+    assert.equal(again.nodes.get("landing-key").textContent, "I have a key");
+    assert.equal(again.nodes.get("language-landing").attrs["aria-label"], "Language");
 });
 
 /** A tap on Snap (its label opens the camera), then the photos the camera hands the input. */
@@ -7621,6 +7720,11 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "landing-install-steps",
         // another account kept on this phone, while the one in hand is signed out or gone
         "landing-accounts",
+        // the language, each named in its own (Michal, 2026-11-02: "keep it as language names")
+        "language-landing",
+        "language-landing-en",
+        "language-landing-zh",
+        "language-landing-es",
         "landing-status",
         "signin",
         "signin-back",

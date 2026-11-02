@@ -1286,6 +1286,12 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 /* what the hovered, focused or held button does, under the buttons (Michal, 2026-10-08) */
 .landing-status { margin: 14px 2px 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
 .landing-status:empty { display: none; }
+/* the landing's language chips: on its white ground the chosen one is solid ink, its words the
+   ground's (Michal, 2026-11-02: "let the chosen button be black. cant see it otherwise");
+   Settings' option chips keep rule 7's white */
+.chips.landing-languages { justify-content: center; margin: 18px auto 0; }
+.landing-languages .chip.option[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+#language-phone { margin-top: 10px; }
 #signin { text-align: left; }
 #signin .landing-name { font-size: 32px; }
 #signin .landing-what { margin-left: 0; }

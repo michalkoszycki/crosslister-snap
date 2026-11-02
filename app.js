@@ -339,12 +339,25 @@ import {
     SEARCH_DEBOUNCE_MS,
 } from "./book.js?v=2.44.0";
 import { canScan, readIsbn } from "./scan.js?v=2.44.0";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.44.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
 const KEY_KEY = "snap.key";
 const MODE_KEY = "snap.mode";
 const THEME_KEY = "snap.theme";
+const LANGUAGE_KEY = "snap.language";
+
+/** The attributes index.html marks for translation, each as data-t-<attribute>. */
+const TRANSLATED_ATTRIBUTES = ["placeholder", "aria-label", "title"];
+
+/**
+ * index.html's own words in the chosen language (docs/UI.md rule 8): each element marked data-t
+ * (its text) or data-t-<attribute>, with its English as the page wrote it, read once at start
+ * (startLanguage). Words app.js writes itself go through t() where it writes them.
+ * @type {{ node: HTMLElement, text: string | null, attributes: [string, string][] }[]}
+ */
+let marked = [];
 /** The inventory's Show photos: on unless he unticked it on this phone ("off"). */
 const PHOTOS_KEY = "snap.inventory.photos";
 /** The inventory's Options foldout: folded unless he left it open on this phone ("open"). */
@@ -3126,6 +3139,54 @@ function applyTheme(theme) {
 function setTheme(theme) {
     writeText("localStorage", THEME_KEY, theme);
     applyTheme(theme);
+}
+
+/** HTML text as one line: its whitespace one space, trimmed (tools/i18n-check.mjs reads it so). */
+function oneLine(text) {
+    return String(text ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The words in a language: index.html's own (data-t), <html lang>, both rows of language chips;
+ * the caller then redraws app.js's own words (redrawWords).
+ * @param {"en"|"zh"|"es"} lang
+ */
+function applyLanguage(lang) {
+    setLanguage(lang);
+    // the property, not setAttribute: the look is the one attribute set before the first paint
+    document.documentElement.lang = htmlLang(lang);
+    for (const { node, text, attributes } of marked) {
+        if (text !== null) node.textContent = t(text);
+        for (const [name, english] of attributes) node.setAttribute(name, t(english));
+    }
+    for (const { value, node } of el.languageChips) node.setAttribute("aria-pressed", value === lang ? "true" : "false");
+}
+
+/**
+ * A language chip, on the landing or under This phone: at once, remembered on this phone, every
+ * part on screen drawn again in it.
+ * @param {"en"|"zh"|"es"} lang
+ */
+function chooseLanguage(lang) {
+    writeText("localStorage", LANGUAGE_KEY, lang);
+    applyLanguage(lang);
+    redrawWords();
+}
+
+/** Every part that writes its own words, drawn again after a language change. */
+function redrawWords() {
+    render();
+}
+
+/** At start: each marked element's English kept as index.html wrote it, then the language this phone chose. */
+function startLanguage() {
+    const selector = ["[data-t]", ...TRANSLATED_ATTRIBUTES.map((a) => `[data-t-${a}]`)].join(", ");
+    marked = [...document.querySelectorAll(selector)].map((node) => ({
+        node: /** @type {HTMLElement} */ (node),
+        text: node.hasAttribute("data-t") ? oneLine(node.textContent) : null,
+        attributes: TRANSLATED_ATTRIBUTES.filter((a) => node.hasAttribute(`data-t-${a}`)).map((a) => [a, oneLine(node.getAttribute(a))]),
+    }));
+    applyLanguage(languageOf(readText("localStorage", LANGUAGE_KEY)));
 }
 
 /** The inventory foldout: opened, it shows the list and asks the PC for it. */
@@ -8395,6 +8456,9 @@ function main() {
         statsStatus: $("stats-status"),
         statsTable: $("stats-table"),
         themeChips: THEMES.map(({ value }) => ({ value, node: $(`theme-${value}`) })),
+        languageChips: ["landing", "phone"].flatMap((place) =>
+            LANGUAGES.map(({ value }) => ({ value, node: $(`language-${place}-${value}`) })),
+        ),
         themeColor: $("theme-color"),
         themeColorDark: $("theme-color-dark"),
         inventoryToggle: $("inventory-toggle"),
@@ -8565,6 +8629,7 @@ function main() {
     // the look chosen on this phone before anything is painted, so it never flashes the other one
     grounds = { light: el.themeColor.content, dark: el.themeColorDark.content };
     applyTheme(chosenTheme());
+    startLanguage();
     el.version.textContent = VERSION;
     // opened from a sign-in link: its token is taken and the hash cleared before the walk
     // mirrors this entry, so a reload or back never signs in with it again
@@ -8877,6 +8942,7 @@ function main() {
         saveSettings().catch(() => {});
     });
     for (const { value, node } of el.themeChips) node.addEventListener("click", () => setTheme(value));
+    for (const { value, node } of el.languageChips) node.addEventListener("click", () => chooseLanguage(languageOf(value)));
     el.inventoryToggle.addEventListener("click", () => showInventory(!admin.inventoryOpen));
     el.inventorySearch.addEventListener("input", () => {
         clearTimeout(searchTimer);

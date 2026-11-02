@@ -82,7 +82,7 @@
   <section id="landing" class="landing" hidden>
     <!-- Add account (Settings, 2026-10-18): the landing's two ways in again, for one more
          account beside those kept; Back keeps the account in hand (app.js) -->
-    <button type="button" id="landing-back" class="link back-link landing-back" hidden>← Back</button>
+    <button type="button" id="landing-back" class="link back-link landing-back" hidden data-t>← Back</button>
     <svg class="mark landing-mark" viewBox="0 0 132 132" width="96" height="96" aria-hidden="true">
       <rect class="mark-shell" x="40" y="6" width="52" height="30" rx="10" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
       <rect class="mark-shell" x="4" y="26" width="124" height="100" rx="28" fill="#FFFFFF" stroke="#0B0B0B" stroke-width="8"/>
@@ -93,19 +93,26 @@
       <circle class="mark-ring" cx="106" cy="46" r="5" fill="#0B0B0B"/>
     </svg>
     <h2 class="landing-name"><span class="sr-only">Snap</span><span aria-hidden="true">$nap</span></h2>
-    <p class="landing-tagline">a crosslisting app</p>
-    <p class="landing-what">From photo to live listing in seconds</p>
+    <p class="landing-tagline" data-t>a crosslisting app</p>
+    <p class="landing-what" data-t>From photo to live listing in seconds</p>
     <button type="button" id="landing-signin" class="big">Sign in</button>
-    <button type="button" id="landing-key" class="secondary landing-small">I have a key</button>
+    <button type="button" id="landing-key" class="secondary landing-small" data-t>I have a key</button>
     <!-- Michal, 2026-10-08: "If it is not on the home screen it should direct towards that
          install": Chrome's own prompt where it offered one, else the two taps unfold here;
          gone when the page runs from the home screen, and on a desktop browser -->
     <button type="button" id="landing-install" class="secondary landing-small" aria-expanded="false"
-            aria-controls="landing-install-steps">Install</button>
+            aria-controls="landing-install-steps" data-t>Install</button>
     <p id="landing-install-steps" class="install-steps" hidden></p>
     <!-- another account kept on this phone, while the one in hand is signed out or gone
          (Michal, 2026-10-18): Settings' list, where it is switched to (app.js) -->
-    <button type="button" id="landing-accounts" class="secondary landing-small" hidden>Switch account</button>
+    <button type="button" id="landing-accounts" class="secondary landing-small" hidden data-t>Switch account</button>
+    <!-- the language, kept on this phone (Michal, 2026-11-02: English, Chinese, Spanish, English the
+         default): option chips, each named in its own language; the same three under This phone -->
+    <div id="language-landing" class="chips option-chips landing-languages" role="group" aria-label="Language" data-t-aria-label>
+      <button type="button" id="language-landing-en" class="chip option" data-value="en" aria-pressed="true" lang="en">English</button>
+      <button type="button" id="language-landing-zh" class="chip option" data-value="zh" aria-pressed="false" lang="zh-Hans">中文</button>
+      <button type="button" id="language-landing-es" class="chip option" data-value="es" aria-pressed="false" lang="es">Español</button>
+    </div>
     <!-- Michal, 2026-10-08: "when you hover on I have a key, give a tooltip at the bottom below
          the buttons: key allows you to join a family account; in a similar way explain install".
          One line under the buttons that says what the button under the finger (or pointer) does -->
@@ -117,31 +124,31 @@
        /auth/signup) has app.js say the same link makes the account, here and on the
        landing's Sign in -->
   <section id="signin" class="landing" hidden>
-    <button type="button" id="signin-back" class="link back-link">← Back</button>
-    <h2 class="landing-name">Sign in</h2>
+    <button type="button" id="signin-back" class="link back-link" data-t>← Back</button>
+    <h2 class="landing-name" data-t>Sign in</h2>
     <p id="signin-what" class="landing-what">We email you a link. Open it on this phone and you are in.</p>
     <label class="field">
-      <span class="field-label">Email</span>
+      <span class="field-label" data-t>Email</span>
       <input id="signin-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off"
              spellcheck="false" placeholder="you@example.com">
     </label>
     <label class="pickup">
       <input id="signin-remember" type="checkbox" checked>
-      <span>Keep me signed in</span>
+      <span data-t>Keep me signed in</span>
     </label>
-    <button type="button" id="signin-send" class="big">Send me a link</button>
+    <button type="button" id="signin-send" class="big" data-t>Send me a link</button>
     <p id="signin-status" class="landing-status" aria-live="polite"></p>
     <!-- the mail's six-digit code (Michal, 2026-10-08): an iPhone's installed Snap keeps its
          own storage and a mailed link opens in Safari, so the app signs in by the code. Shown
          once the link is sent, or by I already have a code (asked for elsewhere, say in Safari) -->
-    <button type="button" id="signin-have-code" class="link have-code">I already have a code</button>
+    <button type="button" id="signin-have-code" class="link have-code" data-t>I already have a code</button>
     <div id="signin-code-form" class="code-form" hidden>
       <label class="field">
-        <span class="field-label">Code from the email</span>
+        <span class="field-label" data-t>Code from the email</span>
         <input id="signin-code" type="text" inputmode="numeric" autocomplete="one-time-code"
                autocapitalize="off" spellcheck="false" maxlength="11" placeholder="123456">
       </label>
-      <button type="button" id="signin-code-send" class="secondary">Sign in with the code</button>
+      <button type="button" id="signin-code-send" class="secondary" data-t>Sign in with the code</button>
     </div>
     <p id="signin-note" class="signin-note" hidden></p>
   </section>
@@ -742,6 +749,11 @@
                   aria-pressed="false">Light</button>
           <button type="button" id="theme-device" class="chip option" data-value="device"
                   aria-pressed="true">Sync with device</button>
+        </div>
+        <div id="language-phone" class="chips option-chips" role="group" aria-label="Language" data-t-aria-label>
+          <button type="button" id="language-phone-en" class="chip option" data-value="en" aria-pressed="true" lang="en">English</button>
+          <button type="button" id="language-phone-zh" class="chip option" data-value="zh" aria-pressed="false" lang="zh-Hans">中文</button>
+          <button type="button" id="language-phone-es" class="chip option" data-value="es" aria-pressed="false" lang="es">Español</button>
         </div>
         <button type="button" id="phone-install" class="pill pill-ink pill-small phone-install" aria-expanded="false"
                 aria-controls="phone-install-steps" hidden>Install on the home screen</button>

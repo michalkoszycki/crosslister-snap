@@ -10,6 +10,7 @@
     "check": "node --test",
     "icons": "node tools/make-icons.mjs",
     "bump": "node tools/bump-version.mjs",
+    "i18n": "node tools/i18n-check.mjs",
     "serve": "python -m http.server 8080"
   }
 }

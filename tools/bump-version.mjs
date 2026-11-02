@@ -24,6 +24,7 @@ const files = [
     "shrink.js",
     "book.js",
     "scan.js",
+    "i18n.js", // its catalogs' imports (lang/zh.js, lang/es.js)
     "version.js",
 ];
 const pattern = /\?v=\d+\.\d+\.\d+/g;
