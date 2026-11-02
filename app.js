@@ -354,8 +354,9 @@ const TRANSLATED_ATTRIBUTES = ["placeholder", "aria-label", "title"];
 /**
  * index.html's own words in the chosen language (docs/UI.md rule 8): each element marked data-t
  * (its text) or data-t-<attribute>, with its English as the page wrote it, read once at start
- * (startLanguage). Words app.js writes itself go through t() where it writes them.
- * @type {{ node: HTMLElement, text: string | null, attributes: [string, string][] }[]}
+ * (startLanguage): the key (one line) and the words as written. Words app.js writes itself go
+ * through t() where it writes them.
+ * @type {{ node: HTMLElement, text: [string, string] | null, attributes: [string, string, string][] }[]}
  */
 let marked = [];
 /** The inventory's Show photos: on unless he unticked it on this phone ("off"). */
@@ -3176,9 +3177,11 @@ function applyLanguage(lang) {
     setLanguage(lang);
     // the property, not setAttribute: the look is the one attribute set before the first paint
     document.documentElement.lang = htmlLang(lang);
+    // untranslated, the words go back exactly as index.html wrote them (a placeholder's line break kept)
+    const words = ([english, raw]) => (t(english) === english ? raw : t(english));
     for (const { node, text, attributes } of marked) {
-        if (text !== null) node.textContent = t(text);
-        for (const [name, english] of attributes) node.setAttribute(name, t(english));
+        if (text !== null) node.textContent = words(text);
+        for (const [name, english, raw] of attributes) node.setAttribute(name, words([english, raw]));
     }
     for (const { value, node } of el.languageChips) node.setAttribute("aria-pressed", value === lang ? "true" : "false");
 }
@@ -3253,8 +3256,8 @@ function startLanguage() {
     const selector = ["[data-t]", ...TRANSLATED_ATTRIBUTES.map((a) => `[data-t-${a}]`)].join(", ");
     marked = [...document.querySelectorAll(selector)].map((node) => ({
         node: /** @type {HTMLElement} */ (node),
-        text: node.hasAttribute("data-t") ? oneLine(node.textContent) : null,
-        attributes: TRANSLATED_ATTRIBUTES.filter((a) => node.hasAttribute(`data-t-${a}`)).map((a) => [a, oneLine(node.getAttribute(a))]),
+        text: node.hasAttribute("data-t") ? [oneLine(node.textContent), node.textContent ?? ""] : null,
+        attributes: TRANSLATED_ATTRIBUTES.filter((a) => node.hasAttribute(`data-t-${a}`)).map((a) => [a, oneLine(node.getAttribute(a)), node.getAttribute(a) ?? ""]),
     }));
     applyLanguage(languageOf(readText("localStorage", LANGUAGE_KEY)));
 }
