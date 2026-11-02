@@ -48,6 +48,17 @@
    bordered chip in the field colour with ink words (`.chip.option`); the chosen one is solid
    white with black words and a check mark " ✓" after the word, its border white so it is its
    neighbours' size (no black border, no outline), the same in the dark.
+8. **Languages** (Michal, 2026-11-02). The page reads in English, 中文 (Simplified Chinese) or
+   Español (neutral Latin American Spanish, tú), English the default; three chips, each named in
+   its own language, on the landing and under This phone; kept on the phone, never sent to the
+   server. The English text is the lookup key (`i18n.js`, `lang/zh.js`, `lang/es.js`):
+   index.html marks its own words `data-t` (`data-t-placeholder`, `data-t-aria-label`), the
+   scripts write theirs through `t("...")`. Error messages, anything the server sends (job steps,
+   summaries, its `detail`), venue names, the brand and the listings themselves stay English.
+   New text is written in English only and translated in the pass before a release
+   (docs/RELEASE.md; Michal, 2026-11-02: "i definately do not want you to run through updating
+   this each time ... that change is always pending before final release"): until then it shows
+   in English, and `node tools/i18n-check.mjs` lists what is pending without failing anything.
 
 ## 2. Vocabulary
 
@@ -83,7 +94,10 @@ Top to bottom: "← Back" (only while adding an account); the big mark; "$nap" w
 crosslisting app"; one line of what it does, naming no venue ("From photo to live listing in seconds";
 Michal, 2026-10-31, who also took the postings count off the landing); **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
 key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only
-when another usable account is kept on this phone); no help line under the buttons (a phone
+when another usable account is kept on this phone); the language, three option chips centred under
+the buttons, "English", "中文", "Español", each in its own language, the chosen one solid black with
+white words (Michal, 2026-11-02: "let the chosen button be black. cant see it otherwise"; "keep it as
+language names", a round flag button having been tried and dropped the same day; rule 8); no help line under the buttons (a phone
 has no hover, so it only flashed; Michal, 2026-10-31: "no tip is fine"); the
 status line ("Signing you in...", "Your sign-in expired; send yourself a new link", "Your
 account was deleted."). Footer: "About and privacy", the version, at the foot of the screen at least: on a short page the spare room is white space, on the landing evenly above the mark and below the buttons (Michal, 2026-10-31).
@@ -341,7 +355,8 @@ submenus"); the People page and Buy postings' page (below) carry the same title 
    posts to one venue, gets that venue chosen.4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
    check**, its status line. An email account has no Server part.
 5. **This phone.** Dark / Light / Sync with device, three option chips with no label over
-   them, and **Install on the home screen**, the press-me pill, where the app is not
+   them; under them the language, English / 中文 / Español, the landing's three as option chips
+   (the chosen white with its check, rule 7; rule 8); and **Install on the home screen**, the press-me pill, where the app is not
    installed; where it is, the chosen chip with its check, "Installed on home screen"
    (Michal, 2026-10-31). "Show photos" is an inventory setting and stays at the top of the
    Inventory fold (Michal, 2026-10-26).
@@ -487,3 +502,6 @@ controls disabled, the row edits refused with the server's words); **an expired 
   Save), its venue rows carrying the list's badge and an eye to show or hide the card, a
   draft's badge posting on a tap, a returned-to-synced save letting its badge's mark go, and
   Model cost in the eBay card for the admin alone.
+- 2026-11-02: rule 8, Languages: English, 中文 and Español, chips on the landing (4.1) and under
+  This phone (4.7, 5); the English the key, errors, server text, venue names and the listings
+  English; new words translated in the pass before a release (docs/RELEASE.md).

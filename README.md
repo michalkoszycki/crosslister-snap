@@ -1654,7 +1654,7 @@ on a relative import, so `node --test` is unaffected.
 The running version is in small print at the bottom of the page.
 
 To release: edit `VERSION`, run `node tools/bump-version.mjs`, commit, push. A
-test fails if any `?v=` drifts out of step.
+test fails if any `?v=` drifts out of step. The whole checklist, the translation pass first, is [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Run it
 
