@@ -6181,22 +6181,22 @@ function policySummary(info) {
 
 /**
  * Edit's picker (Michal, 2026-10-31: "put all policies in the picker ... bascially everyginth you
- * need to add to an account"): each by its name on eBay; the ones with nothing to set say what
+ * need to add to an account"): each by its name on eBay, which stays English as the policy names the server keeps do; the ones with nothing to set say what
  * they are (ebay/seller_setup.py, ebay/account.py).
  */
 const POLICY_PARTS = [
-    { value: "shipping", type: tKey("Shipping"), label: tKey("Snap shipping"), words: "" },
+    { value: "shipping", type: tKey("Shipping"), label: "Snap shipping", words: "" },
     {
         value: "pickup",
         type: tKey("Shipping"),
-        label: tKey("Snap pickup"),
+        label: "Snap pickup",
         words: tKey("For items you mark pickup only: local pickup, no shipping. Nothing more to set here."),
     },
-    { value: "returns", type: tKey("Returns"), label: tKey("Snap returns"), words: "" },
+    { value: "returns", type: tKey("Returns"), label: "Snap returns", words: "" },
     {
         value: "books",
         type: tKey("Shipping"),
-        label: tKey("Snap books"),
+        label: "Snap books",
         words: tKey("Books ship USPS Media Mail, calculated from your ZIP, with the same handling time. Nothing more to set here."),
     },
 ];
