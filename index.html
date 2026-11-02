@@ -160,21 +160,21 @@
        greyed until eBay is connected, when step 1's button says eBay connected in green (Michal,
        2026-10-10). Registered, the goods screen (app.js, signupStep in core.js) -->
   <section id="signup-steps" class="landing signup" hidden>
-    <h2 class="landing-name">Finish setting up</h2>
+    <h2 class="landing-name" data-t>Finish setting up</h2>
     <ol class="signup-list">
       <li id="signup-step-ebay" class="signup-step">
-        <span class="signup-word">Connect eBay, where your listings go</span>
+        <span class="signup-word" data-t>Connect eBay, where your listings go</span>
         <button type="button" id="signup-connect" class="big">Connect eBay</button>
       </li>
       <li id="signup-step-address" class="signup-step">
         <!-- Michal, 2026-10-08: "then your address. what address?": what it is for, said -->
         <span id="signup-address-word" class="signup-word">Address where you ship from</span>
-        <span class="signup-line">eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
+        <span class="signup-line" data-t>eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.</span>
         <!-- saved and checked: a tick at its right end, gone at the first edit (Michal, 2026-10-31) -->
         <span class="field-with-ok">
           <input id="signup-address-line" class="small-input signup-address-line" type="text" autocomplete="street-address"
                  spellcheck="false" placeholder="Street, city, state ZIP" aria-labelledby="signup-address-word">
-          <span id="signup-address-ok" class="field-ok" role="img" aria-label="Saved" hidden>✓</span>
+          <span id="signup-address-ok" class="field-ok" role="img" aria-label="Saved" data-t-aria-label hidden>✓</span>
         </span>
         <button type="button" id="signup-address" class="secondary" hidden>Save</button>
         <p id="signup-address-status" class="small account-status" aria-live="polite"></p>
@@ -182,14 +182,14 @@
       <!-- step 3 (Michal, 2026-10-31: "under the address. there shoudl be item 3. the policy
            setups spelled out here"): POLICY_LINES, the ones Settings lists under the address -->
       <li id="signup-step-policies" class="signup-step">
-        <span class="signup-word">Review what Snap adds to your eBay account</span>
+        <span class="signup-word" data-t>Review what Snap adds to your eBay account</span>
         <div id="signup-policy-slot">
         <div id="policy-block" class="policy-block">
         <!-- all of it, in step 2's words (Michal, 2026-10-31: "what other changes are we making to
              a user account to make this work. describe all here"): ebay/seller_setup.py -->
-        <span id="policy-lead" class="signup-line">eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:</span>
+        <span id="policy-lead" class="signup-line" data-t>eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:</span>
         <ul id="signup-policy-list" class="signup-policy-list"></ul>
-        <span id="policy-after" class="signup-line">Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub.</span>
+        <span id="policy-after" class="signup-line" data-t>Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub.</span>
         <!-- Edit (Michal, 2026-10-31): each choice as a menu, Save back to the list as it was
              (app.js; GET/PATCH /me/policies); none for the admin's, set on the server -->
         <div id="policy-editor" class="policy-editor" hidden>
@@ -197,13 +197,13 @@
                (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the
                picker. including returns etc."); the ones with nothing to set say what they are -->
           <label class="field">
-            <span class="field-label">Snap creates the following policies</span>
+            <span class="field-label" data-t>Snap creates the following policies</span>
             <select id="policy-pick" class="policy-select"></select>
           </label>
           <!-- the picked policy's name first, to rename it (Michal, 2026-10-31: "the first item of
                a policy should be NAME so that one can rename it"); eBay: 64 characters at most -->
           <label id="policy-name-row" class="field" hidden>
-            <span class="field-label">Name</span>
+            <span class="field-label" data-t>Name</span>
             <input id="policy-name" class="policy-cost" type="text" maxlength="64" autocomplete="off" spellcheck="false">
           </label>
           <p id="policy-part-words" class="small policy-part-words" hidden></p>
@@ -219,41 +219,41 @@
                  this list ... it is a useful item when thinking of shipping") -->
             <label class="pickup ship-pickup">
               <input id="policy-pickup" type="checkbox">
-              <span>Local pickup <span class="ship-thin">the buyer collects it</span></span>
+              <span><span data-t>Local pickup</span> <span class="ship-thin" data-t>the buyer collects it</span></span>
             </label>
             <p id="policy-ship-note" class="small policy-ship-note" hidden></p>
           </div>
           <div class="field">
-            <span class="field-label">Shipping cost</span>
-            <div id="policy-cost-type" class="chips policy-chips" role="group" aria-label="Shipping cost"></div>
+            <span class="field-label" data-t>Shipping cost</span>
+            <div id="policy-cost-type" class="chips policy-chips" role="group" aria-label="Shipping cost" data-t-aria-label></div>
           </div>
           <label id="policy-cost-row" class="field" hidden>
-            <span class="field-label">Flat rate, $</span>
+            <span class="field-label" data-t>Flat rate, $</span>
             <input id="policy-cost" class="policy-cost" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
           </label>
           <div class="field">
-            <span class="field-label">Handling time</span>
-            <div id="policy-handling" class="chips policy-chips" role="group" aria-label="Handling time"></div>
+            <span class="field-label" data-t>Handling time</span>
+            <div id="policy-handling" class="chips policy-chips" role="group" aria-label="Handling time" data-t-aria-label></div>
           </div>
           </div>
           <div id="policy-part-returns" hidden>
           <div class="field">
-            <span class="field-label">Returns</span>
-            <div id="policy-returns" class="chips policy-chips" role="group" aria-label="Returns"></div>
+            <span class="field-label" data-t>Returns</span>
+            <div id="policy-returns" class="chips policy-chips" role="group" aria-label="Returns" data-t-aria-label></div>
           </div>
           <div id="policy-payer-row" class="field">
-            <span class="field-label">Return shipping paid by</span>
-            <div id="policy-payer" class="chips policy-chips" role="group" aria-label="Return shipping paid by"></div>
+            <span class="field-label" data-t>Return shipping paid by</span>
+            <div id="policy-payer" class="chips policy-chips" role="group" aria-label="Return shipping paid by" data-t-aria-label></div>
           </div>
           </div>
-          <button type="button" id="policy-save" class="secondary policy-save">Save</button>
+          <button type="button" id="policy-save" class="secondary policy-save" data-t>Save</button>
           <!-- the server's defaults back in the menus; Save keeps them (Michal, 2026-10-31) -->
-          <button type="button" id="policy-reset" class="secondary" hidden>Reset to defaults</button>
+          <button type="button" id="policy-reset" class="secondary" hidden data-t>Reset to defaults</button>
         </div>
         <!-- agreed to as it is (Michal, 2026-10-31: "if someone reads and likes what it is - they
              will just go ahead without editing"): POST /me/policies/confirm, then the goods screen -->
-        <button type="button" id="signup-policies-ok" class="secondary policies-ok" hidden>Looks good - let's start</button>
-        <button type="button" id="signup-policies-edit" class="secondary" hidden>Edit policies</button>
+        <button type="button" id="signup-policies-ok" class="secondary policies-ok" hidden data-t>Looks good - let's start</button>
+        <button type="button" id="signup-policies-edit" class="secondary" hidden data-t>Edit policies</button>
         <p id="policy-status" class="small account-status" aria-live="polite"></p>
         </div>
         </div>
@@ -265,15 +265,15 @@
   <!-- the home screen, nudged: a thin banner over the posting screens while the page runs in
        a browser tab; dismissed, it stays away a week (app.js, installState in core.js) -->
   <div id="install-banner" class="install-banner" hidden>
-    <p id="install-words" class="install-words">Add Snap to your home screen for the full-screen app</p>
+    <p id="install-words" class="install-words" data-t>Add Snap to your home screen for the full-screen app</p>
     <button type="button" id="install-add" class="pill pill-ink pill-small" aria-expanded="false"
-            aria-controls="install-steps">Add</button>
-    <button type="button" id="install-dismiss" class="install-dismiss" aria-label="Not now">×</button>
+            aria-controls="install-steps" data-t>Add</button>
+    <button type="button" id="install-dismiss" class="install-dismiss" aria-label="Not now" data-t-aria-label>×</button>
     <p id="install-steps" class="install-steps" hidden></p>
     <!-- the third close on (Michal, 2026-10-31): asked, in the banner's place -->
-    <p id="install-ask" class="install-ask" hidden>Do not show this again?
-      <button type="button" id="install-never" class="pill pill-ink pill-small">Yes</button>
-      <button type="button" id="install-later" class="link install-later">No</button></p>
+    <p id="install-ask" class="install-ask" hidden><span data-t>Do not show this again?</span>
+      <button type="button" id="install-never" class="pill pill-ink pill-small" data-t>Yes</button>
+      <button type="button" id="install-later" class="link install-later" data-t>No</button></p>
   </div>
 
   <!-- goods | book: two kinds of item, each with its own screen below and its own
@@ -282,9 +282,9 @@
        need goods vs book slider distinction"), and so are both screens (Michal, 2026-10-08:
        "When I look at a card the posting screen is below. That should not be there"): app.js
        hides #work and #book until Admin closes, their items carrying on underneath. -->
-  <div id="modes" class="modes" role="group" aria-label="What is being listed">
-    <button type="button" id="mode-goods" class="mode" aria-pressed="true">goods</button>
-    <button type="button" id="mode-book" class="mode" aria-pressed="false">book</button>
+  <div id="modes" class="modes" role="group" aria-label="What is being listed" data-t-aria-label>
+    <button type="button" id="mode-goods" class="mode" aria-pressed="true" data-t>goods</button>
+    <button type="button" id="mode-book" class="mode" aria-pressed="false" data-t>book</button>
   </div>
 
   <p id="offline" class="banner banner-warn" aria-live="polite" hidden>
@@ -304,7 +304,7 @@
             aria-controls="inventory">▸ Inventory</button>
     <!-- a listing's page: its Back on the page's ground, above the grey card (Michal,
          2026-10-31: "back to inventory should be outside the gray frame"); app.js shows it -->
-    <button type="button" id="inventory-back" class="link back-link" hidden>← Back to inventory</button>
+    <button type="button" id="inventory-back" class="link back-link" hidden data-t>← Back to inventory</button>
     <div id="inventory" class="card inventory" hidden>
       <!-- the list: the line of what the count cannot say, then Filters (the search, the two
            filters, the sort, the photos or not), then one row per listing. Michal, 2026-10-08:
@@ -315,27 +315,27 @@
         <!-- the card's two tools, top right (Michal, 2026-10-31): search and filters, each its own
              menu under them, the search a magnifying glass, the filters three sliders -->
         <div class="inv-tools">
-          <button type="button" id="search-toggle" class="icon-btn" aria-label="Search" aria-expanded="false"
+          <button type="button" id="search-toggle" class="icon-btn" aria-label="Search" data-t-aria-label aria-expanded="false"
                   aria-controls="search-panel"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
                   stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg></button>
-          <button type="button" id="options-toggle" class="icon-btn" aria-label="Filters" aria-expanded="false"
+          <button type="button" id="options-toggle" class="icon-btn" aria-label="Filters" data-t-aria-label aria-expanded="false"
                   aria-controls="options"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
                   stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18M12 3v18M18 3v18M4 15h4M10 8h4M16 13h4"/></svg></button>
         </div>
         <div id="search-panel" class="search-panel" hidden>
           <label class="field field-small">
-            <span class="sr-only">Search</span>
+            <span class="sr-only" data-t>Search</span>
             <input id="inventory-search" class="small-input" type="text" inputmode="search" enterkeyhint="search"
-                   autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN">
+                   autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="title, sku or ISBN" data-t-placeholder>
           </label>
         </div>
         <p id="inventory-status" class="small inventory-status" aria-live="polite"></p>
         <div id="options" class="options" hidden>
           <div class="field">
-            <span class="field-label">Venue</span>
-            <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue">
+            <span class="field-label" data-t>Venue</span>
+            <div id="inventory-venue" class="chips chips-four" role="group" aria-label="Venue" data-t-aria-label>
               <button type="button" id="inventory-venue-all" class="chip" data-value=""
-                      aria-pressed="true">All</button>
+                      aria-pressed="true" data-t>All</button>
               <button type="button" id="inventory-venue-ebay" class="chip" data-value="ebay"
                       aria-pressed="false">ebay</button>
               <button type="button" id="inventory-venue-craigslist" class="chip" data-value="craigslist"
@@ -345,34 +345,34 @@
             </div>
           </div>
           <div class="field">
-            <span class="field-label">Status</span>
-            <div id="inventory-state" class="chips chips-six" role="group" aria-label="Status">
+            <span class="field-label" data-t>Status</span>
+            <div id="inventory-state" class="chips chips-six" role="group" aria-label="Status" data-t-aria-label>
               <button type="button" id="inventory-state-all" class="chip" data-value=""
-                      aria-pressed="true">All</button>
+                      aria-pressed="true" data-t>All</button>
               <button type="button" id="inventory-state-draft" class="chip" data-value="draft"
-                      aria-pressed="false">draft</button>
+                      aria-pressed="false" data-t>draft</button>
               <button type="button" id="inventory-state-listed" class="chip" data-value="listed"
-                      aria-pressed="false">listed</button>
+                      aria-pressed="false" data-t>listed</button>
               <button type="button" id="inventory-state-sold" class="chip" data-value="sold"
-                      aria-pressed="false">sold</button>
+                      aria-pressed="false" data-t>sold</button>
               <button type="button" id="inventory-state-ended" class="chip" data-value="ended"
-                      aria-pressed="false">ended</button>
+                      aria-pressed="false" data-t>ended</button>
               <!-- the rows swiped off the list (Michal, 2026-10-08: "swipe left or right to
                    archive, so you no longer see it in the list"), each with Unarchive -->
               <button type="button" id="inventory-state-archived" class="chip" data-value="archived"
-                      aria-pressed="false">Archived</button>
+                      aria-pressed="false" data-t>Archived</button>
             </div>
           </div>
           <!-- Michal, 2026-10-06: "Add sorting options for the inventory (by price and by age)" -->
           <div class="field">
-            <span class="field-label">Sort</span>
-            <div id="inventory-sort" class="chips chips-four" role="group" aria-label="Sort">
-              <button type="button" id="inventory-sort-newest" class="chip" aria-pressed="true">Newest</button>
-              <button type="button" id="inventory-sort-oldest" class="chip" aria-pressed="false">Oldest</button>
+            <span class="field-label" data-t>Sort</span>
+            <div id="inventory-sort" class="chips chips-four" role="group" aria-label="Sort" data-t-aria-label>
+              <button type="button" id="inventory-sort-newest" class="chip" aria-pressed="true" data-t>Newest</button>
+              <button type="button" id="inventory-sort-oldest" class="chip" aria-pressed="false" data-t>Oldest</button>
               <button type="button" id="inventory-sort-price-desc" class="chip" aria-pressed="false"
-                      aria-label="Price, highest first">Price ↓</button>
+                      aria-label="Price, highest first" data-t-aria-label data-t>Price ↓</button>
               <button type="button" id="inventory-sort-price-asc" class="chip" aria-pressed="false"
-                      aria-label="Price, lowest first">Price ↑</button>
+                      aria-label="Price, lowest first" data-t-aria-label data-t>Price ↑</button>
             </div>
           </div>
           <!-- the same pill row as pickup only, on by default and last of the options (Michal,
@@ -381,7 +381,7 @@
                it unticked on this phone (Michal, 2026-10-26: it stays here, not under This phone) -->
           <label class="pickup">
             <input id="inventory-photos" type="checkbox" checked>
-            <span>Show photos</span>
+            <span data-t>Show photos</span>
           </label>
         </div>
         <ul id="inventory-list" class="inventory-list"></ul>
@@ -389,7 +389,7 @@
         <div id="inventory-undo" class="undo-bar" role="status" hidden>
           <span id="inventory-undo-text" class="undo-words"></span>
           <button type="button" id="inventory-end-btn" class="undo-end" hidden>End listing</button>
-          <button type="button" id="inventory-undo-btn" class="link undo-btn">Undo</button>
+          <button type="button" id="inventory-undo-btn" class="link undo-btn" data-t>Undo</button>
         </div>
       </div>
 
@@ -414,20 +414,20 @@
                 aria-controls="detail-customize">▾ quick customize</button>
         <div id="detail-customize" class="card customize fold">
           <div class="field">
-            <label class="field-label" for="detail-quantity">Quantity</label>
+            <label class="field-label" for="detail-quantity" data-t>Quantity</label>
             <span class="qty-step">
-              <button type="button" id="detail-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+              <button type="button" id="detail-quantity-less" class="qty-btn" aria-label="One fewer" data-t-aria-label>−</button>
               <input id="detail-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                    spellcheck="false" value="1">
-              <button type="button" id="detail-quantity-more" class="qty-btn" aria-label="One more">+</button>
+              <button type="button" id="detail-quantity-more" class="qty-btn" aria-label="One more" data-t-aria-label>+</button>
             </span>
           </div>
           <label class="pickup">
             <input id="detail-pickup-only" type="checkbox">
-            <span>Pickup only, no shipping</span>
+            <span data-t>Pickup only, no shipping</span>
           </label>
           <div class="field pricing-field">
-            <label class="field-label" for="detail-pricing">Price</label>
+            <label class="field-label" for="detail-pricing" data-t>Price</label>
             <input id="detail-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
                    aria-valuetext="Quick sale" aria-describedby="detail-pricing-note">
             <div class="pricing-words" aria-hidden="true">
@@ -437,17 +437,17 @@
             </div>
             <!-- the price itself, under the grades' words, no $ (Michal, 2026-11-02) -->
             <span class="qty-step price-step">
-              <button type="button" id="detail-price-less" class="qty-btn" aria-label="A dollar less">−</button>
+              <button type="button" id="detail-price-less" class="qty-btn" aria-label="A dollar less" data-t-aria-label>−</button>
               <input id="detail-price" class="quantity price-input"
-                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Price">
-              <button type="button" id="detail-price-more" class="qty-btn" aria-label="A dollar more">+</button>
+                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Price" data-t-aria-label>
+              <button type="button" id="detail-price-more" class="qty-btn" aria-label="A dollar more" data-t-aria-label>+</button>
             </span>
             <p id="detail-pricing-note" class="pricing-note"></p>
           </div>
           <div id="detail-customize-actions" class="venue-actions">
-            <button type="button" id="detail-customize-save" class="secondary detail-save">Save draft</button>
+            <button type="button" id="detail-customize-save" class="secondary detail-save" data-t>Save draft</button>
           </div>
-          <p class="small detail-save-words">Tap individual venue buttons below to update venues.</p>
+          <p class="small detail-save-words" data-t>Tap individual venue buttons below to update venues.</p>
           <p id="detail-customize-status" class="venue-status" aria-live="polite"></p>
         </div>
         <!-- the venue cards, folded as a listing opens; each row the list's badge for that venue,
@@ -479,18 +479,18 @@
          (app.js: Snap Account after a new sign-in, Venues while eBay is not connected, Server for
          I have a key before a key is saved), which ones are open remembered on this phone -->
     <!-- no one signed in: the way back to the landing's Sign in, above Settings (Michal, 2026-10-31) -->
-    <button type="button" id="settings-back" class="link back-link" hidden>← Back to sign-in</button>
+    <button type="button" id="settings-back" class="link back-link" hidden data-t>← Back to sign-in</button>
     <button type="button" id="settings-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="settings">▸ Settings</button>
     <div id="settings" class="settings" hidden>
       <!-- the parts as a row of chips, as the inventory's filters: the pressed one is the part
            shown under it, one at a time (Michal, 2026-10-31); Server only for a key account -->
-      <div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings">
-        <button type="button" id="settings-tab-account" class="chip" data-fold="account" aria-pressed="true">Snap Account</button>
-        <button type="button" id="settings-tab-venues" class="chip" data-fold="venues" aria-pressed="false">Venues</button>
-        <button type="button" id="settings-tab-posting" class="chip" data-fold="posting" aria-pressed="false">Posting defaults</button>
-        <button type="button" id="settings-tab-server" class="chip" data-fold="server" aria-pressed="false">Server</button>
-        <button type="button" id="settings-tab-phone" class="chip" data-fold="phone" aria-pressed="false">This phone</button>
+      <div id="settings-tabs" class="chips settings-tabs" role="group" aria-label="Settings" data-t-aria-label>
+        <button type="button" id="settings-tab-account" class="chip" data-fold="account" aria-pressed="true" data-t>Snap Account</button>
+        <button type="button" id="settings-tab-venues" class="chip" data-fold="venues" aria-pressed="false" data-t>Venues</button>
+        <button type="button" id="settings-tab-posting" class="chip" data-fold="posting" aria-pressed="false" data-t>Posting defaults</button>
+        <button type="button" id="settings-tab-server" class="chip" data-fold="server" aria-pressed="false" data-t>Server</button>
+        <button type="button" id="settings-tab-phone" class="chip" data-fold="phone" aria-pressed="false" data-t>This phone</button>
       </div>
       <!-- the parts in a grey card under the chips, the chips on the page's ground (Michal, 2026-10-31) -->
       <div id="settings-body" class="card settings-body">
@@ -502,37 +502,37 @@
       <div id="fold-account" class="fold-body" hidden>
         <!-- the grey card's top row: its chip's words, small and grey (Michal, 2026-11-02: "for each setting
              gray area. add a top row title ... same size as on the buttons choosing these submenus") -->
-        <p class="fold-title" aria-hidden="true">Snap Account</p>
+        <p class="fold-title" aria-hidden="true" data-t>Snap Account</p>
         <div id="account" class="card account current" hidden>
           <p id="account-user" class="account-user"></p>
           <!-- the owner's name, edited where it is: a tap on it, Enter or away saves, Escape keeps it (Michal, 2026-11-02) -->
           <input id="account-user-edit" class="small-input account-user-edit" type="text" autocomplete="off"
-                 autocapitalize="words" spellcheck="false" aria-label="Your name" hidden>
+                 autocapitalize="words" spellcheck="false" aria-label="Your name" data-t-aria-label hidden>
           <p id="account-kind" class="small account-kind" hidden></p>
           <!-- the postings left on the Buy postings line, to its right (Michal, 2026-10-25),
                Buy postings there for every account whose postings are counted, however many are
                left (2026-10-31); the packs open under that line, its status line directly under them -->
           <div class="account-row">
             <button type="button" id="account-buy" class="pill pill-ink pill-small" aria-expanded="false"
-                    aria-controls="account-packs" hidden>Buy postings</button>
+                    aria-controls="account-packs" hidden data-t>Buy postings</button>
             <span id="account-credits" class="small account-line" hidden></span>
           </div>
           <p id="account-status" class="small account-status" aria-live="polite"></p>
           <!-- a session the server forgot: its way back in (Michal, 2026-10-18) -->
-          <button type="button" id="account-signin-again" class="pill pill-small" hidden>Sign in again</button>
+          <button type="button" id="account-signin-again" class="pill pill-small" hidden data-t>Sign in again</button>
           <!-- the invite box, the owner's (Michal, 2026-10-25: "the invite someone section
                should return here, above the people on this account"; "don't ask for their name.
                just email is fine"): their email alone -->
           <div id="invite" class="invite" hidden>
             <label id="invite-field" class="field field-small">
-              <span class="field-label">Invite someone to this account</span>
+              <span class="field-label" data-t>Invite someone to this account</span>
               <input id="invite-email" class="small-input" type="email" inputmode="email" autocomplete="off"
-                     autocapitalize="off" spellcheck="false" placeholder="email">
+                     autocapitalize="off" spellcheck="false" placeholder="email" data-t-placeholder>
             </label>
             <!-- Invite, and beside it the People page's way in, Manage members (Michal, 2026-11-02);
                  a member sees Members alone (app.js) -->
             <div class="invite-row">
-              <button type="button" id="invite-send" class="pill pill-small">Invite</button>
+              <button type="button" id="invite-send" class="pill pill-small" data-t>Invite</button>
               <button type="button" id="account-people" class="pill pill-small" hidden>Manage members</button>
             </div>
             <p id="invite-status" class="small account-status" aria-live="polite"></p>
@@ -541,18 +541,18 @@
                this account for a member; neither for the admin), then Sign out -->
           <div class="account-foot">
             <button type="button" id="settings-delete" class="link delete-link" aria-expanded="false"
-                    aria-controls="delete-confirm" hidden>Delete account</button>
-            <button type="button" id="account-leave" class="link delete-link" hidden>Leave this account</button>
+                    aria-controls="delete-confirm" hidden data-t>Delete account</button>
+            <button type="button" id="account-leave" class="link delete-link" hidden data-t>Leave this account</button>
             <button type="button" id="settings-signout" class="link sign-out" hidden>Sign out</button>
           </div>
           <!-- its own confirmation view in plain words, never a browser dialog. DELETE /me with
                the account's key or session (app.js) -->
           <div id="delete-confirm" class="delete-confirm" hidden>
-            <p class="delete-words">Your account will be deleted from the server, with its inventory, photos, jobs and settings.</p>
-            <p class="delete-words">Listings already on your venues stay there: they are yours there. Postings you bought and did not use are lost.</p>
-            <p class="delete-words">This cannot be undone.</p>
-            <button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad">Delete account</button>
-            <button type="button" id="delete-keep" class="link delete-keep">Keep my account</button>
+            <p class="delete-words" data-t>Your account will be deleted from the server, with its inventory, photos, jobs and settings.</p>
+            <p class="delete-words" data-t>Listings already on your venues stay there: they are yours there. Postings you bought and did not use are lost.</p>
+            <p class="delete-words" data-t>This cannot be undone.</p>
+            <button type="button" id="delete-confirm-btn" class="pill pill-small pill-bad" data-t>Delete account</button>
+            <button type="button" id="delete-keep" class="link delete-keep" data-t>Keep my account</button>
           </div>
           <p id="delete-status" class="small account-status" aria-live="polite"></p>
         </div>
@@ -562,7 +562,7 @@
              line with the cards' inner text, a breath below the last card (Michal, 2026-10-31) -->
         <div id="accounts" class="accounts" hidden>
           <ul id="accounts-list" class="accounts-list"></ul>
-          <button type="button" id="accounts-add" class="pill pill-small add-account">Add another account</button>
+          <button type="button" id="accounts-add" class="pill pill-small add-account" data-t>Add another account</button>
         </div>
       </div>
 
@@ -576,7 +576,7 @@
       <button type="button" id="fold-venues-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-venues">▸ Venues</button>
       <div id="fold-venues" class="fold-body" hidden>
-        <p class="fold-title" aria-hidden="true">Venues</p>
+        <p class="fold-title" aria-hidden="true" data-t>Venues</p>
         <!-- the venues' cards, one each, the same size and the same parts, its name first
              (Michal, 2026-10-31: "eliminate the venue buttons at the top. instead provide 3
              cards for the venues") -->
@@ -625,59 +625,59 @@
       <button type="button" id="fold-posting-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-posting">▸ Posting defaults</button>
       <div id="fold-posting" class="fold-body" hidden>
-        <p class="fold-title" aria-hidden="true">Posting defaults</p>
+        <p class="fold-title" aria-hidden="true" data-t>Posting defaults</p>
         <div id="posting-defaults" class="posting-defaults">
-          <p id="posting-lead" class="small posting-lead">These will be your default settings. You can customize them per posting on the Snap page.</p>
+          <p id="posting-lead" class="small posting-lead" data-t>These will be your default settings. You can customize them per posting on the Snap page.</p>
           <!-- the Snap page's customize as it is, field for field, its small print too (Michal,
                2026-10-31: "make this card look like the customize menu on the snap page"); its
                extra, Add standard text to posts, after -->
           <div class="field">
-            <label class="field-label" for="posting-quantity">Quantity</label>
+            <label class="field-label" for="posting-quantity" data-t>Quantity</label>
             <span class="qty-step">
-              <button type="button" id="posting-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+              <button type="button" id="posting-quantity-less" class="qty-btn" aria-label="One fewer" data-t-aria-label>−</button>
               <input id="posting-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                    spellcheck="false" value="1">
-              <button type="button" id="posting-quantity-more" class="qty-btn" aria-label="One more">+</button>
+              <button type="button" id="posting-quantity-more" class="qty-btn" aria-label="One more" data-t-aria-label>+</button>
             </span>
           </div>
           <label class="pickup">
             <input id="posting-pickup-only" type="checkbox">
-            <span>Pickup only, no shipping</span>
+            <span data-t>Pickup only, no shipping</span>
           </label>
           <div class="field pricing-field">
-            <label class="field-label" for="posting-pricing">Price</label>
+            <label class="field-label" for="posting-pricing" data-t>Price</label>
             <input id="posting-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
                    aria-valuetext="Quick sale" aria-describedby="posting-pricing-note">
             <div class="pricing-words" aria-hidden="true">
-              <span id="posting-pricing-1" class="on">Quick sale</span>
-              <span id="posting-pricing-2">Fair price</span>
-              <span id="posting-pricing-3">Higher end</span>
+              <span id="posting-pricing-1" class="on" data-t>Quick sale</span>
+              <span id="posting-pricing-2" data-t>Fair price</span>
+              <span id="posting-pricing-3" data-t>Higher end</span>
             </div>
             <p id="posting-pricing-note" class="pricing-note">sell what we have this week</p>
             <!-- the lowest price Snap posts at (Michal, 2026-11-01): the box all but invisible on
                  the grey, editable on a tap, no − or +; the PC raises a lower draft price to it -->
             <div class="min-price-row">
-              <label class="field-label min-price-label" for="posting-min-price">Minimum Price:</label>
+              <label class="field-label min-price-label" for="posting-min-price" data-t>Minimum Price:</label>
               <span class="min-price-box"><input id="posting-min-price" class="min-price"
                      type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="$5"></span>
             </div>
-            <p class="small min-price-words">Nothing will be posted below this price.</p>
+            <p class="small min-price-words" data-t>Nothing will be posted below this price.</p>
           </div>
           <label class="pickup">
             <input id="posting-auto-post" type="checkbox" checked>
-            <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
+            <span><span data-t>Post without asking</span><small data-t>unticked: the server saves the draft and the button posts it on the next press</small></span>
           </label>
           <label class="pickup">
             <input id="posting-comps" type="checkbox" checked>
-            <span>Compare with marketplace listings<small>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
+            <span><span data-t>Compare with marketplace listings</span><small data-t>sends similar listings to the AI for the first draft; slower, a little dearer</small></span>
           </label>
           <label class="pickup">
             <input id="posting-best-offer" type="checkbox" checked>
-            <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+            <span><span data-t>Allow best offers</span><small data-t>You will be able to review the offers before finalizing.</small></span>
           </label>
           <label class="pickup">
             <input id="posting-fix-dark" type="checkbox" checked>
-            <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
+            <span><span data-t>Fix dark photos</span><small data-t>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
           </label>
           <!-- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
                checkbox for footnote/header for all posts"; 2026-10-31: one tick, "Add standard
@@ -689,23 +689,23 @@
                greyed, its reason under it, while the server has not given it -->
           <label id="wrap-row" class="pickup">
             <input id="wrap-on" type="checkbox">
-            <span>Add standard text to posts<small id="wrap-why" hidden></small></span>
+            <span><span data-t>Add standard text to posts</span><small id="wrap-why" hidden></small></span>
           </label>
           <div id="wrap" class="card wrap" hidden>
             <label class="field wrap-field">
-              <span class="field-label">Header</span>
+              <span class="field-label" data-t>Header</span>
               <textarea id="wrap-header-text" class="wrap-text" rows="3" maxlength="2000"
-                        placeholder="Text added above the description"></textarea>
+                        placeholder="Text added above the description" data-t-placeholder></textarea>
             </label>
-            <div id="wrap-header-venues" class="chips option-chips wrap-venues" role="group" aria-label="Header: venues"></div>
+            <div id="wrap-header-venues" class="chips option-chips wrap-venues" role="group" aria-label="Header: venues" data-t-aria-label></div>
             <label class="field wrap-field">
-              <span class="field-label">Footer</span>
+              <span class="field-label" data-t>Footer</span>
               <textarea id="wrap-footer-text" class="wrap-text" rows="3" maxlength="2000"
-                        placeholder="Text added below the description"></textarea>
+                        placeholder="Text added below the description" data-t-placeholder></textarea>
             </label>
-            <div id="wrap-footer-venues" class="chips option-chips wrap-venues" role="group" aria-label="Footer: venues"></div>
-            <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings</button>
-            <button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings</button>
+            <div id="wrap-footer-venues" class="chips option-chips wrap-venues" role="group" aria-label="Footer: venues" data-t-aria-label></div>
+            <button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled data-t>Save for upcoming postings</button>
+            <button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled data-t>Apply to existing postings</button>
             <p id="wrap-status" class="small account-status" aria-live="polite"></p>
             <!-- one line per venue Apply pushes onto, its job's step and summary (app.js) -->
             <div id="wrap-jobs" class="wrap-jobs" hidden></div>
@@ -718,18 +718,18 @@
       <button type="button" id="fold-server-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-server" hidden>▸ Server</button>
       <div id="fold-server" class="fold-body" hidden>
-        <p class="fold-title" aria-hidden="true">Server</p>
+        <p class="fold-title" aria-hidden="true" data-t>Server</p>
         <label class="field">
-          <span class="field-label">Server address</span>
+          <span class="field-label" data-t>Server address</span>
           <input id="pc-address" type="url" inputmode="url" autocomplete="off" autocapitalize="off"
                  spellcheck="false" placeholder="https://pc.tail1234.ts.net">
         </label>
         <label class="field">
-          <span class="field-label">Key</span>
+          <span class="field-label" data-t>Key</span>
           <input id="pc-key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-                 placeholder="the key you were given">
+                 placeholder="the key you were given" data-t-placeholder>
         </label>
-        <button type="button" id="settings-save" class="secondary">Save and check</button>
+        <button type="button" id="settings-save" class="secondary" data-t>Save and check</button>
         <p id="settings-status" class="small"></p>
       </div>
 
@@ -741,14 +741,14 @@
       <button type="button" id="fold-phone-toggle" class="link customize-toggle fold-toggle" aria-expanded="false"
               aria-controls="fold-phone">▸ This phone</button>
       <div id="fold-phone" class="fold-body" hidden>
-        <p class="fold-title" aria-hidden="true">This phone</p>
-        <div id="theme" class="chips option-chips" role="group" aria-label="Appearance">
+        <p class="fold-title" aria-hidden="true" data-t>This phone</p>
+        <div id="theme" class="chips option-chips" role="group" aria-label="Appearance" data-t-aria-label>
           <button type="button" id="theme-dark" class="chip option" data-value="dark"
-                  aria-pressed="false">Dark</button>
+                  aria-pressed="false" data-t>Dark</button>
           <button type="button" id="theme-light" class="chip option" data-value="light"
-                  aria-pressed="false">Light</button>
+                  aria-pressed="false" data-t>Light</button>
           <button type="button" id="theme-device" class="chip option" data-value="device"
-                  aria-pressed="true">Sync with device</button>
+                  aria-pressed="true" data-t>Sync with device</button>
         </div>
         <div id="language-phone" class="chips option-chips" role="group" aria-label="Language" data-t-aria-label>
           <button type="button" id="language-phone-en" class="chip option" data-value="en" aria-pressed="true" lang="en">English</button>
@@ -756,9 +756,9 @@
           <button type="button" id="language-phone-es" class="chip option" data-value="es" aria-pressed="false" lang="es">Español</button>
         </div>
         <button type="button" id="phone-install" class="pill pill-ink pill-small phone-install" aria-expanded="false"
-                aria-controls="phone-install-steps" hidden>Install on the home screen</button>
+                aria-controls="phone-install-steps" hidden data-t>Install on the home screen</button>
         <p id="phone-install-steps" class="install-steps" hidden></p>
-        <p id="phone-installed" class="chip option chosen phone-installed" hidden>Installed on home screen</p>
+        <p id="phone-installed" class="chip option chosen phone-installed" hidden data-t>Installed on home screen</p>
       </div>
       </div>
     </div>
@@ -769,22 +769,22 @@
     <button type="button" id="feedback-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="feedback">▸ Feedback</button>
     <div id="feedback" class="card" hidden>
-      <div id="feedback-inbox" class="feedback-inbox" aria-label="New feedback" hidden></div>
+      <div id="feedback-inbox" class="feedback-inbox" aria-label="New feedback" data-t-aria-label hidden></div>
       <!-- the box, for anyone but the admin, who does not send themselves feedback (2026-10-31) -->
       <div id="feedback-box">
       <!-- what they sent, oldest first, as a chat: each a white card, Reviewed under it in plain
            words (Michal, 2026-10-31: "should look more like a chat") -->
       <ul id="feedback-mine" class="feedback-mine" hidden></ul>
       <label class="field">
-        <span class="field-label">Feedback</span>
+        <span class="field-label" data-t>Feedback</span>
         <textarea id="feedback-text" rows="4" autocomplete="off" autocapitalize="sentences"
-                  placeholder="What happened&#10;or what you wish it did"></textarea>
+                  placeholder="What happened&#10;or what you wish it did" data-t-placeholder></textarea>
       </label>
       <label class="pickup">
         <input id="feedback-job" type="checkbox" checked>
-        <span>Include my last job</span>
+        <span data-t>Include my last job</span>
       </label>
-      <button type="button" id="feedback-send" class="secondary">Send</button>
+      <button type="button" id="feedback-send" class="secondary" data-t>Send</button>
       <p id="feedback-status" class="small" aria-live="polite"></p>
       </div>
     </div>
@@ -793,22 +793,22 @@
     <button type="button" id="stats-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="stats" hidden>▸ Stats</button>
     <div id="stats" class="card stats" hidden>
-      <div id="stats-since" class="chips chips-three" role="group" aria-label="Since">
+      <div id="stats-since" class="chips chips-three" role="group" aria-label="Since" data-t-aria-label>
         <button type="button" id="stats-since-7d" class="chip" data-value="7d" aria-pressed="false">7d</button>
         <button type="button" id="stats-since-30d" class="chip" data-value="30d" aria-pressed="true">30d</button>
-        <button type="button" id="stats-since-all" class="chip" data-value="all" aria-pressed="false">all</button>
+        <button type="button" id="stats-since-all" class="chip" data-value="all" aria-pressed="false" data-t>all</button>
       </div>
       <p id="stats-status" class="small" aria-live="polite"></p>
       <div id="stats-table" class="stats-table"></div>
       <!-- Michal, 2026-10-08: "I don't understand the jobs count on the stats." -->
-      <p id="stats-note" class="small stats-note">Posted: listings that went up. Drafted: items the model wrote up. Actions: every press that reached the server (a posting per venue, an end, a refresh, a push, a sync).</p>
+      <p id="stats-note" class="small stats-note" data-t>Posted: listings that went up. Drafted: items the model wrote up. Actions: every press that reached the server (a posting per venue, an end, a refresh, a push, a sync).</p>
     </div>
 
     <!-- a venue's own page (Michal, 2026-10-31: "when clicking the venue card ... we GET the full
          venue options as during signup. these show again in the style of the invenotry card. and
          with a back button"): Back on the page's ground, the grey card with the venue's block,
          the address where it uses one, and eBay's policies with their Edit (app.js) -->
-    <button type="button" id="venue-back" class="link back-link" hidden>← Back to settings</button>
+    <button type="button" id="venue-back" class="link back-link" hidden data-t>← Back to settings</button>
     <div id="venue-page" class="card inventory venue-page" hidden>
       <h2 id="venue-page-heading" class="detail-heading"></h2>
       <div id="venue-full" class="venue-full">
@@ -819,30 +819,30 @@
           <button type="button" id="account-connect" class="pill pill-small" hidden>Connect eBay</button>
           <!-- connected, the status line above says so and Connect eBay goes; this is the way
                to eBay's consent again, for a token eBay let lapse (app.js) -->
-          <button type="button" id="account-reconnect" class="pill pill-small" hidden>Reconnect</button>
+          <button type="button" id="account-reconnect" class="pill pill-small" hidden data-t>Reconnect</button>
           <p id="venue-ebay-note" class="small venue-note" hidden></p>
         </div>
         <div id="venue-craigslist" class="card venue-block">
           <p class="card-name venue-name">craigslist</p>
           <p id="venue-craigslist-status" class="small venue-line"></p>
           <p id="venue-craigslist-ships" class="small venue-ships" hidden></p>
-          <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
+          <button type="button" id="venue-craigslist-ask" class="link ask-link" hidden data-t>Ask for it in Feedback</button>
         </div>
         <div id="venue-poshmark" class="card venue-block">
           <p class="card-name venue-name">poshmark</p>
           <p id="venue-poshmark-status" class="small venue-line"></p>
           <p id="venue-poshmark-ships" class="small venue-ships" hidden></p>
-          <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden>Ask for it in Feedback</button>
+          <button type="button" id="venue-poshmark-ask" class="link ask-link" hidden data-t>Ask for it in Feedback</button>
         </div>
       </div>
       <div id="seller" class="address-card" hidden>
-        <p class="card-name">Address where you ship from</p>
+        <p class="card-name" data-t>Address where you ship from</p>
         <!-- why the fold opened by itself: eBay connected and the address not all there, or
              where a prefilled one came from (Michal, 2026-10-08) -->
         <p id="seller-note" class="small seller-note" hidden></p>
         <div id="address-shared" class="address-block">
           <input id="seller-line" class="small-input" type="text" autocomplete="off" autocapitalize="words"
-                 spellcheck="false" aria-label="Address where you ship from" placeholder="Street, city, state ZIP">
+                 spellcheck="false" aria-label="Address where you ship from" data-t-aria-label placeholder="Street, city, state ZIP">
         </div>
         <!-- unticked: one line per venue that uses an address, its name its label, drawn by app.js -->
         <div id="address-venues" class="address-venues" hidden></div>
@@ -850,14 +850,14 @@
              (Michal, 2026-10-08: "the address can pop up and be confirmed when reviewing the
              policies, after connecting eBay"); the lines are POLICY_LINES in core.js -->
         <div id="seller-policies" class="seller-policies" hidden>
-          <p class="seller-policies-head">Snap will set up on your eBay account:</p>
+          <p class="seller-policies-head" data-t>Snap will set up on your eBay account:</p>
           <ul id="seller-policy-list" class="seller-policy-list"></ul>
         </div>
         <div class="address-row">
           <button type="button" id="seller-save" class="pill pill-ink pill-small">Save address</button>
           <label class="pickup">
             <input id="address-same" type="checkbox" checked>
-            <span>Same address for every venue</span>
+            <span data-t>Same address for every venue</span>
           </label>
         </div>
         <p id="seller-status" class="small account-status" aria-live="polite"></p>
@@ -870,20 +870,20 @@
          place as a listing's page is: Back, the heading, one card per person (app.js), the owner
          first, each with its devices; a member's Leave this account at the end -->
     <!-- its Back above the card, as a listing's (2026-10-31) -->
-    <button type="button" id="people-back" class="link back-link" hidden>← Back to settings</button>
+    <button type="button" id="people-back" class="link back-link" hidden data-t>← Back to settings</button>
     <div id="people" class="card inventory people" hidden>
       <!-- the Settings cards' small grey top-row title (Michal, 2026-11-02) -->
-      <h2 class="fold-title">People on this account</h2>
+      <h2 class="fold-title" data-t>People on this account</h2>
       <p id="people-status" class="small account-status" aria-live="polite"></p>
       <ul id="people-list" class="people-list"></ul>
-      <button type="button" id="people-leave" class="link delete-link" hidden>Leave this account</button>
+      <button type="button" id="people-leave" class="link delete-link" hidden data-t>Leave this account</button>
     </div>
     <!-- Buy postings: a page of its own, its Back above the card as the People page's, the packs
          big buttons (Michal, 2026-11-02) -->
-    <button type="button" id="packs-back" class="link back-link" hidden>← Back to settings</button>
+    <button type="button" id="packs-back" class="link back-link" hidden data-t>← Back to settings</button>
     <div id="packs-page" class="card inventory people" hidden>
-      <h2 class="fold-title">Buy postings</h2>
-      <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" hidden></div>
+      <h2 class="fold-title" data-t>Buy postings</h2>
+      <div id="account-packs" class="account-packs" role="group" aria-label="Postings to buy" data-t-aria-label hidden></div>
       <p id="packs-status" class="small account-status" aria-live="polite"></p>
     </div>
 
@@ -918,16 +918,16 @@
         cx="12" cy="13" r="3.5"></circle></svg></span><span id="snap-word">Snap</span></label>
     <input id="snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
-    <label id="gallery-label" class="secondary" for="gallery-input">Add from gallery</label>
+    <label id="gallery-label" class="secondary" for="gallery-input" data-t>Add from gallery</label>
     <input id="gallery-input" type="file" accept="image/*" multiple class="hidden-input">
 
     <!-- Michal, 2026-10-07: "Call it 'User Note' everywhere. It is not something that posts.
          And 'note' by itself confuses me." -->
     <!-- no word over the box either (Michal, 2026-10-31); its "sent" small under it -->
     <label class="field">
-      <span class="sr-only">User note</span>
+      <span class="sr-only" data-t>User note</span>
       <textarea id="note" rows="3" autocomplete="off" autocapitalize="sentences"
-                placeholder="Size, flaws, brand, anything that the listing should say but the AI may miss from your photos (Optional)"></textarea>
+                placeholder="Size, flaws, brand, anything that the listing should say but the AI may miss from your photos (Optional)" data-t-placeholder></textarea>
       <span id="note-status" class="note-status note-status-under"></span>
     </label>
 
@@ -937,26 +937,26 @@
       <button type="button" id="customize-toggle" class="link customize-toggle" aria-expanded="false"
               aria-controls="customize">▸ customize</button>
       <!-- open every time on this phone (Michal, 2026-11-01: "keep visible") -->
-      <label id="customize-keep-row" class="keep-open" hidden><input type="checkbox" id="customize-keep"> keep visible</label>
+      <label id="customize-keep-row" class="keep-open" hidden><input type="checkbox" id="customize-keep"> <span data-t>keep visible</span></label>
     </div>
     <div id="customize" class="card customize" hidden>
       <div class="field">
-        <label class="field-label" for="quantity">Quantity</label>
+        <label class="field-label" for="quantity" data-t>Quantity</label>
         <span class="qty-step">
-          <button type="button" id="quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+          <button type="button" id="quantity-less" class="qty-btn" aria-label="One fewer" data-t-aria-label>−</button>
           <input id="quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                spellcheck="false" value="1">
-          <button type="button" id="quantity-more" class="qty-btn" aria-label="One more">+</button>
+          <button type="button" id="quantity-more" class="qty-btn" aria-label="One more" data-t-aria-label>+</button>
         </span>
       </div>
       <label class="pickup">
         <input id="pickup-only" type="checkbox">
-        <span>Pickup only, no shipping</span>
+        <span data-t>Pickup only, no shipping</span>
       </label>
       <!-- the price grade and auto-post (Michal, 2026-10-06: "a slider for price
            preference (3 grade) ... 1 by default"; "a checkbox for post without asking") -->
       <div class="field pricing-field">
-        <label class="field-label" for="pricing">Price</label>
+        <label class="field-label" for="pricing" data-t>Price</label>
         <input id="pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
                aria-valuetext="Quick sale" aria-describedby="pricing-note">
         <div class="pricing-words" aria-hidden="true">
@@ -973,24 +973,24 @@
       <div id="customize-rest" hidden>
       <label class="pickup">
         <input id="auto-post" type="checkbox" checked>
-        <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
+        <span><span data-t>Post without asking</span><small data-t>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <!-- a posting choice, not a policy (Michal, 2026-10-31): each item's, Posting defaults' too -->
       <label class="pickup">
         <input id="best-offer" type="checkbox" checked>
-        <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+        <span><span data-t>Allow best offers</span><small data-t>You will be able to review the offers before finalizing.</small></span>
       </label>
       <!-- Michal, 2026-10-08: "Can we add auto exposure correction on the photos (non-AI)? Some
            of mine are quite dark." On by default; the phone's, for every photo taken. This item's
            values start from Settings, Posting (2026-10-25: Save as default left this box) -->
       <label class="pickup">
         <input id="fix-dark" type="checkbox" checked>
-        <span>Fix dark photos<small>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
+        <span><span data-t>Fix dark photos</span><small data-t>brightens a dark photo on the phone before it goes; tap its "lit" to compare</small></span>
       </label>
       <!-- this item's values as every new item's (Settings, Posting defaults, its twin: Michal,
            2026-10-31: "any comments i make on this menu should trickle to its twin in settings") -->
       <button type="button" id="customize-save-default" class="secondary">Save as default</button>
-      <p class="small customize-more">See Settings for more options.</p>
+      <p class="small customize-more" data-t>See Settings for more options.</p>
       </div>
     </div>
 
@@ -1000,50 +1000,50 @@
     <!-- a draft saved, not posted: − and + either side of its price, a dollar a tap; the next press
          posts it at that price (Michal, 2026-11-02) -->
     <div class="price-row">
-      <button type="button" id="price-less" class="qty-btn" aria-label="A dollar less" hidden>−</button>
+      <button type="button" id="price-less" class="qty-btn" aria-label="A dollar less" data-t-aria-label hidden>−</button>
       <p id="price-line" class="price-line" aria-live="polite" hidden></p>
-      <button type="button" id="price-more" class="qty-btn" aria-label="A dollar more" hidden>+</button>
+      <button type="button" id="price-more" class="qty-btn" aria-label="A dollar more" data-t-aria-label hidden>+</button>
     </div>
     <!-- once a venue has it up (Michal, 2026-10-08: "After something is posted you should see
          'see in inventory' below the price."): Admin on that listing, as its row's tap opens it -->
-    <button type="button" id="see-inventory" class="link see-inventory" hidden>See in inventory</button>
+    <button type="button" id="see-inventory" class="link see-inventory" hidden data-t>See in inventory</button>
     <!-- under each button its reset, shown while a tap has paused its press (Michal,
          2026-10-07: "The cancel should change to 'reset call' (as in discard) and the
          button should change to 'continue'") -->
     <div id="venue-row" class="venues">
       <div id="venue-col-ebay" class="venue">
         <button type="button" id="ebay-btn" class="big venue-btn">ebay</button>
-        <button type="button" id="ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
+        <button type="button" id="ebay-reset" class="reset-call" aria-label="reset ebay" data-t-aria-label hidden data-t>reset</button>
         <p id="ebay-status" class="venue-status" aria-live="polite"></p>
         <!-- under a press refused for want of postings (a 402): Settings' Account block -->
-        <button type="button" id="ebay-buy" class="link buy-link" hidden>Buy postings</button>
+        <button type="button" id="ebay-buy" class="link buy-link" hidden data-t>Buy postings</button>
         <a id="ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <div id="venue-col-craigslist" class="venue">
         <button type="button" id="craigslist-btn" class="big venue-btn">craigslist</button>
-        <button type="button" id="craigslist-reset" class="reset-call" aria-label="reset craigslist" hidden>reset</button>
+        <button type="button" id="craigslist-reset" class="reset-call" aria-label="reset craigslist" data-t-aria-label hidden data-t>reset</button>
         <p id="craigslist-status" class="venue-status" aria-live="polite"></p>
-        <button type="button" id="craigslist-buy" class="link buy-link" hidden>Buy postings</button>
+        <button type="button" id="craigslist-buy" class="link buy-link" hidden data-t>Buy postings</button>
         <a id="craigslist-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <!-- Michal, 2026-10-11: "I will myself use Poshmark a lot. Create that button, make it
            available only to me": grey for everyone else, a tap saying why, as craigslist's -->
       <div id="venue-col-poshmark" class="venue">
         <button type="button" id="poshmark-btn" class="big venue-btn">poshmark</button>
-        <button type="button" id="poshmark-reset" class="reset-call" aria-label="reset poshmark" hidden>reset</button>
+        <button type="button" id="poshmark-reset" class="reset-call" aria-label="reset poshmark" data-t-aria-label hidden data-t>reset</button>
         <p id="poshmark-status" class="venue-status" aria-live="polite"></p>
-        <button type="button" id="poshmark-buy" class="link buy-link" hidden>Buy postings</button>
+        <button type="button" id="poshmark-buy" class="link buy-link" hidden data-t>Buy postings</button>
         <a id="poshmark-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
       </div>
       <!-- the venues this account does not use, folded behind a small grey circle; a tap opens
            the row to all three (Michal, 2026-10-31) -->
-      <button type="button" id="venues-more" class="venues-more" aria-label="Show the other venues" aria-expanded="false" hidden><svg viewBox="0 0 18 8" width="18" height="8" aria-hidden="true"><circle cx="4.5" cy="4" r="3.3"/><circle cx="13.5" cy="4" r="3.3"/></svg></button>
+      <button type="button" id="venues-more" class="venues-more" aria-label="Show the other venues" data-t-aria-label aria-expanded="false" hidden><svg viewBox="0 0 18 8" width="18" height="8" aria-hidden="true"><circle cx="4.5" cy="4" r="3.3"/><circle cx="13.5" cy="4" r="3.3"/></svg></button>
     </div>
     <p id="venue-hint" class="small hint-line"></p>
 
     <p id="done-hint" class="small hint-line"></p>
     <button type="button" id="next-item" class="big done"
-            aria-label="Next: start the next item">NEXT</button>
+            aria-label="Next: start the next item" data-t-aria-label data-t>NEXT</button>
     <!-- NEXT leaves a listing still posting to the PC: said here, since its link will not show -->
     <p id="next-note" class="small hint-line" aria-live="polite" hidden></p>
   </section>
@@ -1058,68 +1058,68 @@
   <!-- before the first item: the agreements, a white page of its own, once on this phone
        (Michal, 2026-11-02) -->
   <section id="agree" class="agree" hidden>
-    <h2 class="agree-title">Before you start</h2>
+    <h2 class="agree-title" data-t>Before you start</h2>
     <ol class="agree-notes">
-      <li><strong>AI makes mistakes.</strong> Check each listing's title, details and price.</li>
-      <li><strong>You are responsible for your postings</strong> and for your dealings with buyers: the item, its shipping, returns and payment.</li>
-      <li><strong>Each venue's rules apply.</strong></li>
-      <li><strong>AI estimates weight and package size</strong> for calculated shipping, and is usually close. Tell it anything it should know, like a bulky item's weight or &ldquo;cord missing&rdquo;, in the note box when you post.</li>
+      <li><strong data-t>AI makes mistakes.</strong> <span data-t>Check each listing's title, details and price.</span></li>
+      <li><strong data-t>You are responsible for your postings</strong> <span data-t>and for your dealings with buyers: the item, its shipping, returns and payment.</span></li>
+      <li><strong data-t>Each venue's rules apply.</strong></li>
+      <li><strong data-t>AI estimates weight and package size</strong> <span data-t>for calculated shipping, and is usually close. Tell it anything it should know, like a bulky item's weight or “cord missing”, in the note box when you post.</span></li>
     </ol>
     <label class="pickup agree-auto">
       <input id="agree-auto" type="checkbox" checked>
-      <span><span class="agree-auto-word">Post without asking.</span> You can edit postings in your inventory anytime. Unchecking the box will ask for another tap between drafting and posting.</span>
+      <span><span class="agree-auto-word" data-t>Post without asking.</span> <span data-t>You can edit postings in your inventory anytime. Unchecking the box will ask for another tap between drafting and posting.</span></span>
     </label>
     <!-- the full terms in a tab of their own: the app stays where it is underneath -->
-    <p class="agree-terms"><a href="about.html" target="_blank" rel="noopener">Full terms and conditions</a></p>
-    <button type="button" id="agree-ok" class="big">I agree</button>
+    <p class="agree-terms"><a href="about.html" target="_blank" rel="noopener" data-t>Full terms and conditions</a></p>
+    <button type="button" id="agree-ok" class="big" data-t>I agree</button>
   </section>
 
   <section id="book" hidden>
     <!-- books are the admin's (Michal, 2026-10-31): anyone else sees this screen milky and
          inert, this line on top with the way to ask, and goes back with goods (app.js) -->
-    <p id="books-off" class="books-off" hidden>Books are not open for your account yet.
-      <button type="button" id="books-ask" class="link books-ask">Ask for it in Feedback</button></p>
+    <p id="books-off" class="books-off" hidden><span data-t>Books are not open for your account yet.</span>
+      <button type="button" id="books-ask" class="link books-ask" data-t>Ask for it in Feedback</button></p>
     <p id="book-hint" class="small">Tap ISBN to read the barcode on the back cover, or type the ISBN. A close-up of the barcode is enough; it is not a listing photo.</p>
     <label id="book-scan-label" class="big snap" for="book-scan-input"
-           aria-label="ISBN: read the barcode with the camera"><span class="btn-icon" aria-hidden="true"><svg
+           aria-label="ISBN: read the barcode with the camera" data-t-aria-label><span class="btn-icon" aria-hidden="true"><svg
         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path
         d="M4 6v12M7.5 6v12M12 6v12M16.5 6v12M20 6v12"></path><path d="M9.75 6v12M14.25 6v12"
         stroke-width="1.2"></path></svg></span><span>ISBN</span></label>
     <input id="book-scan-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
     <label class="field">
-      <span class="field-label">Or type the ISBN</span>
+      <span class="field-label" data-t>Or type the ISBN</span>
       <input id="book-isbn" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
-             placeholder="the number under the barcode">
+             placeholder="the number under the barcode" data-t-placeholder>
     </label>
 
     <button type="button" id="book-no-isbn" class="secondary no-isbn" aria-expanded="false"
-            aria-controls="book-manual">No ISBN</button>
+            aria-controls="book-manual" data-t>No ISBN</button>
     <fieldset id="book-manual" class="manual" hidden>
-      <legend class="field-label">The book as its cover and title page say</legend>
+      <legend class="field-label" data-t>The book as its cover and title page say</legend>
       <p id="book-isbn-kept" class="small isbn-kept" hidden></p>
       <label class="field">
-        <span class="field-label">Title</span>
+        <span class="field-label" data-t>Title</span>
         <input id="book-title" type="text" autocomplete="off" autocapitalize="words" spellcheck="false"
-               required placeholder="as on the cover">
+               required placeholder="as on the cover" data-t-placeholder>
       </label>
       <label class="field">
-        <span class="field-label">Author</span>
+        <span class="field-label" data-t>Author</span>
         <input id="book-author" type="text" autocomplete="off" autocapitalize="words" spellcheck="false"
-               placeholder="if the cover names one">
+               placeholder="if the cover names one" data-t-placeholder>
       </label>
       <label class="field">
-        <span class="field-label">Year, if printed</span>
+        <span class="field-label" data-t>Year, if printed</span>
         <input id="book-year" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
-               maxlength="4" placeholder="e.g. 1972">
+               maxlength="4" placeholder="e.g. 1972" data-t-placeholder>
       </label>
       <div class="field">
-        <span class="field-label">Format</span>
-        <div id="book-format" class="chips chips-two" role="group" aria-label="Format">
+        <span class="field-label" data-t>Format</span>
+        <div id="book-format" class="chips chips-two" role="group" aria-label="Format" data-t-aria-label>
           <button type="button" id="book-format-paperback" class="chip" data-value="paperback"
-                  aria-pressed="true">Paperback</button>
+                  aria-pressed="true" data-t>Paperback</button>
           <button type="button" id="book-format-hardcover" class="chip" data-value="hardcover"
-                  aria-pressed="false">Hardcover</button>
+                  aria-pressed="false" data-t>Hardcover</button>
         </div>
       </div>
     </fieldset>
@@ -1139,62 +1139,62 @@
         cx="12" cy="13" r="3.5"></circle></svg></span><span id="book-snap-word">Snap</span></label>
     <input id="book-snap-input" type="file" accept="image/*" capture="environment" class="hidden-input">
 
-    <label id="book-gallery-label" class="secondary" for="book-gallery-input">Add from gallery</label>
+    <label id="book-gallery-label" class="secondary" for="book-gallery-input" data-t>Add from gallery</label>
     <input id="book-gallery-input" type="file" accept="image/*" multiple class="hidden-input">
 
     <p id="book-progress" class="progress"></p>
     <ul id="book-strip" class="strip"></ul>
 
     <div class="field">
-      <span class="field-label">Condition</span>
-      <div id="book-condition" class="chips" role="group" aria-label="Condition">
+      <span class="field-label" data-t>Condition</span>
+      <div id="book-condition" class="chips" role="group" aria-label="Condition" data-t-aria-label>
         <button type="button" id="book-condition-like_new" class="chip" data-value="like_new"
-                aria-pressed="false">Like new</button>
+                aria-pressed="false" data-t>Like new</button>
         <button type="button" id="book-condition-very_good" class="chip" data-value="very_good"
-                aria-pressed="false">Very good</button>
+                aria-pressed="false" data-t>Very good</button>
         <button type="button" id="book-condition-good" class="chip" data-value="good"
-                aria-pressed="true">Good</button>
+                aria-pressed="true" data-t>Good</button>
         <button type="button" id="book-condition-acceptable" class="chip" data-value="acceptable"
-                aria-pressed="false">Acceptable</button>
+                aria-pressed="false" data-t>Acceptable</button>
       </div>
     </div>
 
     <label class="field">
-      <span class="field-label">Price, dollars</span>
-      <input id="book-price" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 12">
+      <span class="field-label" data-t>Price, dollars</span>
+      <input id="book-price" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 12" data-t-placeholder>
     </label>
     <p id="book-price-note" class="small book-price-note" hidden></p>
 
     <label class="field">
       <span class="field-label">
-        User note
+        <span data-t>User note</span>
         <span id="book-note-status" class="note-status"></span>
       </span>
       <textarea id="book-flaws" rows="3" autocomplete="off" autocapitalize="sentences"
-                placeholder="Wear, marks, writing inside, anything a buyer should know (Optional)"></textarea>
+                placeholder="Wear, marks, writing inside, anything a buyer should know (Optional)" data-t-placeholder></textarea>
     </label>
 
     <div class="customize-head">
       <button type="button" id="book-customize-toggle" class="link customize-toggle" aria-expanded="false"
               aria-controls="book-customize">▸ customize</button>
-      <label id="book-customize-keep-row" class="keep-open" hidden><input type="checkbox" id="book-customize-keep"> keep visible</label>
+      <label id="book-customize-keep-row" class="keep-open" hidden><input type="checkbox" id="book-customize-keep"> <span data-t>keep visible</span></label>
     </div>
     <div id="book-customize" class="card customize" hidden>
       <div class="field">
-        <label class="field-label" for="book-quantity">Quantity</label>
+        <label class="field-label" for="book-quantity" data-t>Quantity</label>
         <span class="qty-step">
-          <button type="button" id="book-quantity-less" class="qty-btn" aria-label="One fewer">−</button>
+          <button type="button" id="book-quantity-less" class="qty-btn" aria-label="One fewer" data-t-aria-label>−</button>
           <input id="book-quantity" class="quantity" type="text" inputmode="numeric" autocomplete="off"
                spellcheck="false" value="1">
-          <button type="button" id="book-quantity-more" class="qty-btn" aria-label="One more">+</button>
+          <button type="button" id="book-quantity-more" class="qty-btn" aria-label="One more" data-t-aria-label>+</button>
         </span>
       </div>
       <label class="pickup">
         <input id="book-pickup-only" type="checkbox">
-        <span>Pickup only, no shipping</span>
+        <span data-t>Pickup only, no shipping</span>
       </label>
       <div class="field pricing-field">
-        <label class="field-label" for="book-pricing">Price</label>
+        <label class="field-label" for="book-pricing" data-t>Price</label>
         <input id="book-pricing" class="pricing" type="range" min="1" max="3" step="1" value="1"
                aria-valuetext="Quick sale" aria-describedby="book-pricing-note">
         <div class="pricing-words" aria-hidden="true">
@@ -1211,38 +1211,38 @@
       <div id="book-customize-rest" hidden>
       <label class="pickup">
         <input id="book-auto-post" type="checkbox" checked>
-        <span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>
+        <span><span data-t>Post without asking</span><small data-t>unticked: the server saves the draft and the button posts it on the next press</small></span>
       </label>
       <label class="pickup">
         <input id="book-best-offer" type="checkbox" checked>
-        <span>Allow best offers<small>You will be able to review the offers before finalizing.</small></span>
+        <span><span data-t>Allow best offers</span><small data-t>You will be able to review the offers before finalizing.</small></span>
       </label>
       </div>
     </div>
 
     <p id="book-title-line" class="title-line" aria-live="polite" hidden></p>
     <p id="book-price-line" class="price-line" aria-live="polite" hidden></p>
-    <button type="button" id="book-see-inventory" class="link see-inventory" hidden>See in inventory</button>
+    <button type="button" id="book-see-inventory" class="link see-inventory" hidden data-t>See in inventory</button>
     <div class="venue book-venue">
       <button type="button" id="book-ebay-btn" class="big venue-btn">ebay</button>
-      <button type="button" id="book-ebay-reset" class="reset-call" aria-label="reset ebay" hidden>reset</button>
+      <button type="button" id="book-ebay-reset" class="reset-call" aria-label="reset ebay" data-t-aria-label hidden data-t>reset</button>
       <p id="book-ebay-status" class="venue-status" aria-live="polite"></p>
-      <button type="button" id="book-ebay-buy" class="link buy-link" hidden>Buy postings</button>
+      <button type="button" id="book-ebay-buy" class="link buy-link" hidden data-t>Buy postings</button>
       <a id="book-ebay-link" class="venue-link" target="_blank" rel="noopener noreferrer" hidden></a>
     </div>
     <p id="book-venue-hint" class="small hint-line"></p>
 
     <p id="book-done-hint" class="small hint-line"></p>
     <button type="button" id="book-next-item" class="big done"
-            aria-label="Next: start the next book">NEXT</button>
+            aria-label="Next: start the next book" data-t-aria-label data-t>NEXT</button>
     <p id="book-next-note" class="small hint-line" aria-live="polite" hidden></p>
   </section>
 </main>
 
 <!-- a listing's photo full size, over everything: a tap anywhere on it closes it -->
-<div id="photo-view" class="photo-view" role="dialog" aria-modal="true" aria-label="Photo, full size" hidden>
+<div id="photo-view" class="photo-view" role="dialog" aria-modal="true" aria-label="Photo, full size" data-t-aria-label hidden>
   <img id="photo-view-img" class="photo-view-img" alt="">
-  <button type="button" id="photo-view-close" class="photo-view-close">Close</button>
+  <button type="button" id="photo-view-close" class="photo-view-close" data-t>Close</button>
 </div>
 
 <footer class="small">
@@ -1250,8 +1250,8 @@
        console takes as the privacy policy): under the landing and under Admin, not under the
        posting screens (app.js) -->
   <!-- the first-listing walk-through again, for a registered account (Michal, 2026-11-01) -->
-  <button type="button" id="tour-link" class="link about-link tour-link" hidden>How Snap works</button>
-  <a id="about-link" class="about-link" href="about.html">About and privacy</a>
+  <button type="button" id="tour-link" class="link about-link tour-link" hidden data-t>How Snap works</button>
+  <a id="about-link" class="about-link" href="about.html" data-t>About and privacy</a>
   <p class="version-line">v<span id="version" class="mono"></span></p>
 </footer>
 

@@ -5261,7 +5261,8 @@ test("the book section is its own, beside the goods one, and reads top to bottom
     // Michal, 2026-10-07: "Call it 'User Note' everywhere. It is not something that posts.
     // And 'note' by itself confuses me." The book's Flaws and the goods' Notes for this item are
     // both that one note; the ids stay
-    const label = (status) => new RegExp(`<span class="field-label">\\s*User note\\s*<span id="${status}" class="note-status"></span>`);
+    // (the words in a span of their own, for translation: docs/UI.md rule 8)
+    const label = (status) => new RegExp(`<span class="field-label">\\s*<span>User note</span>\\s*<span id="${status}" class="note-status"></span>`);
     assert.match(book[1], label("book-note-status"));
     // the goods box carries no word over it, its placeholder says it (Michal, 2026-10-31)
     assert.match(html, /<span class="sr-only">User note<\/span>\s*<textarea id="note"[\s\S]*?<\/textarea>\s*<span id="note-status" class="note-status note-status-under"><\/span>/);
@@ -6186,7 +6187,7 @@ test("customize sits right above the venue buttons in both modes, folded", () =>
         assert.match(
             html,
             new RegExp(
-                `<input id="${prefix}auto-post" type="checkbox" checked>\\s*<span>Post without asking<small>unticked: the server saves the draft and the button posts it on the next press</small></span>`
+                `<input id="${prefix}auto-post" type="checkbox" checked>\\s*<span><span>Post without asking</span><small>unticked: the server saves the draft and the button posts it on the next press</small></span>`
             )
         );
         assert.ok(html.indexOf(`id="${prefix}pickup-only"`) < html.indexOf(`id="${prefix}pricing"`));
@@ -10778,8 +10779,8 @@ test("Fix dark photos: a dark photo is brightened before it goes and its lit bad
         return `blob:${urls.length}`;
     };
     const onPc = () => pc.items.get(unnamedId(1)).photos;
-    assert.match(html, /<input id="fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<small>/);
-    assert.match(html, /<input id="posting-fix-dark" type="checkbox" checked>\s*<span>Fix dark photos<small>/);
+    assert.match(html, /<input id="fix-dark" type="checkbox" checked>\s*<span><span>Fix dark photos<\/span><small>/);
+    assert.match(html, /<input id="posting-fix-dark" type="checkbox" checked>\s*<span><span>Fix dark photos<\/span><small>/);
     assert.equal(nodes.get("fix-dark").checked, true, "on by default");
     try {
         picture = DARK;
@@ -10936,7 +10937,7 @@ test("Posting defaults: the Snap page's customize field for field, its small pri
     assert.deepEqual(shared.slice(0, customize.length), customize);
     assert.ok(!/qty-row/.test(words), "no Quantity beside the slider");
     // its extra after them
-    const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>([^<]+)/g)].map((m) => [m[1], m[2]]);
+    const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>(?:<span>)?([^<]+)/g)].map((m) => [m[1], m[2]]);
     assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-best-offer", "posting-fix-dark", "wrap-on"]);
     const css = readFileSync(join(root, "styles.css"), "utf8");
     // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
@@ -12213,7 +12214,8 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
     const agree = /<section id="agree" class="agree" hidden>([\s\S]*?)<\/section>/.exec(html)[1];
     assert.match(agree, /<h2 class="agree-title">Before you start<\/h2>/);
     assert.equal([...agree.matchAll(/<li>/g)].length, 4);
-    assert.match(agree, /<li><strong>AI makes mistakes\.<\/strong> Check each listing's title, details and price\.<\/li>/);
+    // (the words after the bold in a span of their own, for translation: docs/UI.md rule 8)
+    assert.match(agree, /<li><strong>AI makes mistakes\.<\/strong> <span>Check each listing's title, details and price\.<\/span><\/li>/);
     assert.match(agree, /<input id="agree-auto" type="checkbox" checked>/);
     assert.match(agree, /<a href="about\.html" target="_blank" rel="noopener">Full terms and conditions<\/a>/);
     assert.match(agree, /<button type="button" id="agree-ok" class="big">I agree<\/button>/);
