@@ -4,6 +4,7 @@
 // to wait) are in queue.js; the state they act on is reduced here.
 
 import { noteDirty, unsent } from "./queue.js?v=2.44.0";
+import { t, tKey } from "./i18n.js?v=2.44.0";
 import {
     bookListings,
     bookPriceValue,
@@ -230,7 +231,7 @@ export function sessionOf(answer) {
  * Said on the sign-in screen once the server has sent the link (Michal, 2026-10-08, reading
  * it on a PC: "it works on this phone" confused him there; the mail carries a code too).
  */
-export const LINK_SENT = "Check your email. Open the link on this device, or enter the code from the email below.";
+export const LINK_SENT = tKey("Check your email. Open the link on this device, or enter the code from the email below.");
 
 /** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
 export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
@@ -258,10 +259,10 @@ export function signupOf(answer) {
 export function signinWords(open) {
     return open
         ? {
-              button: "Sign in or create an account",
-              what: "New here? Create an account",
+              button: t("Sign in or create an account"),
+              what: t("New here? Create an account"),
           }
-        : { button: "Sign in", what: "We email you a link. Open it on this phone and you are in." };
+        : { button: t("Sign in"), what: t("We email you a link. Open it on this phone and you are in.") };
 }
 
 /**
@@ -318,7 +319,7 @@ export function codeError(status, detail) {
  */
 export function signinNote({ isIos, standalone }) {
     return isIos && !standalone
-        ? "On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the email."
+        ? t("On iPhone, sign in inside the installed Snap: open it from the home screen, ask for the link there, and enter the code from the email.")
         : "";
 }
 
@@ -424,7 +425,7 @@ export function syncVenues(me, direction) {
  * @returns {string}
  */
 export function syncWord(direction, venue) {
-    return `Sync ${direction} ${venue}`;
+    return direction === "from" ? t("Sync from {venue}", { venue }) : t("Sync to {venue}", { venue });
 }
 
 /**
@@ -451,11 +452,11 @@ export function syncJob(me, direction, venue) {
  * @returns {string}
  */
 export function syncReason(venue, direction, me, ebay) {
-    if (!venueAllowed(me, venue)) return NOT_AVAILABLE;
-    if (venue === "ebay" && ebay && !ebay.connected) return CONNECT_FIRST;
+    if (!venueAllowed(me, venue)) return t(NOT_AVAILABLE);
+    if (venue === "ebay" && ebay && !ebay.connected) return t(CONNECT_FIRST);
     if (syncVenues(me, direction).includes(venue)) return "";
     const name = sentenceVenue(venue);
-    return direction === "from" ? `${name} cannot be read back yet.` : `${name} cannot be written to yet.`;
+    return direction === "from" ? t("{venue} cannot be read back yet.", { venue: name }) : t("{venue} cannot be written to yet.", { venue: name });
 }
 
 /** A venue in a sentence, capitalised (docs/UI.md's vocabulary): eBay, Craigslist, Poshmark. */
@@ -464,7 +465,7 @@ function sentenceVenue(venue) {
 }
 
 /** A grey sync button's reason in the eBay block while eBay is not connected. */
-export const CONNECT_FIRST = "Connect eBay first";
+export const CONNECT_FIRST = tKey("Connect eBay first");
 
 /**
  * Whether a venue block shows its pair of sync buttons at all (Michal, 2026-10-31): only once
@@ -495,7 +496,7 @@ export function syncNote(venue, me, ebay) {
     if (!syncShown(venue, me, ebay)) return "";
     const from = syncReason(venue, "from", me, ebay);
     const to = syncReason(venue, "to", me, ebay);
-    if (from && to) return `${sentenceVenue(venue)} sync is not built yet.`;
+    if (from && to) return t("{venue} sync is not built yet.", { venue: sentenceVenue(venue) });
     return from || to;
 }
 
@@ -563,8 +564,8 @@ function ebayOf(x) {
  * @returns {string}
  */
 export function accountKind(a) {
-    if (a.expired) return SIGNED_OUT;
-    return a.key ? "by key" : "";
+    if (a.expired) return t(SIGNED_OUT);
+    return a.key ? t("by key") : "";
 }
 
 // --- several accounts on one phone (Michal, 2026-10-18) -----------------------------------
@@ -633,24 +634,24 @@ export function accountsOf(raw, remember) {
  */
 export function accountName(a) {
     if (a.user) return a.user;
-    if (!a.key) return "Signed in by email";
+    if (!a.key) return t("Signed in by email");
     let host = a.pc;
     try {
         host = new URL(a.pc).host;
     } catch {
         /* said as stored */
     }
-    return `Key for ${host}`;
+    return t("Key for {host}", { host });
 }
 
 /** Under an account the server forgot (a 401 on its session), in Settings' list. */
-export const SIGNED_OUT = "signed out";
+export const SIGNED_OUT = tKey("signed out");
 
 /** Said in Delete my account's confirmation for the admin, whose account the server refuses to delete. */
 export const ADMIN_NO_DELETE = "The admin's account cannot be deleted from the app.";
 
 /** Said once the server answered Delete my account with a 204: on the landing, or in Settings under the next account. */
-export const ACCOUNT_DELETED = "Your account was deleted.";
+export const ACCOUNT_DELETED = tKey("Your account was deleted.");
 
 /**
  * Delete account's line when the server refused or did not answer; the account stays either
@@ -750,9 +751,9 @@ export function devicesOf(answer) {
  * @returns {string}
  */
 export function personWords(p) {
-    const words = [p.owner ? "owner" : "member"];
-    if (p.you) words.push("you");
-    if (!p.signedIn) words.push("invited, not signed in yet");
+    const words = [p.owner ? t("owner") : t("member")];
+    if (p.you) words.push(t("you"));
+    if (!p.signedIn) words.push(t("invited, not signed in yet"));
     return words.join(" · ");
 }
 
@@ -767,9 +768,9 @@ export function lastUsedWord(iso, now) {
     const at = typeof iso === "string" && iso ? Date.parse(iso) : NaN;
     if (!Number.isFinite(at)) return "";
     const days = Math.max(0, Math.floor((now - at) / (24 * 60 * 60 * 1000)));
-    if (days === 0) return "today";
-    if (days === 1) return "yesterday";
-    return `${days} days ago`;
+    if (days === 0) return t("today");
+    if (days === 1) return t("yesterday");
+    return t("{n} days ago", { n: days });
 }
 
 /**
@@ -780,10 +781,10 @@ export function lastUsedWord(iso, now) {
  * @returns {string}
  */
 export function deviceLine(d, now) {
-    const name = d.device || "a device";
-    if (d.thisDevice) return `${name} · this device`;
+    const name = d.device || t("a device");
+    if (d.thisDevice) return t("{device} · this device", { device: name });
     const when = lastUsedWord(d.lastSeen, now);
-    return when ? `${name} · last used ${when}` : name;
+    return when ? t("{device} · last used {when}", { device: name, when }) : name;
 }
 
 /**
@@ -794,11 +795,11 @@ export function deviceLine(d, now) {
  */
 export function peopleCount(n) {
     if (n === null || n === undefined) return "";
-    return n <= 1 ? "just you" : `${n} people`;
+    return n <= 1 ? t("just you") : t("{n} people", { n });
 }
 
 /** Said under Invite once the server took it (202). */
-export const INVITE_SENT = "Invitation sent";
+export const INVITE_SENT = tKey("Invitation sent");
 
 /**
  * Invite's body: their email alone (checkEmail's; Michal, 2026-10-26: "don't ask for their
@@ -845,16 +846,16 @@ export function peopleError(lead, status, message) {
  */
 export function signedOutOthers(n) {
     const count = wholeOf(n);
-    if (count === null) return "Signed out the other devices";
-    return `Signed out ${count} other ${count === 1 ? "device" : "devices"}`;
+    if (count === null) return t("Signed out the other devices");
+    return count === 1 ? t("Signed out {n} other device", { n: count }) : t("Signed out {n} other devices", { n: count });
 }
 
 /** Said on the landing (or under the next account) once Leave this account went through. */
-export const LEFT_ACCOUNT = "You left the account.";
+export const LEFT_ACCOUNT = tKey("You left the account.");
 
 /** "1 posting", "3 postings". */
 function postingsWord(n) {
-    return `${n} ${n === 1 ? "posting" : "postings"}`;
+    return n === 1 ? t("{n} posting", { n }) : t("{n} postings", { n });
 }
 
 /**
@@ -867,10 +868,10 @@ function postingsWord(n) {
 export function creditsLine(credits) {
     if (!credits || credits.unlimited) return "";
     const { free, bought } = credits;
-    if (free && bought) return `${free} free + ${bought} bought postings left`;
-    if (free) return `${free} free ${free === 1 ? "posting" : "postings"} left`;
-    if (bought) return `${postingsWord(bought)} left`;
-    return "No postings left";
+    if (free && bought) return t("{free} free + {bought} bought postings left", { free, bought });
+    if (free) return free === 1 ? t("{n} free posting left", { n: free }) : t("{n} free postings left", { n: free });
+    if (bought) return bought === 1 ? t("{n} posting left", { n: bought }) : t("{n} postings left", { n: bought });
+    return t("No postings left");
 }
 
 /**
@@ -893,12 +894,12 @@ export function packLabel(pack) {
  * @returns {string}
  */
 export function policiesLine(state, justReady = false) {
-    if (state === "pending") return "setting up your policies...";
+    if (state === "pending") return t("setting up your policies...");
     if (/^failed\b/.test(state)) {
         const why = state.replace(/^failed:?/, "").trim();
         return `policies failed${why ? `: ${why}` : ""}; contact the developer`;
     }
-    return state === "ready" && justReady ? "policies ready" : "";
+    return state === "ready" && justReady ? t("policies ready") : "";
 }
 
 /**
@@ -911,24 +912,24 @@ export function policiesLine(state, justReady = false) {
  */
 export function ebayStatusLine(ebay, justReady = false) {
     if (!ebay) return "";
-    if (!ebay.connected) return NOT_CONNECTED;
-    const who = ebay.user ? `Connected as ${ebay.user}` : "Connected";
+    if (!ebay.connected) return t(NOT_CONNECTED);
+    const who = ebay.user ? t("Connected as {user}", { user: ebay.user }) : t("Connected");
     const policies = policiesLine(ebay.policies, justReady);
     return policies ? `${who} · ${policies}` : who;
 }
 
 /** The eBay block's status while no eBay is connected, over the Connect eBay pill. */
-export const NOT_CONNECTED = "Not connected";
+export const NOT_CONNECTED = tKey("Not connected");
 
 /** Under Connect eBay in the eBay block while it is not (the mock, 2026-10-25). */
-export const CONNECT_TO_POST = "Connect eBay to start posting";
+export const CONNECT_TO_POST = tKey("Connect eBay to start posting");
 
 /** A venue's status line in its block when the account has it on the server (Craigslist, Poshmark). */
-export const ON_SERVER = "Connected";
+export const ON_SERVER = tKey("Connected");
 
 /** ... and when it does not: the line, and the way to ask (the link opens Feedback). */
-export const NOT_AVAILABLE = "Not available for your account yet.";
-export const ASK_IN_FEEDBACK = "Ask for it in Feedback";
+export const NOT_AVAILABLE = tKey("Not available for your account yet.");
+export const ASK_IN_FEEDBACK = tKey("Ask for it in Feedback");
 
 /**
  * A venue block's status line under Venues: eBay's from its connection (ebayStatusLine),
@@ -941,7 +942,7 @@ export const ASK_IN_FEEDBACK = "Ask for it in Feedback";
  */
 export function venueBlockLine(venue, me, ebay, justReady = false) {
     if (venue === "ebay") return ebayStatusLine(ebay, justReady);
-    return venueAllowed(me, venue) ? ON_SERVER : NOT_AVAILABLE;
+    return venueAllowed(me, venue) ? t(ON_SERVER) : t(NOT_AVAILABLE);
 }
 
 /**
@@ -966,8 +967,8 @@ export function stepQuantity(text, by) {
 }
 
 export function connectLabel(connected, user) {
-    if (!connected) return "Connect eBay";
-    return user ? `eBay connected: ${user}` : "eBay connected";
+    if (!connected) return t("Connect eBay");
+    return user ? t("eBay connected: {user}", { user }) : t("eBay connected");
 }
 
 // --- the seller's address (Michal, 2026-10-08: "What else do we need for the multi tenant?
@@ -981,13 +982,13 @@ export const SELLER_POLL_MS = 10000;
 export const SELLER_POLL_MAX = 18;
 
 /** The foldout's heading, and Finish signing up's step 2 (Michal, 2026-10-08: "then your address. what address?"). */
-export const SHIP_FROM = "Address where you ship from";
+export const SHIP_FROM = tKey("Address where you ship from");
 
 /** Step 2 while the server's address came prefilled from her eBay account and is not confirmed yet. */
-export const CONFIRM_SHIP_FROM = "Confirm the address where you ship from";
+export const CONFIRM_SHIP_FROM = tKey("Confirm the address where you ship from");
 
 /** The foldout's line over an address prefilled from eBay (Michal, 2026-10-08). */
-export const ADDRESS_PREFILLED = "Prefilled from your eBay account; change it if you ship from elsewhere.";
+export const ADDRESS_PREFILLED = tKey("Prefilled from your eBay account; change it if you ship from elsewhere.");
 
 /**
  * What Snap sets up on her eBay once the address is in, listed under the boxes while it is
@@ -996,10 +997,10 @@ export const ADDRESS_PREFILLED = "Prefilled from your eBay account; change it if
  * creates them: change them here and there together.
  */
 export const POLICY_LINES = [
-    "Shipping: USPS Ground Advantage, buyer pays, 1 business day handling",
-    "Returns: 30 days, buyer pays return shipping",
-    "Local pickup only, for items you mark pickup only",
-    "Your ship-from location: the address above",
+    tKey("Shipping: USPS Ground Advantage, buyer pays, 1 business day handling"),
+    tKey("Returns: 30 days, buyer pays return shipping"),
+    tKey("Local pickup only, for items you mark pickup only"),
+    tKey("Your ship-from location: the address above"),
 ];
 
 /**
@@ -1010,7 +1011,7 @@ export const POLICY_LINES = [
  */
 export function policyLinesOf(info) {
     const lines = info && Array.isArray(info.lines) ? info.lines.filter((l) => typeof l === "string" && l) : [];
-    return lines.length ? lines : POLICY_LINES;
+    return lines.length ? lines : POLICY_LINES.map((line) => t(line));
 }
 
 /**
@@ -1025,7 +1026,7 @@ export function policyRowsOf(info) {
     const rows = lines
         .map((line, i) => ({ line, name: typeof names[i] === "string" ? names[i].trim() : "" }))
         .filter((r) => typeof r.line === "string" && r.line);
-    return rows.length ? rows : POLICY_LINES.map((line) => ({ line, name: "" }));
+    return rows.length ? rows : POLICY_LINES.map((line) => ({ line: t(line), name: "" }));
 }
 
 /**
@@ -1110,21 +1111,22 @@ export function policyChanges(info, draft) {
 
 /** A returns chip's word: 0 is none. */
 export function returnsWord(days) {
-    return days === 0 ? "No returns" : `${days} days`;
+    return days === 0 ? t("No returns") : t("{n} days", { n: days });
 }
 
 /** A handling chip's word, in business days. */
 export function handlingWord(days) {
-    if (days === 0) return "Same day";
-    return days === 1 ? "1 day" : `${days} days`;
+    if (days === 0) return t("Same day");
+    return days === 1 ? t("1 day") : t("{n} days", { n: days });
 }
 
 /**
  * The foldout's line when it opens by itself (eBay is connected and the address is missing),
  * said under step 2 of Finish signing up too: what the address is for, and who sees what.
  */
-export const ADDRESS_NEEDED =
-    "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state.";
+export const ADDRESS_NEEDED = tKey(
+    "eBay puts it on every listing as the item's location and uses it for shipping rates and local pickup. Street, city, state and ZIP; buyers see the city and state."
+);
 
 /**
  * The fields an address may hold, in the order the boxes are drawn, each with its label.
@@ -1132,11 +1134,11 @@ export const ADDRESS_NEEDED =
  * ZIP and the neighbourhood, Poshmark none).
  */
 export const ADDRESS_FIELDS = [
-    ["line1", "Street address"],
-    ["city", "City"],
-    ["state", "State"],
-    ["zip", "ZIP"],
-    ["neighborhood", "Neighborhood"],
+    ["line1", tKey("Street address")],
+    ["city", tKey("City")],
+    ["state", tKey("State")],
+    ["zip", tKey("ZIP")],
+    ["neighborhood", tKey("Neighborhood")],
 ];
 
 /**
@@ -1209,7 +1211,7 @@ export function addressState(info) {
  */
 export function sellerLine(info, ebay) {
     if (!info || !ebay || !ebay.connected || addressState(info) === "complete") return "";
-    return addressState(info) === "prefilled" ? ADDRESS_PREFILLED : ADDRESS_NEEDED;
+    return addressState(info) === "prefilled" ? t(ADDRESS_PREFILLED) : t(ADDRESS_NEEDED);
 }
 
 /**
@@ -1297,8 +1299,8 @@ export function parseAddressLine(text, uses) {
  * @returns {string}
  */
 export function addressHint(uses) {
-    if (!uses.includes("line1")) return uses.includes("neighborhood") ? "ZIP, neighborhood" : "ZIP";
-    return uses.includes("neighborhood") ? "Street, city, state ZIP, neighborhood" : "Street, city, state ZIP";
+    if (!uses.includes("line1")) return uses.includes("neighborhood") ? t("ZIP, neighborhood") : t("ZIP");
+    return uses.includes("neighborhood") ? t("Street, city, state ZIP, neighborhood") : t("Street, city, state ZIP");
 }
 
 /**
@@ -1311,7 +1313,7 @@ export function addressHint(uses) {
  */
 export function shipsFromLine(venue, info) {
     const line = addressLine(addressFor(venue, info), info ? info.uses[venue] || [] : []);
-    return line ? `Ships from ${line}` : "";
+    return line ? t("Ships from {address}", { address: line }) : "";
 }
 
 /**
@@ -1395,10 +1397,10 @@ export function addressBody(fields = {}) {
 }
 
 /** Under the address card for the admin, whose address is the server's own (editable false). */
-export const ADDRESS_ON_SERVER = "The admin's address is set on the server.";
+export const ADDRESS_ON_SERVER = tKey("The admin's address is set on the server.");
 
 /** The tick over the address block (Michal, 2026-10-25). */
-export const SAME_ADDRESS = "Same address for every venue";
+export const SAME_ADDRESS = tKey("Same address for every venue");
 
 /**
  * The muted line in a venue's own address block, for a venue that uses none (Poshmark).
@@ -1406,7 +1408,7 @@ export const SAME_ADDRESS = "Same address for every venue";
  * @returns {string}
  */
 export function noAddressLine(venue) {
-    return `${sentenceVenue(venue)} does not use a ship-from address.`;
+    return t("{venue} does not use a ship-from address.", { venue: sentenceVenue(venue) });
 }
 
 /**
@@ -1593,10 +1595,12 @@ export const EBAY_TAKEN = "That eBay account is already connected to another Sna
  */
 export function returnLine(back) {
     if (back.kind === "ebay") {
-        if (back.value === "connected") return "eBay connected";
+        if (back.value === "connected") return t("eBay connected");
         return back.value === "failed:taken" ? EBAY_TAKEN : "eBay did not connect; try again or contact the developer";
     }
-    return back.value === "cancelled" ? "Payment cancelled" : `${postingsWord(Number(back.value))} added`;
+    if (back.value === "cancelled") return t("Payment cancelled");
+    const n = Number(back.value);
+    return n === 1 ? t("{n} posting added", { n }) : t("{n} postings added", { n });
 }
 
 /**
@@ -1618,7 +1622,7 @@ export function accountError(what, status, message) {
  * Under the craigslist button, and in an empty craigslist card, for an account without it:
  * where to ask for it (Michal, 2026-10-10), the page's own Feedback in Admin.
  */
-export const CRAIGSLIST_OFF = "Craigslist is not available for your account yet. Ask for it in Admin, Feedback.";
+export const CRAIGSLIST_OFF = tKey("Craigslist is not available for your account yet. Ask for it in Admin, Feedback.");
 
 /**
  * The same line for any venue an account may lack, in the venue's name (Michal, 2026-10-11:
@@ -1629,7 +1633,7 @@ export const CRAIGSLIST_OFF = "Craigslist is not available for your account yet.
  */
 export function venueOff(venue) {
     const name = venue === "ebay" ? "eBay" : venue.charAt(0).toUpperCase() + venue.slice(1);
-    return `${name} is not available for your account yet. Ask for it in Admin, Feedback.`;
+    return t("{venue} is not available for your account yet. Ask for it in Admin, Feedback.", { venue: name });
 }
 
 /**
@@ -1709,7 +1713,7 @@ export function installDismissal(text) {
 }
 
 /** The banner's words on the goods screen. */
-export const INSTALL_BANNER = "Add Snap to your home screen for the full-screen app";
+export const INSTALL_BANNER = tKey("Add Snap to your home screen for the full-screen app");
 
 /**
  * The install nudge (Michal, 2026-10-08: "If it is not on the home screen it should
@@ -1738,8 +1742,8 @@ export function installState({ standalone, hasPrompt, isIos, desktop = false, di
  */
 export function installSteps(isIos) {
     return isIos
-        ? "Tap Share, then Add to Home Screen."
-        : "Open the browser menu, then Add to Home screen (or Install app).";
+        ? t("Tap Share, then Add to Home Screen.")
+        : t("Open the browser menu, then Add to Home screen (or Install app).");
 }
 
 /**
@@ -1766,7 +1770,7 @@ export function isDesktopBrowser(nav = {}) {
 // --- feedback and the stats (Admin) -----------------------------------------------
 
 /** Said once POST /feedback answered 201; the box clears. */
-export const FEEDBACK_SENT = "Thanks, sent.";
+export const FEEDBACK_SENT = tKey("Thanks, sent.");
 
 /**
  * Where the feedback was written from: the posting screen Admin was opened from ("goods",
@@ -1825,7 +1829,7 @@ export function inboxOf(answer) {
  * @returns {string}
  */
 export function inboxHead(entry, offsetMinutes) {
-    return [entry.user || "someone", listedAtWord(entry.created, offsetMinutes), entry.screen].filter(Boolean).join(" · ");
+    return [entry.user || t("someone"), listedAtWord(entry.created, offsetMinutes), entry.screen].filter(Boolean).join(" · ");
 }
 
 /**
@@ -1855,7 +1859,7 @@ export function myFeedbackOf(answer) {
 
 export function feedbackWord(count, admin = false) {
     // the admin's: what comes in (Michal, 2026-10-31: "that menu should be called 'incoming feedback'")
-    const word = admin ? "Incoming feedback" : "Feedback";
+    const word = admin ? t("Incoming feedback") : t("Feedback");
     return count > 0 ? `${word} (${count})` : word;
 }
 
@@ -1904,12 +1908,20 @@ export function statsTable(answer) {
     const posted = a.posted && typeof a.posted === "object" ? a.posted : {};
     /** @type {[string, string][]} */
     const rows = [
-        ...Object.keys(posted).map((venue) => /** @type {[string, string]} */ ([`posted on ${venueName(venue)}`, String(countOf(posted[venue]))])),
-        ["drafted", String(countOf(a.drafted))],
-        ["ended", String(countOf(a.ended))],
-        ["pushed", String(countOf(a.pushed))],
-        ["model cost", costWord(a.model_cost)],
-        ["Actions sent", `${total}: ${countOf(states.done)} done, ${countOf(states.failed)} failed, ${countOf(states.cancelled)} cancelled`],
+        ...Object.keys(posted).map((venue) => /** @type {[string, string]} */ ([t("posted on {venue}", { venue: venueName(venue) }), String(countOf(posted[venue]))])),
+        [t("drafted"), String(countOf(a.drafted))],
+        [t("ended"), String(countOf(a.ended))],
+        [t("pushed"), String(countOf(a.pushed))],
+        [t("model cost"), costWord(a.model_cost)],
+        [
+            t("Actions sent"),
+            t("{total}: {done} done, {failed} failed, {cancelled} cancelled", {
+                total,
+                done: countOf(states.done),
+                failed: countOf(states.failed),
+                cancelled: countOf(states.cancelled),
+            }),
+        ],
     ];
     const users = (Array.isArray(a.per_user) ? a.per_user : [])
         .filter((u) => u && typeof u === "object")
@@ -1924,9 +1936,9 @@ export function statsTable(answer) {
  * settings I want to have the mode options. Dark, light or sync with device").
  */
 export const THEMES = [
-    { value: "dark", label: "Dark" },
-    { value: "light", label: "Light" },
-    { value: "device", label: "Sync with device" },
+    { value: "dark", label: tKey("Dark") },
+    { value: "light", label: tKey("Light") },
+    { value: "device", label: tKey("Sync with device") },
 ];
 
 /**
@@ -1946,8 +1958,8 @@ export function themeOf(text) {
  * @returns {"dark"|"light"|""}
  */
 export function themeAttr(theme) {
-    const t = themeOf(theme);
-    return t === "device" ? "" : t;
+    const look = themeOf(theme);
+    return look === "device" ? "" : look;
 }
 
 /**
@@ -2020,7 +2032,7 @@ export const MAX_PHOTOS = 24;
 export const AI_MAX = 4;
 
 /** Said under the buttons until a photo is marked AI, and in the walk-through (Michal, 2026-11-02). */
-export const AI_HINT = "Choose at least one and up to 4 photos to send to the AI engine - overall, model numbers, brand tags, etc.";
+export const AI_HINT = tKey("Choose at least one and up to 4 photos to send to the AI engine - overall, model numbers, brand tags, etc.");
 
 /** How often a running job is asked for its status. */
 export const POLL_MS = 3000;
@@ -2047,7 +2059,7 @@ export const SEND_DELAY_MS = 1000;
  * sent and nothing paid, and by Admin's job buttons; a venue button's job that has
  * left the phone says TAP_TO_CANCEL (cancelNote).
  */
-export const TAP_AGAIN = "tap again to cancel";
+export const TAP_AGAIN = tKey("tap again to cancel");
 
 /**
  * The second line inside a venue button whose job has left the phone, drafting or
@@ -2059,7 +2071,7 @@ export const TAP_AGAIN = "tap again to cancel";
  * cancelled while drafting; the posting it reserved is kept once the job has started
  * (cancelledLine).
  */
-export const TAP_TO_CANCEL = `${TAP_AGAIN}: the posting will be lost`;
+export const TAP_TO_CANCEL = tKey("tap again to cancel: the posting will be lost");
 
 /**
  * The second line inside a busy venue button: TAP_AGAIN while the press is still held
@@ -2069,7 +2081,7 @@ export const TAP_TO_CANCEL = `${TAP_AGAIN}: the posting will be lost`;
  * @returns {string}
  */
 export function cancelNote(job) {
-    return job.phase === "sending" && !job.sent ? TAP_AGAIN : TAP_TO_CANCEL;
+    return job.phase === "sending" && !job.sent ? t(TAP_AGAIN) : t(TAP_TO_CANCEL);
 }
 
 /**
@@ -2081,7 +2093,7 @@ export function cancelNote(job) {
  * Each cancel should operate this way"): the ring stops, nothing is sent to the PC,
  * and a tap on continue carries on where it was.
  */
-export const CONTINUE = "continue";
+export const CONTINUE = tKey("continue");
 
 /**
  * The small red control beside a paused job button: the real cancel ("Only pressing
@@ -2089,16 +2101,16 @@ export const CONTINUE = "continue";
  * happened, and waits for a new press of the button"). A press held on the phone is
  * dropped, nothing paid; a job the PC has is told to stop (DELETE /jobs/<id>).
  */
-export const RESET = "reset";
+export const RESET = tKey("reset");
 
 /** The status line under a paused press nothing has left the phone for: it is held. */
-export const PAUSED = "paused";
+export const PAUSED = tKey("paused");
 
 /** ... and under one whose job is the PC's: the page stops watching it, the PC does not stop. */
-export const PAUSED_ON_PC = "paused: the server may still be working on it";
+export const PAUSED_ON_PC = tKey("paused: the server may still be working on it");
 
 /** The line under a job button whose press was reset, or dropped by the PC before it ran. */
-export const CANCELLED = "cancelled";
+export const CANCELLED = tKey("cancelled");
 
 /** The error a job the PC stopped for a reset ends with (DELETE /jobs/<id>). */
 export const CANCELLED_ON_PC = "cancelled from the phone";
@@ -2112,15 +2124,24 @@ export const CANCELLED_ON_PC = "cancelled from the phone";
  * @returns {string}
  */
 export function cancelledLine(job) {
-    return job && job.charged === true ? `${CANCELLED}: the posting is lost` : CANCELLED;
+    return job && job.charged === true ? CANCELLED_LOST : CANCELLED;
 }
+
+/** cancelledLine's when the posting was kept. */
+const CANCELLED_LOST = tKey("cancelled: the posting is lost");
+
+/**
+ * A reset's ends, kept in a job's `error` in English (the state is compared and stored) and
+ * translated where shown (venueLine): the only `error` words that are the page's own.
+ */
+const RESET_ENDS = [CANCELLED, CANCELLED_LOST];
 
 /**
  * Said for a moment under a job button tapped from the PC's publishing step on
  * (Michal, 2026-10-07: "Perhaps after pressing cancel it should say 'too late to
  * cancel'?"); the tap changes nothing else, and the step's own words come back.
  */
-export const TOO_LATE = "too late to cancel: it is publishing";
+export const TOO_LATE = tKey("too late to cancel: it is publishing");
 
 /** How long TOO_LATE stays under the button. */
 export const TOO_LATE_MS = 2500;
@@ -2207,8 +2228,9 @@ export function taskTap(task) {
  * @returns {"Snap"|"Snap Again"|"Snap Next"}
  */
 export function snapWord(state, { earlier = false } = {}) {
-    if (!earlier && postingUp(state)) return "Snap Next";
-    return state.mode !== "book" && state.photos.length > 0 ? "Snap Again" : "Snap";
+    if (!earlier && postingUp(state)) return t("Snap Next");
+    // "Snap" is the brand, the same in every language
+    return state.mode !== "book" && state.photos.length > 0 ? t("Snap Again") : "Snap";
 }
 
 /**
@@ -2223,8 +2245,8 @@ export function adminLink(open) {
     // closed: three dots in a row, the way apps open their menu, heard as "Admin" (Michal,
     // 2026-10-31, on the live mock: "make 3 dots typical of apps instead of 'Admin'")
     return open
-        ? { text: "Snap", label: "Snap: close Admin and go back to snapping", dots: false }
-        : { text: "", label: "Admin", dots: true };
+        ? { text: "Snap", label: t("Snap: close Admin and go back to snapping"), dots: false }
+        : { text: "", label: t("Admin"), dots: true };
 }
 
 /**
@@ -2332,9 +2354,9 @@ export function jobRequest({ venue, sku = "", item = "", photos = [], book = und
  * and the line under the slider. The PC writes the grade into the model's prompt.
  */
 export const PRICING = [
-    { grade: 1, word: "Quick sale", note: "sell what we have this week" },
-    { grade: 2, word: "Fair price", note: "a fair price, a longer wait" },
-    { grade: 3, word: "Higher end", note: "a higher-end price; cheaper ones exist out there" },
+    { grade: 1, word: tKey("Quick sale"), note: tKey("sell what we have this week") },
+    { grade: 2, word: tKey("Fair price"), note: tKey("a fair price, a longer wait") },
+    { grade: 3, word: tKey("Higher end"), note: tKey("a higher-end price; cheaper ones exist out there") },
 ];
 
 /** "1 by default": a quick sale, what the PC did before there was a slider. */
@@ -2387,13 +2409,13 @@ export function pricingOf(grade) {
  * did not publish it. Said under the button, which opens again: the next press
  * posts that row by its sku.
  */
-export const SAVED_NOT_POSTED = "saved, not posted";
+export const SAVED_NOT_POSTED = tKey("saved, not posted");
 
 /** Under a venue button whose press saved a draft without posting it (Michal, 2026-11-02). */
-export const DRAFTED = "drafted";
+export const DRAFTED = tKey("drafted");
 
 /** In that button, small under the venue's word: its next tap posts the draft (Michal, 2026-11-02). */
-export const TAP_TO_POST = "tap again to post";
+export const TAP_TO_POST = tKey("tap again to post");
 
 /**
  * The PC saved this venue's row without publishing it (auto-post was off for the
@@ -2424,13 +2446,13 @@ export function quantityValue(text) {
 export const QUANTITY_HINT = "Quantity (under customize) must be a whole number, 1 or more";
 
 /** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
-export const PICKUP_NOTE = "pickup only";
+export const PICKUP_NOTE = tKey("pickup only");
 
 /** Under ebay, before the press, once Allow best offers is unticked. */
-export const NO_OFFERS_NOTE = "no best offers";
+export const NO_OFFERS_NOTE = tKey("no best offers");
 
 /** Under both buttons, before the press, once Compare with eBay listings is unticked. */
-export const COMPS_NOTE = "without marketplace comparisons";
+export const COMPS_NOTE = tKey("without marketplace comparisons");
 
 /**
  * This item's customize: a book keeps its own in the book slice, goods at the top.
@@ -2483,10 +2505,10 @@ export function customizeBody(customize) {
 export function venueIdleNote(state, venue) {
     const c = customizeOf(state);
     const said = [];
-    if (venue === "ebay" && c.pickupOnly) said.push(PICKUP_NOTE);
-    if (c.autoPost === false) said.push(SAVED_NOT_POSTED);
-    if (c.comps === false) said.push(COMPS_NOTE);
-    if (venue === "ebay" && c.bestOffer === false) said.push(NO_OFFERS_NOTE);
+    if (venue === "ebay" && c.pickupOnly) said.push(t(PICKUP_NOTE));
+    if (c.autoPost === false) said.push(t(SAVED_NOT_POSTED));
+    if (c.comps === false) said.push(t(COMPS_NOTE));
+    if (venue === "ebay" && c.bestOffer === false) said.push(t(NO_OFFERS_NOTE));
     return said.join(" · ");
 }
 
@@ -2540,7 +2562,7 @@ function savedCustomize(c) {
  */
 
 /** Said beside the Posting fold's defaults for a moment after a change. */
-export const DEFAULTS_SAVED = "saved";
+export const DEFAULTS_SAVED = tKey("saved");
 
 /** How long DEFAULTS_SAVED stays. */
 export const DEFAULTS_SAVED_MS = 2500;
@@ -2616,12 +2638,13 @@ export const HEALTH_MS = 30000;
  * @returns {{text:string, kind:"ok"|"bad"|""}}
  */
 export function serverLine(settingsOk, status) {
-    if (!settingsOk) return { text: "server not set", kind: "" };
-    if (status === null) return { text: "checking server...", kind: "" };
-    if (status === 200) return { text: "server ok", kind: "ok" };
+    if (!settingsOk) return { text: t("server not set"), kind: "" };
+    if (status === null) return { text: t("checking server..."), kind: "" };
+    if (status === 200) return { text: t("server ok"), kind: "ok" };
+    // a failure, said in English as every error is (docs/UI.md rule 8)
     if (status === 401) return { text: "wrong key", kind: "bad" };
     // a sign-up waiting for eBay is refused everything but /me: the server answered all the same
-    if (status === 403) return { text: "server ok", kind: "ok" };
+    if (status === 403) return { text: t("server ok"), kind: "ok" };
     return { text: "server off", kind: "bad" };
 }
 
@@ -3701,24 +3724,28 @@ function savedUnnamed(state) {
  * @returns {{text:string, link:string, kind:""|"busy"|"ok"|"bad"}}
  */
 export function venueLine(job, idle = "") {
-    if (job.paused && isActive(job)) return { text: job.jobId ? PAUSED_ON_PC : PAUSED, link: "", kind: "busy" };
+    if (job.paused && isActive(job)) return { text: job.jobId ? t(PAUSED_ON_PC) : t(PAUSED), link: "", kind: "busy" };
     switch (job.phase) {
         case "sending":
-            return { text: job.step || "sending", link: "", kind: "busy" };
+            // the page's own step ("sending"), never the server's
+            return { text: t(job.step || tKey("sending")), link: "", kind: "busy" };
         case "queued": {
+            // a poll that failed: an error, said in English (docs/UI.md rule 8)
             if (job.trouble) return { text: `${job.trouble}, still trying`, link: "", kind: "busy" };
-            const text = job.ahead > 0 ? `queued, ${job.ahead} ahead` : "queued";
+            const text = job.ahead > 0 ? t("queued, {n} ahead", { n: job.ahead }) : t("queued");
             return { text, link: "", kind: "busy" };
         }
         case "running":
             if (job.trouble) return { text: `${job.trouble}, still trying`, link: "", kind: "busy" };
-            return { text: job.step || "working", link: "", kind: "busy" };
+            // the server's step as it says it
+            return { text: job.step || t("working"), link: "", kind: "busy" };
         case "done":
             return job.link
                 ? { text: "", link: job.link, kind: "ok" }
-                : { text: job.held ? DRAFTED : "done", link: "", kind: "ok" };
+                : { text: job.held ? t(DRAFTED) : t("done"), link: "", kind: "ok" };
         case "failed":
-            return { text: job.error || "failed", link: "", kind: "bad" };
+            // the page's own ends of a reset are words; anything else is an error, as it came
+            return { text: RESET_ENDS.includes(job.error) ? t(job.error) : job.error || "failed", link: "", kind: "bad" };
         default:
             return { text: idle, link: "", kind: "" };
     }
@@ -3784,7 +3811,7 @@ function postingUp(state) {
 export const HISTORY_LIMIT = 10;
 
 /** Said by back beyond the oldest item kept, instead of leaving the page. */
-export const HISTORY_END = "End of the item history: see the inventory list on the server.";
+export const HISTORY_END = tKey("End of the item history: see the inventory list on the server.");
 
 /**
  * The items NEXT left, oldest first, as stored: only what is a saved item,
@@ -3858,8 +3885,15 @@ export function walkPosition(state, length) {
  * @returns {string}
  */
 export function walkNote(record, forward, resumes) {
-    const next = resumes ? "returns to the item you were on" : "starts a new item";
-    return `${forward ? "Forward" : "Back"} to "${recordName(record)}", as it was left. NEXT ${next}.`;
+    const name = recordName(record);
+    if (forward) {
+        return resumes
+            ? t('Forward to "{name}", as it was left. NEXT returns to the item you were on.', { name })
+            : t('Forward to "{name}", as it was left. NEXT starts a new item.', { name });
+    }
+    return resumes
+        ? t('Back to "{name}", as it was left. NEXT returns to the item you were on.', { name })
+        : t('Back to "{name}", as it was left. NEXT starts a new item.', { name });
 }
 
 /**
@@ -3869,7 +3903,7 @@ export function walkNote(record, forward, resumes) {
  * @returns {string}
  */
 export function presentNote(record) {
-    return record ? `Back on "${recordName(record)}", the item you were on.` : "";
+    return record ? t('Back on "{name}", the item you were on.', { name: recordName(record) }) : "";
 }
 
 // Michal, 2026-10-08: "I want the SNAP button to be available immediately when opening the
@@ -3881,10 +3915,10 @@ export function presentNote(record) {
 export const UNNAMED = "Unnamed";
 
 /** The Snap line while a server that wants names (needsName) has none: as before 2.15.0. */
-export const TYPE_NAME_HINT = "Type the item name to start snapping.";
+export const TYPE_NAME_HINT = tKey("Type the item name to start snapping.");
 
 /** Under the buttons while photos snapped unnamed wait for a server that wants a name. */
-export const NAME_WAIT_HINT = "This server needs the item name: type it so the photos can go to the server";
+export const NAME_WAIT_HINT = tKey("This server needs the item name: type it so the photos can go to the server");
 
 /**
  * An unnamed item's label before it has a title: "Unnamed" with the time the PC made it,
@@ -3941,14 +3975,14 @@ export function waitsForName(state) {
  * @returns {string}
  */
 export function venueLabel(job, venue) {
-    if (isActive(job)) return `${venue}, posting`;
-    if (savedNotPosted(job)) return `${venue}, ${DRAFTED}`;
-    if (job.phase === "done") return `${venue}, posted`;
+    if (isActive(job)) return t("{venue}, posting", { venue });
+    if (savedNotPosted(job)) return t("{venue}, drafted", { venue });
+    if (job.phase === "done") return t("{venue}, posted", { venue });
     return venue;
 }
 
 /** Settings live inside Admin since 2.1.0 (Michal, 2026-10-06: "Admin which would replace Settings"). */
-export const SETTINGS_HINT = "Set the server address and key in Admin";
+export const SETTINGS_HINT = tKey("Set the server address and key in Admin");
 
 /** How long after the last keystroke the item name is checked against the PC. */
 export const NAME_CHECK_MS = 500;
@@ -3999,26 +4033,32 @@ export function venueButton(state, venue, settingsOk) {
     // pressed already: on its way, or posted (the link is right there); a row
     // saved, not posted, opens again to post it
     if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
-    if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
-    // a quantity he typed wrong is his to fix first: it goes with either button
+    if (!settingsOk) return { enabled: false, hint: t(SETTINGS_HINT) };
+    // a quantity he typed wrong is his to fix first: it goes with either button (a refusal:
+    // English, as every error is)
     if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
     // the second button: the row is saved, nothing more is needed
     if (state.sku) return { enabled: true, hint: "" };
     const n = state.photos.length;
-    if (n === 0) return { enabled: false, hint: "Snap a photo first" };
-    if (waitsForName(state)) return { enabled: false, hint: NAME_WAIT_HINT };
-    if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
+    if (n === 0) return { enabled: false, hint: t("Snap a photo first") };
+    if (waitsForName(state)) return { enabled: false, hint: t(NAME_WAIT_HINT) };
+    if (n > MAX_PHOTOS) return { enabled: false, hint: tooMany(n) };
     if (!state.photos.some((p) => p.ai)) {
-        return { enabled: false, hint: AI_HINT };
+        return { enabled: false, hint: t(AI_HINT) };
     }
     if (state.photos.some((p) => p.status === "failed")) {
         return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
-        return { enabled: false, hint: `Waiting for the photos to reach the server (${sent} of ${n} sent)` };
+        return { enabled: false, hint: t("Waiting for the photos to reach the server ({sent} of {n} sent)", { sent, n }) };
     }
     return { enabled: true, hint: "" };
+}
+
+/** The line while an item has more photos than MAX_PHOTOS. @param {number} n */
+function tooMany(n) {
+    return t("At most {max} photos - delete {extra}", { max: MAX_PHOTOS, extra: n - MAX_PHOTOS });
 }
 
 /**
@@ -4034,16 +4074,17 @@ export function waitsForIsbn(state) {
 }
 
 /** The first thing a book needs, said where nothing else is to be said yet. */
-export const NO_BOOK_HINT = "Scan the ISBN, or tap No ISBN and type the title";
+export const NO_BOOK_HINT = tKey("Scan the ISBN, or tap No ISBN and type the title");
 
-export const ISBN_WAIT_HINT =
-    "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the server; or remove them with their x";
+export const ISBN_WAIT_HINT = tKey(
+    "Scan the ISBN, or tap No ISBN and type the title, so the photos can go to the server; or remove them with their x"
+);
 
-export const TITLE_WAIT_HINT = "Type the title so the photos can go to the server, or remove them with their x";
+export const TITLE_WAIT_HINT = tKey("Type the title so the photos can go to the server, or remove them with their x");
 
 /** The line under ebay and DONE while the photos wait for a name. */
 function waitHint(state) {
-    return state.book.manual ? TITLE_WAIT_HINT : ISBN_WAIT_HINT;
+    return state.book.manual ? t(TITLE_WAIT_HINT) : t(ISBN_WAIT_HINT);
 }
 
 /** The book has what names it: an ISBN (one kept after a miss too), or (No ISBN) a title. */
@@ -4052,7 +4093,7 @@ function bookNamed(book) {
 }
 
 /** The ebay line after an ISBN no catalogue knows, while No ISBN is closed: the next step. */
-export const ISBN_MISS_HINT = "Tap No ISBN and type the title";
+export const ISBN_MISS_HINT = tKey("Tap No ISBN and type the title");
 
 /**
  * The book's one button, ebay. It opens once the book is found in the
@@ -4072,37 +4113,38 @@ function bookVenueButton(state, venue, settingsOk) {
     const job = state.jobs[venue];
     if (venue !== "ebay" || !job) return { enabled: false, hint: "" };
     if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
-    if (!settingsOk) return { enabled: false, hint: SETTINGS_HINT };
+    if (!settingsOk) return { enabled: false, hint: t(SETTINGS_HINT) };
     const { book } = state;
     if (!quantityValue(book.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     // under No ISBN the title is what is looked up, even with an ISBN kept after a miss
     if (book.manual ? !bookSearch(book).title : !book.isbn) {
-        return { enabled: false, hint: book.manual ? "Type the book's title first" : NO_BOOK_HINT };
+        return { enabled: false, hint: book.manual ? t("Type the book's title first") : t(NO_BOOK_HINT) };
     }
     switch (book.lookup.phase) {
         case "found":
             break;
         case "missing":
-            return { enabled: false, hint: ISBN_MISS_HINT };
+            return { enabled: false, hint: t(ISBN_MISS_HINT) };
         case "failed":
+            // a failure: English, as every error is (docs/UI.md rule 8)
             return {
                 enabled: false,
                 hint: `The book was not looked up - edit the ${book.manual ? "title" : "ISBN"} to try again`,
             };
         default:
-            return { enabled: false, hint: "Looking the book up..." };
+            return { enabled: false, hint: t("Looking the book up...") };
     }
     const n = state.photos.length;
-    if (n === 0) return { enabled: false, hint: "Snap the cover first" };
-    if (n > MAX_PHOTOS) return { enabled: false, hint: `At most ${MAX_PHOTOS} photos - delete ${n - MAX_PHOTOS}` };
-    if (!bookPriceValue(book.price)) return { enabled: false, hint: "Set a price (whole dollars are fine)" };
+    if (n === 0) return { enabled: false, hint: t("Snap the cover first") };
+    if (n > MAX_PHOTOS) return { enabled: false, hint: tooMany(n) };
+    if (!bookPriceValue(book.price)) return { enabled: false, hint: t("Set a price (whole dollars are fine)") };
     if (state.photos.some((p) => p.status === "failed")) {
         return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
-        return { enabled: false, hint: `Waiting for the photos to reach the server (${sent} of ${n} sent)` };
+        return { enabled: false, hint: t("Waiting for the photos to reach the server ({sent} of {n} sent)", { sent, n }) };
     }
     return { enabled: true, hint: "" };
 }
@@ -4127,27 +4169,27 @@ function anySending(state) {
 export function doneButton(state) {
     // a press held by its pause has not gone: his to carry on or drop first
     if (VENUES.some((v) => state.jobs[v].phase === "sending" && state.jobs[v].paused)) {
-        return { enabled: false, hint: NEXT_PAUSED };
+        return { enabled: false, hint: t(NEXT_PAUSED) };
     }
     if (anySending(state)) {
-        return { enabled: false, hint: "NEXT waits until the listing has reached the server" };
+        return { enabled: false, hint: t("NEXT waits until the listing has reached the server") };
     }
     // a book's photos waiting for its ISBN or title are not waiting for the PC
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
-    if (waitsForName(state)) return { enabled: false, hint: NAME_WAIT_HINT };
+    if (waitsForName(state)) return { enabled: false, hint: t(NAME_WAIT_HINT) };
     if (unsent(state)) {
-        return { enabled: false, hint: "NEXT waits until the photos are on the server" };
+        return { enabled: false, hint: t("NEXT waits until the photos are on the server") };
     }
     const something = state.photos.length > 0 || (state.mode === "book" && bookNamed(state.book));
     return { enabled: something, hint: "" };
 }
 
 /** NEXT's line while a press is paused before it left the phone. */
-export const NEXT_PAUSED = "NEXT waits: continue or reset the paused press";
+export const NEXT_PAUSED = tKey("NEXT waits: continue or reset the paused press");
 
 /** The quiet line under NEXT while a listing is posting on the PC. */
 // Michal, 2026-11-02: "change it to - you can press NEXT to start your next item without waiting ..."
-export const NEXT_NOTE = "You can press NEXT to start your next item without waiting for the current item to finish posting.";
+export const NEXT_NOTE = tKey("You can press NEXT to start your next item without waiting for the current item to finish posting.");
 
 /**
  * The line under NEXT: said once a job is on the PC and not finished, since
@@ -4156,7 +4198,7 @@ export const NEXT_NOTE = "You can press NEXT to start your next item without wai
  * @returns {string}
  */
 export function nextNote(state) {
-    return VENUES.some((v) => ["queued", "running"].includes(state.jobs[v].phase)) ? NEXT_NOTE : "";
+    return VENUES.some((v) => ["queued", "running"].includes(state.jobs[v].phase)) ? t(NEXT_NOTE) : "";
 }
 
 /**
@@ -4167,11 +4209,12 @@ export function nextNote(state) {
  */
 export function noteStatusText(state) {
     const { note } = state;
-    if (!noteDirty(state)) return note.sentText ? "sent" : "";
-    if (!state.itemId) return note.text.trim() ? "goes with the first photo" : "";
-    if (state.busy && state.busy.kind === "note") return "sending...";
+    if (!noteDirty(state)) return note.sentText ? t("sent") : "";
+    if (!state.itemId) return note.text.trim() ? t("goes with the first photo") : "";
+    if (state.busy && state.busy.kind === "note") return t("sending...");
+    // a failure: English, as every error is
     if (state.stalled || !state.online) return "not sent (offline), will retry";
-    return note.due ? "sending..." : "";
+    return note.due ? t("sending...") : "";
 }
 
 /**
@@ -4184,17 +4227,19 @@ export function noteStatusText(state) {
  */
 export function progressLine(state) {
     const total = state.photos.length;
-    if (total === 0) return "No photos yet.";
+    if (total === 0) return t("No photos yet.");
     const ai = state.photos.filter((p) => p.ai).length;
     const sent = state.photos.filter((p) => p.status === "sent").length;
-    const photos = total === 1 ? "1 photo" : `${total} photos`;
+    const photos = total === 1 ? t("1 photo") : t("{n} photos", { n: total });
     if (waitsForIsbn(state)) {
-        return `${photos}, waiting for ${state.book.manual ? "the title" : "the ISBN or the title"}`;
+        return state.book.manual
+            ? t("{photos}, waiting for the title", { photos })
+            : t("{photos}, waiting for the ISBN or the title", { photos });
     }
-    if (waitsForName(state)) return `${photos}, waiting for the item name`;
-    const where = `${sent === total ? "all" : sent} on the server`;
-    if (state.mode === "book") return `${photos}, ${where}`;
-    return `${photos}, ${ai} for the AI, ${where}`;
+    if (waitsForName(state)) return t("{photos}, waiting for the item name", { photos });
+    const where = sent === total ? t("all on the server") : t("{n} on the server", { n: sent });
+    if (state.mode === "book") return t("{photos}, {where}", { photos, where });
+    return t("{photos}, {ai} for the AI, {where}", { photos, ai, where });
 }
 
 /**
@@ -4265,10 +4310,10 @@ export const INVENTORY_STATUSES = ["", "draft", "listed", "sold", "ended", "arch
  * The PC puts a row with no price last whichever way price runs.
  */
 export const INVENTORY_SORTS = [
-    { key: "newest", word: "Newest", sort: "age", order: "desc" },
-    { key: "oldest", word: "Oldest", sort: "age", order: "asc" },
-    { key: "price-desc", word: "Price ↓", sort: "price", order: "desc" },
-    { key: "price-asc", word: "Price ↑", sort: "price", order: "asc" },
+    { key: "newest", word: tKey("Newest"), sort: "age", order: "desc" },
+    { key: "oldest", word: tKey("Oldest"), sort: "age", order: "asc" },
+    { key: "price-desc", word: tKey("Price ↓"), sort: "price", order: "desc" },
+    { key: "price-asc", word: tKey("Price ↑"), sort: "price", order: "asc" },
 ];
 
 /**
@@ -4277,13 +4322,13 @@ export const INVENTORY_SORTS = [
  * confuses me."): the eBay card's fact and Edit's input, as index.html labels the goods
  * and book boxes.
  */
-export const USER_NOTE = "User note";
+export const USER_NOTE = tKey("User note");
 
 /** Said under an override left blank on the craigslist card: the PC fills it from the eBay fields. */
-export const DERIVED = "derived from eBay";
+export const DERIVED = tKey("derived from eBay");
 
 /** What a blank craigslist category is: the PC picks one from the eBay category. */
-export const CATEGORY_FROM_EBAY = "from the eBay category";
+export const CATEGORY_FROM_EBAY = tKey("from the eBay category");
 
 /** A string field of an answer, trimmed; "" for anything else. */
 function plain(x) {
@@ -4338,8 +4383,8 @@ export function inventoryRows(answer) {
  * @returns {string}
  */
 export function inventoryCount(n) {
-    if (n === 0) return "No listings match.";
-    if (n >= INVENTORY_LIMIT) return `The newest ${n} listings; search to narrow them.`;
+    if (n === 0) return t("No listings match.");
+    if (n >= INVENTORY_LIMIT) return t("The newest {n} listings; search to narrow them.", { n });
     return "";
 }
 
@@ -4442,7 +4487,7 @@ export function rowBadges(row, unsynced = []) {
  */
 export function venueBadge(row, venue) {
     if (!rowVenues(row).includes(venue)) {
-        const text = `${venue} not added`;
+        const text = t("{venue} not added", { venue });
         return { text, said: text, kind: "absent", tick: false };
     }
     return statusBadge(venue, venueStatus(row, venue).status);
@@ -4556,9 +4601,9 @@ export function namedLines(pairs) {
 export function venueStatusLine(row, venue, offsetMinutes) {
     const s = venueStatus(row, venue);
     const when = listedAtWord(s.listedAt, offsetMinutes);
-    if (!s.status) return "not posted yet";
+    if (!s.status) return t("not posted yet");
     if (!when) return s.status;
-    return s.status === "listed" ? `listed since ${when}` : `${s.status} · listed ${when}`;
+    return s.status === "listed" ? t("listed since {when}", { when }) : t("{status} · listed {when}", { status: s.status, when });
 }
 
 // --- Admin: a listing's condition ---------------------------------------------------
@@ -4575,22 +4620,22 @@ export function venueStatusLine(row, venue, offsetMinutes) {
  * category allows (an older server's 404, eBay not read).
  */
 export const CONDITION_LABELS = {
-    NEW: "New",
-    NEW_OTHER: "New (open box)",
-    NEW_WITH_DEFECTS: "New with defects",
-    CERTIFIED_REFURBISHED: "Certified refurbished",
-    EXCELLENT_REFURBISHED: "Refurbished, excellent",
-    VERY_GOOD_REFURBISHED: "Refurbished, very good",
-    GOOD_REFURBISHED: "Refurbished, good",
-    SELLER_REFURBISHED: "Seller refurbished",
-    LIKE_NEW: "Like new",
-    PRE_OWNED_EXCELLENT: "Pre-owned, excellent",
-    USED_EXCELLENT: "Used, excellent",
-    PRE_OWNED_FAIR: "Pre-owned, fair",
-    USED_VERY_GOOD: "Used, very good",
-    USED_GOOD: "Used, good",
-    USED_ACCEPTABLE: "Used, acceptable",
-    FOR_PARTS_OR_NOT_WORKING: "For parts or not working",
+    NEW: tKey("New"),
+    NEW_OTHER: tKey("New (open box)"),
+    NEW_WITH_DEFECTS: tKey("New with defects"),
+    CERTIFIED_REFURBISHED: tKey("Certified refurbished"),
+    EXCELLENT_REFURBISHED: tKey("Refurbished, excellent"),
+    VERY_GOOD_REFURBISHED: tKey("Refurbished, very good"),
+    GOOD_REFURBISHED: tKey("Refurbished, good"),
+    SELLER_REFURBISHED: tKey("Seller refurbished"),
+    LIKE_NEW: tKey("Like new"),
+    PRE_OWNED_EXCELLENT: tKey("Pre-owned, excellent"),
+    USED_EXCELLENT: tKey("Used, excellent"),
+    PRE_OWNED_FAIR: tKey("Pre-owned, fair"),
+    USED_VERY_GOOD: tKey("Used, very good"),
+    USED_GOOD: tKey("Used, good"),
+    USED_ACCEPTABLE: tKey("Used, acceptable"),
+    FOR_PARTS_OR_NOT_WORKING: tKey("For parts or not working"),
 };
 
 /** The friendly spellings a row's condition may carry from a CSV, as the server's map_condition reads them. */
@@ -4649,7 +4694,7 @@ export function conditionEnum(condition) {
  */
 export function conditionLabel(condition) {
     const value = plain(condition);
-    return Object.hasOwn(CONDITION_LABELS, value) ? CONDITION_LABELS[value] : value;
+    return Object.hasOwn(CONDITION_LABELS, value) ? t(CONDITION_LABELS[value]) : value;
 }
 
 /** eBay's condition -> Craigslist's six words; a refurbished grade lands where its wear puts it. */
@@ -4699,7 +4744,7 @@ export function conditionChoices(answer) {
     const a = answer && typeof answer === "object" ? answer : {};
     const named = a.labels && typeof a.labels === "object" ? a.labels : {};
     const allowed = (Array.isArray(a.allowed) ? a.allowed : []).map(plain).filter(Boolean);
-    const label = (value) => plain(named[value]) || CONDITION_LABELS[value] || value;
+    const label = (value) => plain(named[value]) || (CONDITION_LABELS[value] ? t(CONDITION_LABELS[value]) : value);
     const current = plain(a.current);
     if (allowed.length) return { current, chips: allowed.map((value) => ({ value, label: label(value) })), note: "" };
     const chips = Object.keys(CONDITION_LABELS).map((value) => ({ value, label: label(value) }));
@@ -4760,11 +4805,11 @@ export function venueFacts(row, venue, admin = false) {
     if (venue === "craigslist") {
         const d = derivedFields(row, venue);
         return [
-            { label: "Title", value: d.title.value, derived: d.title.derived },
-            { label: "Price", value: priceWord(d.price.value), derived: d.price.derived },
-            { label: "Description", value: d.description.value, pre: true, derived: d.description.derived },
-            { label: "Category", value: d.category.value, derived: d.category.derived },
-            ...(d.condition.value ? [{ label: "Condition", value: d.condition.value, derived: true }] : []),
+            { label: t("Title"), value: d.title.value, derived: d.title.derived },
+            { label: t("Price"), value: priceWord(d.price.value), derived: d.price.derived },
+            { label: t("Description"), value: d.description.value, pre: true, derived: d.description.derived },
+            { label: t("Category"), value: d.category.derived ? t(CATEGORY_FROM_EBAY) : d.category.value, derived: d.category.derived },
+            ...(d.condition.value ? [{ label: t("Condition"), value: d.condition.value, derived: true }] : []),
         ];
     }
     if (venue !== "ebay") return [];
@@ -4773,20 +4818,20 @@ export function venueFacts(row, venue, admin = false) {
     const cost = admin ? plain(row.model_cost) : "";
     /** @type {Fact[]} */
     const facts = [
-        { label: "Title", value: plain(row.title) },
-        { label: "Price", value: priceWord(row.price) },
-        { label: "Condition", value: conditionLabel(row.condition) },
-        { label: "Category", value: plain(row.category_path) || plain(row.category) },
-        { label: "Quantity", value: quantity },
-        { label: "Pickup only", value: row.pickup_only === true ? "yes, no shipping on eBay" : "no" },
-        { label: "Description", value: plain(row.description), pre: true },
-        { label: USER_NOTE, value: plain(row.note), pre: true },
-        { label: "Condition note", value: plain(row.condition_note), pre: true },
-        { label: "Aspects", value: namedLines(row.aspects), pre: true },
-        { label: "Condition details", value: namedLines(row.condition_details), pre: true },
-        { label: "Package", value: packageWord(row.package) },
-        { label: "ISBN", value: plain(row.isbn), mono: true },
-        { label: "Model cost", value: cost ? `$${cost}` : "" },
+        { label: t("Title"), value: plain(row.title) },
+        { label: t("Price"), value: priceWord(row.price) },
+        { label: t("Condition"), value: conditionLabel(row.condition) },
+        { label: t("Category"), value: plain(row.category_path) || plain(row.category) },
+        { label: t("Quantity"), value: quantity },
+        { label: t("Pickup only"), value: row.pickup_only === true ? t("yes, no shipping on eBay") : t("no") },
+        { label: t("Description"), value: plain(row.description), pre: true },
+        { label: t(USER_NOTE), value: plain(row.note), pre: true },
+        { label: t("Condition note"), value: plain(row.condition_note), pre: true },
+        { label: t("Aspects"), value: namedLines(row.aspects), pre: true },
+        { label: t("Condition details"), value: namedLines(row.condition_details), pre: true },
+        { label: t("Package"), value: packageWord(row.package) },
+        { label: t("ISBN"), value: plain(row.isbn), mono: true },
+        { label: t("Model cost"), value: cost ? `$${cost}` : "" },
     ];
     return facts.filter((f) => f.value);
 }
@@ -4826,20 +4871,20 @@ export function venueActions(row, venue) {
 export function actionWord(action, venue) {
     switch (action) {
         case "add":
-            return `Add ${venue} to this item`;
+            return t("Add {venue} to this item", { venue });
         case "post":
-            return `Post on ${venue}`;
+            return t("Post on {venue}", { venue });
         case "open":
-            return "Open listing";
+            return t("Open listing");
         case "sync":
             // the venue lowercase, as on every button (Michal, 2026-10-26): syncWord's
             return syncWord("to", venue);
         case "refresh":
-            return "Refresh status";
+            return t("Refresh status");
         case "end":
-            return "End listing";
+            return t("End listing");
         default:
-            return "Edit";
+            return t("Edit");
     }
 }
 
@@ -4849,7 +4894,7 @@ export function actionWord(action, venue) {
  * @returns {string}
  */
 export function endQuestion(venue) {
-    return `End this listing on ${venue}?`;
+    return t("End this listing on {venue}?", { venue });
 }
 
 /**
@@ -4899,13 +4944,13 @@ export function jobRunning(job) {
  */
 export function syncLine(job) {
     const state = plain(job.state);
-    if (state === "done") return { text: plain(job.summary) || "done", kind: "ok" };
+    if (state === "done") return { text: plain(job.summary) || t("done"), kind: "ok" };
     if (state === "failed") return { text: plain(job.error) || "failed", kind: "bad" };
-    if (state === CANCELLED) return { text: CANCELLED, kind: "bad" };
+    if (state === CANCELLED) return { text: t(CANCELLED), kind: "bad" };
     if (job.trouble) return { text: `${job.trouble}, still trying`, kind: "busy" };
-    if (state === "running") return { text: plain(job.step) || "working", kind: "busy" };
+    if (state === "running") return { text: plain(job.step) || t("working"), kind: "busy" };
     const ahead = Number.isInteger(job.ahead) && job.ahead > 0 ? job.ahead : 0;
-    return { text: ahead ? `queued, ${ahead} ahead` : "queued", kind: "busy" };
+    return { text: ahead ? t("queued, {n} ahead", { n: ahead }) : t("queued"), kind: "busy" };
 }
 
 /**
@@ -4917,8 +4962,8 @@ export function syncLine(job) {
  * @returns {{text:string, kind:string} | null}
  */
 export function busyLine(card) {
-    if (card.late) return { text: TOO_LATE, kind: "busy" };
-    if (card.paused) return { text: card.press ? PAUSED : PAUSED_ON_PC, kind: "busy" };
+    if (card.late) return { text: t(TOO_LATE), kind: "busy" };
+    if (card.paused) return { text: card.press ? t(PAUSED) : t(PAUSED_ON_PC), kind: "busy" };
     if (card.wait) return { text: card.wait, kind: "busy" };
     if (card.job) return syncLine(card.job);
     return card.note || null;
@@ -4952,18 +4997,18 @@ export function cardLine(row, venue, card, offsetMinutes) {
  */
 export const EDIT_FIELDS = {
     ebay: [
-        { key: "condition", label: "Condition", kind: "choice" },
-        { key: "title", label: "Title", kind: "line" },
-        { key: "price", label: "Price, dollars", kind: "price" },
-        { key: "description", label: "Description", kind: "text" },
+        { key: "condition", label: tKey("Condition"), kind: "choice" },
+        { key: "title", label: tKey("Title"), kind: "line" },
+        { key: "price", label: tKey("Price, dollars"), kind: "price" },
+        { key: "description", label: tKey("Description"), kind: "text" },
         { key: "note", label: USER_NOTE, kind: "text" },
-        { key: "condition_note", label: "Condition note", kind: "text" },
+        { key: "condition_note", label: tKey("Condition note"), kind: "text" },
     ],
     craigslist: [
-        { key: "title", label: "Title", kind: "line" },
-        { key: "price", label: "Price, dollars", kind: "price" },
-        { key: "description", label: "Description", kind: "text" },
-        { key: "category", label: "Category", kind: "line" },
+        { key: "title", label: tKey("Title"), kind: "line" },
+        { key: "price", label: tKey("Price, dollars"), kind: "price" },
+        { key: "description", label: tKey("Description"), kind: "text" },
+        { key: "category", label: tKey("Category"), kind: "line" },
     ],
 };
 
@@ -5052,10 +5097,10 @@ export function patchBody(venue, before, after) {
 export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
 
 /** Under the slider of a row whose price follows no grade (its "pricing" is null). */
-export const NOT_GRADED = "not priced by grade yet";
+export const NOT_GRADED = tKey("not priced by grade yet");
 
 /** Under the slider once moved on a row with no cached prices: nothing for Save to set. */
-export const NO_CACHED = "no cached prices on this listing; set the price by hand";
+export const NO_CACHED = tKey("no cached prices on this listing; set the price by hand");
 
 /** Beside a grade's word when the row has no cached price for it. */
 export const NO_PRICE = "—";
@@ -5108,13 +5153,13 @@ export function rowCustomize(row) {
  */
 export function sliderWords(row, grade) {
     const prices = cachedPrices(row);
-    const words = PRICING.map((p, i) => `${p.word} ${priceWord(prices[i]) || NO_PRICE}`);
+    const words = PRICING.map((p, i) => `${t(p.word)} ${priceWord(prices[i]) || NO_PRICE}`);
     const g = pricingGrade(grade);
     const moved = g !== rowCustomize(row).pricing;
     const stuck = moved && !prices.some(Boolean);
     // no grade: no word bold, and no line saying so (Michal, 2026-11-02: "people can see that")
-    if (!g) return { value: String(DEFAULT_PRICING), bold: 0, said: NOT_GRADED, note: "", words };
-    return { value: String(g), bold: g, said: words[g - 1], note: stuck ? NO_CACHED : pricingOf(g).note, words };
+    if (!g) return { value: String(DEFAULT_PRICING), bold: 0, said: t(NOT_GRADED), note: "", words };
+    return { value: String(g), bold: g, said: words[g - 1], note: stuck ? t(NO_CACHED) : t(pricingOf(g).note), words };
 }
 
 /**
@@ -5230,7 +5275,7 @@ export function customizeLine(card) {
  * @param {string[]} venues
  */
 function syncHint(venues) {
-    return venues.length > 1 ? "tap a venue's → below to sync it" : `tap ${venues[0]} → below to sync it`;
+    return venues.length > 1 ? t("tap a venue's → below to sync it") : t("tap {venue} → below to sync it", { venue: venues[0] });
 }
 
 /**
@@ -5244,8 +5289,8 @@ function syncHint(venues) {
  */
 export function customizeSaved(row, to) {
     const venues = customizeVenues(row, to);
-    if (!venues.length) return { text: "saved", kind: "ok" };
-    return { text: `saved; ${syncHint(venues)}`, kind: "ok" };
+    if (!venues.length) return { text: t("saved"), kind: "ok" };
+    return { text: t("saved; {hint}", { hint: syncHint(venues) }), kind: "ok" };
 }
 
 /**
@@ -5258,7 +5303,7 @@ export function customizeSaved(row, to) {
  * @returns {{text:string, kind:string} | null}
  */
 export function editSaved(venue, behind) {
-    return behind.includes(venue) ? { text: `saved; ${syncHint([venue])}`, kind: "ok" } : null;
+    return behind.includes(venue) ? { text: t("saved; {hint}", { hint: syncHint([venue]) }), kind: "ok" } : null;
 }
 
 /**
@@ -5268,7 +5313,7 @@ export function editSaved(venue, behind) {
  * @returns {string}
  */
 export function photoQuestion(n) {
-    return `Remove photo ${n} from this item?`;
+    return t("Remove photo {n} from this item?", { n });
 }
 
 /**
@@ -5543,15 +5588,20 @@ export function swipeState(start, now, width, decided = "none") {
  * @returns {string}
  */
 export function archivedLine(title, live = []) {
-    if (!live.length) return `Archived ${title}`;
+    if (!live.length) return t("Archived {title}", { title });
     // still up somewhere: the bar asks (Michal, 2026-10-31: "when a listing gets archived. If
     // it is live on any venue do ask if the listing should be ended")
-    return `Archived ${title}. Still live on ${live.join(" and ")}: end it there?`;
+    return t("Archived {title}. Still live on {venues}: end it there?", { title, venues: andList(live) });
 }
 
 /** The bar once End listing was tapped. */
 export function endingLine(title, live) {
-    return `Ending ${title} on ${live.join(" and ")}`;
+    return t("Ending {title} on {venues}", { title, venues: andList(live) });
+}
+
+/** Venues in a sentence: "ebay and craigslist" (each further one "and" again). @param {string[]} list */
+function andList(list) {
+    return list.reduce((so, venue) => (so ? t("{a} and {b}", { a: so, b: venue }) : venue), "");
 }
 
 /**

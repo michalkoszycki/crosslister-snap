@@ -21,7 +21,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-export const SCRIPTS = ["app.js", "core.js", "book.js", "pc.js", "queue.js", "shrink.js", "scan.js"];
+export const SCRIPTS = ["app.js", "core.js", "book.js", "pc.js", "queue.js", "shrink.js", "scan.js", "about.js"];
 export const PAGES = ["index.html", "about.html"];
 
 /** A JS string literal's value: "...", '...' or `...` with no ${}. @param {string} literal */

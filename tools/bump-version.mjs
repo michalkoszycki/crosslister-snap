@@ -25,6 +25,7 @@ const files = [
     "book.js",
     "scan.js",
     "i18n.js", // its catalogs' imports (lang/zh.js, lang/es.js)
+    "about.js", // about.html's words in the chosen language: its i18n.js import
     "version.js",
 ];
 const pattern = /\?v=\d+\.\d+\.\d+/g;

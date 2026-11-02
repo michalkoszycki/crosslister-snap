@@ -22,7 +22,7 @@ const markedHtml = readFileSync(join(root, "index.html"), "utf8");
 // what the static checks read: the page with those marks left out, so a check of its markup and
 // its English stays one of markup and English (the marks have tests of their own)
 const html = markedHtml.replace(/ data-t(?:-[\w-]+)?(?=[\s>])/g, "");
-const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js", "i18n.js", "lang/zh.js", "lang/es.js"];
+const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js", "i18n.js", "lang/zh.js", "lang/es.js", "about.js"];
 
 function idsIn(source) {
     return new Set([...source.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
@@ -9212,13 +9212,19 @@ test("About and privacy: under the landing and Admin, not under the posting scre
     assert.equal(nodes.get("about-link").hidden, true);
 });
 
-test("about.html: what Snap is, privacy and terms, the version; no script, the app's look, a way back", async () => {
-    const page = readFileSync(join(root, "about.html"), "utf8");
+test("about.html: what Snap is, privacy and terms, the version; one script, its words' language, the app's look, a way back", async () => {
+    // its words in the language chosen on this phone (Michal, 2026-11-02; docs/UI.md rule 8): about.js
+    // alone, the page's own, the English kept in the page and the marks read as index.html's
+    const marked = readFileSync(join(root, "about.html"), "utf8");
+    const page = marked.replace(/ data-t(?:-[\w-]+)?(?=[\s>])/g, "");
     const { VERSION } = await import("../version.js");
-    assert.ok(!/<script/i.test(page), "a plain page: no script at all");
+    assert.deepEqual([...page.matchAll(/<script[^>]*>/gi)].map((m) => m[0]), [`<script type="module" src="about.js?v=${VERSION}">`]);
     const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(page)[1];
     assert.match(csp, /default-src 'none'/);
-    assert.ok(!csp.includes("script-src"), "nothing may run");
+    assert.match(csp, /script-src 'self';/, "its own script and nothing else");
+    assert.ok(!csp.includes("connect-src"), "nothing fetched");
+    // the line that the English governs, there for a translation alone
+    assert.match(marked, /<p id="about-governs" class="small" hidden data-t>This is a translation\. If it differs from the English, the English version governs\.<\/p>/);
     assert.match(page, new RegExp(`<link rel="stylesheet" href="styles\\.css\\?v=${VERSION.replace(/\./g, "\\.")}">`));
     assert.match(page, new RegExp(`data-version>${VERSION.replace(/\./g, "\\.")}<`), "the version it shows is VERSION");
     assert.ok(readFileSync(join(root, "tools/bump-version.mjs"), "utf8").includes('"about.html"'), "the bump tool keeps it in step");
@@ -9257,6 +9263,42 @@ test("about.html: what Snap is, privacy and terms, the version; no script, the a
     for (const m of page.matchAll(/(?:src|href)="([^"#:]+)"/g)) {
         if (m[1] === "./") continue;
         assert.ok(existsSync(join(root, m[1].split("?")[0])), `about.html points at a missing ${m[1]}`);
+    }
+});
+
+let abouts = 0;
+/** about.html run by about.js with `stored` as this phone's language: its marked nodes by English. */
+async function aboutIn(stored) {
+    const about = readFileSync(join(root, "about.html"), "utf8");
+    const nodes = new Map([...idsIn(about)].map((id) => [id, fakeElement(id)]));
+    nodes.get("about-governs").hidden = true;
+    const marked = markedIn(about, nodes);
+    const byEnglish = new Map(marked.map((n) => [n.textContent.replace(/\s+/g, " ").trim(), n]));
+    globalThis.document = {
+        documentElement: fakeElement("", "html"),
+        querySelectorAll(selector) {
+            assert.equal(selector, "[data-t], [data-t-placeholder], [data-t-aria-label], [data-t-title]");
+            return marked;
+        },
+        getElementById: (id) => nodes.get(id) ?? null,
+    };
+    Object.defineProperty(globalThis, "localStorage", { value: memoryStore(stored ? { "snap.language": stored } : {}), configurable: true, writable: true });
+    abouts += 1;
+    await import(`../about.js?run=${abouts}`);
+    return { byEnglish, nodes, page: globalThis.document.documentElement };
+}
+
+test("about.js: the about page in the language chosen on this phone, the English governing; English as written", async () => {
+    const english = await aboutIn(null);
+    assert.equal(english.page.lang, "en");
+    assert.equal(english.byEnglish.get("What Snap is").textContent, "What Snap is");
+    assert.equal(english.nodes.get("about-governs").hidden, true, "no translation, no governing line");
+    for (const lang of ["zh", "es"]) {
+        const { byEnglish, nodes, page } = await aboutIn(lang);
+        assert.equal(page.lang, lang === "zh" ? "zh-Hans" : "es");
+        assert.equal(byEnglish.get("What Snap is").textContent, await said(lang, "What Snap is"));
+        assert.equal(byEnglish.get("The service may stop or change at any time.").textContent, await said(lang, "The service may stop or change at any time."));
+        assert.equal(nodes.get("about-governs").hidden, false, `${lang}: the English governs`);
     }
 });
 

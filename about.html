@@ -7,11 +7,14 @@
   About Snap, its privacy and its terms (Michal, 2026-10-08: "What else do we need for the
   multi tenant? Let's continue."): a plain page beside the app, linked from the landing's and
   Admin's foot; eBay's developer console takes this page's address as the privacy policy URL.
-  No script at all, so the policy allows none; the look is the app's own stylesheet and font.
+  One script, about.js, its own and same-origin: it reads the language chosen on this phone and
+  puts these words in it (docs/UI.md rule 8; Michal, 2026-11-02); nothing else runs and nothing
+  is fetched. The look is the app's own stylesheet and font.
   The version below is rewritten by tools/bump-version.mjs (data-version), as every ?v= is.
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
+  script-src 'self';
   style-src 'self';
   font-src 'self';
   img-src 'self';
@@ -21,9 +24,10 @@
 <meta name="theme-color" content="#FFFC00">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0B0B">
 <meta name="referrer" content="no-referrer">
-<title>About Snap</title>
+<title data-t>About Snap</title>
 <link rel="stylesheet" href="styles.css?v=2.44.0">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script type="module" src="about.js?v=2.44.0"></script>
 </head>
 <body>
 <header>
@@ -42,48 +46,50 @@
 </header>
 
 <main class="about">
-  <a class="link back-link" href="./">← Back to Snap</a>
+  <a class="link back-link" href="./" data-t>← Back to Snap</a>
   <h2 class="landing-name">Snap</h2>
-  <p class="landing-tagline">a crosslisting app</p>
+  <p class="landing-tagline" data-t>a crosslisting app</p>
+  <!-- in Chinese or Spanish (about.js), that the English governs -->
+  <p id="about-governs" class="small" hidden data-t>This is a translation. If it differs from the English, the English version governs.</p>
 
-  <h2 id="what">What Snap is</h2>
+  <h2 id="what" data-t>What Snap is</h2>
   <!-- Michal, 2026-10-22: "dont mention 'ebay' or 'craigslist' explicitly. just define the term
        venue above. and define is with ebay and craigslist as example": the one place they are named -->
-  <p>A <dfn id="venue">venue</dfn> is a site where you sell, such as eBay or Craigslist.</p>
-  <p>Snap lists what you photograph. Take the photos of an item on your phone; Snap writes the
+  <p id="venue" data-t>A venue is a site where you sell, such as eBay or Craigslist.</p>
+  <p data-t>Snap lists what you photograph. Take the photos of an item on your phone; Snap writes the
     listing, with a title, a price and a description, and posts it on your venues, on your own
     accounts.</p>
   <!-- the support address, Michal's choice of 2026-10-08 -->
-  <p>Snap is run by its developer; contact: the Feedback box in Admin, or the email below.</p>
+  <p data-t>Snap is run by its developer; contact: the Feedback box in Admin, or the email below.</p>
   <p><a id="support" href="mailto:crosslistersnap@gmail.com">crosslistersnap@gmail.com</a></p>
 
-  <h2 id="privacy">Privacy</h2>
-  <p>What the server keeps, and why:</p>
+  <h2 id="privacy" data-t>Privacy</h2>
+  <p data-t>What the server keeps, and why:</p>
   <ul>
-    <li>Your photos, and the listings made from them, so they can be posted, changed and ended.</li>
-    <li>Your venue tokens, so Snap can list for you on your accounts there.</li>
-    <li>Your email address, to send you sign-in links.</li>
-    <li>Your seller address, for shipping and pickup on your listings.</li>
-    <li>Usage counts: how many postings you made and how many you have left.</li>
+    <li data-t>Your photos, and the listings made from them, so they can be posted, changed and ended.</li>
+    <li data-t>Your venue tokens, so Snap can list for you on your accounts there.</li>
+    <li data-t>Your email address, to send you sign-in links.</li>
+    <li data-t>Your seller address, for shipping and pickup on your listings.</li>
+    <li data-t>Usage counts: how many postings you made and how many you have left.</li>
   </ul>
-  <p>To write a listing, the photos you mark and your note are sent to the AI service that
+  <p data-t>To write a listing, the photos you mark and your note are sent to the AI service that
     drafts it.</p>
-  <p>What it never keeps: your card details. Payments go to Stripe, and card numbers are typed
+  <p data-t>What it never keeps: your card details. Payments go to Stripe, and card numbers are typed
     only on Stripe's own page.</p>
-  <p>A venue can ask us to delete the data we hold from it (for example when you close your
+  <p data-t>A venue can ask us to delete the data we hold from it (for example when you close your
     account there), and we do.</p>
-  <p>You delete your account yourself, in Snap under Admin, Settings, Snap Account: its photos,
+  <p data-t>You delete your account yourself, in Snap under Admin, Settings, Snap Account: its photos,
     listings and settings go from the server with it.</p>
-  <p>The app loads nothing from other sites: no ads, no analytics, no trackers.</p>
+  <p data-t>The app loads nothing from other sites: no ads, no analytics, no trackers.</p>
 
-  <h2 id="terms">Terms</h2>
+  <h2 id="terms" data-t>Terms</h2>
   <ul>
-    <li>Snap is a tool that lists what you photograph on your own accounts. You are the seller:
+    <li data-t>Snap is a tool that lists what you photograph on your own accounts. You are the seller:
       what you list, its price and its description, and dealing with your buyers are yours, under
       each venue's own rules.</li>
-    <li>Your first three postings are free; after that, postings are prepaid. Postings already
+    <li data-t>Your first three postings are free; after that, postings are prepaid. Postings already
       used are not refunded.</li>
-    <li>The service may stop or change at any time.</li>
+    <li data-t>The service may stop or change at any time.</li>
   </ul>
 </main>
 
