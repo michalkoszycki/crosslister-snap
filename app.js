@@ -2528,7 +2528,7 @@ async function lookupBook() {
     if (!key) return;
     const pc = settings();
     if (!pc) {
-        setState("book", reduce(slots.book, { type: "bookLookupFailed", key, status: -1, error: SETTINGS_HINT }));
+        setState("book", reduce(slots.book, { type: "bookLookupFailed", key, status: -1, error: t(SETTINGS_HINT) }));
         return;
     }
     setState("book", reduce(slots.book, { type: "bookLookupStart", key }));
@@ -4814,7 +4814,8 @@ function fieldNode(venue, f, from, locked) {
     input.setAttribute("autocomplete", "off");
     input.value = String(values[f.key]);
     input.disabled = locked;
-    if (from) input.placeholder = from.value;
+    // what the field is derived from: the row's words, or core's own (CATEGORY_FROM_EBAY) in the language
+    if (from) input.placeholder = t(from.value);
     input.addEventListener("input", () => {
         values[f.key] = input.value;
     });
