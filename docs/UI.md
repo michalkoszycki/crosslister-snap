@@ -53,8 +53,14 @@
    its own language, on the landing and under This phone; kept on the phone, never sent to the
    server. The English text is the lookup key (`i18n.js`, `lang/zh.js`, `lang/es.js`):
    index.html marks its own words `data-t` (`data-t-placeholder`, `data-t-aria-label`), the
-   scripts write theirs through `t("...")`. Error messages, anything the server sends (job steps,
-   summaries, its `detail`), venue names, the brand and the listings themselves stay English.
+   scripts write theirs through `t("...")`. Everything the page writes is translated, its own
+   error and warning lines included ("Could not ...", the offline banner, NEXT, "server off");
+   what the server sends stays as it came (Michal, 2026-11-03: "by errors i meant things that
+   servers push back"): its error `detail`, job steps and summaries, what the AI wrote, and the
+   listings themselves. Where the page's words carry the server's, only the page's are
+   translated, the server's put in as a `{placeholder}` ("Could not save: {detail}."). Snap's
+   policy names on eBay (Snap shipping, Snap pickup, Snap returns, Snap books), venue names,
+   the brand and "AI" stay English.
    New text is written in English only and translated in the pass before a release
    (docs/RELEASE.md; Michal, 2026-11-02: "i definately do not want you to run through updating
    this each time ... that change is always pending before final release"): until then it shows
@@ -505,3 +511,5 @@ controls disabled, the row edits refused with the server's words); **an expired 
 - 2026-11-02: rule 8, Languages: English, 中文 and Español, chips on the landing (4.1) and under
   This phone (4.7, 5); the English the key, errors, server text, venue names and the listings
   English; new words translated in the pass before a release (docs/RELEASE.md).
+- 2026-11-03: rule 8: the page's own error and warning lines translated too, NEXT and "server
+  off" among them; only what the server sends stays as it came.
