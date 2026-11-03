@@ -129,30 +129,30 @@ const LOOPBACK = new Set(["127.0.0.1", "localhost"]);
 export function checkSettings(pcRaw, keyRaw) {
     const pcText = typeof pcRaw === "string" ? pcRaw.trim() : "";
     const key = typeof keyRaw === "string" ? keyRaw.trim() : "";
-    if (!pcText) return { ok: false, error: "Enter the server address." };
+    if (!pcText) return { ok: false, error: t("Enter the server address.") };
     let url;
     try {
         url = new URL(pcText);
     } catch {
-        return { ok: false, error: "The server address is not a web address (https://...)." };
+        return { ok: false, error: t("The server address is not a web address (https://...).") };
     }
     const loopback = LOOPBACK.has(url.hostname);
     if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
-        return { ok: false, error: "The server address must start with https://" };
+        return { ok: false, error: t("The server address must start with https://") };
     }
     if (!loopback && !url.hostname.endsWith(".ts.net")) {
         return {
             ok: false,
-            error: "The page may only call a Tailscale address: https://<pc>.<tailnet>.ts.net",
+            error: t("The page may only call a Tailscale address: https://<pc>.<tailnet>.ts.net"),
         };
     }
     if (url.username || url.password || url.search || url.hash || url.pathname !== "/") {
-        return { ok: false, error: "Give the address only, with nothing after the name." };
+        return { ok: false, error: t("Give the address only, with nothing after the name.") };
     }
-    if (!key) return { ok: false, error: "Enter the key." };
+    if (!key) return { ok: false, error: t("Enter the key.") };
     // a header value: visible ASCII only, so no spaces, accents or line breaks
     if (!/^[\x21-\x7e]+$/.test(key)) {
-        return { ok: false, error: "The key has a space or an unusual character in it." };
+        return { ok: false, error: t("The key has a space or an unusual character in it.") };
     }
     return { ok: true, pc: url.origin, key };
 }
@@ -192,8 +192,8 @@ export function authHeaders({ key = "", session = "" } = {}) {
  */
 export function checkEmail(raw) {
     const email = typeof raw === "string" ? raw.trim() : "";
-    if (!email) return { ok: false, error: "Enter your email address." };
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "That is not an email address." };
+    if (!email) return { ok: false, error: t("Enter your email address.") };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: t("That is not an email address.") };
     return { ok: true, email };
 }
 
@@ -234,10 +234,10 @@ export function sessionOf(answer) {
 export const LINK_SENT = tKey("Check your email. Open the link on this device, or enter the code from the email below.");
 
 /** Said when the server answers the sign-in routes with a 404: the sign-in lane is not there yet. */
-export const SIGNIN_MISSING = "Sign-in is not set up on this server yet. Ask the developer for a key.";
+export const SIGNIN_MISSING = tKey("Sign-in is not set up on this server yet. Ask the developer for a key.");
 
 /** Said on the landing when the server no longer knows this phone's session (a 401). */
-export const SIGNIN_EXPIRED = "Your sign-in expired; send yourself a new link";
+export const SIGNIN_EXPIRED = tKey("Your sign-in expired; send yourself a new link");
 
 /**
  * GET /auth/signup's answer: true when anyone with an email may make an account by asking
@@ -272,9 +272,9 @@ export function signinWords(open) {
  * @returns {string}
  */
 export function signinError(status, message) {
-    if (status === 404) return SIGNIN_MISSING;
-    if ([400, 401, 403, 410].includes(status)) return "That sign-in link has expired or was used already. Send yourself a new link.";
-    return `Could not sign in: ${message}.`;
+    if (status === 404) return t(SIGNIN_MISSING);
+    if ([400, 401, 403, 410].includes(status)) return t("That sign-in link has expired or was used already. Send yourself a new link.");
+    return t("Could not sign in: {detail}.", { detail: message });
 }
 
 /**
@@ -291,7 +291,7 @@ export function cleanCode(raw) {
 }
 
 /** Said when the code box holds no six digits; nothing is sent. */
-export const CODE_NEEDED = "Enter the six digits from the email.";
+export const CODE_NEEDED = tKey("Enter the six digits from the email.");
 
 /**
  * The sign-in screen's line when the code did not sign him in: a wrong code is the server's
@@ -303,11 +303,11 @@ export const CODE_NEEDED = "Enter the six digits from the email.";
  */
 export function codeError(status, detail) {
     const said = typeof detail === "string" ? detail.trim() : "";
-    if (status === 401) return said ? `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}` : "That code is not right.";
-    if (status === 410) return "That code was used or has expired; send yourself a new link.";
-    if (status === 400 || status === 422) return "Codes are not available on this server yet; use the link in the email.";
-    if (status === 404) return SIGNIN_MISSING;
-    return `Could not sign in: ${errorText(status, said)}.`;
+    if (status === 401) return said ? `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}` : t("That code is not right.");
+    if (status === 410) return t("That code was used or has expired; send yourself a new link.");
+    if (status === 400 || status === 422) return t("Codes are not available on this server yet; use the link in the email.");
+    if (status === 404) return t(SIGNIN_MISSING);
+    return t("Could not sign in: {detail}.", { detail: errorText(status, said) });
 }
 
 /**
@@ -648,7 +648,7 @@ export function accountName(a) {
 export const SIGNED_OUT = tKey("signed out");
 
 /** Said in Delete my account's confirmation for the admin, whose account the server refuses to delete. */
-export const ADMIN_NO_DELETE = "The admin's account cannot be deleted from the app.";
+export const ADMIN_NO_DELETE = tKey("The admin's account cannot be deleted from the app.");
 
 /** Said once the server answered Delete my account with a 204: on the landing, or in Settings under the next account. */
 export const ACCOUNT_DELETED = tKey("Your account was deleted.");
@@ -667,10 +667,10 @@ export const ACCOUNT_DELETED = tKey("Your account was deleted.");
  */
 export function deleteError(status, detail, message, code = "") {
     if (status === 409 || (status === 403 && detail)) {
-        const said = (detail || (code === "ADMIN_ACCOUNT" ? ADMIN_NO_DELETE : message)).trim();
-        return `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
+        const said = (detail || (code === "ADMIN_ACCOUNT" ? t(ADMIN_NO_DELETE) : message)).trim();
+        return `${said[0].toUpperCase()}${said.slice(1)}${/[.!?。]$/.test(said) ? "" : "."}`;
     }
-    return `Could not delete the account: ${message}.`;
+    return t("Could not delete the account: {detail}.", { detail: message });
 }
 
 // --- the people on an account (Michal, 2026-10-25: "allow two users to join the same family
@@ -810,7 +810,11 @@ export const INVITE_SENT = tKey("Invitation sent");
  */
 export function inviteBody({ email }) {
     const checked = checkEmail(email);
-    if (!checked.ok) return { ok: false, error: checked.error.replace("your email", "their email") };
+    if (!checked.ok) {
+        // an empty box asks for their address, not his own
+        const typed = typeof email === "string" && email.trim();
+        return { ok: false, error: typed ? checked.error : t("Enter their email address.") };
+    }
     return { ok: true, body: { email: checked.email } };
 }
 
@@ -821,20 +825,20 @@ export function inviteBody({ email }) {
  */
 export function nameBody(raw) {
     const name = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
-    return name ? { ok: true, body: { name } } : { ok: false, error: "Enter a name." };
+    return name ? { ok: true, body: { name } } : { ok: false, error: t("Enter a name.") };
 }
 
 /**
  * A people action's line when it did not go: a server without the route (404) has it not
  * available yet; a refusal (400, 403, 409) is the server's own words; anything else says what
- * went wrong after `lead` ("Could not invite").
+ * went wrong after `lead` ("Could not invite", in the chosen language: the caller's t()).
  * @param {string} lead
  * @param {number} status the PcError's (0: no answer)
  * @param {string} message errorText's words
  * @returns {string}
  */
 export function peopleError(lead, status, message) {
-    if (status === 404) return "People on an account are not available on this server yet.";
+    if (status === 404) return t("People on an account are not available on this server yet.");
     if ([400, 403, 409].includes(status)) return message;
     return `${lead}: ${message}.`;
 }
@@ -896,8 +900,9 @@ export function packLabel(pack) {
 export function policiesLine(state, justReady = false) {
     if (state === "pending") return t("setting up your policies...");
     if (/^failed\b/.test(state)) {
+        // the server's why as it said it, inside the page's own words
         const why = state.replace(/^failed:?/, "").trim();
-        return `policies failed${why ? `: ${why}` : ""}; contact the developer`;
+        return why ? t("policies failed: {detail}; contact the developer", { detail: why }) : t("policies failed; contact the developer");
     }
     return state === "ready" && justReady ? t("policies ready") : "";
 }
@@ -1326,7 +1331,7 @@ export const US_STATES = new Set(
 );
 
 /** Said when the state is not a US one. */
-export const US_ONLY = "Snap takes US addresses only for now: the state is two letters, as IL.";
+export const US_ONLY = tKey("Snap takes US addresses only for now: the state is two letters, as IL.");
 
 /** One address's boxes checked: each trimmed (inner spaces one), the state a US one upper-cased (US_STATES), the ZIP five digits (a ZIP+4's first five: Michal, 2026-10-10). */
 function checkFields(fields, uses) {
@@ -1335,18 +1340,18 @@ function checkFields(fields, uses) {
     const out = {};
     for (const k of uses) {
         const v = text(fields[k]);
-        if (k === "line1" && !v) return { ok: false, error: "Enter the street address." };
-        if (k === "city" && !v) return { ok: false, error: "Enter the city." };
+        if (k === "line1" && !v) return { ok: false, error: t("Enter the street address.") };
+        if (k === "city" && !v) return { ok: false, error: t("Enter the city.") };
         if (k === "state") {
             const st = v.toUpperCase();
-            if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: "The state is two letters, as IL." };
-            if (!US_STATES.has(st)) return { ok: false, error: US_ONLY };
+            if (!/^[A-Z]{2}$/.test(st)) return { ok: false, error: t("The state is two letters, as IL.") };
+            if (!US_STATES.has(st)) return { ok: false, error: t(US_ONLY) };
             out[k] = st;
             continue;
         }
         if (k === "zip") {
             const z = /^(\d{5})(?:[- ]?\d{4})?$/.exec(v);
-            if (!z) return { ok: false, error: "The ZIP is five digits, as 60601." };
+            if (!z) return { ok: false, error: t("The ZIP is five digits, as 60601.") };
             out[k] = z[1];
             continue;
         }
@@ -1420,9 +1425,9 @@ export function noAddressLine(venue) {
  * @returns {string}
  */
 export function sellerError(status, message) {
-    if (status === 404) return "Saving the address is not available yet.";
+    if (status === 404) return t("Saving the address is not available yet.");
     if (status === 400 || status === 409) return message;
-    return `Could not save the address: ${message}.`;
+    return t("Could not save the address: {detail}.", { detail: message });
 }
 
 // --- a header and a footer on every listing (Michal, 2026-10-17: "In default settings add a
@@ -1486,7 +1491,7 @@ export function wrapBody(part, { on, text, venues } = {}) {
     if (typeof on === "boolean") body.on = on;
     if (text !== undefined) {
         const words = typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
-        if (words.length > WRAP_MAX) return { ok: false, error: `At most ${WRAP_MAX} characters; this is ${words.length}.` };
+        if (words.length > WRAP_MAX) return { ok: false, error: t("At most {max} characters; this is {n}.", { max: WRAP_MAX, n: words.length }) };
         body.text = words;
     }
     if (venues !== undefined) body.venues = venueList(venues);
@@ -1518,7 +1523,7 @@ export function wrapDraftBody(draft, info) {
     const body = {};
     for (const part of WRAP_PARTS) {
         const made = wrapBody(part, { text: draft[part].text, venues: draft[part].venues });
-        if (!made.ok) return { ok: false, error: `${part === "header" ? "Header" : "Footer"}: ${made.error}` };
+        if (!made.ok) return { ok: false, error: `${part === "header" ? t("Header") : t("Footer")}: ${made.error}` };
         const want = made.body[part];
         const now = info[part];
         /** @type {Partial<WrapPart>} */
@@ -1561,9 +1566,9 @@ export function wrapApplyVenues(info) {
  * @returns {string}
  */
 export function wrapError(status, message) {
-    if (status === 404) return "The header and footer are not available yet.";
+    if (status === 404) return t("The header and footer are not available yet.");
     if (status === 400) return message;
-    return `Could not save: ${message}.`;
+    return t("Could not save: {detail}.", { detail: message });
 }
 
 /**
@@ -1584,7 +1589,7 @@ export function returnHash(hash) {
 }
 
 /** eBay's consent came back for an eBay account another Snap account already has (`#ebay=failed:taken`). */
-export const EBAY_TAKEN = "That eBay account is already connected to another Snap account. Sign in to that one, or use a different eBay account.";
+export const EBAY_TAKEN = tKey("That eBay account is already connected to another Snap account. Sign in to that one, or use a different eBay account.");
 
 /**
  * What the Account block says on the way back (returnHash): "10 postings added",
@@ -1596,7 +1601,7 @@ export const EBAY_TAKEN = "That eBay account is already connected to another Sna
 export function returnLine(back) {
     if (back.kind === "ebay") {
         if (back.value === "connected") return t("eBay connected");
-        return back.value === "failed:taken" ? EBAY_TAKEN : "eBay did not connect; try again or contact the developer";
+        return back.value === "failed:taken" ? t(EBAY_TAKEN) : t("eBay did not connect; try again or contact the developer");
     }
     if (back.value === "cancelled") return t("Payment cancelled");
     const n = Number(back.value);
@@ -1613,9 +1618,9 @@ export function returnLine(back) {
  * @returns {string}
  */
 export function accountError(what, status, message) {
-    if (status === 404) return what === "pay" ? "Buying postings is not available yet." : "Connecting eBay is not available yet.";
+    if (status === 404) return what === "pay" ? t("Buying postings is not available yet.") : t("Connecting eBay is not available yet.");
     if (status === 503) return message;
-    return what === "pay" ? `Could not open the payment page: ${message}.` : `Could not open eBay: ${message}.`;
+    return what === "pay" ? t("Could not open the payment page: {detail}.", { detail: message }) : t("Could not open eBay: {detail}.", { detail: message });
 }
 
 /**
@@ -2130,11 +2135,15 @@ export function cancelledLine(job) {
 /** cancelledLine's when the posting was kept. */
 const CANCELLED_LOST = tKey("cancelled: the posting is lost");
 
+/** A job that failed with no words of the server's: the page's own "failed". */
+export const FAILED = tKey("failed");
+
 /**
- * A reset's ends, kept in a job's `error` in English (the state is compared and stored) and
- * translated where shown (venueLine): the only `error` words that are the page's own.
+ * A reset's ends and the bare "failed", kept in a job's `error` in English (the state is
+ * compared and stored) and translated where shown (venueLine); the server's own error words
+ * are shown as they came.
  */
-const RESET_ENDS = [CANCELLED, CANCELLED_LOST];
+const RESET_ENDS = [CANCELLED, CANCELLED_LOST, FAILED];
 
 /**
  * Said for a moment under a job button tapped from the PC's publishing step on
@@ -2443,7 +2452,7 @@ export function quantityValue(text) {
 }
 
 /** The line under the buttons while the quantity is not a quantity. */
-export const QUANTITY_HINT = "Quantity (under customize) must be a whole number, 1 or more";
+export const QUANTITY_HINT = tKey("Quantity (under customize) must be a whole number, 1 or more");
 
 /** The quiet word under ebay, before the press, once pickup only is ticked: he sees it took. */
 export const PICKUP_NOTE = tKey("pickup only");
@@ -2620,11 +2629,12 @@ function withCustomize(state, fn) {
  * @returns {string}
  */
 export function errorText(status, detail) {
-    if (status === 0) return "cannot reach the server";
-    if (status === 401) return "wrong key - check Settings";
+    // the page's own words in the chosen language; the server's detail as it said it
+    if (status === 0) return t("cannot reach the server");
+    if (status === 401) return t("wrong key - check Settings");
     if (typeof detail === "string" && detail) return detail;
-    if (status === 404) return "the server does not know this item or job";
-    return `the server answered ${status}`;
+    if (status === 404) return t("the server does not know this item or job");
+    return t("the server answered {status}", { status });
 }
 
 /** How often the page asks the PC whether it is there, while the page is on screen. */
@@ -2641,11 +2651,10 @@ export function serverLine(settingsOk, status) {
     if (!settingsOk) return { text: t("server not set"), kind: "" };
     if (status === null) return { text: t("checking server..."), kind: "" };
     if (status === 200) return { text: t("server ok"), kind: "ok" };
-    // a failure, said in English as every error is (docs/UI.md rule 8)
-    if (status === 401) return { text: "wrong key", kind: "bad" };
+    if (status === 401) return { text: t("wrong key"), kind: "bad" };
     // a sign-up waiting for eBay is refused everything but /me: the server answered all the same
     if (status === 403) return { text: t("server ok"), kind: "ok" };
-    return { text: "server off", kind: "bad" };
+    return { text: t("server off"), kind: "bad" };
 }
 
 /**
@@ -3076,7 +3085,7 @@ export function reduce(state, action) {
             return withJob(state, action.venue, () => ({
                 ...idleJob(),
                 phase: "failed",
-                error: action.error || "not sent",
+                error: action.error || t("not sent"),
                 credit: action.credit === true,
             }));
         case "jobPaused":
@@ -3122,7 +3131,7 @@ export function reduce(state, action) {
                 ahead: toCount(s.ahead),
                 link: safeLink(s.links ? s.links[action.venue] : ""),
                 // stopped for a reset: whether the credit is lost, rather than the PC's own words
-                error: phase !== "failed" ? "" : s.error === CANCELLED_ON_PC ? cancelledLine(s) : String(s.error || "failed"),
+                error: phase !== "failed" ? "" : s.error === CANCELLED_ON_PC ? cancelledLine(s) : String(s.error || FAILED),
                 trouble: "",
                 // blank until the PC saved the row; once known, a later blank does not unsay it
                 price: priceText(s.price) || job.price,
@@ -3137,7 +3146,7 @@ export function reduce(state, action) {
         case "pollTrouble":
             return withJob(state, action.venue, (job) => ({
                 ...job,
-                trouble: action.error || "cannot reach the server",
+                trouble: action.error || t("cannot reach the server"),
             }));
         case "setQuantity": {
             const quantity = typeof action.text === "string" ? action.text : String(action.text ?? "");
@@ -3183,7 +3192,7 @@ export function reduce(state, action) {
                 by: lookupBy(book),
                 // a title no catalogue knows is not a dead end: only an ISBN can be "missing"
                 phase: action.status === 404 && !book.manual ? "missing" : "failed",
-                error: action.error || "the book was not looked up",
+                error: action.error || t("the book was not looked up"),
             }));
             // remembered past the card: No ISBN keeps this ISBN for the listing
             if (next === state || next.book.lookup.phase !== "missing") return next;
@@ -3421,7 +3430,7 @@ function taskDone(state, task, answer) {
 }
 
 function taskFailed(state, task, status, error) {
-    const why = error || "not sent";
+    const why = error || t("not sent");
     // a blank name refused: a server from before 2.15.0, which names every folder by what
     // was typed; the photos wait on the page for the name, as they did then
     if (task.kind === "item" && !task.name && status === 400) return { ...state, needsName: true };
@@ -3456,7 +3465,7 @@ function adoptItem(state, answer) {
             ...state,
             stalled: true,
             failures: state.failures + 1,
-            problem: "the server gave no item",
+            problem: t("the server gave no item"),
         };
     }
     const unnamed = state.mode !== "book" && !state.itemName;
@@ -3730,13 +3739,13 @@ export function venueLine(job, idle = "") {
             // the page's own step ("sending"), never the server's
             return { text: t(job.step || tKey("sending")), link: "", kind: "busy" };
         case "queued": {
-            // a poll that failed: an error, said in English (docs/UI.md rule 8)
-            if (job.trouble) return { text: `${job.trouble}, still trying`, link: "", kind: "busy" };
+            // a poll that failed: why, and that it is asked again
+            if (job.trouble) return { text: t("{trouble}, still trying", { trouble: job.trouble }), link: "", kind: "busy" };
             const text = job.ahead > 0 ? t("queued, {n} ahead", { n: job.ahead }) : t("queued");
             return { text, link: "", kind: "busy" };
         }
         case "running":
-            if (job.trouble) return { text: `${job.trouble}, still trying`, link: "", kind: "busy" };
+            if (job.trouble) return { text: t("{trouble}, still trying", { trouble: job.trouble }), link: "", kind: "busy" };
             // the server's step as it says it
             return { text: job.step || t("working"), link: "", kind: "busy" };
         case "done":
@@ -3744,8 +3753,8 @@ export function venueLine(job, idle = "") {
                 ? { text: "", link: job.link, kind: "ok" }
                 : { text: job.held ? t(DRAFTED) : t("done"), link: "", kind: "ok" };
         case "failed":
-            // the page's own ends of a reset are words; anything else is an error, as it came
-            return { text: RESET_ENDS.includes(job.error) ? t(job.error) : job.error || "failed", link: "", kind: "bad" };
+            // the page's own ends (a reset's, a bare "failed") translated; the server's error as it came
+            return { text: RESET_ENDS.includes(job.error) ? t(job.error) : job.error || t(FAILED), link: "", kind: "bad" };
         default:
             return { text: idle, link: "", kind: "" };
     }
@@ -4011,8 +4020,10 @@ export function itemIdFor(itemName, date) {
 export function nameTakenHint(state) {
     if (!state.nameTaken) return "";
     const { photos } = state.nameTaken;
-    const held = photos > 0 ? ` with ${photos} photo${photos === 1 ? "" : "s"}` : "";
-    return `"${state.itemName}" is already an item on the server today${held}. Use a different name.`;
+    const name = state.itemName;
+    if (photos === 1) return t("\"{name}\" is already an item on the server today with 1 photo. Use a different name.", { name });
+    if (photos > 1) return t("\"{name}\" is already an item on the server today with {n} photos. Use a different name.", { name, n: photos });
+    return t("\"{name}\" is already an item on the server today. Use a different name.", { name });
 }
 
 /**
@@ -4034,9 +4045,8 @@ export function venueButton(state, venue, settingsOk) {
     // saved, not posted, opens again to post it
     if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: t(SETTINGS_HINT) };
-    // a quantity he typed wrong is his to fix first: it goes with either button (a refusal:
-    // English, as every error is)
-    if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
+    // a quantity he typed wrong is his to fix first: it goes with either button
+    if (!quantityValue(state.customize.quantity)) return { enabled: false, hint: t(QUANTITY_HINT) };
     // the second button: the row is saved, nothing more is needed
     if (state.sku) return { enabled: true, hint: "" };
     const n = state.photos.length;
@@ -4047,7 +4057,7 @@ export function venueButton(state, venue, settingsOk) {
         return { enabled: false, hint: t(AI_HINT) };
     }
     if (state.photos.some((p) => p.status === "failed")) {
-        return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
+        return { enabled: false, hint: t("A photo did not reach the server - tap its 'failed' to try again") };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
@@ -4115,7 +4125,7 @@ function bookVenueButton(state, venue, settingsOk) {
     if (isActive(job) || (job.phase === "done" && !savedNotPosted(job))) return { enabled: false, hint: "" };
     if (!settingsOk) return { enabled: false, hint: t(SETTINGS_HINT) };
     const { book } = state;
-    if (!quantityValue(book.customize.quantity)) return { enabled: false, hint: QUANTITY_HINT };
+    if (!quantityValue(book.customize.quantity)) return { enabled: false, hint: t(QUANTITY_HINT) };
     if (waitsForIsbn(state)) return { enabled: false, hint: waitHint(state) };
     // under No ISBN the title is what is looked up, even with an ISBN kept after a miss
     if (book.manual ? !bookSearch(book).title : !book.isbn) {
@@ -4127,10 +4137,11 @@ function bookVenueButton(state, venue, settingsOk) {
         case "missing":
             return { enabled: false, hint: t(ISBN_MISS_HINT) };
         case "failed":
-            // a failure: English, as every error is (docs/UI.md rule 8)
             return {
                 enabled: false,
-                hint: `The book was not looked up - edit the ${book.manual ? "title" : "ISBN"} to try again`,
+                hint: book.manual
+                    ? t("The book was not looked up - edit the title to try again")
+                    : t("The book was not looked up - edit the ISBN to try again"),
             };
         default:
             return { enabled: false, hint: t("Looking the book up...") };
@@ -4140,7 +4151,7 @@ function bookVenueButton(state, venue, settingsOk) {
     if (n > MAX_PHOTOS) return { enabled: false, hint: tooMany(n) };
     if (!bookPriceValue(book.price)) return { enabled: false, hint: t("Set a price (whole dollars are fine)") };
     if (state.photos.some((p) => p.status === "failed")) {
-        return { enabled: false, hint: "A photo did not reach the server - tap its 'failed' to try again" };
+        return { enabled: false, hint: t("A photo did not reach the server - tap its 'failed' to try again") };
     }
     if (unsent(state) || !state.itemId) {
         const sent = state.photos.filter((p) => p.status === "sent").length;
@@ -4212,8 +4223,7 @@ export function noteStatusText(state) {
     if (!noteDirty(state)) return note.sentText ? t("sent") : "";
     if (!state.itemId) return note.text.trim() ? t("goes with the first photo") : "";
     if (state.busy && state.busy.kind === "note") return t("sending...");
-    // a failure: English, as every error is
-    if (state.stalled || !state.online) return "not sent (offline), will retry";
+    if (state.stalled || !state.online) return t("not sent (offline), will retry");
     return note.due ? t("sending...") : "";
 }
 
@@ -4262,11 +4272,12 @@ export function leaveWarning(state) {
  */
 export function bannerText(state) {
     if (!state.online) {
-        return "You are offline. Photos wait on this page and go to the server when you are back.";
+        return t("You are offline. Photos wait on this page and go to the server when you are back.");
     }
     if (state.stalled) {
-        const why = state.problem || "cannot reach the server";
-        return `${why[0].toUpperCase()}${why.slice(1)}. Photos wait on this page and go to the server as soon as it answers.`;
+        // the why: the page's own words, or the server's as it said them
+        const why = state.problem || t("cannot reach the server");
+        return t("{why}. Photos wait on this page and go to the server as soon as it answers.", { why: `${why[0].toUpperCase()}${why.slice(1)}` });
     }
     return "";
 }
@@ -4728,7 +4739,7 @@ export function craigslistCondition(condition) {
 }
 
 /** Under the chips when the server could not read eBay's list for the row's category. */
-export const CONDITIONS_UNREAD = "eBay's list for this category could not be read: showing all";
+export const CONDITIONS_UNREAD = tKey("eBay's list for this category could not be read: showing all");
 
 /**
  * Edit's Condition chips from GET /inventory/<sku>/conditions: the conditions eBay allows
@@ -4750,7 +4761,7 @@ export function conditionChoices(answer) {
     const chips = Object.keys(CONDITION_LABELS).map((value) => ({ value, label: label(value) }));
     if (!answer) return { current, chips, note: "" };
     const why = plain(a.error);
-    return { current, chips, note: why ? `${CONDITIONS_UNREAD} (${why})` : CONDITIONS_UNREAD };
+    return { current, chips, note: why ? `${t(CONDITIONS_UNREAD)} (${why})` : t(CONDITIONS_UNREAD) };
 }
 
 /**
@@ -4945,9 +4956,9 @@ export function jobRunning(job) {
 export function syncLine(job) {
     const state = plain(job.state);
     if (state === "done") return { text: plain(job.summary) || t("done"), kind: "ok" };
-    if (state === "failed") return { text: plain(job.error) || "failed", kind: "bad" };
+    if (state === "failed") return { text: plain(job.error) || t(FAILED), kind: "bad" };
     if (state === CANCELLED) return { text: t(CANCELLED), kind: "bad" };
-    if (job.trouble) return { text: `${job.trouble}, still trying`, kind: "busy" };
+    if (job.trouble) return { text: t("{trouble}, still trying", { trouble: job.trouble }), kind: "busy" };
     if (state === "running") return { text: plain(job.step) || t("working"), kind: "busy" };
     const ahead = Number.isInteger(job.ahead) && job.ahead > 0 ? job.ahead : 0;
     return { text: ahead ? t("queued, {n} ahead", { n: ahead }) : t("queued"), kind: "busy" };
@@ -5094,7 +5105,7 @@ export function patchBody(venue, before, after) {
 // asking is not shown any more.
 
 /** Said under the quantity box while it holds no quantity, as under the goods card's buttons. */
-export const EDIT_QUANTITY_HINT = "Quantity must be a whole number, 1 or more";
+export const EDIT_QUANTITY_HINT = tKey("Quantity must be a whole number, 1 or more");
 
 /** Under the slider of a row whose price follows no grade (its "pricing" is null). */
 export const NOT_GRADED = tKey("not priced by grade yet");
@@ -5265,7 +5276,7 @@ export function customizeButtons(row, values, busy) {
 export function customizeLine(card) {
     const said = busyLine(card);
     if (said) return said;
-    if (!quantityValue(card.values.quantity)) return { text: EDIT_QUANTITY_HINT, kind: "bad" };
+    if (!quantityValue(card.values.quantity)) return { text: t(EDIT_QUANTITY_HINT), kind: "bad" };
     return { text: "", kind: "" };
 }
 
@@ -5555,7 +5566,7 @@ export const SWIPE_MAX_PX = 120;
 export const UNDO_MS = 6000;
 
 /** An archive (or Unarchive, or Undo) a server without the route answers with a 404. */
-export const ARCHIVE_MISSING = "Archiving is not available on this server yet";
+export const ARCHIVE_MISSING = tKey("Archiving is not available on this server yet");
 
 /**
  * A finger on a list row, from where it went down (`start`) to where it is (`now`): "none"
@@ -5628,5 +5639,5 @@ export const ASK_MS = 15000;
  * @returns {string}
  */
 export function archiveError(sku, status, message) {
-    return status === 404 ? ARCHIVE_MISSING : `${sku}: ${message}`;
+    return status === 404 ? t(ARCHIVE_MISSING) : `${sku}: ${message}`;
 }

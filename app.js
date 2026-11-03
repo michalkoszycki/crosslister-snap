@@ -22,6 +22,7 @@ import {
     cleanItemName,
     customizeOf,
     doneButton,
+    FAILED,
     HEALTH_MS,
     highestNumber,
     initialState,
@@ -473,8 +474,8 @@ function priceAdjustable(m) {
     return VENUES.some((v) => savedNotPosted(st.jobs[v])) || isPostedItem(m);
 }
 
-/** A photo's badge (badgeText in queue.js) in words; "failed" reports a failure and stays English. */
-const BADGE_WORDS = { waiting: tKey("waiting"), sent: tKey("sent") };
+/** A photo's badge (badgeText in queue.js) in words. */
+const BADGE_WORDS = { waiting: tKey("waiting"), sent: tKey("sent"), failed: FAILED };
 
 /** In a posted venue button, small under the word, once something changed (Michal, 2026-11-02). */
 const TAP_TO_UPDATE = tKey("tap again to update");
@@ -485,7 +486,7 @@ const TAP_TO_UPDATE = tKey("tap again to update");
  * the PC has it (its grades' prices), `extra` the photos added since (their pictures), `busy`
  * while an update is on its way, `venue` its venue, `status` what it ended with.
  */
-const postedEdit = { sku: "", base: null, snap: "", row: null, extra: [], busy: false, venue: "", status: "", posted: false };
+const postedEdit = { sku: "", base: null, snap: "", row: null, extra: [], busy: false, venue: "", status: "", bad: false, posted: false };
 
 /** The goods item is up on a venue, nothing of it on its way. */
 function isPostedItem(m) {
@@ -556,6 +557,7 @@ async function updatePosted(venue) {
     pe.busy = true;
     pe.venue = venue;
     pe.status = t("updating...");
+    pe.bad = false;
     render();
     try {
         const c = customizeOf(st);
@@ -576,7 +578,8 @@ async function updatePosted(venue) {
         pe.status = t("updated");
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        pe.status = `not updated: ${e.message}`;
+        pe.status = t("not updated: {detail}", { detail: e.message });
+        pe.bad = true;
     } finally {
         pe.busy = false;
         render();
@@ -595,7 +598,8 @@ async function addPostedPhotos(files) {
             pe.extra.push(URL.createObjectURL(jpeg));
         } catch (e) {
             if (e.status === 0 || e.status === 401) heard(e.status);
-            pe.status = e.message || "could not add the photo";
+            pe.status = e.message || t("could not add the photo");
+            pe.bad = true;
             break;
         }
     }
@@ -1439,7 +1443,7 @@ async function leaveThisAccount() {
         await leaveAccount(s);
     } catch (e) {
         people.busy = false;
-        deleting.status = peopleError("Could not leave the account", e.status, e.message);
+        deleting.status = peopleError(t("Could not leave the account"), e.status, e.message);
         if (e.status === 0 || e.status === 401) heard(e.status);
         renderDelete();
         return;
@@ -1975,7 +1979,7 @@ function renderVenue(m, venue, ok, nodes) {
     // a posted item's update: what it ended with, under its venue (Michal, 2026-11-02)
     const said = posted && postedEdit.venue === venue && postedEdit.status ? postedEdit.status : line.text;
     nodes.status.textContent = said;
-    nodes.status.className = `venue-status ${said === line.text ? line.kind : postedEdit.status.startsWith("not") ? "bad" : "ok"}`;
+    nodes.status.className = `venue-status ${said === line.text ? line.kind : postedEdit.bad ? "bad" : "ok"}`;
     nodes.status.hidden = !said;
     // no postings left (a 402): the server's words, and under them the way to buy more
     nodes.buy.hidden = !(job.phase === "failed" && job.credit);
@@ -2072,9 +2076,9 @@ function renderStrip(m, strip, locked) {
             const retry = document.createElement("button");
             retry.type = "button";
             retry.className = "badge failed";
-            retry.textContent = "failed";
+            retry.textContent = t(FAILED);
             retry.title = p.error;
-            retry.setAttribute("aria-label", `${p.name} did not reach the server (${p.error}); try again`);
+            retry.setAttribute("aria-label", t("{name} did not reach the server ({error}); try again", { name: p.name, error: p.error }));
             retry.addEventListener("click", () => {
                 setState(m, reduce(slots[m], { type: "retry", id: p.id }));
                 pump();
@@ -2319,7 +2323,7 @@ async function prepareAll(m, ids) {
         try {
             await prepared(id);
         } catch (e) {
-            photoFailed(m, id, e.message || "could not read the photo");
+            photoFailed(m, id, e.message || t("could not read the photo"));
         }
     }
 }
@@ -2336,12 +2340,12 @@ let shrinking = Promise.resolve();
 /** The photo's shrunk JPEG: made once, in turn, shared by the thumbnail and the upload. */
 function prepared(id) {
     const held = blobs.get(id);
-    if (!held) return Promise.reject(new Error("the photo is no longer on this page"));
+    if (!held) return Promise.reject(new Error(t("the photo is no longer on this page")));
     if (held.shrunk) return Promise.resolve(held.shrunk);
     if (!held.ready) {
         held.ready = shrinking
             .then(() => {
-                if (!blobs.has(id)) throw new Error("the photo is no longer on this page");
+                if (!blobs.has(id)) throw new Error(t("the photo is no longer on this page"));
                 return shrinkPhoto(held.file, { fixDark: held.fixDark });
             })
             .then(
@@ -2608,7 +2612,7 @@ async function pump() {
                 // (a photo that would not shrink) is this photo's own failure
                 const status = failure instanceof PcError ? failure.status : -1;
                 if (status === 0 || status === 401) heard(status);
-                const error = failure.message || "not sent";
+                const error = failure.message || t("not sent");
                 if (task.kind === "photo" && status !== 0) {
                     // the phone could not shrink it, or the PC refused it: say which and why
                     const photo = slots[m].photos.find((p) => p.id === task.id);
@@ -2698,7 +2702,7 @@ async function send(m, venue) {
         if (taken()) return;
         setState(
             m,
-            reduce(slots[m], { type: "jobRefused", venue, error: "the user note has not reached the server" })
+            reduce(slots[m], { type: "jobRefused", venue, error: t("the user note has not reached the server") })
         );
         return;
     }
@@ -2729,7 +2733,7 @@ async function send(m, venue) {
             await patchRow(pc, s.sku, dialBody(stepped));
         } catch (e) {
             if (e.status === 0 || e.status === 401) heard(e.status);
-            setState(m, reduce(slots[m], { type: "jobRefused", venue, error: `the price did not reach the server: ${e.message}` }));
+            setState(m, reduce(slots[m], { type: "jobRefused", venue, error: t("the price did not reach the server: {detail}", { detail: e.message }) }));
             return;
         }
     }
@@ -2862,7 +2866,7 @@ async function resetPress(m, venue) {
         }
     } catch (e) {
         if (mine !== generation[m]) return;
-        say(`Could not cancel: ${e.message}`, "warn");
+        say(t("Could not cancel: {detail}", { detail: e.message }), "warn");
     }
     if (stopping()) schedulePoll(m, venue, mine);
 }
@@ -3334,7 +3338,7 @@ async function loadInventory(lead = "") {
     } catch (e) {
         if (mine !== admin.asked) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.inventoryStatus.textContent = [lead, refusalLine("Could not read the inventory", e.status, e.message)].filter(Boolean).join(" ");
+        el.inventoryStatus.textContent = [lead, refusalLine(t("Could not read the inventory"), e.status, e.message)].filter(Boolean).join(" ");
         // a key the PC does not know: Settings is where it is put right (a session it no
         // longer knows took the page back to the landing already: heard)
         if (e.status === 401 && settings()) showSettings(true);
@@ -4229,7 +4233,7 @@ async function openRow(row, from) {
     } catch (e) {
         if (mine !== admin.shown) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
-        const said = refusalLine(`Could not read ${row.sku}`, e.status, e.message);
+        const said = refusalLine(t("Could not read {sku}", { sku: row.sku }), e.status, e.message);
         if (!from && e.status === 404) {
             removeText("localStorage", CARD_KEY);
             showList();
@@ -5062,7 +5066,7 @@ async function resetTask(task, paint) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         // said on the task's own line, in Admin (the posting screens' line is out of sight
         // there), until the next poll says how the job stands
-        task.job = { ...task.job, state: "failed", error: `Could not cancel: ${e.message}` };
+        task.job = { ...task.job, state: "failed", error: t("Could not cancel: {detail}", { detail: e.message }) };
         paint();
     }
     if (stopping()) later(task);
@@ -5129,7 +5133,7 @@ async function askJob(c, mine, paint) {
         whole = await getRow(pc, admin.row.sku);
     } catch (e) {
         if (mine !== admin.shown) return;
-        detailLine(refusalLine(`Could not read ${admin.row.sku}`, e.status, e.message));
+        detailLine(refusalLine(t("Could not read {sku}", { sku: admin.row.sku }), e.status, e.message));
         renderCards();
         return;
     }
@@ -5231,7 +5235,7 @@ async function addRowPhotos(files) {
     pe.ask = 0;
     let current = row;
     let added = 0;
-    let stop = files.length > going.length ? { text: `an item holds at most ${MAX_PHOTOS} photos`, kind: "bad" } : null;
+    let stop = files.length > going.length ? { text: t("an item holds at most {n} photos", { n: MAX_PHOTOS }), kind: "bad" } : null;
     for (const [i, file] of going.entries()) {
         pe.wait = going.length > 1 ? t("adding photo {n} of {count}...", { n: i + 1, count: going.length }) : t("adding the photo...");
         renderCards();
@@ -5243,7 +5247,7 @@ async function addRowPhotos(files) {
         } catch (e) {
             if (mine !== admin.shown) return;
             if (e.status === 0 || e.status === 401) heard(e.status);
-            stop = { text: e.message || "could not read the photo", kind: "bad" };
+            stop = { text: e.message || t("could not read the photo"), kind: "bad" };
             break;
         }
         if (mine !== admin.shown) return;
@@ -5592,7 +5596,7 @@ async function sendFeedback() {
         job: el.feedbackJob.checked ? lastJobId() : "",
     });
     if (!body) {
-        el.feedbackStatus.textContent = "Write what happened first.";
+        el.feedbackStatus.textContent = t("Write what happened first.");
         return;
     }
     el.feedbackSend.disabled = true;
@@ -5605,7 +5609,7 @@ async function sendFeedback() {
         loadMine().catch(() => {});
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.feedbackStatus.textContent = refusalLine("Not sent", e.status, e.message);
+        el.feedbackStatus.textContent = refusalLine(t("Not sent"), e.status, e.message);
     } finally {
         el.feedbackSend.disabled = false;
     }
@@ -5653,7 +5657,7 @@ function renderInbox() {
                 return p;
             };
             box.append(line("inbox-head", inboxHead(entry)), line("inbox-text", entry.text));
-            if (entry.error) box.append(line("inbox-error", `Job error: ${entry.error}`));
+            if (entry.error) box.append(line("inbox-error", t("Job error: {error}", { error: entry.error })));
             box.append(
                 actionButton(t("Reviewed"), "pill pill-small", inbox.busy.has(entry.id), () => {
                     reviewEntry(entry.id).catch(() => {});
@@ -5677,7 +5681,7 @@ async function reviewEntry(id) {
         inbox.entries = inbox.entries.filter((e) => e.id !== id);
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.feedbackStatus.textContent = refusalLine("Not marked reviewed", e.status, e.message);
+        el.feedbackStatus.textContent = refusalLine(t("Not marked reviewed"), e.status, e.message);
     } finally {
         inbox.busy.delete(id);
         renderInbox();
@@ -5705,7 +5709,7 @@ async function loadStats() {
             return;
         }
         if (e.status === 0 || e.status === 401) heard(e.status);
-        el.statsStatus.textContent = `Could not read the stats: ${e.message}.`;
+        el.statsStatus.textContent = t("Could not read the stats: {detail}.", { detail: e.message });
         return;
     }
     if (mine !== extras.asked) return;
@@ -5941,7 +5945,7 @@ function heard(status) {
         const a = currentAccount();
         if (a) a.expired = true;
         writeAccounts();
-        toLanding(SIGNIN_EXPIRED);
+        toLanding(t(SIGNIN_EXPIRED));
         return;
     }
     renderServer();
@@ -7538,7 +7542,7 @@ async function invite() {
         el.inviteEmail.value = "";
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
-        people.inviteStatus = peopleError("Could not invite", e.status, e.message);
+        people.inviteStatus = peopleError(t("Could not invite"), e.status, e.message);
     } finally {
         people.busy = false;
         renderPeopleLink();
@@ -7548,7 +7552,7 @@ async function invite() {
 
 /** Remove, on a member's card (the owner's): DELETE /me/people/<email>; their sessions end with them. */
 function removePerson(p) {
-    return peopleAction("Could not remove them", t("Removing {name}...", { name: p.name }), (pc) => removeMember(pc, p.email));
+    return peopleAction(t("Could not remove them"), t("Removing {name}...", { name: p.name }), (pc) => removeMember(pc, p.email));
 }
 
 /** Change name's Save: PATCH /me/people/me (nameBody); the page says the new name. */
@@ -7559,7 +7563,7 @@ async function rename(raw) {
         renderPeople();
         return;
     }
-    const done = await peopleAction("Could not change the name", t("Saving..."), (pc) => renameMe(pc, made.body));
+    const done = await peopleAction(t("Could not change the name"), t("Saving..."), (pc) => renameMe(pc, made.body));
     if (done) people.renaming = false;
     renderPeople();
 }
@@ -7570,7 +7574,7 @@ async function rename(raw) {
  */
 async function signOutOne(d) {
     if (!d.thisDevice) {
-        await peopleAction("Could not sign out the device", t("Signing out..."), (pc) => signOutDevice(pc, d.id));
+        await peopleAction(t("Could not sign out the device"), t("Signing out..."), (pc) => signOutDevice(pc, d.id));
         return;
     }
     const pc = settings();
@@ -7584,7 +7588,7 @@ async function signOutOne(d) {
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         people.busy = false;
-        people.status = peopleError("Could not sign out the device", e.status, e.message);
+        people.status = peopleError(t("Could not sign out the device"), e.status, e.message);
         renderPeople();
         return;
     }
@@ -7595,7 +7599,7 @@ async function signOutOne(d) {
 /** Sign out all other devices: POST /me/devices/sign-out-others, "Signed out n other devices". */
 async function signOutRest() {
     let said = "";
-    await peopleAction("Could not sign out the other devices", t("Signing out..."), async (pc) => {
+    await peopleAction(t("Could not sign out the other devices"), t("Signing out..."), async (pc) => {
         said = signedOutOthers((await signOutOthers(pc)).signed_out);
     });
     if (said) {
@@ -7651,7 +7655,7 @@ async function leaveFor(what, meanwhile, ask) {
     try {
         const answer = await ask();
         const url = safeLink(answer.url);
-        if (!url) throw new PcError(200, "the server gave no address");
+        if (!url) throw new PcError(200, t("the server gave no address"));
         globalThis.location.assign(url);
     } catch (e) {
         account.status = accountError(what, e.status, e.message);
@@ -7774,7 +7778,7 @@ async function sendLink() {
         codeOpen = true;
         render();
     } catch (e) {
-        el.signinStatus.textContent = e.status === 404 ? SIGNIN_MISSING : `Could not send the link: ${e.message}.`;
+        el.signinStatus.textContent = e.status === 404 ? t(SIGNIN_MISSING) : t("Could not send the link: {detail}.", { detail: e.message });
     } finally {
         el.signinSend.disabled = false;
     }
@@ -7813,7 +7817,7 @@ async function sendCode() {
     }
     const code = cleanCode(el.signinCode.value);
     if (!code) {
-        el.signinStatus.textContent = CODE_NEEDED;
+        el.signinStatus.textContent = t(CODE_NEEDED);
         return;
     }
     el.signinCodeSend.disabled = true;
@@ -7828,7 +7832,7 @@ async function sendCode() {
         el.signinCodeSend.disabled = false;
     }
     if (!made) {
-        el.signinStatus.textContent = codeError(200, "the server gave no session");
+        el.signinStatus.textContent = codeError(200, t("the server gave no session"));
         return;
     }
     el.signinStatus.textContent = "";
@@ -8007,7 +8011,7 @@ async function saveSettings() {
         all.current = all.list.length ? all.list[0].id : "";
         render();
         el.settingsStatus.textContent =
-            "Could not save on this phone (private mode?). The buttons need it saved.";
+            t("Could not save on this phone (private mode?). The buttons need it saved.");
         return;
     }
     el.settingsStatus.textContent = t("Saved. Checking the server...");
@@ -8026,7 +8030,7 @@ async function saveSettings() {
         loadSettingsParts();
     } catch (e) {
         heard(e instanceof PcError ? e.status : 0);
-        el.settingsStatus.textContent = refusalLine("Saved, but", e.status, e.message);
+        el.settingsStatus.textContent = refusalLine(t("Saved, but"), e.status, e.message);
     }
     scheduleHealth();
     // photos taken before the settings were right go now
@@ -8094,12 +8098,12 @@ async function restore(m, saved) {
         restoring[m] = false;
         if (m === "goods") el.itemInput.value = "";
         if (e.status === 404) {
-            say(`${name} is no longer on the server.`, "warn");
+            say(t("{name} is no longer on the server.", { name }), "warn");
             setState(m, freshState(m));
         } else {
             // leave the saved item alone: a reload once the PC answers brings it back
             keepSaved[m] = true;
-            say(`Could not read ${name} back from the server (${e.message}). Its photos are safe there; reload when the server answers.`, "warn");
+            say(t("Could not read {name} back from the server ({detail}). Its photos are safe there; reload when the server answers.", { name, detail: e.message }), "warn");
             setState(m, freshState(m));
         }
     }

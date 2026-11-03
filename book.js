@@ -20,8 +20,8 @@
 // and format are typed, the book is searched by title as above, and the job
 // carries the ISBN and the typed fields both, so the ISBN stays on the listing.
 //
-// The words the book screen shows go through t() (i18n.js, docs/UI.md rule 8); the values the
-// PC is sent stay English, and so do the lines that say something failed.
+// The words the book screen shows go through t() (i18n.js, docs/UI.md rule 8), the lines that
+// say something failed included; the values the PC is sent, and the PC's own words, stay English.
 
 import { t, tKey } from "./i18n.js?v=2.44.0";
 
@@ -329,7 +329,7 @@ export function bookCard(book) {
             // what to do next, in the page's language; the PC's own words under it stay as sent
             return { ...empty, status: t(ISBN_MISS), kind: "bad", note: lookup.error };
         case "failed":
-            return { ...empty, status: lookup.error || "the book was not looked up", kind: "bad" };
+            return { ...empty, status: lookup.error || t("the book was not looked up"), kind: "bad" };
         default:
             // idle with an ISBN (or a title) is the moment before the lookup goes
             return {
@@ -362,8 +362,7 @@ export function scanHint({ canScan, scan, hasItem, locked, restoring, manual = f
     if (restoring) return t("Reading this book back from the server...");
     if (locked) return t("These photos went with the listing. NEXT starts the next book.");
     if (scan === "reading") return t("Reading the barcode...");
-    // a scan that failed: English, as every line that says something went wrong (docs/UI.md rule 8)
-    if (scan === "missed") return "No barcode found — try again closer, or type the ISBN under the barcode";
+    if (scan === "missed") return t("No barcode found — try again closer, or type the ISBN under the barcode");
     if (hasItem) return "";
     if (manual && kept) return t("Type the title as the cover has it. The server finds a price; the ISBN stays on the listing.");
     if (manual) return t("No ISBN: type the title as the cover has it. The server finds the book and a price.");

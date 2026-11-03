@@ -4,8 +4,10 @@
 // translation is found by the English words themselves, in lang/zh.js and lang/es.js. A line
 // with no translation yet shows in English, on purpose (Michal, 2026-11-02: translations are
 // one pass before a release, never per change), so a new or reworded English line simply waits
-// for that pass; `node tools/i18n-check.mjs` lists what waits. Never translated: error messages,
-// anything the server sends, venue names, the brand, the listings (docs/UI.md rule 8).
+// for that pass; `node tools/i18n-check.mjs` lists what waits. Everything the page writes is
+// translated, its own error lines included; never translated: anything the server sends (its
+// error details, job steps and summaries, what the AI wrote), venue names, the brand, the
+// listings (docs/UI.md rule 8).
 // Kept on this phone (localStorage snap.language), chosen on the landing or under This phone.
 //
 // Pure, no DOM, so core.js uses it too. index.html's own words carry data-t (app.js).

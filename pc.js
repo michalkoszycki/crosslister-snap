@@ -160,6 +160,7 @@
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
 import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.44.0";
+import { t } from "./i18n.js?v=2.44.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -224,7 +225,7 @@ async function call(url, auth, { method = "GET", json, body, type } = {}) {
     const res = await request(url, auth, { method, headers, body: payload });
     if (!res.ok) throw await refused(res);
     const answer = await parsed(res);
-    if (!answer || typeof answer !== "object") throw new PcError(res.status, "the server gave no answer");
+    if (!answer || typeof answer !== "object") throw new PcError(res.status, t("the server gave no answer"));
     return answer;
 }
 

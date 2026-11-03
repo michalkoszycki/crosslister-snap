@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { CATALOGS, htmlLang, language, languageOf, setLanguage, t, tKey } from "../i18n.js";
 import { pageKeys, placeholders, scriptKeys } from "../tools/i18n-check.mjs";
+import { checkEmail, errorText, serverLine, wrapError } from "../core.js";
+import { VERSION } from "../version.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -38,6 +40,22 @@ test("t(): the chosen language's words, the English until one is written, {place
         assert.equal(tKey("Sign in"), "Sign in", "tKey only marks");
     } finally {
         setLanguage("en");
+    }
+});
+
+test("the page's own error lines are translated; the server's words inside them stay as it sent them", async () => {
+    // core.js's own i18n.js, as it imports it (with its ?v=)
+    const core = await import(`../i18n.js?v=${VERSION}`);
+    try {
+        core.setLanguage("zh");
+        assert.equal(serverLine(true, 0).text, CATALOGS.zh["server off"]);
+        assert.equal(errorText(0), CATALOGS.zh["cannot reach the server"]);
+        assert.equal(errorText(400, "price must be positive"), "price must be positive", "the server's detail as it came");
+        assert.equal(wrapError(500, "disk full"), CATALOGS.zh["Could not save: {detail}."].replace("{detail}", "disk full"));
+        core.setLanguage("es");
+        assert.equal(checkEmail("nope").error, CATALOGS.es["That is not an email address."]);
+    } finally {
+        core.setLanguage("en");
     }
 });
 

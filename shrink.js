@@ -28,6 +28,7 @@
 // never touched. The three are pure and tested on plain pixel arrays.
 
 import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=2.44.0";
+import { t } from "./i18n.js?v=2.44.0";
 
 const SHRINK_TRIES = 3;
 
@@ -64,7 +65,7 @@ export async function shrinkPhoto(file, { fixDark = false } = {}) {
             width = Math.max(1, Math.round(width / 2));
             height = Math.max(1, Math.round(height / 2));
         }
-        throw new Error(`could not make a JPEG of it (${describe(file)})`);
+        throw new Error(t("could not make a JPEG of it ({what})", { what: describe(file) }));
     } finally {
         source.release();
     }
@@ -189,7 +190,7 @@ export function applyTable(data, table) {
 
 /** "image/heic, 4.2 MB": what the failed photo was, for the line that says so. */
 export function describe(file) {
-    const kind = (file && file.type) || "unknown type";
+    const kind = (file && file.type) || t("unknown type");
     const bytes = (file && file.size) || 0;
     return `${kind}, ${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -216,7 +217,7 @@ async function decode(file) {
         });
     } catch {
         URL.revokeObjectURL(url);
-        throw new Error(`could not read the photo (${describe(file)})`);
+        throw new Error(t("could not read the photo ({what})", { what: describe(file) }));
     }
     // decode() can refuse a picture that loaded and draws fine (Safari, large pictures)
     try {
@@ -226,7 +227,7 @@ async function decode(file) {
     }
     if (!(img.naturalWidth > 0 && img.naturalHeight > 0)) {
         URL.revokeObjectURL(url);
-        throw new Error(`could not read the photo (${describe(file)})`);
+        throw new Error(t("could not read the photo ({what})", { what: describe(file) }));
     }
     return {
         image: img,
