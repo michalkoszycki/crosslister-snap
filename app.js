@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.44.2";
+import { VERSION } from "./version.js?v=2.44.3";
 import {
     adminLink,
     anyActive,
@@ -266,8 +266,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.44.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.2";
+} from "./core.js?v=2.44.3";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.3";
 import {
     addVenue,
     applyWrap,
@@ -324,8 +324,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.44.2";
-import { shrinkPhoto } from "./shrink.js?v=2.44.2";
+} from "./pc.js?v=2.44.3";
+import { shrinkPhoto } from "./shrink.js?v=2.44.3";
 import {
     bookCard,
     bookPriceValue,
@@ -338,8 +338,8 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.44.2";
-import { canScan, readIsbn } from "./scan.js?v=2.44.2";
+} from "./book.js?v=2.44.3";
+import { canScan, readIsbn } from "./scan.js?v=2.44.3";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -1463,8 +1463,6 @@ function render() {
     el.modeGoods.setAttribute("aria-pressed", mode === "goods" ? "true" : "false");
     // How Snap works, once there is a goods screen of his to walk through
     el.tourLink.hidden = !(me && me.registered) || touring;
-    // share: the owner's way to invite, from any screen (Michal, 2026-11-02)
-    el.shareLink.hidden = !settings() || !me || !me.owner;
     el.modeBook.setAttribute("aria-pressed", mode === "book" ? "true" : "false");
     // neither screen under Admin (Michal, 2026-10-08: "When I look at a card the posting
     // screen is below. That should not be there"); both items carry on out of sight
@@ -7399,38 +7397,47 @@ async function peopleAction(lead, meanwhile, run) {
     return true;
 }
 
-/** The invite window over the screen, or put away; opened, its box empty and taking the typing. */
+/** What a share says: Snap's own address, the page as served (GitHub Pages), no hash or query. */
+const SHARE_TEXT = "Snap: from photo to live listing in seconds";
+function shareUrl() {
+    const here = globalThis.location;
+    return here ? `${here.origin}${here.pathname}` : "";
+}
+
+/**
+ * The share icon tapped (Michal, 2026-11-03: "this one is for just sharing the app. so that it
+ * just sends them the url"): the phone's own share sheet with Snap's link where it has one;
+ * elsewhere (a PC's browser) the window with an email box.
+ */
+function onShare() {
+    const nav = globalThis.navigator;
+    if (nav && typeof nav.share === "function") {
+        nav.share({ title: "Snap", text: SHARE_TEXT, url: shareUrl() }).catch(() => {});
+        return;
+    }
+    showShare(true);
+}
+
+/** The window over the screen, or put away; opened, its box empty and taking the typing. */
 function showShare(on) {
     el.shareSheet.hidden = !on;
     if (!on) return;
     el.shareEmail.value = "";
     el.shareStatus.textContent = "";
-    el.shareSend.disabled = false;
     if (typeof el.shareEmail.focus === "function") el.shareEmail.focus();
 }
 
-/** The window's Invite: as Settings' (POST /me/people, inviteBody), said in the window; sent, the box cleared. */
-async function shareInvite() {
-    const pc = settings();
-    if (!pc || el.shareSend.disabled) return;
-    const made = inviteBody({ email: el.shareEmail.value });
-    if (!made.ok) {
-        el.shareStatus.textContent = made.error;
+/** Send: his own email opens, to that address, the link in it; nothing goes through the server. */
+function shareByEmail() {
+    const to = el.shareEmail.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        el.shareStatus.textContent = "Type their email address.";
         return;
     }
-    el.shareSend.disabled = true;
-    el.shareStatus.textContent = "Inviting...";
-    try {
-        await inviteMember(pc, made.body);
-        el.shareStatus.textContent = INVITE_SENT;
-        el.shareEmail.value = "";
-    } catch (e) {
-        if (e.status === 0 || e.status === 401) heard(e.status);
-        el.shareStatus.textContent = peopleError("Could not invite", e.status, e.message);
-    } finally {
-        el.shareSend.disabled = false;
-    }
-    if (people.info) loadPeople().catch(() => {});
+    const subject = encodeURIComponent("Snap");
+    const body = encodeURIComponent(`${SHARE_TEXT}: ${shareUrl()}`);
+    el.shareStatus.textContent = "Opening your email...";
+    globalThis.location.href = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`;
 }
 
 /** Invite: POST /me/people with their email (inviteBody); 202: "Invitation sent", the box cleared. */
@@ -9099,17 +9106,16 @@ function main() {
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
     el.photoViewClose.addEventListener("click", closePhoto);
-    // the share icon's window: Invite, Enter too; ×, a tap on the dimmed screen or Escape puts it away
-    el.shareLink.addEventListener("click", () => showShare(true));
+    // the share icon: the phone's share sheet, or the window; its Send, Enter too; ×, a tap on the
+    // dimmed screen or Escape puts it away
+    el.shareLink.addEventListener("click", onShare);
     el.shareClose.addEventListener("click", () => showShare(false));
     el.shareSheet.addEventListener("click", (e) => {
         if (e.target === el.shareSheet) showShare(false);
     });
-    el.shareSend.addEventListener("click", () => {
-        shareInvite().catch(() => {});
-    });
+    el.shareSend.addEventListener("click", shareByEmail);
     el.shareEmail.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") shareInvite().catch(() => {});
+        if (e.key === "Enter") shareByEmail();
         if (e.key === "Escape") showShare(false);
     });
     document.addEventListener("keydown", (e) => {
