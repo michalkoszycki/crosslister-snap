@@ -3,8 +3,8 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.44.0";
-import { t, tKey } from "./i18n.js?v=2.44.0";
+import { noteDirty, unsent } from "./queue.js?v=2.45.0";
+import { t, tKey } from "./i18n.js?v=2.45.0";
 import {
     bookListings,
     bookPriceValue,
@@ -16,7 +16,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.44.0";
+} from "./book.js?v=2.45.0";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -2375,8 +2375,9 @@ export const DEFAULT_PRICING = 1;
 export const DEFAULT_MIN_PRICE = "5";
 
 /**
- * The minimum price box as kept: dollars, a "$" in front allowed, up to two decimals ("5",
- * "4.50", "4." while typing); "" for a blank box (no minimum); null for anything else.
+ * The minimum price box as kept: whole dollars, a "$" in front allowed ("5", "$12"); "" for a
+ * blank box (no minimum); null for anything else, cents included (Michal, 2026-11-02: "accept
+ * only whole dollars in the min price", craigslist taking whole dollars only).
  * @param {unknown} text
  * @returns {string|null}
  */
@@ -2384,7 +2385,7 @@ export function minPriceText(text) {
     if (typeof text !== "string") return null;
     const bare = text.trim().replace(/^\$\s*/, "");
     if (bare === "") return "";
-    return /^\d{1,6}(\.\d{0,2})?$/.test(bare) ? bare : null;
+    return /^\d{1,6}$/.test(bare) ? bare : null;
 }
 
 /** @returns {Customize} */

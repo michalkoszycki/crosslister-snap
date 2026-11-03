@@ -2535,22 +2535,22 @@ test("the price grade and auto-post are kept for a reload only when not the defa
 
 // --- customize: the minimum price (Michal, 2026-11-01: "set the default to $5") ----------
 
-test("the minimum price: $5 by default and in every body; typed with its $ or cents; blank or 0 sends none", () => {
+test("the minimum price: $5 by default and in every body; whole dollars, typed with its $; cents refused; blank or 0 sends none", () => {
     for (const [typed, kept] of [
         ["5", "5"],
         ["$5", "5"],
-        [" $ 4.50 ", "4.50"],
-        ["4.", "4."],
+        [" $ 12 ", "12"],
         ["", ""],
         ["  ", ""],
         ["$", ""],
     ]) {
         assert.equal(minPriceText(typed), kept, JSON.stringify(typed));
     }
-    for (const bad of ["abc", "4.555", "-1", "5$", 5, null, undefined]) assert.equal(minPriceText(bad), null, JSON.stringify(bad));
+    for (const bad of ["abc", "4.50", "4.", "4.555", "-1", "5$", 5, null, undefined]) assert.equal(minPriceText(bad), null, JSON.stringify(bad));
     const c = (minPrice) => ({ ...initialCustomize(), minPrice });
     assert.deepEqual(customizeBody(c("5")), { min_price: 5 });
-    assert.deepEqual(customizeBody(c("4.50")), { min_price: 4.5 });
+    assert.deepEqual(customizeBody(c("12")), { min_price: 12 });
+    assert.deepEqual(customizeBody(c("4.50")), {}, "cents are not a minimum (whole dollars only)");
     assert.deepEqual(customizeBody(c("")), {}, "a blank box: no minimum");
     assert.deepEqual(customizeBody(c("0")), {}, "nor 0");
     assert.deepEqual(customizeBody(c("lots")), {}, "nor anything that is not a price");
@@ -4190,7 +4190,8 @@ test("Posting defaults: read leniently, the quantity with them; a new item start
     const goods = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true, minPrice: "5" };
     assert.deepEqual(defaultsOf({ ...goods, note: "not customize's" }), goods);
     // the minimum price as typed; blank is none; odd, or a phone from before it, the $5
-    assert.equal(defaultsOf({ ...goods, minPrice: "$7.50" }).minPrice, "7.50");
+    assert.equal(defaultsOf({ ...goods, minPrice: "$7" }).minPrice, "7");
+    assert.equal(defaultsOf({ ...goods, minPrice: "7.50" }).minPrice, "5", "cents: the $5");
     assert.equal(defaultsOf({ ...goods, minPrice: "" }).minPrice, "");
     assert.equal(defaultsOf({ ...goods, minPrice: "cheap" }).minPrice, "5");
     assert.deepEqual(defaultsOf({ ...goods, quantity: "two" }), { ...goods, quantity: "1" }, "a quantity that is not one is 1");

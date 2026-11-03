@@ -23,7 +23,7 @@
 // The words the book screen shows go through t() (i18n.js, docs/UI.md rule 8), the lines that
 // say something failed included; the values the PC is sent, and the PC's own words, stay English.
 
-import { t, tKey } from "./i18n.js?v=2.44.0";
+import { t, tKey } from "./i18n.js?v=2.45.0";
 
 /**
  * The four conditions eBay's book category takes, in the order the chips show

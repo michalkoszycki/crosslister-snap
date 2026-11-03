@@ -106,7 +106,7 @@ white words (Michal, 2026-11-02: "let the chosen button be black. cant see it ot
 language names", a round flag button having been tried and dropped the same day; rule 8); no help line under the buttons (a phone
 has no hover, so it only flashed; Michal, 2026-10-31: "no tip is fine"); the
 status line ("Signing you in...", "Your sign-in expired; send yourself a new link", "Your
-account was deleted."). Footer: "About and privacy", the version, at the foot of the screen at least: on a short page the spare room is white space, on the landing evenly above the mark and below the buttons (Michal, 2026-10-31).
+account was deleted."). Footer: "About and privacy", the version, at the foot of the screen at least: on a short page the spare room is white space, on the landing evenly above the mark and below the buttons (Michal, 2026-10-31). At the footer's right, for anyone, the share icon (the usual three dots joined by two lines; Michal, 2026-11-02, and 2026-11-03: "this one is for just sharing the app. so that it just sends them the url"): it shares Snap's link, not an account invite (that stays in Settings). On a phone it opens the phone's own share sheet (`navigator.share`: Snap, "Snap: from photo to live listing in seconds", the page's address). Where there is no share sheet (a PC's browser), a window opens over the dimmed screen with one label ("Send Snap to a friend"), one email box and Send. Send opens his own email to that address with the link in it, and nothing goes through the server. The ×, a tap outside the window, or Escape closes it.
 
 ### 4.2 Sign in
 
@@ -157,7 +157,11 @@ should know, a bulky item's weight or "cord missing", in the note box when posti
 **Post without asking** ticked by default (unticked, the next posting asks another tap
 between drafting and posting); a **Full terms and conditions** link, the terms in a tab of
 their own, the app staying put underneath; **I agree**, which keeps the box as he left it as
-Posting defaults' own Post without asking and opens the goods screen.
+Posting defaults' own Post without asking and opens the goods screen. The server keeps the
+record too (Michal, 2026-11-02): I agree sends `POST /me/agreement {"terms"}` (the terms'
+version, the date they last changed), and GET /me's `agreement` says when the person accepted
+which terms; a call refused or not reached goes again at the next /me, and so does one for
+terms newer than the server's record.
 
 ### 4.6 Posting screens (goods and book)
 
@@ -215,6 +219,13 @@ Posting defaults (4.7). "Save as default" has left the fold; the defaults are ed
 Settings (decided 2026-10-26, section 6).
 
 ### 4.7 Admin
+
+A refresh keeps his place (Michal, 2026-11-02: "i want to refresh and stay exactly where i
+am with the menues unfolded exactly as they were"): as the page goes, where he is (Admin open
+or not, Settings, Inventory, the listing open with its venue cards and quick customize, a
+venue's page, Buy postings, the People page, Feedback, Stats, the scroll) is kept in the
+tab's sessionStorage, and the reload puts it all back once. A fresh start of the app keeps
+nothing, so it opens on the Snap page, and the three dots still always open on Settings.
 
 Opens from the top bar. No title. Order (Michal, 2026-10-22: "inventory should be before
 settings"): **▸ Inventory**; **▸ Settings**; **▸ Feedback**; **▸ Stats** (admin only).
@@ -340,7 +351,8 @@ submenus"); the People page and Buy postings' page (below) carry the same title 
    look like the customize menu on the snap page"), under one muted line at the top, "These will be your default settings. You can customize them per posting on the Snap page." (2026-10-31): **Quantity**; Pickup only, no shipping; the
    **Price** slider, its three words and its line under them; under it, **Minimum Price:**,
    the box all but invisible on the grey, "$5" to start, the $ typed inside the box, no − or
-   + (Michal, 2026-11-01), under it "Nothing will be posted below this price." — this is the
+   + (Michal, 2026-11-01), whole dollars only (2026-11-02: "accept only whole dollars in the
+   min price"; craigslist takes whole dollars): cents typed are cut off, under it "Nothing will be posted below this price." — this is the
    one customize field the Snap page's own fold does not carry (it has no room for a per-item
    floor): it is sent as every job's `min_price`, and a lower draft price is raised to it
    just before posting; Post without asking / **Compare with marketplace listings** (this

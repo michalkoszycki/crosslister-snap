@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.44.0";
+import { VERSION } from "./version.js?v=2.45.0";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.44.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.44.0";
+} from "./core.js?v=2.45.0";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.0";
 import {
     addVenue,
     applyWrap,
@@ -319,13 +319,14 @@ import {
     putPhoto,
     removeMember,
     renameMe,
+    agreeTerms,
     reviewFeedback,
     searchBook,
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.44.0";
-import { shrinkPhoto } from "./shrink.js?v=2.44.0";
+} from "./pc.js?v=2.45.0";
+import { shrinkPhoto } from "./shrink.js?v=2.45.0";
 import {
     bookCard,
     bookPriceValue,
@@ -338,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.44.0";
-import { canScan, readIsbn } from "./scan.js?v=2.44.0";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.44.0";
+} from "./book.js?v=2.45.0";
+import { canScan, readIsbn } from "./scan.js?v=2.45.0";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.0";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -370,6 +371,14 @@ const KEEP_KEYS = { goods: "snap.customize.keep", book: "snap.book.customize.kee
 const MORE_KEYS = { goods: "snap.customize.more", book: "snap.book.customize.more" };
 /** The listing open in Admin, by sku, so Admin opens back onto it; gone on Back. */
 const CARD_KEY = "snap.admin.card";
+/**
+ * Where he was, for a refresh to put him back (Michal, 2026-11-02: "i want to refresh and stay
+ * exactly where i am with the menues unfolded exactly as they were"): kept in sessionStorage as
+ * the page goes, so a reload of this tab finds it and a fresh start of the app does not.
+ */
+const PLACE_KEY = "snap.place";
+/** A listing's venue cards and quick customize as they were, put back once that listing opens. */
+let placeCards = null;
 /** What each listing marked behind had when it was in step, by "<sku>:<venue>" (settleSynced). */
 const SYNCED_KEY = "snap.inventory.synced";
 /**
@@ -4209,6 +4218,11 @@ async function openRow(row, from) {
     admin.from = from;
     admin.changed = false;
     admin.folds = Object.fromEntries(VENUES.map((v) => [v, false]));
+    if (placeCards && placeCards.sku === row.sku) {
+        for (const v of VENUES) admin.folds[v] = placeCards.folds[v] === true;
+        admin.custom.open = placeCards.custom;
+    }
+    placeCards = null;
     writeText("localStorage", CARD_KEY, row.sku);
     detailLine("");
     showCard(true);
@@ -5965,7 +5979,9 @@ async function loadMe() {
     extras.refused = false;
     inbox.refused = false;
     try {
-        me = meOf(await getMe(pc));
+        const raw = await getMe(pc);
+        me = meOf(raw);
+        agreement = raw && typeof raw === "object" && "agreement" in raw ? raw.agreement || null : undefined;
         // the account's name in the top bar and on its card, and whether it is the admin's
         const a = currentAccount();
         if (me && a && (a.user !== me.user || a.admin !== me.admin)) {
@@ -5978,6 +5994,7 @@ async function loadMe() {
         if (e.status === 401) heard(401);
     }
     renderMe();
+    sendAgreement().catch(() => {});
     if (!el.admin.hidden) loadInbox().catch(() => {});
     // a new account's step 2: the address for its box, asked once
     if (signupStep(me) === "address" && !seller.info) loadSeller().catch(() => {});
@@ -6211,6 +6228,27 @@ const POLICY_PARTS = [
 
 /** The agreements were agreed to on this phone ("yes"). */
 const AGREED_KEY = "snap.agreed";
+/** The terms "I agree" accepts: the date about.html's terms last changed. */
+const TERMS_VERSION = "2026-11-02";
+/** GET /me's "agreement" ({at, terms} or null); undefined from a server that does not keep one. */
+let agreement = undefined;
+
+/**
+ * The agreement told to the server (Michal, 2026-11-02: a record that the seller accepted, not
+ * only this phone's word): once agreed here and the server has none, or an older one; a refusal or
+ * a dropped call is tried again at the next /me.
+ */
+async function sendAgreement() {
+    const pc = settings();
+    if (!pc || readText("localStorage", AGREED_KEY) !== "yes" || agreement === undefined) return;
+    if (agreement && agreement.terms === TERMS_VERSION) return;
+    try {
+        const answer = await agreeTerms(pc, TERMS_VERSION);
+        agreement = answer && answer.agreement ? answer.agreement : { terms: TERMS_VERSION };
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+    }
+}
 
 /**
  * The agreements page, in the app in the goods screen's place: its notes, Post without asking
@@ -7523,6 +7561,49 @@ async function peopleAction(lead, meanwhile, run) {
     return true;
 }
 
+/** What a share says: Snap's own address, the page as served (GitHub Pages), no hash or query. */
+const SHARE_TEXT = tKey("Snap: from photo to live listing in seconds");
+function shareUrl() {
+    const here = globalThis.location;
+    return here ? `${here.origin}${here.pathname}` : "";
+}
+
+/**
+ * The share icon tapped (Michal, 2026-11-03: "this one is for just sharing the app. so that it
+ * just sends them the url"): the phone's own share sheet with Snap's link where it has one;
+ * elsewhere (a PC's browser) the window with an email box.
+ */
+function onShare() {
+    const nav = globalThis.navigator;
+    if (nav && typeof nav.share === "function") {
+        nav.share({ title: "Snap", text: t(SHARE_TEXT), url: shareUrl() }).catch(() => {});
+        return;
+    }
+    showShare(true);
+}
+
+/** The window over the screen, or put away; opened, its box empty and taking the typing. */
+function showShare(on) {
+    el.shareSheet.hidden = !on;
+    if (!on) return;
+    el.shareEmail.value = "";
+    el.shareStatus.textContent = "";
+    if (typeof el.shareEmail.focus === "function") el.shareEmail.focus();
+}
+
+/** Send: his own email opens, to that address, the link in it; nothing goes through the server. */
+function shareByEmail() {
+    const to = el.shareEmail.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+        el.shareStatus.textContent = t("Type their email address.");
+        return;
+    }
+    const subject = encodeURIComponent("Snap");
+    const body = encodeURIComponent(`${t(SHARE_TEXT)}: ${shareUrl()}`);
+    el.shareStatus.textContent = t("Opening your email...");
+    globalThis.location.href = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`;
+}
+
 /** Invite: POST /me/people with their email (inviteBody); 202: "Invitation sent", the box cleared. */
 async function invite() {
     const pc = settings();
@@ -7690,6 +7771,60 @@ function cameBack(back) {
             } else openAccount(false);
         })
         .catch(() => openAccount(false));
+}
+
+/** Where he is now, kept for a refresh of this tab (PLACE_KEY). */
+function keepPlace() {
+    const row = !el.admin.hidden && !el.inventoryDetail.hidden && admin.row ? admin.row.sku : "";
+    writeJson("sessionStorage", PLACE_KEY, {
+        admin: !el.admin.hidden,
+        settings: settingsOpen,
+        inventory: admin.inventoryOpen,
+        sku: row,
+        folds: row ? admin.folds : {},
+        custom: row ? admin.custom.open : false,
+        venue: venuePage,
+        packs: account.packs === true,
+        people: people.open,
+        feedback: extras.feedback,
+        stats: extras.stats,
+        y: Math.round(globalThis.window.scrollY || 0),
+    });
+}
+
+/**
+ * A refresh: Admin, Settings, the inventory, the listing, a venue's page, Buy postings, the
+ * People page, Feedback and Stats as they were, then the scroll (again once what loads has
+ * come). Nothing kept (a fresh start), or no server: the page as it starts.
+ * @param {(on: boolean) => void} showPacks
+ */
+function restorePlace(showPacks) {
+    const p = readJson("sessionStorage", PLACE_KEY, null);
+    removeText("sessionStorage", PLACE_KEY);
+    if (!p || typeof p !== "object") return;
+    const scroll = () => {
+        if (typeof globalThis.window.scrollTo === "function") globalThis.window.scrollTo({ top: Number(p.y) || 0 });
+    };
+    if (p.admin === true && settings()) {
+        const sku = typeof p.sku === "string" ? p.sku : "";
+        if (sku) placeCards = { sku, folds: p.folds && typeof p.folds === "object" ? p.folds : {}, custom: p.custom === true };
+        showAdmin(true, sku);
+        if (p.settings === true) showSettings(true);
+        if (p.inventory === true && !sku) showInventory(true);
+        if (typeof p.venue === "string" && VENUES.includes(p.venue)) showVenue(p.venue);
+        if (p.packs === true) showPacks(true);
+        if (p.people === true) showPeople(true);
+        extras.feedback = p.feedback === true;
+        extras.stats = p.stats === true;
+        renderExtras();
+        if (extras.feedback) {
+            loadInbox().catch(() => {});
+            loadMine().catch(() => {});
+        }
+        if (extras.stats) loadStats().catch(() => {});
+    }
+    scroll();
+    for (const ms of [400, 1200, 2500]) setTimeout(scroll, ms);
 }
 
 /**
@@ -8454,6 +8589,12 @@ function main() {
         postingBestOffer: $("posting-best-offer"),
         postingMinPrice: $("posting-min-price"),
         tourLink: $("tour-link"),
+        shareLink: $("share-link"),
+        shareSheet: $("share-sheet"),
+        shareClose: $("share-close"),
+        shareEmail: $("share-email"),
+        shareSend: $("share-send"),
+        shareStatus: $("share-status"),
         postingFixDark: $("posting-fix-dark"),
         postingStatus: $("posting-status"),
         phoneInstall: $("phone-install"),
@@ -8876,6 +9017,7 @@ function main() {
     });
     el.agreeOk.addEventListener("click", () => {
         writeText("localStorage", AGREED_KEY, "yes");
+        sendAgreement().catch(() => {});
         el.postingAutoPost.checked = el.agreeAuto.checked;
         savePostingDefaults();
         showAgree(false);
@@ -8910,6 +9052,11 @@ function main() {
     });
     // the Posting defaults: every box saved as it changes
     for (const node of [el.postingPickupOnly, el.postingAutoPost, el.postingComps, el.postingBestOffer, el.postingFixDark]) node.addEventListener("change", savePostingDefaults);
+    // the minimum price takes whole dollars only: cents are cut off, anything but digits (and its $) dropped
+    el.postingMinPrice.addEventListener("input", () => {
+        const kept = el.postingMinPrice.value.split(/[.,]/)[0].replace(/[^\d$]/g, "");
+        if (kept !== el.postingMinPrice.value) el.postingMinPrice.value = kept;
+    });
     for (const node of [el.postingQuantity, el.postingPricing, el.postingMinPrice]) node.addEventListener("input", savePostingDefaults);
     el.postingMinPrice.addEventListener("blur", renderPosting);
     // This phone: Install on the home screen, as the landing's
@@ -9118,6 +9265,18 @@ function main() {
     // the full-size photo: Close, or a tap anywhere on it, or Escape on a keyboard
     el.photoView.addEventListener("click", closePhoto);
     el.photoViewClose.addEventListener("click", closePhoto);
+    // the share icon: the phone's share sheet, or the window; its Send, Enter too; ×, a tap on the
+    // dimmed screen or Escape puts it away
+    el.shareLink.addEventListener("click", onShare);
+    el.shareClose.addEventListener("click", () => showShare(false));
+    el.shareSheet.addEventListener("click", (e) => {
+        if (e.target === el.shareSheet) showShare(false);
+    });
+    el.shareSend.addEventListener("click", shareByEmail);
+    el.shareEmail.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") shareByEmail();
+        if (e.key === "Escape") showShare(false);
+    });
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closePhoto();
     });
@@ -9237,8 +9396,11 @@ function main() {
     window.addEventListener("offline", () => {
         for (const m of MODES) setState(m, reduce(slots[m], { type: "online", online: false }));
     });
+    // where he is, kept as the page goes (a refresh, the app put away) for a refresh to come back to
+    window.addEventListener("pagehide", keepPlace);
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
+            keepPlace();
             for (const m of MODES) noteDue(m);
             clearTimeout(healthTimer); // no checks while the phone is in a pocket
             healthTimer = null;
@@ -9264,6 +9426,8 @@ function main() {
         restore(m, record || inHand(m)).catch(() => {});
     }
     if (back) cameBack(back);
+    // a refresh: back where he was (not after a sign-in link, Stripe or eBay, which say where to go)
+    else if (!token) restorePlace(showPacks);
     if (token) signIn(token).catch(() => {});
     else checkServer().catch(() => {});
     // the landing on screen: does the product's server take new accounts?

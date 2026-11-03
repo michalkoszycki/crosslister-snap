@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.44.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.44.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.45.0">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.45.0" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -659,7 +659,7 @@
             <div class="min-price-row">
               <label class="field-label min-price-label" for="posting-min-price" data-t>Minimum Price:</label>
               <span class="min-price-box"><input id="posting-min-price" class="min-price"
-                     type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="$5"></span>
+                     type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="$5"></span>
             </div>
             <p class="small min-price-words" data-t>Nothing will be posted below this price.</p>
           </div>
@@ -1253,8 +1253,33 @@
   <button type="button" id="tour-link" class="link about-link tour-link" hidden data-t>How Snap works</button>
   <a id="about-link" class="about-link" href="about.html" data-t>About and privacy</a>
   <p class="version-line">v<span id="version" class="mono"></span></p>
+  <!-- share: the usual three dots joined by two lines, at the footer's right, for anyone; a tap
+       shares the app's link, the phone's own share sheet where there is one, else the window below
+       (Michal, 2026-11-02; 2026-11-03: "this one is for just sharing the app") -->
+  <button type="button" id="share-link" class="share-link" aria-label="Share Snap" data-t-aria-label>
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
+    </svg>
+  </button>
 </footer>
 
-<script type="module" src="app.js?v=2.44.0"></script>
+<!-- sharing Snap's link by email where the phone has no share sheet: one label, one box, one
+     button; Send opens his own email with the link in it (Michal, 2026-11-02) -->
+<div id="share-sheet" class="share-sheet" role="dialog" aria-modal="true" aria-labelledby="share-label" hidden>
+  <div class="share-card">
+    <button type="button" id="share-close" class="share-close" aria-label="Close" data-t-aria-label>×</button>
+    <label class="field">
+      <span id="share-label" class="field-label" data-t>Send Snap to a friend</span>
+      <input id="share-email" type="email" inputmode="email" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="email" data-t-placeholder>
+    </label>
+    <button type="button" id="share-send" class="big" data-t>Send</button>
+    <p id="share-status" class="venue-status" aria-live="polite"></p>
+  </div>
+</div>
+
+<script type="module" src="app.js?v=2.45.0"></script>
 </body>
 </html>

@@ -27,8 +27,8 @@
 // 256-entry table applied in a single pass (applyTable). A picture that is not dark is
 // never touched. The three are pure and tested on plain pixel arrays.
 
-import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=2.44.0";
-import { t } from "./i18n.js?v=2.44.0";
+import { fitWithin, JPEG_QUALITY, MAX_EDGE } from "./core.js?v=2.45.0";
+import { t } from "./i18n.js?v=2.45.0";
 
 const SHRINK_TRIES = 3;
 

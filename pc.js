@@ -159,8 +159,8 @@
 // with no key, its session in X-Crosslister-Session (authHeaders in core.js). Errors come
 // back as JSON {"detail": "..."}; errorText() in core.js turns them into one line.
 
-import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.44.0";
-import { t } from "./i18n.js?v=2.44.0";
+import { authHeaders, errorText, inventoryQuery, statsQuery } from "./core.js?v=2.45.0";
+import { t } from "./i18n.js?v=2.45.0";
 
 /**
  * Where calls go and who makes them: the server's origin, and the key or the session.
@@ -746,6 +746,16 @@ export function removeMember({ pc, ...auth }, email) {
  * @param {{name:string}} body
  * @returns {Promise<void>}
  */
+/**
+ * "I agree" on the Before you start page, recorded for the signed-in person: POST
+ * /me/agreement {"terms"}, answered {"agreement": {"at", "terms"}}.
+ * @param {Settings} settings
+ * @param {string} terms the terms' version
+ */
+export function agreeTerms({ pc, ...auth }, terms) {
+    return expectOk(`${pc}/me/agreement`, auth, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ terms }) });
+}
+
 export function renameMe({ pc, ...auth }, body) {
     return expectOk(`${pc}/me/people/me`, auth, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }

@@ -670,4 +670,11 @@ export const ZH = {
     "{name} is no longer on the server.": "“{name}”已不在服务器上。",
     "{trouble}, still trying": "{trouble}，仍在重试",
     "{why}. Photos wait on this page and go to the server as soon as it answers.": "{why}。照片会留在此页面，服务器一响应就上传。",
+
+    // the share window (v2.44.2)
+    "Share Snap": "分享 Snap",
+    "Send Snap to a friend": "把 Snap 发给朋友",
+    "Type their email address.": "请输入对方的邮箱地址。",
+    "Opening your email...": "正在打开邮件……",
+    "Snap: from photo to live listing in seconds": "Snap：从照片到上架，只需几秒",
 };

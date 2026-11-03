@@ -2348,6 +2348,37 @@ test("the header link says Snap while Admin is open, and its tap goes back to sn
     assert.deepEqual(says(), ["", "Admin", "false"]); // the three dots, heard as Admin
 });
 
+test("a refresh puts him back where he was: the listing, its open eBay card and quick customize; Settings and the inventory open; a fresh start, the Snap page", async (t) => {
+    // Michal, 2026-11-02: "i want to refresh and stay exactly where i am with the menues unfolded
+    // exactly as they were"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("B-0042")], { "B-0042": wholeRow("B-0042") });
+    const place = { admin: true, settings: true, inventory: true, sku: "B-0042", folds: { ebay: true }, custom: true, venue: "", packs: false, people: false, feedback: false, stats: false, y: 0 };
+    const session = memoryStore({ "snap.place": JSON.stringify(place) });
+    const { nodes } = await loadPage({ local: memoryStore({ ...NO_PHOTOS }), session, fetchImpl: pc.fetch });
+    await settle();
+    assert.equal(nodes.get("admin").hidden, false);
+    assert.equal(nodes.get("work").hidden, true);
+    assert.equal(nodes.get("inventory-detail").hidden, false, "the listing open as it was");
+    assert.equal(nodes.get("detail-ebay").hidden, false, "its eBay card open");
+    assert.equal(nodes.get("detail-craigslist").hidden, true, "and only that one");
+    assert.equal(nodes.get("detail-customize").hidden, false, "quick customize open");
+    assert.equal(session.getItem("snap.place"), null, "used once");
+    // Admin with Settings and the inventory open, no listing: both open again
+    const listed = { ...place, sku: "", folds: {}, custom: false };
+    const again = await loadPage({ local: memoryStore({ ...NO_PHOTOS }), session: memoryStore({ "snap.place": JSON.stringify(listed) }), fetchImpl: pc.fetch });
+    await settle();
+    assert.equal(again.nodes.get("admin").hidden, false);
+    assert.equal(again.nodes.get("settings").hidden, false, "Settings open as it was");
+    assert.equal(again.nodes.get("inventory").hidden, false, "the inventory open as it was");
+    assert.equal(again.nodes.get("inventory-detail").hidden, true);
+    // no place kept (the app started afresh): the Snap page
+    const fresh = await loadPage({ local: memoryStore({ ...NO_PHOTOS }), fetchImpl: pc.fetch });
+    await settle();
+    assert.equal(fresh.nodes.get("admin").hidden, true);
+    assert.equal(fresh.nodes.get("work").hidden, false);
+});
+
 // --- Admin: Settings and the inventory (Michal, 2026-10-06) ------------------------------
 
 /** Rows as GET /inventory gives them: a summary each, newest first. */
@@ -8484,12 +8515,12 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     }
     nodes.get("posting-quantity").value = "3";
     nodes.get("posting-quantity").fire("input");
-    // the minimum price typed with its $ and cents: kept without the $, shown with it once left
+    // the minimum price typed with its $ and cents: whole dollars kept, without the $, shown with it once left
     nodes.get("posting-min-price").value = "$7.50";
     nodes.get("posting-min-price").fire("input");
     nodes.get("posting-min-price").fire("blur");
-    assert.equal(nodes.get("posting-min-price").value, "$7.50");
-    const d = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true, minPrice: "7.50" };
+    assert.equal(nodes.get("posting-min-price").value, "$7");
+    const d = { quantity: "3", pricing: 2, autoPost: false, comps: false, pickupOnly: true, bestOffer: true, minPrice: "7" };
     assert.deepEqual(JSON.parse(local.getItem("snap.customize.defaults")), { goods: d, book: d }, "one set, for goods and books alike");
     assert.equal(local.getItem("snap.photos.fixdark"), "off");
 
@@ -8527,7 +8558,7 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     await settle();
     t.mock.timers.tick(SEND_DELAY_MS);
     await settle();
-    assert.deepEqual(pc.posted.at(-1), { item: `Jar ${TODAY}`, venue: "ebay", ai: [1], quantity: 3, pickup_only: true, pricing: 2, auto_post: false, comps: false, min_price: 7.5 });
+    assert.deepEqual(pc.posted.at(-1), { item: `Jar ${TODAY}`, venue: "ebay", ai: [1], quantity: 3, pickup_only: true, pricing: 2, auto_post: false, comps: false, min_price: 7 });
 
     // a fresh load starts from them too, and the fold shows them
     const again = await loadPage({ local, fetchImpl: fakePc().fetch });
@@ -8536,7 +8567,7 @@ test("Posting defaults: under Settings, saved as each changes; every new item st
     assert.equal(again.nodes.get("book-auto-post").checked, false);
     assert.equal(again.nodes.get("posting-quantity").value, "3");
     assert.equal(again.nodes.get("posting-fix-dark").checked, false);
-    assert.equal(again.nodes.get("posting-min-price").value, "$7.50");
+    assert.equal(again.nodes.get("posting-min-price").value, "$7");
     // and a phone that kept the two kinds apart before (Save as default per kind) shows the goods' in the fold
     const older = await loadPage({
         local: memoryStore({ ...GOOD, "snap.customize.defaults": JSON.stringify({ goods: { pricing: 3 }, book: { pricing: 2 } }) }),

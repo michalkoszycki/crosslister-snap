@@ -671,4 +671,11 @@ export const ES = {
     "{name} is no longer on the server.": "{name} ya no está en el servidor.",
     "{trouble}, still trying": "{trouble}, reintentando",
     "{why}. Photos wait on this page and go to the server as soon as it answers.": "{why}. Las fotos esperan en esta página y van al servidor en cuanto responda.",
+
+    // the share window (v2.44.2)
+    "Share Snap": "Compartir Snap",
+    "Send Snap to a friend": "Envía Snap a un amigo",
+    "Type their email address.": "Escribe su correo electrónico.",
+    "Opening your email...": "Abriendo tu correo...",
+    "Snap: from photo to live listing in seconds": "Snap: de la foto al anuncio publicado en segundos",
 };
