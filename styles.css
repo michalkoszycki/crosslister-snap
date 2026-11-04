@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.45.3") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.45.4") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -767,7 +767,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
    hand-written note a long way from the next; the rest of the screen waits */
 @font-face {
     font-family: "Caveat";
-    src: url("fonts/Caveat.woff2?v=2.45.3") format("woff2");
+    src: url("fonts/Caveat.woff2?v=2.45.4") format("woff2");
     font-weight: 400 700;
     font-display: swap;
 }
@@ -1381,6 +1381,8 @@ button.vbadge:focus-visible { outline: 3px solid var(--accent); outline-offset: 
 .secondary.policy-save { margin-top: 14px; }
 /* something changed: the go-ahead's black, as Looks good (Michal, 2026-10-31) */
 .secondary.policy-save.changed { background: var(--accent); color: var(--accent-ink); }
+/* Sign in with the code, lit once the six digits are in (Michal, 2026-11-04) */
+.secondary.code-ready { background: var(--accent); color: var(--accent-ink); font-weight: 800; }
 /* Connect eBay once it is, here and in the Account block (Michal, 2026-10-10: "It better just
    say eBay connected on the same button, lit in green"): a listed badge's posted green, done
    with, so not faded as a disabled button is */

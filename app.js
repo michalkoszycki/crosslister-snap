@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.45.3";
+import { VERSION } from "./version.js?v=2.45.4";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.45.3";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.3";
+} from "./core.js?v=2.45.4";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.4";
 import {
     addVenue,
     applyWrap,
@@ -325,8 +325,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.45.3";
-import { shrinkPhoto } from "./shrink.js?v=2.45.3";
+} from "./pc.js?v=2.45.4";
+import { shrinkPhoto } from "./shrink.js?v=2.45.4";
 import {
     bookCard,
     bookPriceValue,
@@ -339,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.45.3";
-import { canScan, readIsbn } from "./scan.js?v=2.45.3";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.3";
+} from "./book.js?v=2.45.4";
+import { canScan, readIsbn } from "./scan.js?v=2.45.4";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.4";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -8957,6 +8957,10 @@ function main() {
     el.signinHaveCode.addEventListener("click", openCode);
     el.signinCodeSend.addEventListener("click", () => {
         sendCode().catch(() => {});
+    });
+    // the six digits in: Sign in with the code lights up (Michal, 2026-11-04)
+    el.signinCode.addEventListener("input", () => {
+        el.signinCodeSend.classList.toggle("code-ready", !!cleanCode(el.signinCode.value));
     });
     el.signinCode.addEventListener("keydown", (e) => {
         if (e.key === "Enter") sendCode().catch(() => {});

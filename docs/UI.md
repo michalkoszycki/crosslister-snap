@@ -116,6 +116,8 @@ with the code**; the iPhone note (Safari only).
 Once a link has gone, Send me a link says **Link sent** and rests for 30 seconds (a tap or
 Enter meanwhile sends nothing), then offers **Send again**: one mail a tap (Michal,
 2026-11-04: the iPhone sent two links 13 seconds apart, the "sent" line under the keyboard).
+**Sign in with the code** lights up once the box holds the six digits: the press-me colours,
+yellow with black words in dark, black with yellow words in light (Michal, 2026-11-04).
 
 ### 4.3 A new account, before eBay is connected
 

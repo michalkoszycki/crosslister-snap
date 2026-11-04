@@ -8148,15 +8148,20 @@ test("the mail's code: shown once the link is sent, it signs in as the link does
     assert.equal(nodes.get("signin-code-form").hidden, false, "the link sent: the code box under the line");
     assert.equal(nodes.get("signin-have-code").hidden, true);
 
-    // not six digits: said, nothing sent
+    // not six digits: said, nothing sent, the button not lit
     nodes.get("signin-code").value = "4829";
+    nodes.get("signin-code").fire("input");
+    assert.equal(nodes.get("signin-code-send").classList.contains("code-ready"), false);
     nodes.get("signin-code-send").fire("click");
     await settle();
     assert.equal(nodes.get("signin-status").textContent, "Enter the six digits from the email.");
     assert.deepEqual(pc.sessions, []);
 
-    // a wrong code: the server's words, the box kept for another try
+    // a wrong code: the server's words, the box kept for another try; six digits in, the
+    // button lit (Michal, 2026-11-04: "should light up")
     nodes.get("signin-code").value = " 482 913 ";
+    nodes.get("signin-code").fire("input");
+    assert.equal(nodes.get("signin-code-send").classList.contains("code-ready"), true);
     nodes.get("signin-code-send").fire("click");
     await settle();
     assert.deepEqual(pc.sessions, [{ body: { email: "wife@example.com", code: "482913" }, auth: "none" }]);
