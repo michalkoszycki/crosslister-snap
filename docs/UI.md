@@ -149,11 +149,15 @@ OFL licence).
 ### 4.5 Before you start (the agreements)
 
 Once, the first time **Snap your first item** (4.4) is tapped on this phone: a white page in
-the goods screen's place, **Before you start**, four notes (AI makes mistakes, check each
+the goods screen's place, **Before you start**, five notes (AI makes mistakes, check each
 listing's title, details and price; he is responsible for his postings and his dealings with
-buyers, the item, its shipping, returns and payment; each venue's rules apply; AI estimates
-weight and package size for calculated shipping, usually close, so tell it anything it
-should know, a bulky item's weight or "cord missing", in the note box when posting);
+buyers, the item, its shipping, returns and payment; each venue's rules apply; **Weight and
+package** size are estimated for calculated shipping, usually close, anything that matters
+(a bulky item's weight, "cord missing") in the note box when posting, no mention of AI
+(Michal, 2026-11-04: "swich 4 to passive form"); and, in Michal's words of 2026-11-04,
+"**Item’s condition is judged from your photos.** The item looks new only if it’s sealed in its
+original packaging. You can specify the condition explicitly in the note box when you post.
+In general items default to 'used.'");
 **Post without asking** ticked by default (unticked, the next posting asks another tap
 between drafting and posting); a **Full terms and conditions** link, the terms in a tab of
 their own, the app staying put underneath; **I agree**, which keeps the box as he left it as
@@ -161,7 +165,8 @@ Posting defaults' own Post without asking and opens the goods screen. The server
 record too (Michal, 2026-11-02): I agree sends `POST /me/agreement {"terms"}` (the terms'
 version, the date they last changed), and GET /me's `agreement` says when the person accepted
 which terms; a call refused or not reached goes again at the next /me, and so does one for
-terms newer than the server's record.
+terms newer than the server's record. An agreement already on the server for these terms counts as given: a new
+phone (or one whose data was cleared) does not ask again (Michal, 2026-11-04).
 
 ### 4.6 Posting screens (goods and book)
 

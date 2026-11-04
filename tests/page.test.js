@@ -12286,7 +12286,9 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
     // the agreements as index.html has them
     const agree = /<section id="agree" class="agree" hidden>([\s\S]*?)<\/section>/.exec(html)[1];
     assert.match(agree, /<h2 class="agree-title">Before you start<\/h2>/);
-    assert.equal([...agree.matchAll(/<li>/g)].length, 4);
+    assert.equal([...agree.matchAll(/<li>/g)].length, 5);
+    // the fifth, the condition, in Michal's words (2026-11-04)
+    assert.match(agree, /<li><strong>Item’s condition is judged from your photos\.<\/strong> <span>The item looks new only if it’s sealed in its original packaging\./);
     // (the words after the bold in a span of their own, for translation: docs/UI.md rule 8)
     assert.match(agree, /<li><strong>AI makes mistakes\.<\/strong> <span>Check each listing's title, details and price\.<\/span><\/li>/);
     assert.match(agree, /<input id="agree-auto" type="checkbox" checked>/);

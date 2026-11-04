@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.45.0";
+import { VERSION } from "./version.js?v=2.45.1";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.45.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.0";
+} from "./core.js?v=2.45.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.1";
 import {
     addVenue,
     applyWrap,
@@ -325,8 +325,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.45.0";
-import { shrinkPhoto } from "./shrink.js?v=2.45.0";
+} from "./pc.js?v=2.45.1";
+import { shrinkPhoto } from "./shrink.js?v=2.45.1";
 import {
     bookCard,
     bookPriceValue,
@@ -339,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.45.0";
-import { canScan, readIsbn } from "./scan.js?v=2.45.0";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.0";
+} from "./book.js?v=2.45.1";
+import { canScan, readIsbn } from "./scan.js?v=2.45.1";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -6234,6 +6234,17 @@ const TERMS_VERSION = "2026-11-02";
 let agreement = undefined;
 
 /**
+ * The terms already accepted: on this phone, or on the server for these terms (GET /me's
+ * agreement), which this phone then keeps too, so a new phone never asks again (Michal, 2026-11-04).
+ */
+function agreedAlready() {
+    if (readText("localStorage", AGREED_KEY) === "yes") return true;
+    if (!agreement || agreement.terms !== TERMS_VERSION) return false;
+    writeText("localStorage", AGREED_KEY, "yes");
+    return true;
+}
+
+/**
  * The agreement told to the server (Michal, 2026-11-02: a record that the seller accepted, not
  * only this phone's word): once agreed here and the server has none, or an older one; a refusal or
  * a dropped call is tried again at the next /me.
@@ -6407,8 +6418,9 @@ function startTour() {
     tourWords.push([done, TOUR_END]);
     done.addEventListener("click", () => {
         endTour();
-        // the agreements next, the first time on this phone (Michal, 2026-11-02)
-        if (readText("localStorage", AGREED_KEY) !== "yes") showAgree(true);
+        // the agreements next, unless this phone or the server already has them (Michal, 2026-11-02;
+        // 2026-11-04: an agreement recorded is never asked again, a new phone included)
+        if (!agreedAlready()) showAgree(true);
     });
     end.append(ready, nudge, done);
     venue.after(end);

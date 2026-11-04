@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.45.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.45.1") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -762,7 +762,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
    hand-written note a long way from the next; the rest of the screen waits */
 @font-face {
     font-family: "Caveat";
-    src: url("fonts/Caveat.woff2?v=2.45.0") format("woff2");
+    src: url("fonts/Caveat.woff2?v=2.45.1") format("woff2");
     font-weight: 400 700;
     font-display: swap;
 }
@@ -1589,12 +1589,13 @@ input[type="text"].account-user-edit { width: 100%; font-size: 16px; font-weight
 }
 
 footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
-/* share at the footer's right, level with its first line (Michal, 2026-11-02) */
-body > footer { position: relative; }
+/* share at the footer's right, centred on the lines to its left (Michal, 2026-11-02; 2026-11-04:
+   "icon should be lower. cenered relative the two lines on the left of the footer") */
+body > footer { display: flex; align-items: center; gap: 12px; }
+.footer-lines { flex: 1; min-width: 0; }
 .share-link {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+    flex: none;
+    margin-right: -10px;
     display: grid;
     place-items: center;
     width: 44px;

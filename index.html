@@ -35,8 +35,8 @@
 <meta name="referrer" content="no-referrer">
 <!-- Michal, 2026-10-08: "The name of the app should be Snap, a crosslisting app." -->
 <title>Snap</title>
-<link rel="stylesheet" href="styles.css?v=2.45.0">
-<link rel="preload" href="fonts/Manrope.woff2?v=2.45.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2.45.1">
+<link rel="preload" href="fonts/Manrope.woff2?v=2.45.1" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <!-- the iPhone paints a transparent pixel black, so it gets the full-bleed square and rounds it itself -->
@@ -1063,7 +1063,9 @@
       <li><strong data-t>AI makes mistakes.</strong> <span data-t>Check each listing's title, details and price.</span></li>
       <li><strong data-t>You are responsible for your postings</strong> <span data-t>and for your dealings with buyers: the item, its shipping, returns and payment.</span></li>
       <li><strong data-t>Each venue's rules apply.</strong></li>
-      <li><strong data-t>AI estimates weight and package size</strong> <span data-t>for calculated shipping, and is usually close. Tell it anything it should know, like a bulky item's weight or “cord missing”, in the note box when you post.</span></li>
+      <li><strong data-t>Weight and package</strong> <span data-t>size are estimated for calculated shipping, and are usually close. Note anything that matters, like a bulky item's weight or “cord missing”, in the note box when you post.</span></li>
+      <!-- the condition (Michal, 2026-11-04, in his words) -->
+      <li><strong data-t>Item’s condition is judged from your photos.</strong> <span data-t>The item looks new only if it’s sealed in its original packaging. You can specify the condition explicitly in the note box when you post. In general items default to 'used.'</span></li>
     </ol>
     <label class="pickup agree-auto">
       <input id="agree-auto" type="checkbox" checked>
@@ -1250,9 +1252,12 @@
        console takes as the privacy policy): under the landing and under Admin, not under the
        posting screens (app.js) -->
   <!-- the first-listing walk-through again, for a registered account (Michal, 2026-11-01) -->
+  <!-- the footer's lines on the left, the share icon centred beside them (Michal, 2026-11-04) -->
+  <div class="footer-lines">
   <button type="button" id="tour-link" class="link about-link tour-link" hidden data-t>How Snap works</button>
   <a id="about-link" class="about-link" href="about.html" data-t>About and privacy</a>
   <p class="version-line">v<span id="version" class="mono"></span></p>
+  </div>
   <!-- share: the usual three dots joined by two lines, at the footer's right, for anyone; a tap
        shares the app's link, the phone's own share sheet where there is one, else the window below
        (Michal, 2026-11-02; 2026-11-03: "this one is for just sharing the app") -->
@@ -1280,6 +1285,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=2.45.0"></script>
+<script type="module" src="app.js?v=2.45.1"></script>
 </body>
 </html>
