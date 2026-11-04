@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.45.2") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.45.3") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -767,7 +767,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
    hand-written note a long way from the next; the rest of the screen waits */
 @font-face {
     font-family: "Caveat";
-    src: url("fonts/Caveat.woff2?v=2.45.2") format("woff2");
+    src: url("fonts/Caveat.woff2?v=2.45.3") format("woff2");
     font-weight: 400 700;
     font-display: swap;
 }

@@ -113,6 +113,9 @@ account was deleted."). Footer: "About and privacy", the version, at the foot of
 "← Back"; "Sign in"; the sentence; Email; "Keep me signed in" (ticked); **Send me a
 link**; status; "I already have a code" opening the six-digit code field and **Sign in
 with the code**; the iPhone note (Safari only).
+Once a link has gone, Send me a link says **Link sent** and rests for 30 seconds (a tap or
+Enter meanwhile sends nothing), then offers **Send again**: one mail a tap (Michal,
+2026-11-04: the iPhone sent two links 13 seconds apart, the "sent" line under the keyboard).
 
 ### 4.3 A new account, before eBay is connected
 

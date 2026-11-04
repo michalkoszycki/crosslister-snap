@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.45.2";
+import { VERSION } from "./version.js?v=2.45.3";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.45.2";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.2";
+} from "./core.js?v=2.45.3";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.3";
 import {
     addVenue,
     applyWrap,
@@ -325,8 +325,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.45.2";
-import { shrinkPhoto } from "./shrink.js?v=2.45.2";
+} from "./pc.js?v=2.45.3";
+import { shrinkPhoto } from "./shrink.js?v=2.45.3";
 import {
     bookCard,
     bookPriceValue,
@@ -339,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.45.2";
-import { canScan, readIsbn } from "./scan.js?v=2.45.2";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.2";
+} from "./book.js?v=2.45.3";
+import { canScan, readIsbn } from "./scan.js?v=2.45.3";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.3";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -7891,11 +7891,36 @@ async function askSignup() {
     render();
 }
 
+/** How long Send me a link rests after a link went, before it offers Send again. */
+const RESEND_MS = 30000;
+let resendTimer = null;
+
+/** Send me a link as it starts: its own words, live, no rest running. */
+function freshSend() {
+    clearTimeout(resendTimer);
+    resendTimer = null;
+    el.signinSend.disabled = false;
+    el.signinSend.textContent = t("Send me a link");
+}
+
+/** A link went: the button says so and rests RESEND_MS, then offers Send again (one mail a tap). */
+function restSend() {
+    clearTimeout(resendTimer);
+    el.signinSend.disabled = true;
+    el.signinSend.textContent = t("Link sent");
+    resendTimer = setTimeout(() => {
+        resendTimer = null;
+        el.signinSend.disabled = false;
+        el.signinSend.textContent = t("Send again");
+    }, RESEND_MS);
+}
+
 /** The landing's Sign in, or the sign-in screen's Back. */
 function showSignin(open) {
     entry = open ? "signin" : "";
     codeOpen = false;
     el.signinStatus.textContent = "";
+    freshSend();
     render();
     if (open) el.signinEmail.focus();
 }
@@ -7912,6 +7937,8 @@ function openCode() {
  * in. The link it emails opens this page signed in (signIn).
  */
 async function sendLink() {
+    // resting after a link, or one on its way: no second mail (Enter included)
+    if (el.signinSend.disabled) return;
     const checked = checkEmail(el.signinEmail.value);
     if (!checked.ok) {
         el.signinStatus.textContent = checked.error;
@@ -7924,9 +7951,9 @@ async function sendLink() {
         el.signinStatus.textContent = t(LINK_SENT);
         codeOpen = true;
         render();
+        restSend();
     } catch (e) {
         el.signinStatus.textContent = e.status === 404 ? t(SIGNIN_MISSING) : t("Could not send the link: {detail}.", { detail: e.message });
-    } finally {
         el.signinSend.disabled = false;
     }
 }

@@ -41,6 +41,8 @@ export const ZH = {
     "A venue is a site where you sell, such as eBay or Craigslist.": "平台就是你卖东西的网站，比如 eBay 或 Craigslist。",
     "Weight and package": "重量和包裹尺寸",
     "AI makes mistakes.": "AI 会出错。",
+    "Link sent": "链接已发送",
+    "Send again": "再发一次",
     "Item’s condition is judged from your photos.": "物品的状况根据你的照片判断。",
     "The item looks new only if it’s sealed in its original packaging. You can specify the condition explicitly in the note box when you post. In general items default to 'used.'": "只有密封在原包装中时，物品才会被视为全新。发布时可以在备注框里明确写明状况。一般情况下，物品默认为“二手”。",
     "About Snap": "关于 Snap",

@@ -8037,11 +8037,23 @@ test("Sign in: a link by email from the product's server, Keep me signed in with
     assert.deepEqual(pc.links, [{ body: { email: "wife@example.com", remember: true }, auth: "none" }]);
     assert.deepEqual(pc.origins, [SERVER, SERVER], "the product's own server: whether it takes new accounts, then the link");
     assert.equal(nodes.get("signin-status").textContent, "Check your email. Open the link on this device, or enter the code from the email below.");
+    // one mail a tap (Michal, 2026-11-04: two links 13 s apart): the button rests, says so, and a
+    // tap or Enter meanwhile sends nothing; 30 s on it offers Send again
+    assert.equal(nodes.get("signin-send").disabled, true);
+    assert.equal(nodes.get("signin-send").textContent, "Link sent");
+    nodes.get("signin-send").fire("click");
+    nodes.get("signin-email").fire("keydown", { key: "Enter" });
+    await settle();
+    assert.equal(pc.links.length, 1, "nothing sent while it rests");
+    t.mock.timers.tick(30000);
+    assert.equal(nodes.get("signin-send").disabled, false);
+    assert.equal(nodes.get("signin-send").textContent, "Send again");
     nodes.get("signin-remember").checked = false;
     nodes.get("signin-send").fire("click");
     await settle();
     assert.deepEqual(pc.links[1].body, { email: "wife@example.com", remember: false });
 
+    t.mock.timers.tick(30000);
     pc.link = 404;
     nodes.get("signin-send").fire("click");
     await settle();

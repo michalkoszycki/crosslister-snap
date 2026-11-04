@@ -41,6 +41,8 @@ export const ES = {
     "A venue can ask us to delete the data we hold from it (for example when you close your account there), and we do.": "Una plataforma puede pedirnos que borremos los datos que tenemos de ella (por ejemplo, cuando cierras tu cuenta allí), y lo hacemos.",
     "A venue is a site where you sell, such as eBay or Craigslist.": "Una plataforma es un sitio donde vendes, como eBay o Craigslist.",
     "Weight and package": "El peso y el tamaño",
+    "Link sent": "Enlace enviado",
+    "Send again": "Enviar de nuevo",
     "Item’s condition is judged from your photos.": "La condición del artículo se juzga a partir de tus fotos.",
     "The item looks new only if it’s sealed in its original packaging. You can specify the condition explicitly in the note box when you post. In general items default to 'used.'": "El artículo se considera nuevo solo si está sellado en su empaque original. Puedes indicar la condición en la caja de nota al publicar. En general, los artículos se consideran “usados” por defecto.",
     "AI makes mistakes.": "La AI comete errores.",

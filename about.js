@@ -6,7 +6,7 @@
 // with none yet staying English, and the line saying the English governs is shown. The language
 // is the app's own choice, kept in this browser's storage; nothing is fetched, nothing is sent.
 
-import { htmlLang, language, languageOf, setLanguage, t } from "./i18n.js?v=2.45.2";
+import { htmlLang, language, languageOf, setLanguage, t } from "./i18n.js?v=2.45.3";
 
 /** The attributes a page marks for translation, each as data-t-<attribute>. */
 const ATTRIBUTES = ["placeholder", "aria-label", "title"];
