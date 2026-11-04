@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.45.4";
+import { VERSION } from "./version.js?v=2.45.5";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.45.4";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.4";
+} from "./core.js?v=2.45.5";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.5";
 import {
     addVenue,
     applyWrap,
@@ -325,8 +325,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.45.4";
-import { shrinkPhoto } from "./shrink.js?v=2.45.4";
+} from "./pc.js?v=2.45.5";
+import { shrinkPhoto } from "./shrink.js?v=2.45.5";
 import {
     bookCard,
     bookPriceValue,
@@ -339,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.45.4";
-import { canScan, readIsbn } from "./scan.js?v=2.45.4";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.4";
+} from "./book.js?v=2.45.5";
+import { canScan, readIsbn } from "./scan.js?v=2.45.5";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.5";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -8480,7 +8480,9 @@ function onPopState(e) {
     const at = walkPosition(e.state, list.length);
     if (at < 0 || at === cursor) return; // not the walk's, or the step back off the floor
     if (at === 0) {
-        say(t(HISTORY_END));
+        // said only where the items are walked: not under Finish setting up, the landing or
+        // Admin, where it means nothing (Michal, 2026-11-04)
+        if (!el.work.hidden || !el.book.hidden) say(t(HISTORY_END));
         globalThis.history.go(1);
         return;
     }

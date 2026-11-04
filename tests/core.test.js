@@ -1041,7 +1041,7 @@ test("the lines the walk says", () => {
     assert.equal(presentNote(a), 'Back on "Lamp", the item you were on.');
     assert.equal(presentNote(null), "", "a fresh screen: nothing to say");
     // Michal, 2026-10-03: "beyond that it should say something like - 'end of item history - see inventory lists'"
-    assert.equal(HISTORY_END, "End of the item history: see the inventory list on the server.");
+    assert.equal(HISTORY_END, "That's the oldest item kept here. The rest are in Admin, Inventory.");
 });
 
 test("itemIdFor names today's folder the way serve/items.py does", () => {

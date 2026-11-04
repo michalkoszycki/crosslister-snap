@@ -111,7 +111,7 @@ export const ZH = {
     "Edit policies": "编辑政策",
     "End listing": "下架",
     "End listings": "下架商品",
-    "End of the item history: see the inventory list on the server.": "商品记录已到头：更早的请查看服务器上的库存列表。",
+    "That's the oldest item kept here. The rest are in Admin, Inventory.": "这是这里保存的最早一件商品。其余的在“管理”的“库存”里。",
     "End this listing on {venue}?": "在 {venue} 下架这件商品？",
     "Ending {title} on {venues}": "正在 {venues} 下架 {title}",
     "Fair price": "合理价格",

@@ -3,8 +3,8 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.45.4";
-import { t, tKey } from "./i18n.js?v=2.45.4";
+import { noteDirty, unsent } from "./queue.js?v=2.45.5";
+import { t, tKey } from "./i18n.js?v=2.45.5";
 import {
     bookListings,
     bookPriceValue,
@@ -16,7 +16,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.45.4";
+} from "./book.js?v=2.45.5";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -3821,7 +3821,7 @@ function postingUp(state) {
 export const HISTORY_LIMIT = 10;
 
 /** Said by back beyond the oldest item kept, instead of leaving the page. */
-export const HISTORY_END = tKey("End of the item history: see the inventory list on the server.");
+export const HISTORY_END = tKey("That's the oldest item kept here. The rest are in Admin, Inventory.");
 
 /**
  * The items NEXT left, oldest first, as stored: only what is a saved item,

@@ -2050,7 +2050,7 @@ test("end to end: each photo goes to the PC as it is taken; mark, ebay, link, cr
     assert.equal(nodes.get("item-name").value, "Boots");
     nav.back();
     await settle();
-    assert.equal(nodes.get("message").textContent, "End of the item history: see the inventory list on the server.");
+    assert.equal(nodes.get("message").textContent, "That's the oldest item kept here. The rest are in Admin, Inventory.");
     assert.equal(nodes.get("item-name").value, "Boots", "nothing changed");
     assert.equal(nav.left, 0, "back never leaves the page");
 });
@@ -7029,7 +7029,7 @@ function postedJob(name, i) {
     return { job: `j-${name}`, venue: "ebay", state: "done", sku: `B-${i}`, price: `${10 + i}.00`, title: `${name} listing`, links: { ebay: `https://www.ebay.com/itm/${i}` } };
 }
 
-const END = "End of the item history: see the inventory list on the server.";
+const END = "That's the oldest item kept here. The rest are in Admin, Inventory.";
 
 test("back and forward walk the items NEXT left, both ways, and never leave the page", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });

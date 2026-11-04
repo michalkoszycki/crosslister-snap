@@ -112,7 +112,7 @@ export const ES = {
     "Edit policies": "Editar políticas",
     "End listing": "Finalizar anuncio",
     "End listings": "Finalizar anuncios",
-    "End of the item history: see the inventory list on the server.": "Fin del historial de artículos: consulta el inventario en el servidor.",
+    "That's the oldest item kept here. The rest are in Admin, Inventory.": "Este es el artículo más antiguo guardado aquí. Los demás están en Admin, Inventario.",
     "End this listing on {venue}?": "¿Finalizar este anuncio en {venue}?",
     "Ending {title} on {venues}": "Finalizando {title} en {venues}",
     "Fair price": "Precio justo",
