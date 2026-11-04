@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.45.1") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.45.2") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -111,6 +111,11 @@
 :root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
+
+/* hidden means gone, whatever display a class gives (2026-11-04): a rule like
+   "footer .link.tour-link { display: block }" outranks the browser's own [hidden], and the
+   signed-out landing showed How Snap works and ← Back; the share window stuck the same way */
+[hidden]:not([hidden="until-found" i]) { display: none !important; }
 
 /* the header band runs edge to edge; everything else keeps the 640 px column */
 body {
@@ -762,7 +767,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
    hand-written note a long way from the next; the rest of the screen waits */
 @font-face {
     font-family: "Caveat";
-    src: url("fonts/Caveat.woff2?v=2.45.1") format("woff2");
+    src: url("fonts/Caveat.woff2?v=2.45.2") format("woff2");
     font-weight: 400 700;
     font-display: swap;
 }
