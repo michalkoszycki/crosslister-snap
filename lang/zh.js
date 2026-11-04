@@ -334,7 +334,7 @@ export const ZH = {
     "Sync to {venue}": "同步到 {venue}",
     "Tap ISBN to read the barcode on the back cover, or type the ISBN.": "点 ISBN 扫描封底条形码，或输入 ISBN。",
     "Tap No ISBN and type the title": "点“无 ISBN”并输入书名",
-    "Tap Share, then Add to Home Screen.": "点“分享”，然后选“添加到主屏幕”。",
+    "In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.": "在 Safari 里点“分享”按钮（一个带向上箭头的方框；较新的 iPhone 上它在 ••• 按钮里），然后点“添加到主屏幕”。如果没看到，就把列表往下滑。",
     "Tap individual venue buttons below to update venues.": "点下方各平台的按钮，分别更新。",
     "Terms": "条款",
     "Text added above the description": "添加在描述上方的文字",

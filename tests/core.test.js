@@ -4102,7 +4102,7 @@ test("the install nudge: none from the home screen, a longer rest at each close,
     assert.equal(isDesktopBrowser({}), false, "a browser that does not say");
     assert.equal(isDesktopBrowser(), false);
     assert.equal(INSTALL_SNOOZE_MS, 24 * 60 * 60 * 1000);
-    assert.equal(installSteps(true), "Tap Share, then Add to Home Screen.");
+    assert.equal(installSteps(true), "In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.");
     assert.equal(installSteps(false), "Open the browser menu, then Add to Home screen (or Install app).");
     assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" }), true);
     assert.equal(isIosDevice({ userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 5 }), true, "an iPad");

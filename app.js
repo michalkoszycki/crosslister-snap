@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.45.5";
+import { VERSION } from "./version.js?v=2.45.6";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.45.5";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.5";
+} from "./core.js?v=2.45.6";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.45.6";
 import {
     addVenue,
     applyWrap,
@@ -325,8 +325,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.45.5";
-import { shrinkPhoto } from "./shrink.js?v=2.45.5";
+} from "./pc.js?v=2.45.6";
+import { shrinkPhoto } from "./shrink.js?v=2.45.6";
 import {
     bookCard,
     bookPriceValue,
@@ -339,9 +339,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.45.5";
-import { canScan, readIsbn } from "./scan.js?v=2.45.5";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.5";
+} from "./book.js?v=2.45.6";
+import { canScan, readIsbn } from "./scan.js?v=2.45.6";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.45.6";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";

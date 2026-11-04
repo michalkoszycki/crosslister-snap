@@ -3,8 +3,8 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.45.5";
-import { t, tKey } from "./i18n.js?v=2.45.5";
+import { noteDirty, unsent } from "./queue.js?v=2.45.6";
+import { t, tKey } from "./i18n.js?v=2.45.6";
 import {
     bookListings,
     bookPriceValue,
@@ -16,7 +16,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.45.5";
+} from "./book.js?v=2.45.6";
 
 // --- the item name and photo file names ------------------------------------
 
@@ -1747,7 +1747,8 @@ export function installState({ standalone, hasPrompt, isIos, desktop = false, di
  */
 export function installSteps(isIos) {
     return isIos
-        ? t("Tap Share, then Add to Home Screen.")
+        ? // where Share is, not just its name (Michal, 2026-11-04: "it was not clear to me")
+          t("In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.")
         : t("Open the browser menu, then Add to Home screen (or Install app).");
 }
 

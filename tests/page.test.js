@@ -8008,7 +8008,7 @@ test("from the home screen there is no nudge; an iPhone is told Share, then Add 
     const iphone = { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15" };
     const safari = await loadPage({ agent: iphone });
     safari.nodes.get("landing-install").fire("click");
-    assert.equal(safari.nodes.get("landing-install-steps").textContent, "Tap Share, then Add to Home Screen.");
+    assert.equal(safari.nodes.get("landing-install-steps").textContent, "In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.");
     const added = await loadPage({ agent: { ...iphone, standalone: true } });
     assert.equal(added.nodes.get("landing-install").hidden, true, "an iPhone's own flag says home screen");
 });

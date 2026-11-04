@@ -172,7 +172,7 @@ and every behaviour are the live app's.
   app", with **Add** and an **x**. Where Chrome offered to install
   (`beforeinstallprompt`, kept rather than shown as its own bar), Add (or Install)
   asks with Chrome's own prompt, once; accepted, the nudges go. Elsewhere the
-  button unfolds the two taps: on an iPhone `Tap Share, then Add to Home Screen.`,
+  button unfolds the two taps: on an iPhone `In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.` (2026-11-04: where Share is, not just its name),
   otherwise `Open the browser menu, then Add to Home screen (or Install app).` The x
   puts the banner away for 7 days (`snap.install.dismissed`, the day as an ISO
   date); the landing's Install step is never put away. `installState` in core.js

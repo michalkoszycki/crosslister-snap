@@ -335,7 +335,7 @@ export const ES = {
     "Sync to {venue}": "Sincronizar a {venue}",
     "Tap ISBN to read the barcode on the back cover, or type the ISBN.": "Toca ISBN para leer el código de barras de la contraportada, o escribe el ISBN.",
     "Tap No ISBN and type the title": "Toca Sin ISBN y escribe el título",
-    "Tap Share, then Add to Home Screen.": "Toca Compartir y luego Agregar a pantalla de inicio.",
+    "In Safari, tap the Share button (a square with an arrow pointing up; on newer iPhones it is under the ••• button), then tap Add to Home Screen. Scroll down the list if you do not see it.": "En Safari, toca el botón Compartir (un cuadrado con una flecha hacia arriba; en los iPhone más nuevos está dentro del botón •••) y luego toca Agregar a pantalla de inicio. Desliza la lista hacia abajo si no lo ves.",
     "Tap individual venue buttons below to update venues.": "Toca abajo el botón de cada plataforma para actualizarla.",
     "Terms": "Términos",
     "Text added above the description": "Texto que va arriba de la descripción",
