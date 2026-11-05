@@ -12,8 +12,8 @@
 //
 // Pure, no DOM, so core.js uses it too. index.html's own words carry data-t (app.js).
 
-import { ZH } from "./lang/zh.js?v=2.45.6";
-import { ES } from "./lang/es.js?v=2.45.6";
+import { ZH } from "./lang/zh.js?v=2.46.0";
+import { ES } from "./lang/es.js?v=2.46.0";
 
 /** The languages, in their order on screen, each named in its own language. */
 export const LANGUAGES = [
