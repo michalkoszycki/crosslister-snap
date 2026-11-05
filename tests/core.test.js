@@ -246,6 +246,7 @@ import {
     feedbackWord,
     inboxHead,
     inboxOf,
+    myFeedbackOf,
     inventorySku,
     refusalLine,
     serverLine,
@@ -4292,6 +4293,28 @@ test("the Feedback inbox: its new entries read leniently, each one's first line,
     assert.equal(inboxHead(second, 0), "someone");
     assert.equal(feedbackWord(3), "Feedback (3)");
     assert.equal(feedbackWord(0), "Feedback");
+});
+
+test("Feedback's replies (2026-11-05): read leniently on both sides; no replies key, none to give", () => {
+    const replies = [
+        { from: "admin", by: "michal", text: " Which item? ", at: "2026-11-05T10:00:00Z", seen: false },
+        { from: "sender", by: "anna@example.com", text: "The lamp", at: "2026-11-05T11:00:00Z" },
+        { from: "someone else", by: "", text: "odd", at: "" },
+        { from: "admin", text: "   " },
+        "junk",
+    ];
+    const read = [
+        { from: "admin", by: "michal", text: "Which item?", at: "2026-11-05T10:00:00Z" },
+        { from: "sender", by: "anna@example.com", text: "The lamp", at: "2026-11-05T11:00:00Z" },
+        { from: "sender", by: "", text: "odd", at: "" },
+    ];
+    const [admin, older] = inboxOf({ entries: [{ id: "f9", text: "Hi", replies }, { id: "f8", text: "Hi" }] });
+    assert.deepEqual(admin.replies, read);
+    assert.ok(!("replies" in older), "an older server: no box");
+    const [theirs, before] = myFeedbackOf({ entries: [{ id: "f2", text: "Hi", replies }, { id: "f1", text: "Hi" }] });
+    assert.deepEqual(theirs.replies, read);
+    assert.ok(!("replies" in before));
+    assert.deepEqual(inboxOf({ entries: [{ id: "f7", text: "Hi", replies: "x" }] })[0].replies, undefined);
 });
 
 test("a new account's steps from /me: Connect eBay while it is not, then the address, then nothing left", () => {

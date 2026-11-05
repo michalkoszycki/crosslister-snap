@@ -196,6 +196,11 @@ header #admin-toggle.unseen::after { content: ""; position: absolute; top: 9px; 
 .feedback-mine li { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 0; }
 /* the reply: the message's card on grey (Michal, 2026-10-31) */
 .inbox-entry.mine-reply { background: var(--card); }
+/* the replies as a chat (Michal, 2026-11-05: "basically chat"): Snap's on the left on grey,
+   theirs on the right as their entries */
+.feedback-mine .mine-snap { align-self: flex-start; max-width: 85%; border-bottom-left-radius: 4px; }
+.feedback-mine .mine-own { align-self: flex-end; max-width: 85%; border-bottom-right-radius: 4px; }
+.feedback-mine li > .inbox-error { margin: 0; font-size: 13px; font-weight: 700; color: var(--bad); overflow-wrap: anywhere; }
 
 .header-right { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
 
@@ -1577,6 +1582,14 @@ input[type="text"].account-user-edit { width: 100%; font-size: 16px; font-weight
 .inbox-text { margin-top: 4px; font-size: 15px; white-space: pre-wrap; }
 .inbox-entry .inbox-error { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--bad); }
 .inbox-entry .pill { margin-top: 8px; }
+/* the replies under an entry (Michal, 2026-11-05): his on the right on grey, the sender's on the left */
+.inbox-reply { width: fit-content; max-width: 85%; margin-top: 8px; padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--line); }
+.inbox-reply.from-admin { margin-left: auto; background: var(--card); border-bottom-right-radius: 4px; }
+.inbox-reply:not(.from-admin) { border-bottom-left-radius: 4px; }
+/* the reply box, Send and (the admin's) Reviewed on one row while they fit */
+.reply-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: 8px; }
+.reply-row .reply-text { flex: 1 1 160px; width: auto; min-width: 0; min-height: 40px; padding: 8px 12px; border-radius: 14px; }
+.reply-row .pill, .inbox-entry .reply-row .pill { flex: none; margin-top: 0; }
 
 .book-price-note { margin: 0 2px; }
 /* a book goes to eBay only: one full-width button where goods have two */

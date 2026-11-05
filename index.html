@@ -765,7 +765,8 @@
 
     <!-- Feedback, after Settings: what happened, sent to the server with the screen it was
          written from, the page's version and, ticked, the last job the page has. For an admin,
-         above the box, the new entries everyone sent, each with its Reviewed (app.js) -->
+         above the box, the new entries everyone sent, each with its replies, a reply box, Send
+         and Reviewed (app.js; Michal, 2026-11-05: "basically chat") -->
     <button type="button" id="feedback-toggle" class="link customize-toggle" aria-expanded="false"
             aria-controls="feedback">▸ Feedback</button>
     <div id="feedback" class="card" hidden>
@@ -773,7 +774,8 @@
       <!-- the box, for anyone but the admin, who does not send themselves feedback (2026-10-31) -->
       <div id="feedback-box">
       <!-- what they sent, oldest first, as a chat: each a white card, Reviewed under it in plain
-           words (Michal, 2026-10-31: "should look more like a chat") -->
+           words (Michal, 2026-10-31: "should look more like a chat"); Snap's replies and theirs
+           under it, the reply box under the latest Snap answered (2026-11-05) -->
       <ul id="feedback-mine" class="feedback-mine" hidden></ul>
       <label class="field">
         <span class="field-label" data-t>Feedback</span>

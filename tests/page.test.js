@@ -1475,6 +1475,10 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         // GET /me/feedback and POST /me/feedback/seen (2026-10-31): null is an older server's 404
         mine: null,
         seenPosts: 0,
+        // POST /feedback/<id>/replies and /me/feedback/<id>/replies (2026-11-05): each id, body,
+        // auth and side ("admin", "sender"); `replyRefuse` ({status, detail}) answers when set
+        replies: [],
+        replyRefuse: null,
         // GET/PATCH /me/policies (2026-10-31): null is an older server's 404
         policies: null,
         policySaves: [],
@@ -1537,6 +1541,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         const peopled = parts[0] === "me" && ["people", "devices", "leave"].includes(parts[1]);
         const policied = parts[0] === "me" && parts[1] === "policies";
         const mined = parts[0] === "me" && parts[1] === "feedback";
+        const replied = method === "POST" && ((parts[0] === "feedback" && parts[2] === "replies") || (mined && parts[3] === "replies"));
         if (check) pc.checks += 1;
         else if (asked) pc.mes += 1;
         else if (signup) pc.signups.push({ auth, origin: u.origin });
@@ -1546,7 +1551,7 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
         else if (addressed && method === "GET") pc.addressAsks.push(auth);
         else if (peopled && method === "GET" && parts[1] === "people") pc.peopleAsks.push(auth);
         else if (peopled && method === "GET") pc.devicesAsks.push(`${auth} ${u.search}`);
-        else if (!sold && !wrapped && !inboxed && !addressed && !peopled && !policied && !mined) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
+        else if (!sold && !wrapped && !inboxed && !addressed && !peopled && !policied && !mined && !replied) pc.calls.push(`${method} /${parts.join("/")}${u.search}`);
         if (pc.down) throw new TypeError("Failed to fetch");
         const body = typeof init.body === "string" ? JSON.parse(init.body) : init.body;
         if (asked) return pc.me ? json(pc.me) : json({ detail: "Not Found" }, 404);
@@ -1679,6 +1684,23 @@ function fakePc({ jobs = {}, refuseJob = "", items = {}, books = {}, searches = 
             return json(pc.policies);
         }
         if (policied) return pc.policies ? json(pc.policies) : json({ detail: "Not Found" }, 404);
+        // a reply, as the server's contract (2026-11-05): the words trimmed, 1 to 2000 characters
+        // (else 422), the whole entry back; the sender's sets reviewed back to false
+        if (replied) {
+            const admin = parts[0] === "feedback";
+            const id = admin ? parts[1] : parts[2];
+            pc.replies.push({ id, body, auth, side: admin ? "admin" : "sender", type: headers["Content-Type"] });
+            if (pc.replyRefuse) return json({ detail: pc.replyRefuse.detail }, pc.replyRefuse.status);
+            const text = typeof body.text === "string" ? body.text.trim() : "";
+            if (!text || text.length > 2000) return json({ detail: "text: 1 to 2000 characters" }, 422);
+            const list = admin ? pc.inbox && pc.inbox.entries : pc.mine && pc.mine.entries;
+            const entry = (list || []).find((e) => e.id === id);
+            if (!entry) return json({ detail: "no such feedback" }, 404);
+            const at = `2026-11-05T1${pc.replies.length}:00:00`;
+            entry.replies = [...(entry.replies || []), admin ? { from: "admin", by: "michal", text, at } : { from: "sender", by: "anna", text, at }];
+            if (!admin) entry.reviewed = false;
+            return json(entry);
+        }
         if (mined && parts[2] === "seen" && method === "POST") {
             pc.seenPosts += 1;
             if (pc.me) pc.me.feedback_unseen = 0;
@@ -10070,6 +10092,118 @@ test("Incoming feedback, for an admin: the new entries, counted in its toggle, n
     assert.equal(old.nodes.get("feedback-box").hidden, false, "as anyone's");
 });
 
+/** The same inbox from a server that keeps replies (2026-11-05): he asked, anna answered; none on f8 yet. */
+const CHAT_INBOX = {
+    entries: [
+        {
+            ...INBOX.entries[0],
+            replies: [
+                { from: "admin", by: "michal", text: "Which item?", at: "2026-10-08T15:00:00" },
+                { from: "sender", by: "anna", text: "The lamp", at: "2026-10-08T16:00:00" },
+            ],
+        },
+        { ...INBOX.entries[1], replies: [] },
+    ],
+};
+
+/** A card's parts as [class, words...]: a line its own words, a reply card its head and words. */
+const cardParts = (box) => box.children.map((c) => [c.className, ...(c.tag === "div" && c.className !== "reply-row" ? c.children.map((p) => p.textContent) : [c.textContent])]);
+
+test("Incoming feedback as a chat: the replies under each entry, a reply box with Send beside Reviewed; Send posts, clears and redraws the entry", async (t) => {
+    // Michal, 2026-11-05: "when looking at feedback, I want to have an option to REPLY to it in the
+    // app as admin. And that reply should show to the user ... basically chat. The Reviewed kind
+    // of closes the issue so it should be an option, but replying may be better before clicking
+    // Reviewed."
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    pc.inbox = structuredClone(CHAT_INBOX);
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    const card = (i) => nodes.get("feedback-inbox").children[i];
+    const row = (i) => card(i).children.find((c) => c.className === "reply-row");
+    // the message, its job's error, then the replies oldest first: his as You, hers by name
+    const [, text, error, his, hers, under] = cardParts(card(0));
+    assert.deepEqual([text, error], [["inbox-text", "The craigslist button is grey"], ["inbox-error", "Job error: eBay said no"]]);
+    assert.equal(his[0], "inbox-reply from-admin");
+    assert.match(his[1], /^You · 2026-10-08 15:00$/);
+    assert.equal(his[2], "Which item?");
+    assert.equal(hers[0], "inbox-reply");
+    assert.match(hers[1], /^anna · 2026-10-08 16:00$/);
+    assert.equal(hers[2], "The lamp");
+    assert.equal(under[0], "reply-row");
+    assert.equal(card(0).children.length, 6, "no line under it until there is something to say");
+    // one row: the box (its placeholder its label), Send grey while it is empty, then Reviewed
+    const [box, send, reviewed] = row(0).children;
+    assert.equal(box.tag, "textarea");
+    assert.equal(box.placeholder, "Reply");
+    assert.equal(box.value, "");
+    assert.deepEqual([send.textContent, send.className], ["Send", "pill pill-small"]);
+    assert.deepEqual([reviewed.textContent, reviewed.className], ["Reviewed", "pill pill-small"]);
+    // an entry with no replies yet has its box too
+    assert.deepEqual(cardParts(card(1)).map(([c]) => c), ["inbox-head", "inbox-text", "reply-row"]);
+
+    // words in: Send the press-me pill; blank again: grey
+    box.value = "  It is fixed in 2.46  ";
+    box.fire("input");
+    assert.equal(send.className, "pill pill-small pill-ink");
+    // Send: the words trimmed, POST /feedback/f9/replies; the box clears, the entry is the answer's
+    send.fire("click");
+    assert.equal(row(0).children[1].disabled, true, "on its way");
+    await settle();
+    assert.deepEqual(pc.replies, [{ id: "f9", body: { text: "It is fixed in 2.46" }, auth: "key test-key-0123456789", side: "admin", type: "application/json" }]);
+    const [kind, head, words] = cardParts(card(0)).at(-2);
+    assert.deepEqual([kind, words], ["inbox-reply from-admin", "It is fixed in 2.46"]);
+    assert.match(head, /^You · 2026-11-05 11:00$/);
+    assert.equal(row(0).children[0].value, "");
+    assert.equal(row(0).children[1].className, "pill pill-small");
+    assert.equal(nodes.get("feedback-inbox").children.length, 2, "a reply is not Reviewed");
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback (2)");
+    assert.deepEqual(pc.reviews, []);
+
+    // words in the other entry's box stay through the inbox asked afresh
+    const second = row(1).children[0];
+    second.value = "Thanks!";
+    second.fire("input");
+    nodes.get("feedback-toggle").fire("click");
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.equal(pc.inboxAsks.length, 3);
+    assert.equal(row(1).children[0], second, "nothing changed: the box he types in is left as it is");
+    assert.equal(row(1).children[0].value, "Thanks!");
+
+    // a blank box: Send sends nothing; a refusal: the server's words in the entry's own line
+    row(0).children[0].value = "   ";
+    row(0).children[0].fire("input");
+    assert.equal(row(0).children[1].className, "pill pill-small");
+    row(0).children[1].fire("click");
+    await settle();
+    assert.equal(pc.replies.length, 1);
+    pc.replyRefuse = { status: 422, detail: "text: at most 2000 characters" };
+    row(1).children[1].fire("click");
+    await settle();
+    assert.deepEqual(cardParts(card(1)).at(-1), ["inbox-error", "Not sent: text: at most 2000 characters."]);
+    assert.equal(row(1).children[0].value, "Thanks!", "the words kept");
+    assert.equal(cardParts(card(0)).at(-1)[0], "reply-row", "the other entry says nothing");
+
+    // Reviewed as ever: PATCH /feedback/f9, and it leaves the inbox; f8's words still in its box
+    pc.replyRefuse = null;
+    row(0).children[2].fire("click");
+    await settle();
+    assert.deepEqual(pc.reviews.map((r) => [r.id, r.body]), [["f9", { reviewed: true }]]);
+    assert.equal(nodes.get("feedback-inbox").children.length, 1);
+    assert.equal(nodes.get("feedback-toggle").textContent, "▾ Incoming feedback (1)");
+    assert.equal(row(0).children[0].value, "Thanks!");
+    row(0).children[1].fire("click");
+    await settle();
+    assert.deepEqual(pc.replies.at(-1).body, { text: "Thanks!" });
+    assert.equal(cardParts(card(0)).at(-2)[2], "Thanks!");
+    assert.equal(cardParts(card(0)).at(-1)[0], "reply-row", "the line gone once sent");
+});
+
 /** A new account, made at the first code (Michal, 2026-10-25): an ordinary account, its eBay not connected yet. */
 const NEW_ME = {
     user: "anna",
@@ -10277,6 +10411,121 @@ test("a sender's Feedback: what they sent, Reviewed beside each marked; a dot on
     nodes.get("feedback-toggle").fire("click");
     await settle();
     assert.equal(pc.seenPosts, 1);
+});
+
+test("a sender's Feedback as a chat: Snap's replies on the other side, theirs as their entries; they reply under the latest Snap answered", async (t) => {
+    // Michal, 2026-11-05: "that reply should show to the user ... basically chat"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // one reply of Snap's unseen: the dot, as for a Reviewed mark
+    const pc = fakePc({ me: { ...structuredClone(ACCOUNT_ME), feedback_unseen: 1 } });
+    pc.mine = {
+        entries: [
+            { id: "f3", created: "2026-11-05T09:00:00", text: "Poshmark please", screen: "goods", reviewed: false, reviewed_at: null, seen: true, replies: [] },
+            {
+                id: "f2",
+                created: "2026-11-04T10:00:00",
+                text: "Craigslist stopped again",
+                screen: "goods",
+                reviewed: true,
+                reviewed_at: "2026-11-04T12:00:00",
+                seen: true,
+                replies: [{ from: "admin", by: "michal", text: "Fixed, try again", at: "2026-11-04T11:00:00", seen: false }],
+            },
+            {
+                id: "f1",
+                created: "2026-11-03T10:00:00",
+                text: "The lamp price looked low",
+                screen: "card",
+                reviewed: false,
+                reviewed_at: null,
+                seen: true,
+                replies: [
+                    { from: "admin", by: "michal", text: "Which lamp?", at: "2026-11-03T11:00:00", seen: true },
+                    { from: "sender", by: "michal@example.com", text: "The brass one", at: "2026-11-03T12:00:00" },
+                ],
+            },
+        ],
+    };
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await settle();
+    assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), true);
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    assert.equal(pc.seenPosts, 1, "seen once opened");
+    assert.equal(nodes.get("admin-toggle").classList.contains("unseen"), false);
+    const thread = (i) => nodes.get("feedback-mine").children[i];
+    // oldest first; Snap's on grey on the other side, theirs as their entries, the Reviewed mark
+    // where it falls; the box under f2, the latest Snap answered (f3 has no answer yet)
+    assert.deepEqual(cardParts(thread(0)), [
+        ["inbox-entry", "michal's feedback · 2026-11-03 10:00", "The lamp price looked low"],
+        ["inbox-entry mine-reply mine-snap", "Snap · 2026-11-03 11:00", "Which lamp?"],
+        ["inbox-entry mine-own", "michal · 2026-11-03 12:00", "The brass one"],
+    ]);
+    assert.deepEqual(cardParts(thread(1)), [
+        ["inbox-entry", "michal's feedback · 2026-11-04 10:00", "Craigslist stopped again"],
+        ["inbox-entry mine-reply mine-snap", "Snap · 2026-11-04 11:00", "Fixed, try again"],
+        ["inbox-entry mine-reply", "Admin · 2026-11-04 12:00", "Reviewed"],
+        ["reply-row", ""],
+    ]);
+    assert.deepEqual(cardParts(thread(2)), [["inbox-entry", "michal's feedback · 2026-11-05 09:00", "Poshmark please"]]);
+    const row = () => thread(1).children.find((c) => c.className === "reply-row");
+    const [box, send] = row().children;
+    assert.equal(row().children.length, 2, "the box and Send, nothing else");
+    assert.equal(box.placeholder, "Reply");
+    assert.deepEqual([send.textContent, send.className], ["Send", "pill pill-small"]);
+
+    // they answer: POST /me/feedback/f2/replies, the entry drawn again from the answer, no longer
+    // reviewed; the box under it again, empty
+    box.value = "Works now, thanks";
+    box.fire("input");
+    assert.equal(send.className, "pill pill-small pill-ink");
+    send.fire("click");
+    await settle();
+    assert.deepEqual(pc.replies, [{ id: "f2", body: { text: "Works now, thanks" }, auth: "key test-key-0123456789", side: "sender", type: "application/json" }]);
+    assert.deepEqual(cardParts(thread(1)), [
+        ["inbox-entry", "michal's feedback · 2026-11-04 10:00", "Craigslist stopped again"],
+        ["inbox-entry mine-reply mine-snap", "Snap · 2026-11-04 11:00", "Fixed, try again"],
+        ["inbox-entry mine-own", "michal · 2026-11-05 11:00", "Works now, thanks"],
+        ["reply-row", ""],
+    ]);
+    assert.equal(row().children[0].value, "");
+    assert.equal(row().children[1].className, "pill pill-small");
+
+    // a refusal: the server's words under the box, the words kept
+    pc.replyRefuse = { status: 422, detail: "text: at most 2000 characters" };
+    row().children[0].value = "x".repeat(10);
+    row().children[0].fire("input");
+    row().children[1].fire("click");
+    await settle();
+    assert.deepEqual(cardParts(thread(1)).at(-1), ["inbox-error", "Not sent: text: at most 2000 characters."]);
+    assert.equal(row().children[0].value, "xxxxxxxxxx");
+    assert.equal(nodes.get("feedback-status").textContent, "", "the Feedback box's own line says nothing");
+});
+
+test("an older server, no replies on its entries: no reply box for the admin or the sender, Reviewed as before", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const pc = inventoryPc([summary("A1")]);
+    pc.me = { user: "michal", admin: true, craigslist: true, venues: ["ebay", "craigslist"] };
+    pc.inbox = structuredClone(INBOX);
+    const { nodes } = await loadPage({ local: memoryStore(NO_PHOTOS), fetchImpl: pc.fetch });
+    nodes.get("admin-toggle").fire("click");
+    await settle();
+    nodes.get("feedback-toggle").fire("click");
+    await settle();
+    const cards = nodes.get("feedback-inbox").children;
+    assert.equal(cards.length, 2);
+    for (const box of cards) {
+        assert.deepEqual(box.children.filter((c) => c.tag === "textarea" || c.className === "reply-row"), []);
+        assert.equal(box.children.at(-1).textContent, "Reviewed");
+    }
+
+    const sender = fakePc({ me: structuredClone(ACCOUNT_ME) });
+    sender.mine = { entries: [{ id: "f1", created: "2026-10-30T10:00:00", text: "The lamp price looked low", screen: "card", reviewed: true, reviewed_at: "2026-10-31T09:00:00", seen: true }] };
+    const theirs = await loadPage({ local: memoryStore(GOOD), fetchImpl: sender.fetch });
+    theirs.nodes.get("admin-toggle").fire("click");
+    theirs.nodes.get("feedback-toggle").fire("click");
+    await settle();
+    assert.deepEqual(cardParts(theirs.nodes.get("feedback-mine").children[0]).map(([c]) => c), ["inbox-entry", "inbox-entry mine-reply"]);
 });
 
 test("step 3's Edit: each choice a menu, Save sends what changed and the list comes back; none for the admin's, none before eBay", async (t) => {
@@ -11030,21 +11279,21 @@ test("Posting defaults: the Snap page's customize field for field, its small pri
     const options = [...words.matchAll(/<label (?:id="wrap-row" )?class="pickup"(?: hidden)?>\s*<input id="([\w-]+)" type="checkbox"(?: checked)?>\s*<span>(?:<span>)?([^<]+)/g)].map((m) => [m[1], m[2]]);
     assert.deepEqual(options.map(([id]) => id), ["posting-pickup-only", "posting-auto-post", "posting-comps", "posting-best-offer", "posting-fix-dark", "wrap-on"]);
     const css = readFileSync(join(root, "styles.css"), "utf8");
-    // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
-    // then the two press-me pills on their own lines, dimmed at first
-    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<p id="posting-status"/.exec(fold)[1];
-    assert.ok(!/type="checkbox"/.test(card), "no checkbox on Header or Footer");
-    for (const [part, word, where] of [
-        ["header", "Header", "above"],
-        ["footer", "Footer", "below"],
-    ]) {
-        assert.match(card, new RegExp(`<label class="field wrap-field">\\s*<span class="field-label">${word}</span>\\s*<textarea id="wrap-${part}-text" class="wrap-text" rows="3" maxlength="2000"\\s+placeholder="Text added ${where} the description"></textarea>\\s*</label>\\s*<div id="wrap-${part}-venues" class="chips option-chips wrap-venues" role="group" aria-label="${word}: venues"></div>`));
-    }
-    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings<\/button>\s*<button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings<\/button>/);
-    assert.ok(!/wrap-count|\/ 2000/.test(card), "no counter: less is more");
-    assert.match(css, /\.pill\.wrap-button \{ display: flex; width: 100%; margin-top: 12px; \}/, "each on a line of its own");
-});
-
+    // ticked, the gray card: Header, its box, its chips; Footer the same (no checkboxes on them);
+    // then the two press-me pills on their own lines, dimmed at first
+    const card = /<div id="wrap" class="card wrap" hidden>([\s\S]*?)<p id="posting-status"/.exec(fold)[1];
+    assert.ok(!/type="checkbox"/.test(card), "no checkbox on Header or Footer");
+    for (const [part, word, where] of [
+        ["header", "Header", "above"],
+        ["footer", "Footer", "below"],
+    ]) {
+        assert.match(card, new RegExp(`<label class="field wrap-field">\\s*<span class="field-label">${word}</span>\\s*<textarea id="wrap-${part}-text" class="wrap-text" rows="3" maxlength="2000"\\s+placeholder="Text added ${where} the description"></textarea>\\s*</label>\\s*<div id="wrap-${part}-venues" class="chips option-chips wrap-venues" role="group" aria-label="${word}: venues"></div>`));
+    }
+    assert.match(card, /<button type="button" id="wrap-save" class="pill pill-ink pill-small wrap-button" disabled>Save for upcoming postings<\/button>\s*<button type="button" id="wrap-apply" class="pill pill-ink pill-small wrap-button" disabled>Apply to existing postings<\/button>/);
+    assert.ok(!/wrap-count|\/ 2000/.test(card), "no counter: less is more");
+    assert.match(css, /\.pill\.wrap-button \{ display: flex; width: 100%; margin-top: 12px; \}/, "each on a line of its own");
+});
+
 test("Add standard text to posts: unticked just its line; ticked the card; the buttons wake on a change and dim after a press; a blank box means none; unticked, both off with the texts kept", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
