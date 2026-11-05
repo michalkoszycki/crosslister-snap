@@ -31,6 +31,8 @@ import {
     postJob,
     putNote,
     putPhoto,
+    replyFeedback,
+    replyMyFeedback,
 } from "../pc.js";
 
 const ITEM = "Boots 2026-09-24";
@@ -190,6 +192,21 @@ test("Admin's cards: Save is one PATCH of the fields, Add a POST to the venue, t
     // 2.20.0: a sync names its venue to a server that says syncable
     const toCl = await wire(() => postJob(PC, actionJob("sync", { direction: "to", venue: "craigslist" })));
     assert.equal(toCl.init.body, '{"action":"sync","direction":"to","venue":"craigslist"}');
+});
+
+test("Feedback's replies (2026-11-05): the admin's and the sender's, each a JSON POST of the words", async () => {
+    const his = await wire(() => replyFeedback(PC, "f 9", "Which item?"));
+    assert.equal(his.url, "http://127.0.0.1:8765/feedback/f%209/replies");
+    assert.equal(his.init.method, "POST");
+    assert.equal(his.init.headers["Content-Type"], "application/json");
+    assert.equal(his.init.headers["X-Crosslister-Key"], PC.key);
+    assert.equal(his.init.body, '{"text":"Which item?"}');
+
+    const theirs = await wire(() => replyMyFeedback(PC, "f2", "The lamp"));
+    assert.equal(theirs.url, "http://127.0.0.1:8765/me/feedback/f2/replies");
+    assert.equal(theirs.init.method, "POST");
+    assert.equal(theirs.init.headers["Content-Type"], "application/json");
+    assert.equal(theirs.init.body, '{"text":"The lamp"}');
 });
 
 test("the contract constants: the key header and a 3 s poll", () => {

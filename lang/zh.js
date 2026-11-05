@@ -681,4 +681,6 @@ export const ZH = {
     "Type their email address.": "请输入对方的邮箱地址。",
     "Opening your email...": "正在打开邮件……",
     "Snap: from photo to live listing in seconds": "Snap：从照片到上架，只需几秒",
+    "Reply": "回复",
+    "You": "你",
 };

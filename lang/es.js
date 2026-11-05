@@ -682,4 +682,6 @@ export const ES = {
     "Type their email address.": "Escribe su correo electrónico.",
     "Opening your email...": "Abriendo tu correo...",
     "Snap: from photo to live listing in seconds": "Snap: de la foto al anuncio publicado en segundos",
+    "Reply": "Responder",
+    "You": "Tú",
 };

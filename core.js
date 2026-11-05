@@ -1804,9 +1804,28 @@ export function feedbackBody({ text, screen, version, job = "" }) {
 }
 
 /**
- * One new entry of the admin's Feedback inbox, as the screen shows it.
- * @typedef {{id:string, user:string, created:string, text:string, screen:string, error:string}} InboxEntry
+ * One reply under a feedback entry: the admin's or the sender's, by whom, the words, when.
+ * @typedef {{from:"admin"|"sender", by:string, text:string, at:string}} FeedbackReply
  */
+
+/**
+ * One new entry of the admin's Feedback inbox, as the screen shows it; `replies` only from a
+ * server that keeps them (Michal, 2026-11-05: "basically chat"), so the reply box is its alone.
+ * @typedef {{id:string, user:string, created:string, text:string, screen:string, error:string, replies?:FeedbackReply[]}} InboxEntry
+ */
+
+/**
+ * An entry's "replies", oldest first, those with no words left out; undefined when the entry
+ * has none to give (an older server: no reply box).
+ * @param {unknown} list
+ * @returns {FeedbackReply[] | undefined}
+ */
+function repliesOf(list) {
+    if (!Array.isArray(list)) return undefined;
+    return list
+        .filter((r) => r && typeof r === "object" && plain(r.text))
+        .map((r) => ({ from: r.from === "admin" ? "admin" : "sender", by: plain(r.by), text: plain(r.text), at: plain(r.at) }));
+}
 
 /**
  * GET /feedback?new=1 (the admin's inbox, newest first): each entry with an id not yet
@@ -1818,14 +1837,18 @@ export function inboxOf(answer) {
     const a = answer && typeof answer === "object" ? /** @type {Record<string, any>} */ (answer) : {};
     return (Array.isArray(a.entries) ? a.entries : [])
         .filter((e) => e && typeof e === "object" && plain(e.id) && e.reviewed !== true)
-        .map((e) => ({
-            id: plain(e.id),
-            user: plain(e.user),
-            created: plain(e.created),
-            text: plain(e.text),
-            screen: plain(e.screen),
-            error: e.job && typeof e.job === "object" ? plain(e.job.error) : "",
-        }));
+        .map((e) => {
+            const replies = repliesOf(e.replies);
+            return {
+                id: plain(e.id),
+                user: plain(e.user),
+                created: plain(e.created),
+                text: plain(e.text),
+                screen: plain(e.screen),
+                error: e.job && typeof e.job === "object" ? plain(e.job.error) : "",
+                ...(replies ? { replies } : {}),
+            };
+        });
 }
 
 /**
@@ -1845,22 +1868,27 @@ export function inboxHead(entry, offsetMinutes) {
  * @returns {string}
  */
 /**
- * A sender's own entries (GET /me/feedback), newest first: each its text and whether it was
- * reviewed (Michal, 2026-10-31: no replies, the Reviewed mark only). Odd ones are left out.
+ * A sender's own entries (GET /me/feedback), newest first: each its text, whether it was
+ * reviewed and, from a server that keeps them, the replies both ways (Michal, 2026-11-05: "that
+ * reply should show to the user ... basically chat"). Odd ones are left out.
  * @param {unknown} answer
- * @returns {{id:string, text:string, reviewed:boolean, created:string, reviewedAt:string}[]}
+ * @returns {{id:string, text:string, reviewed:boolean, created:string, reviewedAt:string, replies?:FeedbackReply[]}[]}
  */
 export function myFeedbackOf(answer) {
     const entries = answer && typeof answer === "object" && Array.isArray(answer.entries) ? answer.entries : [];
     return entries
         .filter((e) => e && typeof e === "object" && typeof e.text === "string" && e.text.trim())
-        .map((e) => ({
-            id: String(e.id ?? ""),
-            text: e.text.trim(),
-            reviewed: e.reviewed === true,
-            created: typeof e.created === "string" ? e.created : "",
-            reviewedAt: typeof e.reviewed_at === "string" ? e.reviewed_at : "",
-        }));
+        .map((e) => {
+            const replies = repliesOf(e.replies);
+            return {
+                id: String(e.id ?? ""),
+                text: e.text.trim(),
+                reviewed: e.reviewed === true,
+                created: typeof e.created === "string" ? e.created : "",
+                reviewedAt: typeof e.reviewed_at === "string" ? e.reviewed_at : "",
+                ...(replies ? { replies } : {}),
+            };
+        });
 }
 
 export function feedbackWord(count, admin = false) {

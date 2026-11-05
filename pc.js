@@ -501,6 +501,18 @@ export async function reviewFeedback({ pc, ...auth }, id) {
 }
 
 /**
+ * The admin's reply to an inbox entry (Michal, 2026-11-05: "basically chat"): the whole entry
+ * back, as GET /feedback shows it; Reviewed is left as it was. 422 for no words or too many.
+ * @param {Settings} settings
+ * @param {string} id
+ * @param {string} text
+ * @returns {Promise<Record<string, any>>}
+ */
+export function replyFeedback({ pc, ...auth }, id, text) {
+    return call(`${pc}/feedback/${encodeURIComponent(id)}/replies`, auth, { method: "POST", json: { text } });
+}
+
+/**
  * Admin's Stats (an admin's only: 403 for anyone else).
  * @param {Settings} settings
  * @param {string} since "7d", "30d" or "all"
@@ -651,6 +663,14 @@ export function patchAddress({ pc, ...auth }, body) {
 //                                    "reviewed_at", "seen"}]} newest first; 404 from an older server
 //   POST   <pc>/me/feedback/seen  -> 204: every Reviewed mark of theirs seen (the dot on top goes)
 //   GET /me adds "feedback_unseen": how many of theirs are reviewed and not yet seen
+// Replies, a chat both ways (Michal, 2026-11-05: "an option to REPLY to it in the app as admin"):
+//   every entry, the admin's and the sender's, carries "replies": [{"from": "admin"|"sender",
+//                                    "by", "text", "at"}] oldest first (the sender's admin
+//                                    replies with "seen"); no key from an older server: no box
+//   POST   <pc>/feedback/<id>/replies     {"text"} -> the entry (an admin's only; reviewed kept)
+//   POST   <pc>/me/feedback/<id>/replies  {"text"} -> the entry (their own; reviewed false again)
+//                                    text 1 to 2000 characters once trimmed, else 422
+//   "feedback_unseen" counts the admin replies not yet seen too; /me/feedback/seen sees them
 
 /**
  * @param {Settings} settings
@@ -667,6 +687,18 @@ export function getMyFeedback({ pc, ...auth }) {
 export async function markFeedbackSeen({ pc, ...auth }) {
     const res = await request(`${pc}/me/feedback/seen`, auth, { method: "POST" });
     if (!res.ok) throw await refused(res);
+}
+
+/**
+ * A sender's reply under their own entry: the whole entry back, as GET /me/feedback shows it,
+ * no longer reviewed. 422 for no words or too many.
+ * @param {Settings} settings
+ * @param {string} id
+ * @param {string} text
+ * @returns {Promise<Record<string, any>>}
+ */
+export function replyMyFeedback({ pc, ...auth }, id, text) {
+    return call(`${pc}/me/feedback/${encodeURIComponent(id)}/replies`, auth, { method: "POST", json: { text } });
 }
 
 // The eBay policies Snap sets up (Michal, 2026-10-31, Finish setting up's step 3 and its Edit):

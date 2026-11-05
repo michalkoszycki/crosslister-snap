@@ -320,6 +320,8 @@ import {
     removeMember,
     renameMe,
     agreeTerms,
+    replyFeedback,
+    replyMyFeedback,
     reviewFeedback,
     searchBook,
     signOutDevice,
@@ -746,6 +748,12 @@ const WRAP_SIGN_IN = tKey("Sign in to add a header and footer to your posts.");
 const WRAP_MISSING = tKey("Your server does not offer this yet.");
 /** A sender's own feedback as GET /me/feedback last said (null: not asked, or an older server). */
 let mine = null;
+/**
+ * The sender's reply box, under their latest entry the admin answered (Michal, 2026-11-05:
+ * "basically chat"): its words kept across a redraw, Send on its way, and the line under it
+ * (what went wrong, for the entry `id`). `drawn`: what the list was last drawn from.
+ */
+const mineReply = { draft: "", busy: false, id: "", line: "", drawn: "" };
 /** The venue whose own page is open under Settings ("" none; Michal, 2026-10-31). */
 let venuePage = "";
 /** A sign-in just made on this phone: Admin's first open lands on Settings, Snap Account open. */
@@ -825,8 +833,11 @@ const extras = { feedback: false, stats: false, since: DEFAULT_STATS_SINCE, aske
 /**
  * The admin's Feedback inbox (GET /feedback?new=1): its new entries (inboxOf), the ids whose
  * Reviewed is on its way, asked per ask, and refused for good (403, or an older server's 404).
+ * Replies (Michal, 2026-11-05: "an option to REPLY to it in the app as admin"): each entry's
+ * box words by id, the ids whose Send is on its way, each entry's own line, and what the list
+ * was last drawn from (a redraw of the same keeps the box he is typing in).
  */
-const inbox = { entries: [], busy: new Set(), asked: 0, refused: false };
+const inbox = { entries: [], busy: new Set(), asked: 0, refused: false, drafts: new Map(), sending: new Set(), lines: new Map(), drawn: "" };
 
 /**
  * The status bar's colours as index.html gives them, read before a chosen look first
@@ -5515,33 +5526,145 @@ function renderExtras() {
     const sent = (mine || []).slice().reverse();
     el.feedbackMine.hidden = isAdmin || !sent.length;
     const who = me && me.user ? t("{name}'s feedback", { name: me.user }) : t("Your feedback");
-    const mineCard = (className, head, text) => {
-        const box = document.createElement("div");
-        box.className = className;
-        const line = (cls, words) => {
-            const p = document.createElement("p");
-            p.className = cls;
-            p.textContent = words;
-            return p;
-        };
-        box.replaceChildren(line("inbox-head", head), line("inbox-text", text));
-        return box;
-    };
-    el.feedbackMine.replaceChildren(
-        ...sent.map((e) => {
-            const li = document.createElement("li");
-            const parts = [mineCard("inbox-entry", [who, listedAtWord(e.created)].filter(Boolean).join(" · "), e.text)];
-            if (e.reviewed) parts.push(mineCard("inbox-entry mine-reply", [t("Admin"), listedAtWord(e.reviewedAt)].filter(Boolean).join(" · "), t("Reviewed")));
-            li.replaceChildren(...parts);
-            return li;
-        })
-    );
+    // the reply box under the latest entry Snap answered (Michal, 2026-11-05: "basically chat")
+    const answered = (mine || []).find((e) => e.replies && e.replies.some((r) => r.from === "admin"));
+    const replyTo = answered ? answered.id : "";
+    // drawn again only when something in it changed, so a box being typed in stays as it is
+    const drawn = JSON.stringify([who, sent, replyTo, mineReply.busy, mineReply.id, mineReply.line, t("Reviewed"), t("Reply")]);
+    if (drawn !== mineReply.drawn) {
+        mineReply.drawn = drawn;
+        el.feedbackMine.replaceChildren(...sent.map((e) => mineThread(e, who, e.id === replyTo)));
+    }
     el.feedbackInbox.hidden = !entries.length;
     const stats = !card && !!me && me.admin && !extras.refused;
     el.statsToggle.hidden = !stats;
     el.stats.hidden = !stats || !extras.stats;
     fold(el.statsToggle, t("Stats"), extras.stats);
     for (const { value, node } of el.statsChips) node.setAttribute("aria-pressed", value === extras.since ? "true" : "false");
+}
+
+/** One line of a feedback card: a <p> of its class, the words as text. */
+function feedbackLine(className, words) {
+    const p = document.createElement("p");
+    p.className = className;
+    p.textContent = words;
+    return p;
+}
+
+/** A feedback card: its head (who · when, the empty parts left out) over the words. */
+function feedbackCard(className, head, text) {
+    const box = document.createElement("div");
+    box.className = className;
+    box.replaceChildren(feedbackLine("inbox-head", head.filter(Boolean).join(" · ")), feedbackLine("inbox-text", text));
+    return box;
+}
+
+/** Send's look: the press-me pill once the box has words, plain grey while it is empty. */
+function replySendClass(words) {
+    return words.trim() ? "pill pill-small pill-ink" : "pill pill-small";
+}
+
+/**
+ * A reply box and its Send on one row (Michal, 2026-11-05: "an option to REPLY"), `extra` after
+ * Send (the admin's Reviewed): the box keeps its words in `onInput`'s keeping, Send lights as
+ * they come.
+ * @param {{draft:string, busy:boolean, onInput:(words:string) => void, onSend:() => void, extra?:HTMLElement[]}} o
+ */
+function replyRow({ draft, busy, onInput, onSend, extra = [] }) {
+    const row = document.createElement("div");
+    row.className = "reply-row";
+    const box = document.createElement("textarea");
+    box.className = "reply-text";
+    box.rows = 1;
+    box.maxLength = 2000;
+    box.placeholder = t("Reply");
+    box.setAttribute("aria-label", t("Reply"));
+    box.value = draft;
+    box.disabled = busy;
+    const send = actionButton(t("Send"), replySendClass(draft), busy, onSend);
+    box.addEventListener("input", () => {
+        onInput(box.value);
+        send.className = replySendClass(box.value);
+    });
+    row.append(box, send, ...extra);
+    return row;
+}
+
+/**
+ * One of their entries as a chat (Michal, 2026-11-05: "that reply should show to the user"): the
+ * entry, then the replies oldest first, Snap's on the other side and theirs as their entries,
+ * the Reviewed mark where it falls among them; under the latest Snap answered, the reply box.
+ * @param {{id:string, text:string, reviewed:boolean, created:string, reviewedAt:string, replies?:import("./core.js").FeedbackReply[]}} e
+ * @param {string} who
+ * @param {boolean} replying
+ */
+function mineThread(e, who, replying) {
+    const li = document.createElement("li");
+    const parts = [feedbackCard("inbox-entry", [who, listedAtWord(e.created)], e.text)];
+    const mark = e.reviewed ? feedbackCard("inbox-entry mine-reply", [t("Admin"), listedAtWord(e.reviewedAt)], t("Reviewed")) : null;
+    const when = (/** @type {string} */ iso) => {
+        const ms = Date.parse(iso);
+        return Number.isNaN(ms) ? Infinity : ms;
+    };
+    let marked = !mark;
+    for (const r of e.replies || []) {
+        if (mark && !marked && when(r.at) > when(e.reviewedAt)) {
+            parts.push(mark);
+            marked = true;
+        }
+        // "Snap" is the brand, the same in every language: the app speaking
+        if (r.from === "admin") parts.push(feedbackCard("inbox-entry mine-reply mine-snap", ["Snap", listedAtWord(r.at)], r.text));
+        else parts.push(feedbackCard("inbox-entry mine-own", [(me && me.user) || t("You"), listedAtWord(r.at)], r.text));
+    }
+    if (mark && !marked) parts.push(mark);
+    if (replying) {
+        parts.push(
+            replyRow({
+                draft: mineReply.draft,
+                busy: mineReply.busy,
+                onInput: (words) => {
+                    mineReply.draft = words;
+                },
+                onSend: () => {
+                    sendMyReply(e.id).catch(() => {});
+                },
+            })
+        );
+        if (mineReply.line && mineReply.id === e.id) parts.push(feedbackLine("inbox-error", mineReply.line));
+    }
+    li.replaceChildren(...parts);
+    return li;
+}
+
+/**
+ * Their reply's Send: POST /me/feedback/<id>/replies, and the entry drawn again from the answer
+ * (no longer reviewed, as the server says); refused, the box keeps its words and the line under
+ * it is the server's.
+ * @param {string} id
+ */
+async function sendMyReply(id) {
+    const pc = settings();
+    const text = mineReply.draft.trim();
+    if (!pc || !text || mineReply.busy) return;
+    mineReply.busy = true;
+    mineReply.id = id;
+    mineReply.line = "";
+    renderExtras();
+    try {
+        const answer = await replyMyFeedback(pc, id, text);
+        heard(200);
+        mineReply.draft = "";
+        const [entry] = myFeedbackOf({ entries: [answer] });
+        // the entry as the server now has it; an answer the page cannot read: asked afresh
+        if (entry && entry.id === id && mine) mine = mine.map((e) => (e.id === id ? entry : e));
+        else loadMine().catch(() => {});
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        mineReply.line = refusalLine(t("Not sent"), e.status, e.message);
+    } finally {
+        mineReply.busy = false;
+        renderExtras();
+    }
 }
 
 /** The last job id the page has: the one it last sent, else one of the items in hand's. */
@@ -5565,8 +5688,9 @@ async function sendJob(pc, body) {
  * ticked, the last job. Sent, the box clears and says thanks; a refusal is the server's words.
  */
 /**
- * Their own feedback (GET /me/feedback) as Feedback opens, and, any Reviewed mark among it not
- * seen, every one seen (POST /me/feedback/seen): the dot on top goes. An older server: none.
+ * Their own feedback (GET /me/feedback) as Feedback opens, and, any Reviewed mark or reply of
+ * Snap's among it not seen (feedback_unseen counts both, 2026-11-05), every one seen (POST
+ * /me/feedback/seen): the dot on top goes. An older server: none.
  */
 async function loadMine() {
     const pc = settings();
@@ -5589,7 +5713,7 @@ async function loadMine() {
     }
 }
 
-/** The dot on the top button while a Reviewed mark on their feedback is unseen. */
+/** The dot on the top button while a Reviewed mark or a reply on their feedback is unseen. */
 function renderUnseen() {
     const unseen = !!me && me.feedbackUnseen > 0;
     el.adminToggle.classList.toggle("unseen", unseen);
@@ -5658,29 +5782,86 @@ async function loadInbox() {
     renderInbox();
 }
 
-/** Each new entry: who, when, from where, the words, its job's error if it failed, and Reviewed. */
+/**
+ * Each new entry: who, when, from where, the words, its job's error if it failed, and Reviewed.
+ * From a server that keeps replies (Michal, 2026-11-05: "replying may be better before clicking
+ * Reviewed"): the replies under the words, his as "You", the sender's by name, then the reply
+ * box, Send and Reviewed on one row, and the entry's own line.
+ */
 function renderInbox() {
-    el.feedbackInbox.replaceChildren(
-        ...inbox.entries.map((entry) => {
-            const box = document.createElement("div");
-            box.className = "inbox-entry";
-            const line = (className, text) => {
-                const p = document.createElement("p");
-                p.className = className;
-                p.textContent = text;
-                return p;
-            };
-            box.append(line("inbox-head", inboxHead(entry)), line("inbox-text", entry.text));
-            if (entry.error) box.append(line("inbox-error", t("Job error: {error}", { error: entry.error })));
-            box.append(
-                actionButton(t("Reviewed"), "pill pill-small", inbox.busy.has(entry.id), () => {
-                    reviewEntry(entry.id).catch(() => {});
-                })
-            );
-            return box;
+    // drawn again only when something in it changed, so a box being typed in stays as it is
+    const drawn = JSON.stringify([inbox.entries, [...inbox.busy], [...inbox.sending], [...inbox.lines], t("Reviewed"), t("Reply")]);
+    if (drawn !== inbox.drawn) {
+        inbox.drawn = drawn;
+        el.feedbackInbox.replaceChildren(...inbox.entries.map(inboxCard));
+    }
+    renderExtras();
+}
+
+/** @param {import("./core.js").InboxEntry} entry */
+function inboxCard(entry) {
+    const box = document.createElement("div");
+    box.className = "inbox-entry";
+    box.append(feedbackLine("inbox-head", inboxHead(entry)), feedbackLine("inbox-text", entry.text));
+    if (entry.error) box.append(feedbackLine("inbox-error", t("Job error: {error}", { error: entry.error })));
+    const reviewed = actionButton(t("Reviewed"), "pill pill-small", inbox.busy.has(entry.id), () => {
+        reviewEntry(entry.id).catch(() => {});
+    });
+    // an older server: no replies to show, none to send
+    if (!entry.replies) {
+        box.append(reviewed);
+        return box;
+    }
+    for (const r of entry.replies) {
+        if (r.from === "admin") box.append(feedbackCard("inbox-reply from-admin", [t("You"), listedAtWord(r.at)], r.text));
+        else box.append(feedbackCard("inbox-reply", [r.by || entry.user || t("someone"), listedAtWord(r.at)], r.text));
+    }
+    box.append(
+        replyRow({
+            draft: inbox.drafts.get(entry.id) || "",
+            busy: inbox.sending.has(entry.id),
+            onInput: (words) => {
+                inbox.drafts.set(entry.id, words);
+            },
+            onSend: () => {
+                sendReply(entry.id).catch(() => {});
+            },
+            extra: [reviewed],
         })
     );
-    renderExtras();
+    const said = inbox.lines.get(entry.id);
+    if (said) box.append(feedbackLine("inbox-error", said));
+    return box;
+}
+
+/**
+ * His reply's Send: POST /feedback/<id>/replies, the box cleared and the entry drawn again from
+ * the answer (still in the inbox: a reply is not Reviewed); refused, the box keeps its words and
+ * the entry's own line is the server's.
+ * @param {string} id
+ */
+async function sendReply(id) {
+    const pc = settings();
+    const text = (inbox.drafts.get(id) || "").trim();
+    if (!pc || !text || inbox.sending.has(id)) return;
+    inbox.sending.add(id);
+    inbox.lines.delete(id);
+    renderInbox();
+    try {
+        const answer = await replyFeedback(pc, id, text);
+        heard(200);
+        inbox.drafts.delete(id);
+        const [entry] = inboxOf({ entries: [answer] });
+        // the entry as the server now has it; an answer the page cannot read: asked afresh
+        if (entry && entry.id === id) inbox.entries = inbox.entries.map((e) => (e.id === id ? entry : e));
+        else loadInbox().catch(() => {});
+    } catch (e) {
+        if (e.status === 0 || e.status === 401) heard(e.status);
+        inbox.lines.set(id, refusalLine(t("Not sent"), e.status, e.message));
+    } finally {
+        inbox.sending.delete(id);
+        renderInbox();
+    }
 }
 
 /** Reviewed: PATCH /feedback/<id> {"reviewed": true}, and the entry leaves the inbox; refused, it stays and the line says why. */
@@ -5693,6 +5874,8 @@ async function reviewEntry(id) {
         await reviewFeedback(pc, id);
         heard(200);
         inbox.entries = inbox.entries.filter((e) => e.id !== id);
+        inbox.drafts.delete(id);
+        inbox.lines.delete(id);
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         el.feedbackStatus.textContent = refusalLine(t("Not marked reviewed"), e.status, e.message);
