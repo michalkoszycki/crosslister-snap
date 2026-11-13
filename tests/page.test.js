@@ -2464,7 +2464,9 @@ function wholeRow(sku, over = {}) {
  * {"action": "sync", "direction": "from" | "to"}; since 2026-10-07 {"action": "push",
  * "sku", "venue": "ebay"}, and since 2026-10-08 craigslist's too; since 2026-10-17 a sync's
  * "venue" (only from a server whose /me says syncable: `pc.me.syncable`, which also names the
- * venues a push or a sync may go to, a made-up "poshmark" among them); nothing else.
+ * venues a push or a sync may go to, a made-up "poshmark" among them); since 2026-11-12 a push
+ * may carry the change it writes on the row before it pushes: any of "price" (as PATCH takes it),
+ * "quantity", "pickup_only" and "pricing" (never with "price"); nothing else.
  */
 function actionContract(body, me) {
     const keys = Object.keys(body).sort().join(",");
@@ -2474,12 +2476,32 @@ function actionContract(body, me) {
         const said = syncable ? keys === "action,direction,venue" && syncable[body.direction].includes(body.venue) : keys === "action,direction";
         return said && ["from", "to"].includes(body.direction) ? "" : `sync with ${keys}`;
     }
-    if (["end", "refresh", "push"].includes(body.action)) {
+    if (body.action === "push") {
+        const change = Object.keys(body).filter((k) => !["action", "sku", "venue"].includes(k));
+        const ok =
+            ["action", "sku", "venue"].every((k) => k in body) &&
+            body.sku &&
+            venues.includes(body.venue) &&
+            change.every((k) => PUSH_CHANGE.includes(k)) &&
+            !("price" in body && "pricing" in body) &&
+            (!("price" in body) || /^\d+\.\d\d$/.test(body.price)) &&
+            (!("quantity" in body) || Number.isInteger(body.quantity)) &&
+            (!("pickup_only" in body) || typeof body.pickup_only === "boolean") &&
+            (!("pricing" in body) || [1, 2, 3].includes(body.pricing));
+        return ok ? "" : `push with ${keys}`;
+    }
+    if (["end", "refresh"].includes(body.action)) {
         const ok = keys === "action,sku,venue" && body.sku && venues.includes(body.venue);
         return ok ? "" : `${body.action} with ${keys}`;
     }
     return `unknown action ${body.action}`;
 }
+
+/** What a push may carry since 2026-11-12, written on the row before the push. */
+const PUSH_CHANGE = ["price", "quantity", "pickup_only", "pricing"];
+
+/** An older server's 400 for a push carrying anything more than action, sku and venue. */
+const OLD_PUSH = "push: send action, sku, venue and nothing else, not price";
 
 /**
  * The fake PC with Admin's routes: GET /inventory answers `rows` (the query is
@@ -2491,7 +2513,8 @@ function actionContract(body, me) {
  * answers a 400 with those words instead), POST /inventory/<sku>/venues/<venue> puts the row on that
  * venue. POST /jobs with an "action" is checked against the contract, kept in
  * pc.posted and queued as a1, a2, ... (answered by `jobs`), or refused with
- * `pc.refuse[action]`'s words (a push, too, for a row not listed on eBay); any
+ * `pc.refuse[action]`'s words (a push, too, for a row not listed on eBay; `pc.oldPush` refuses
+ * a push carrying a change with an older server's 400, OLD_PUSH); any
  * other job is fakePc's own. A PATCH {"archived"} (kept in pc.patches too) puts the sku in
  * or out of `pc.archived`, whose rows only GET /inventory?status=archived lists;
  * `pc.noArchive` answers it with a 404, as a server without archiving does.
@@ -2502,6 +2525,7 @@ function inventoryPc(rows, wholes = {}, { jobs = {}, ...rest } = {}) {
     pc.patches = [];
     pc.refusePatch = "";
     pc.refuse = {};
+    pc.oldPush = false;
     pc.conditions = null;
     pc.archived = new Set();
     pc.noArchive = false;
@@ -2518,6 +2542,8 @@ function inventoryPc(rows, wholes = {}, { jobs = {}, ...rest } = {}) {
             pc.calls.push("POST /jobs");
             if (pc.down) throw new TypeError("Failed to fetch");
             pc.posted.push(body);
+            // a server before 2026-11-12: a push carries nothing but action, sku and venue
+            if (pc.oldPush && body.action === "push" && Object.keys(body).length > 3) return json({ detail: OLD_PUSH }, 400);
             const broken = actionContract(body, pc.me);
             if (broken) return json({ detail: `contract: ${broken}` }, 422);
             if (pc.refuse[body.action]) return json({ detail: pc.refuse[body.action] }, 400);
@@ -12408,15 +12434,17 @@ test("a draft saved, not posted: its price stepped with − and +, never under t
     assert.equal(nodes.get("ebay-link").href, "https://www.ebay.com/itm/60");
 });
 
-test("a posted item is its edit screen: a change makes its venue button an update, the tap saves it on the row and pushes it; a + after the photos adds more", async (t) => {
-    // Michal, 2026-11-02: the venue button "tap again to update"
+test("a posted item is its edit screen: a change makes its venue button an update, the tap queues one push carrying it, said queued, updating..., updated; a + after the photos adds more", async (t) => {
+    // Michal, 2026-11-02: the venue button "tap again to update"; 2026-11-12: "I want the update
+    // sync jobs to also just queue up and just take place after the queue is freed ... so just say queued"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const listedEbay = { ebay: summary("B-0042").statuses.ebay };
     const whole = wholeRow("B-0042", { venues: ["ebay"], statuses: listedEbay, quantity: 1 });
+    let pushing = { state: "queued", ahead: 1 };
     const pc = inventoryPc([], { "B-0042": whole }, {
         jobs: {
             j1: () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { ebay: "https://www.ebay.com/itm/42" } }),
-            a1: () => ({ state: "running", step: "updating eBay" }),
+            a1: () => pushing,
         },
     });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
@@ -12444,13 +12472,33 @@ test("a posted item is its edit screen: a change makes its venue button an updat
     assert.equal(buttonSays(ebay), "ebay / tap again to update");
     assert.equal(ebay.attrs["aria-label"], "ebay, posted, tap again to update");
     ebay.fire("click");
-    assert.equal(nodes.get("ebay-status").textContent, "updating...");
+    assert.equal(nodes.get("ebay-status").textContent, "sending");
     await settle();
-    assert.deepEqual(pc.patches, [{ quantity: 2 }]);
-    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "B-0042", venue: "ebay" });
+    // one push job carrying the change, queued behind whatever runs: no PATCH (a 409 while a job runs)
+    assert.deepEqual(pc.patches, []);
+    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "B-0042", venue: "ebay", quantity: 2 });
+    assert.equal(nodes.get("ebay-status").textContent, "queued");
+    assert.equal(ebay.disabled, true, "the ring while its job waits");
+    assert.equal(ebay.classList.contains("behind"), true, "not in step until the job is done");
+    // asked about every POLL_MS, as the page's other jobs
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+    pushing = { state: "running", step: "revising the eBay listing", change: { quantity: 2 } };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "updating...");
+    assert.equal(ebay.disabled, true);
+    pushing = { state: "done", summary: "updated", change: { quantity: 2 }, price: "24.00" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
     assert.equal(nodes.get("ebay-status").textContent, "updated");
     assert.equal(ebay.classList.contains("behind"), false, "in step again");
     assert.equal(ebay.disabled, true);
+    const asked = pc.calls.length;
+    t.mock.timers.tick(POLL_MS * 3);
+    await settle();
+    assert.equal(pc.calls.length, asked, "done: no longer asked about");
 
     // a photo added from the +: on the row, its picture in the strip, the button an update again
     const plus = nodes.get("strip").children.at(-1).children[0].children[1];
@@ -12467,58 +12515,163 @@ test("a posted item is its edit screen: a change makes its venue button an updat
     assert.equal(ebay.classList.contains("behind"), false);
 });
 
-test("a posted item on two venues: a change waits on each venue's button; updating eBay pushes eBay alone and craigslist still waits", async (t) => {
-    // Michal, 2026-11-12: the price raised after posting, eBay's update turned craigslist's button
-    // back to posted too: "when I sync eBay, I then need to sync Craigslist, since these are separate buttons"
+/**
+ * "Lamp" snapped, drafted and posted on each of `venues` (B-0042, $24, quantity 1), its posting
+ * jobs j1, j2 done and listed there; `jobs` answers its update jobs (a1, a2, ...).
+ */
+async function postedLamp(t, venues, jobs) {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const statuses = { ebay: summary("B-0042").statuses.ebay, craigslist: { status: "listed", url: "https://chicago.craigslist.org/42.html" } };
-    const whole = wholeRow("B-0042", { venues: ["ebay", "craigslist"], statuses, quantity: 1 });
-    const pc = inventoryPc([], { "B-0042": whole }, {
-        jobs: {
-            j1: () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { ebay: "https://www.ebay.com/itm/42" } }),
-            j2: () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { craigslist: "https://chicago.craigslist.org/42.html" } }),
-            a1: () => ({ state: "running", step: "updating eBay" }),
-            a2: () => ({ state: "running", step: "updating craigslist" }),
-        },
-    });
+    const listed = { ebay: summary("B-0042").statuses.ebay, craigslist: { status: "listed", url: "https://chicago.craigslist.org/42.html" } };
+    const statuses = Object.fromEntries(venues.map((v) => [v, listed[v]]));
+    const whole = wholeRow("B-0042", { venues, statuses, quantity: 1 });
+    const links = { ebay: "https://www.ebay.com/itm/42", craigslist: "https://chicago.craigslist.org/42.html" };
+    const posts = Object.fromEntries(
+        venues.map((v, i) => [`j${i + 1}`, () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { [v]: links[v] } })])
+    );
+    const pc = inventoryPc([], { "B-0042": whole }, { jobs: { ...posts, ...jobs } });
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
     await typeName(nodes, "Lamp");
     snap(nodes, 1);
     await settle();
     card(nodes, 0).ai.fire("click");
-    for (const id of ["ebay-btn", "craigslist-btn"]) {
-        nodes.get(id).fire("click");
+    for (const v of venues) {
+        nodes.get(`${v}-btn`).fire("click");
         await settle();
         t.mock.timers.tick(SEND_DELAY_MS);
         await settle();
         t.mock.timers.tick(POLL_MS);
         await settle();
     }
+    for (const v of venues) assert.equal(nodes.get(`${v}-btn`).classList.contains("behind"), false, `${v} posted, in step`);
+    return { pc, nodes };
+}
+
+test("a posted item on two venues: a change waits on each venue's button; updating eBay pushes eBay alone and craigslist still waits", async (t) => {
+    // Michal, 2026-11-12: the price raised after posting, eBay's update turned craigslist's button
+    // back to posted too: "when I sync eBay, I then need to sync Craigslist, since these are separate buttons"
+    const said = { a1: { state: "queued", ahead: 0 }, a2: { state: "queued", ahead: 0 } };
+    const { pc, nodes } = await postedLamp(t, ["ebay", "craigslist"], { a1: () => said.a1, a2: () => said.a2 });
     const ebay = nodes.get("ebay-btn");
     const craigslist = nodes.get("craigslist-btn");
-    assert.equal(ebay.classList.contains("behind"), false);
-    assert.equal(craigslist.classList.contains("behind"), false);
 
     // the price a dollar up: both listings are behind it
     nodes.get("price-more").fire("click");
     assert.equal(buttonSays(ebay), "ebay / tap again to update");
     assert.equal(buttonSays(craigslist), "craigslist / tap again to update");
 
-    // eBay's update: the change on the row, eBay pushed alone; craigslist still waits for its own tap
+    // eBay's update: one push carrying the price, eBay alone; craigslist still waits for its own tap
     ebay.fire("click");
     await settle();
-    assert.deepEqual(pc.posted.filter((b) => b.action === "push"), [{ action: "push", sku: "B-0042", venue: "ebay" }]);
+    assert.deepEqual(pc.posted.filter((b) => b.action === "push"), [{ action: "push", sku: "B-0042", venue: "ebay", price: "25.00" }]);
+    assert.deepEqual(pc.patches, [], "no PATCH: the job writes the price");
+    assert.equal(nodes.get("ebay-status").textContent, "queued");
+    assert.notEqual(nodes.get("craigslist-status").textContent, "queued", "craigslist never says eBay's line");
+    assert.equal(buttonSays(craigslist), "craigslist / tap again to update");
+    said.a1 = { state: "done", summary: "updated", price: "25.00" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "updated");
     assert.equal(ebay.classList.contains("behind"), false, "eBay in step");
     assert.equal(craigslist.classList.contains("behind"), true, "craigslist not pushed: still behind");
     assert.equal(buttonSays(craigslist), "craigslist / tap again to update");
+    assert.notEqual(nodes.get("craigslist-status").textContent, "updated");
 
-    // craigslist's own tap: craigslist pushed, nothing new to save on the row
-    const patches = pc.patches.length;
+    // craigslist's own tap: craigslist pushed, its own job and line
     craigslist.fire("click");
     await settle();
-    assert.deepEqual(pc.posted.filter((b) => b.action === "push").at(-1), { action: "push", sku: "B-0042", venue: "craigslist" });
+    assert.deepEqual(pc.posted.filter((b) => b.action === "push").at(-1), { action: "push", sku: "B-0042", venue: "craigslist", price: "25.00" });
+    assert.equal(nodes.get("craigslist-status").textContent, "queued");
+    assert.equal(nodes.get("ebay-status").textContent, "updated", "eBay's line is its own");
+    said.a2 = { state: "done", summary: "updated", price: "25.00" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("craigslist-status").textContent, "updated");
     assert.equal(craigslist.classList.contains("behind"), false, "craigslist in step");
-    assert.ok(pc.patches.length - patches <= 1, "the row already has the price");
+    assert.deepEqual(pc.patches, []);
+});
+
+test("a posted item's updates on two venues wait at once, each its own line; a failed one says the job's words and stays behind", async (t) => {
+    // Michal, 2026-11-12: "just say queued"; the push failing after the change was written says so
+    const said = { a1: { state: "queued", ahead: 1 }, a2: { state: "queued", ahead: 2 }, a3: { state: "queued", ahead: 3 } };
+    const { pc, nodes } = await postedLamp(t, ["ebay", "craigslist"], { a1: () => said.a1, a2: () => said.a2, a3: () => said.a3 });
+    const ebay = nodes.get("ebay-btn");
+    const craigslist = nodes.get("craigslist-btn");
+    nodes.get("price-more").fire("click");
+    ebay.fire("click");
+    await settle();
+    craigslist.fire("click");
+    await settle();
+    assert.deepEqual(
+        pc.posted.filter((b) => b.action === "push").map((b) => b.venue),
+        ["ebay", "craigslist"],
+        "each tap queues its own job"
+    );
+    assert.deepEqual([ebay.disabled, craigslist.disabled], [true, true], "both rings while both wait");
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "queued, 1 ahead");
+    assert.equal(nodes.get("craigslist-status").textContent, "queued, 2 ahead");
+
+    // eBay's runs, then fails after the price was saved; craigslist's goes through
+    said.a1 = { state: "running", step: "revising the eBay listing" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "updating...");
+    assert.equal(nodes.get("craigslist-status").textContent, "queued, 2 ahead");
+    said.a1 = {
+        state: "failed",
+        error: "eBay refused the revision: the listing has ended",
+        summary: "the change is saved on the row; the push did not go through",
+        price: "25.00",
+    };
+    said.a2 = { state: "done", summary: "updated", price: "25.00" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(
+        nodes.get("ebay-status").textContent,
+        "not updated: eBay refused the revision: the listing has ended (the change is saved on the row; the push did not go through)"
+    );
+    assert.equal(nodes.get("ebay-status").className, "venue-status bad");
+    assert.equal(ebay.classList.contains("behind"), true, "eBay still behind: tap again to update");
+    assert.equal(ebay.disabled, false);
+    assert.equal(buttonSays(ebay), "ebay / tap again to update");
+    assert.equal(nodes.get("craigslist-status").textContent, "updated");
+    assert.equal(craigslist.classList.contains("behind"), false, "craigslist in step");
+
+    // tapped again: a new job; an edit the PC refuses fails with the edit's words alone
+    ebay.fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.at(-1), { action: "push", sku: "B-0042", venue: "ebay", price: "25.00" });
+    assert.equal(nodes.get("ebay-status").textContent, "queued", "the old failure's words gone");
+    said.a3 ={ state: "failed", error: "price: the row's minimum price is $30" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "not updated: price: the row's minimum price is $30");
+    assert.equal(nodes.get("craigslist-status").textContent, "updated", "craigslist's line untouched");
+});
+
+test("a posted item's update on an older server: its push refused for carrying the change, the change goes on the row first (PATCH), then the push", async (t) => {
+    // a server before 2026-11-12 takes action, sku and venue alone on a push
+    let pushing = { state: "queued", ahead: 0 };
+    const { pc, nodes } = await postedLamp(t, ["ebay"], { a1: () => pushing });
+    pc.oldPush = true;
+    const ebay = nodes.get("ebay-btn");
+    nodes.get("customize-toggle").fire("click");
+    nodes.get("quantity").value = "2";
+    nodes.get("quantity").fire("input");
+    ebay.fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.filter((b) => b.action === "push"), [
+        { action: "push", sku: "B-0042", venue: "ebay", quantity: 2 },
+        { action: "push", sku: "B-0042", venue: "ebay" },
+    ]);
+    assert.deepEqual(pc.patches, [{ quantity: 2 }]);
+    assert.equal(nodes.get("ebay-status").textContent, "queued");
+    pushing = { state: "done", summary: "updated" };
+    t.mock.timers.tick(POLL_MS);
+    await settle();
+    assert.equal(nodes.get("ebay-status").textContent, "updated");
+    assert.equal(ebay.classList.contains("behind"), false, "in step");
 });
 
 test("a listing's draft badge posts it: the card opens with the post's line; the model cost on the eBay card is the admin's alone", async (t) => {

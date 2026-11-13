@@ -219,6 +219,16 @@ had stepped it there himself.
 Each venue's button keeps its own state: updating one venue pushes that venue alone, and every
 other venue the item is on keeps "→ tap again to update" until its own tap (Michal, 2026-11-12:
 "when I sync eBay, I then need to sync Craigslist, since these are separate buttons").
+The update's tap sends one push job carrying the change (the price, the grade, the quantity,
+pickup only), and it queues behind whatever the server is doing, never refused because another
+job runs (Michal, 2026-11-12: "I want the update sync jobs to also just queue up and just take
+place after the queue is freed ... so just say queued"). The server writes the change on the row,
+then pushes it. Under the venue its line says "queued" (with how many are ahead, once known),
+"updating..." while it runs, then "updated", or "not updated: " and the job's words (a push
+that failed after the change was saved says so); the button keeps its ring until the job ends
+and is in step only once it is done, a failed one still "tap again to update". Two venues' updates
+may wait at once, each with its own line. An older server that takes nothing but the venue on a
+push gets the change on the row first, then the push.
 
 The book screen has the same venue blocks as the goods screen, not eBay alone, and the same
 customize (the half-open card, keep visible, no Compare tick). Books are the admin's alone
