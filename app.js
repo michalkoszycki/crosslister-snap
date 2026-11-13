@@ -497,9 +497,20 @@ const TAP_TO_UPDATE = tKey("tap again to update");
  * venue what an update last put on that venue's listing (each venue its own: Michal, 2026-11-12,
  * "when I sync eBay, I then need to sync Craigslist, since these are separate buttons"), `row`
  * the row as the PC has it (its grades' prices), `extra` the photos added since (their
- * pictures), `busy` while an update is on its way, `venue` its venue, `status` what it ended with.
+ * pictures), `updates` by venue its update's push job (updatePosted: each venue its own, two may
+ * wait at once), `venue` the venue last tapped and `status` what a photo added from the + ended
+ * with, said under it.
  */
-const postedEdit = { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], busy: false, venue: "", status: "", bad: false, posted: false };
+const postedEdit = { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], updates: {}, venue: "", status: "", bad: false, posted: false };
+
+/** Every update's job let go (a new item, NEXT): no longer asked about; the empty `updates`. */
+function letGoUpdates() {
+    for (const u of Object.values(postedEdit.updates)) {
+        u.paused = true;
+        clearTimeout(u.timer);
+    }
+    return {};
+}
 
 /** The goods item is up on a venue, nothing of it on its way. */
 function isPostedItem(m) {
@@ -538,7 +549,7 @@ function syncPostedEdit() {
     const st = slots.goods;
     // a draft saved, not posted, takes the row up too: its grades' prices for the slider
     if (!priceAdjustable("goods")) {
-        if (!st.sku && postedEdit.sku) Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], status: "", posted: false });
+        if (!st.sku && postedEdit.sku) Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], updates: letGoUpdates(), status: "", posted: false });
         return;
     }
     // posted just now (after a draft): what it went up as is the baseline from here
@@ -547,7 +558,7 @@ function syncPostedEdit() {
         return;
     }
     if (postedEdit.sku === st.sku) return;
-    Object.assign(postedEdit, { sku: st.sku, base: { ...customizeOf(st) }, snap: editKey(), synced: {}, row: null, extra: [], status: "", posted: isPostedItem("goods") });
+    Object.assign(postedEdit, { sku: st.sku, base: { ...customizeOf(st) }, snap: editKey(), synced: {}, row: null, extra: [], updates: letGoUpdates(), status: "", posted: isPostedItem("goods") });
     const pc = settings();
     if (!pc) return;
     const sku = st.sku;
@@ -560,45 +571,100 @@ function syncPostedEdit() {
         .catch(() => {});
 }
 
+/** An older server's push takes action, sku and venue alone (its 400 says "nothing else"). */
+const PUSH_TAKES_NOTHING_ELSE = /nothing else/i;
+
 /**
- * The posted venue button tapped with something changed: the changes on the row (PATCH), then
- * the row put on that venue's listing (a push job), as the inventory's sync badge does.
+ * The posted venue button tapped with something changed: ONE push job carrying the change (the
+ * price stepped, or the grade; the quantity, pickup only), queued behind whatever the PC is doing
+ * (Michal, 2026-11-12: "I want the update sync jobs to also just queue up and just take place after
+ * the queue is freed ... so just say queued"). The PC writes the change on the row, then pushes it.
+ * Its line under the venue is polled (askTask, every POLL_MS): queued, updating..., updated, or not
+ * updated in the job's words; the venue is in step (`synced`) only once the job is done. Each venue
+ * its own job, two may wait at once. An older server that takes nothing else on a push: the change
+ * on the row first (PATCH), then the push.
  */
 async function updatePosted(venue) {
     const pe = postedEdit;
     const st = slots.goods;
     const pc = settings();
-    if (!pc || pe.busy || !st.sku) return;
-    pe.busy = true;
+    const sku = st.sku;
+    if (!pc || !sku || (pe.updates[venue] && pe.updates[venue].busy)) return;
+    const c = customizeOf(st);
+    const base = pe.base || c;
+    /** @type {Record<string, unknown>} */
+    const change = {};
+    if (heldPrice.goods !== null) Object.assign(change, dialBody(heldPrice.goods));
+    const q = quantityValue(c.quantity);
+    if (q && q !== quantityValue(base.quantity)) change.quantity = q;
+    if (c.pickupOnly !== base.pickupOnly) change.pickup_only = c.pickupOnly === true;
+    const g = pricingGrade(c.pricing);
+    if (heldPrice.goods === null && g && g !== pricingGrade(base.pricing)) change.pricing = g;
+    // what the screen held at the tap: in step with it once the job is done, behind if changed since
+    const task = { busy: true, c: { ...c }, key: editKey(), job: null, note: null, paused: false, timer: null, ask: () => {} };
+    pe.updates = { ...pe.updates, [venue]: task };
     pe.venue = venue;
-    pe.status = t("updating...");
+    pe.status = "";
     pe.bad = false;
     render();
+    const push = actionJob("push", { sku, venue });
+    let answer;
     try {
-        const c = customizeOf(st);
-        const base = pe.base || c;
-        /** @type {Record<string, unknown>} */
-        const body = {};
-        if (heldPrice.goods !== null) Object.assign(body, dialBody(heldPrice.goods));
-        const q = quantityValue(c.quantity);
-        if (q && q !== quantityValue(base.quantity)) body.quantity = q;
-        if (c.pickupOnly !== base.pickupOnly) body.pickup_only = c.pickupOnly === true;
-        const g = pricingGrade(c.pricing);
-        if (heldPrice.goods === null && g && g !== pricingGrade(base.pricing)) body.pricing = g;
-        if (Object.keys(body).length) await patchRow(pc, st.sku, body);
-        await sendJob(pc, actionJob("push", { sku: st.sku, venue }));
-        heard(200);
-        pe.base = { ...c };
-        pe.synced = { ...pe.synced, [venue]: editKey() };
-        pe.status = t("updated");
+        try {
+            answer = await sendJob(pc, { ...push, ...change });
+        } catch (e) {
+            if (!(e.status === 400 && PUSH_TAKES_NOTHING_ELSE.test(e.detail)) || !Object.keys(change).length) throw e;
+            await patchRow(pc, sku, change);
+            answer = await sendJob(pc, push);
+        }
     } catch (e) {
+        if (pe.updates[venue] !== task) return;
         if (e.status === 0 || e.status === 401) heard(e.status);
-        pe.status = t("not updated: {detail}", { detail: e.message });
-        pe.bad = true;
-    } finally {
-        pe.busy = false;
+        task.busy = false;
+        task.note = { text: t("not updated: {detail}", { detail: e.message }), kind: "bad" };
         render();
+        return;
     }
+    if (pe.updates[venue] !== task) return;
+    heard(200);
+    task.job = { action: "push", venue, job: answer.job, state: answer.state || "queued", ahead: answer.ahead };
+    task.ask = () => {
+        askUpdate(venue, task).catch(() => {});
+    };
+    render();
+    later(task);
+}
+
+/** An update's job asked about (askTask): its line painted while it waits; once done, the venue in step. */
+async function askUpdate(venue, task) {
+    const ended = await askTask(task, render);
+    if (!ended || postedEdit.updates[venue] !== task) return;
+    task.busy = false;
+    if (task.job.state === "done") {
+        postedEdit.base = task.c;
+        postedEdit.synced = { ...postedEdit.synced, [venue]: task.key };
+    }
+    render();
+}
+
+/**
+ * What an update's line says (Michal, 2026-11-12, "just say queued"): sending, queued (with how
+ * many ahead), updating... while it runs, updated, or not updated in the job's words; a push that
+ * failed after the change was saved says so in the job's summary.
+ */
+function updateLine(u) {
+    if (u.note) return u.note;
+    const job = u.job;
+    if (!job) return { text: t("sending"), kind: "busy" };
+    if (job.state === "done") return { text: t("updated"), kind: "ok" };
+    if (job.state === "failed") {
+        const detail = (typeof job.error === "string" && job.error) || t(FAILED);
+        const summary = typeof job.summary === "string" ? job.summary : "";
+        const text = summary ? t("not updated: {detail} ({summary})", { detail, summary }) : t("not updated: {detail}", { detail });
+        return { text, kind: "bad" };
+    }
+    if (job.state === "running" && !job.trouble) return { text: t("updating..."), kind: "busy" };
+    return syncLine(job);
 }
 
 /** The + at the end of the posted item's photos: each added to the row, its picture shown in the strip. */
@@ -1979,7 +2045,8 @@ function renderVenue(m, venue, ok, nodes) {
     });
     nodes.btn.classList.toggle("posted", job.phase === "done" && !savedNotPosted(job));
     const posted = m === "goods" && job.phase === "done" && !savedNotPosted(job);
-    const updating = posted && postedEdit.busy && postedEdit.venue === venue;
+    const update = posted ? postedEdit.updates[venue] : undefined;
+    const updating = !!update && update.busy;
     const behind = posted && !updating && postedDirty(venue);
     nodes.btn.classList.toggle("behind", behind || updating);
     if (behind || updating) {
@@ -2000,10 +2067,13 @@ function renderVenue(m, venue, ok, nodes) {
         busy && late && late.late
             ? { text: t(TOO_LATE), link: "", kind: "busy" }
             : venueLine(job, venueIdleNote(state, venue));
-    // a posted item's update: what it ended with, under its venue (Michal, 2026-11-02)
-    const said = posted && postedEdit.venue === venue && postedEdit.status ? postedEdit.status : line.text;
+    // a posted item's update: how its job stands, under its own venue (Michal, 2026-11-02; queued, 2026-11-12);
+    // a photo the + could not add, under the venue last tapped
+    const photoSaid = posted && postedEdit.venue === venue && postedEdit.status;
+    const own = photoSaid ? { text: postedEdit.status, kind: postedEdit.bad ? "bad" : "ok" } : update ? updateLine(update) : line;
+    const said = own.text;
     nodes.status.textContent = said;
-    nodes.status.className = `venue-status ${said === line.text ? line.kind : postedEdit.bad ? "bad" : "ok"}`;
+    nodes.status.className = `venue-status ${own.kind}`;
     nodes.status.hidden = !said;
     // no postings left (a 402): the server's words, and under them the way to buy more
     nodes.buy.hidden = !(job.phase === "failed" && job.credit);
@@ -8527,7 +8597,7 @@ async function nextItem(m, { snapping = false } = {}) {
     say("");
     keepSaved[m] = false;
     heldPrice[m] = null;
-    if (m === "goods") Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], status: "", posted: false });
+    if (m === "goods") Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], updates: letGoUpdates(), status: "", posted: false });
     customizeOpen[m] = keptOpen(m); // the next item starts folded (or open, kept visible), at one, from his defaults (Save as default)
     if (m === "goods") fixDark = savedFixDark();
     setState(m, freshState(m));

@@ -655,6 +655,7 @@ export const ES = {
     "not sent": "no enviado",
     "not sent (offline), will retry": "no enviado (sin conexión), se reintentará",
     "not updated: {detail}": "no actualizado: {detail}",
+    "not updated: {detail} ({summary})": "no actualizado: {detail} ({summary})",
     "policies failed: {detail}; contact the developer": "las políticas fallaron: {detail}; contacta al desarrollador",
     "policies failed; contact the developer": "las políticas fallaron; contacta al desarrollador",
     "server off": "servidor apagado",

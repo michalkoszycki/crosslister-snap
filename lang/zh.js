@@ -654,6 +654,7 @@ export const ZH = {
     "not sent": "未发送",
     "not sent (offline), will retry": "未发送（离线），稍后重试",
     "not updated: {detail}": "未更新：{detail}",
+    "not updated: {detail} ({summary})": "未更新：{detail}（{summary}）",
     "policies failed: {detail}; contact the developer": "政策设置失败：{detail}；请联系开发者",
     "policies failed; contact the developer": "政策设置失败；请联系开发者",
     "server off": "服务器离线",
