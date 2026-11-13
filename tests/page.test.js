@@ -12467,6 +12467,60 @@ test("a posted item is its edit screen: a change makes its venue button an updat
     assert.equal(ebay.classList.contains("behind"), false);
 });
 
+test("a posted item on two venues: a change waits on each venue's button; updating eBay pushes eBay alone and craigslist still waits", async (t) => {
+    // Michal, 2026-11-12: the price raised after posting, eBay's update turned craigslist's button
+    // back to posted too: "when I sync eBay, I then need to sync Craigslist, since these are separate buttons"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const statuses = { ebay: summary("B-0042").statuses.ebay, craigslist: { status: "listed", url: "https://chicago.craigslist.org/42.html" } };
+    const whole = wholeRow("B-0042", { venues: ["ebay", "craigslist"], statuses, quantity: 1 });
+    const pc = inventoryPc([], { "B-0042": whole }, {
+        jobs: {
+            j1: () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { ebay: "https://www.ebay.com/itm/42" } }),
+            j2: () => ({ state: "done", sku: "B-0042", price: "24.00", title: "Brass Lamp", links: { craigslist: "https://chicago.craigslist.org/42.html" } }),
+            a1: () => ({ state: "running", step: "updating eBay" }),
+            a2: () => ({ state: "running", step: "updating craigslist" }),
+        },
+    });
+    const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: pc.fetch });
+    await typeName(nodes, "Lamp");
+    snap(nodes, 1);
+    await settle();
+    card(nodes, 0).ai.fire("click");
+    for (const id of ["ebay-btn", "craigslist-btn"]) {
+        nodes.get(id).fire("click");
+        await settle();
+        t.mock.timers.tick(SEND_DELAY_MS);
+        await settle();
+        t.mock.timers.tick(POLL_MS);
+        await settle();
+    }
+    const ebay = nodes.get("ebay-btn");
+    const craigslist = nodes.get("craigslist-btn");
+    assert.equal(ebay.classList.contains("behind"), false);
+    assert.equal(craigslist.classList.contains("behind"), false);
+
+    // the price a dollar up: both listings are behind it
+    nodes.get("price-more").fire("click");
+    assert.equal(buttonSays(ebay), "ebay / tap again to update");
+    assert.equal(buttonSays(craigslist), "craigslist / tap again to update");
+
+    // eBay's update: the change on the row, eBay pushed alone; craigslist still waits for its own tap
+    ebay.fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.filter((b) => b.action === "push"), [{ action: "push", sku: "B-0042", venue: "ebay" }]);
+    assert.equal(ebay.classList.contains("behind"), false, "eBay in step");
+    assert.equal(craigslist.classList.contains("behind"), true, "craigslist not pushed: still behind");
+    assert.equal(buttonSays(craigslist), "craigslist / tap again to update");
+
+    // craigslist's own tap: craigslist pushed, nothing new to save on the row
+    const patches = pc.patches.length;
+    craigslist.fire("click");
+    await settle();
+    assert.deepEqual(pc.posted.filter((b) => b.action === "push").at(-1), { action: "push", sku: "B-0042", venue: "craigslist" });
+    assert.equal(craigslist.classList.contains("behind"), false, "craigslist in step");
+    assert.ok(pc.patches.length - patches <= 1, "the row already has the price");
+});
+
 test("a listing's draft badge posts it: the card opens with the post's line; the model cost on the eBay card is the admin's alone", async (t) => {
     // Michal, 2026-11-02: "tapping this 'ebay draft' button should post to ebay"; the model cost the admin's
     t.mock.timers.enable({ apis: ["setTimeout"] });

@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.46.0";
+import { VERSION } from "./version.js?v=2.46.1";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.46.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.46.0";
+} from "./core.js?v=2.46.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.46.1";
 import {
     addVenue,
     applyWrap,
@@ -327,8 +327,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.46.0";
-import { shrinkPhoto } from "./shrink.js?v=2.46.0";
+} from "./pc.js?v=2.46.1";
+import { shrinkPhoto } from "./shrink.js?v=2.46.1";
 import {
     bookCard,
     bookPriceValue,
@@ -341,9 +341,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.46.0";
-import { canScan, readIsbn } from "./scan.js?v=2.46.0";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.46.0";
+} from "./book.js?v=2.46.1";
+import { canScan, readIsbn } from "./scan.js?v=2.46.1";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.46.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -493,11 +493,13 @@ const TAP_TO_UPDATE = tKey("tap again to update");
 
 /**
  * Once the goods item is posted the screen is its edit screen (Michal, 2026-11-02): `sku` the
- * row, `base` its customize and `snap` everything as posted (or last updated), `row` the row as
- * the PC has it (its grades' prices), `extra` the photos added since (their pictures), `busy`
- * while an update is on its way, `venue` its venue, `status` what it ended with.
+ * row, `base` its customize as the row last had it, `snap` everything as posted, `synced` by
+ * venue what an update last put on that venue's listing (each venue its own: Michal, 2026-11-12,
+ * "when I sync eBay, I then need to sync Craigslist, since these are separate buttons"), `row`
+ * the row as the PC has it (its grades' prices), `extra` the photos added since (their
+ * pictures), `busy` while an update is on its way, `venue` its venue, `status` what it ended with.
  */
-const postedEdit = { sku: "", base: null, snap: "", row: null, extra: [], busy: false, venue: "", status: "", bad: false, posted: false };
+const postedEdit = { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], busy: false, venue: "", status: "", bad: false, posted: false };
 
 /** The goods item is up on a venue, nothing of it on its way. */
 function isPostedItem(m) {
@@ -510,9 +512,11 @@ function editKey() {
     return JSON.stringify([customizeOf(slots.goods), heldPrice.goods, postedEdit.extra.length]);
 }
 
-/** Something changed since it was posted (or last updated). */
-function postedDirty() {
-    return isPostedItem("goods") && postedEdit.sku === slots.goods.sku && postedEdit.snap !== editKey();
+/** Something changed since `venue`'s listing was posted (or last updated there). */
+function postedDirty(venue) {
+    if (!isPostedItem("goods") || postedEdit.sku !== slots.goods.sku) return false;
+    const had = Object.hasOwn(postedEdit.synced, venue) ? postedEdit.synced[venue] : postedEdit.snap;
+    return had !== editKey();
 }
 
 /**
@@ -534,16 +538,16 @@ function syncPostedEdit() {
     const st = slots.goods;
     // a draft saved, not posted, takes the row up too: its grades' prices for the slider
     if (!priceAdjustable("goods")) {
-        if (!st.sku && postedEdit.sku) Object.assign(postedEdit, { sku: "", base: null, snap: "", row: null, extra: [], status: "", posted: false });
+        if (!st.sku && postedEdit.sku) Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], status: "", posted: false });
         return;
     }
     // posted just now (after a draft): what it went up as is the baseline from here
     if (postedEdit.sku === st.sku && isPostedItem("goods") && !postedEdit.posted) {
-        Object.assign(postedEdit, { base: { ...customizeOf(st) }, snap: editKey(), posted: true });
+        Object.assign(postedEdit, { base: { ...customizeOf(st) }, snap: editKey(), synced: {}, posted: true });
         return;
     }
     if (postedEdit.sku === st.sku) return;
-    Object.assign(postedEdit, { sku: st.sku, base: { ...customizeOf(st) }, snap: editKey(), row: null, extra: [], status: "", posted: isPostedItem("goods") });
+    Object.assign(postedEdit, { sku: st.sku, base: { ...customizeOf(st) }, snap: editKey(), synced: {}, row: null, extra: [], status: "", posted: isPostedItem("goods") });
     const pc = settings();
     if (!pc) return;
     const sku = st.sku;
@@ -585,7 +589,7 @@ async function updatePosted(venue) {
         await sendJob(pc, actionJob("push", { sku: st.sku, venue }));
         heard(200);
         pe.base = { ...c };
-        pe.snap = editKey();
+        pe.synced = { ...pe.synced, [venue]: editKey() };
         pe.status = t("updated");
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
@@ -1976,7 +1980,7 @@ function renderVenue(m, venue, ok, nodes) {
     nodes.btn.classList.toggle("posted", job.phase === "done" && !savedNotPosted(job));
     const posted = m === "goods" && job.phase === "done" && !savedNotPosted(job);
     const updating = posted && postedEdit.busy && postedEdit.venue === venue;
-    const behind = posted && !updating && postedDirty();
+    const behind = posted && !updating && postedDirty(venue);
     nodes.btn.classList.toggle("behind", behind || updating);
     if (behind || updating) {
         nodes.btn.disabled = updating;
@@ -2797,7 +2801,7 @@ function onVenueTap(m, venue) {
         return;
     }
     // the posted item changed: the tap sends the update (Michal, 2026-11-02)
-    if (m === "goods" && postedDirty() && slots[m].jobs[venue].phase === "done" && !savedNotPosted(slots[m].jobs[venue])) {
+    if (m === "goods" && postedDirty(venue) && slots[m].jobs[venue].phase === "done" && !savedNotPosted(slots[m].jobs[venue])) {
         updatePosted(venue).catch(() => {});
         return;
     }
@@ -8523,7 +8527,7 @@ async function nextItem(m, { snapping = false } = {}) {
     say("");
     keepSaved[m] = false;
     heldPrice[m] = null;
-    if (m === "goods") Object.assign(postedEdit, { sku: "", base: null, snap: "", row: null, extra: [], status: "", posted: false });
+    if (m === "goods") Object.assign(postedEdit, { sku: "", base: null, snap: "", synced: {}, row: null, extra: [], status: "", posted: false });
     customizeOpen[m] = keptOpen(m); // the next item starts folded (or open, kept visible), at one, from his defaults (Save as default)
     if (m === "goods") fixDark = savedFixDark();
     setState(m, freshState(m));

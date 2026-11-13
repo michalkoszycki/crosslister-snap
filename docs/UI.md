@@ -216,6 +216,9 @@ a + tile after the photos takes more, saved at once; a change turns that venue's
 "venue →", small under it "tap again to update", a tap pushing the change to the venue; the
 customize slider, moved, sets the stepped price to that grade's cached draft price, as if he
 had stepped it there himself.
+Each venue's button keeps its own state: updating one venue pushes that venue alone, and every
+other venue the item is on keeps "→ tap again to update" until its own tap (Michal, 2026-11-12:
+"when I sync eBay, I then need to sync Craigslist, since these are separate buttons").
 
 The book screen has the same venue blocks as the goods screen, not eBay alone, and the same
 customize (the half-open card, keep visible, no Compare tick). Books are the admin's alone
