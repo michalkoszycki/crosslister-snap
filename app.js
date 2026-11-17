@@ -1584,8 +1584,11 @@ function render() {
     // no settings and no session, or an account being added: the landing (or sign-in) is the
     // whole screen instead
     const out = !settings() || adding;
-    el.landing.hidden = !out || away || entry === "signin";
-    el.signin.hidden = !out || away || entry !== "signin";
+    // the walk-through before there is an account: the goods screen's in the landing's place, the
+    // landing once it ends or is skipped (Michal, 2026-11-17)
+    const intro = out && touring;
+    el.landing.hidden = !out || away || entry === "signin" || intro;
+    el.signin.hidden = !out || away || entry !== "signin" || intro;
     el.landingBack.hidden = !adding;
     const words = signinWords(signup.open);
     el.landingSignin.textContent = words.button;
@@ -1605,9 +1608,9 @@ function render() {
     el.signupSteps.hidden = !signing || away;
     renderSignup();
     // About and privacy under the landing and Admin; the posting screens keep their foot clear
-    el.aboutLink.hidden = !out && !away && !signing;
+    el.aboutLink.hidden = (!out || intro) && !away && !signing;
     el.modes.hidden = out || away || signing;
-    el.work.hidden = out || away || signing || mode !== "goods";
+    el.work.hidden = (out && !intro) || away || signing || mode !== "goods";
     el.book.hidden = out || away || signing || mode !== "book";
     renderInstall(out || away);
 
@@ -6485,6 +6488,17 @@ const POLICY_PARTS = [
 
 /** The agreements were agreed to on this phone ("yes"). */
 const AGREED_KEY = "snap.agreed";
+/**
+ * The walk-through seen on this phone ("yes"), ended or skipped: until it is, a first open with no
+ * account plays it before the landing (Michal, 2026-11-17: "That animation should be first so
+ * people know what's up before the account sign up page").
+ */
+const INTRO_KEY = "snap.intro.seen";
+
+/** This phone has seen the walk-through (INTRO_KEY). */
+function introSeen() {
+    return readText("localStorage", INTRO_KEY) === "yes";
+}
 /** The terms "I agree" accepts: the date about.html's terms last changed. */
 const TERMS_VERSION = "2026-11-02";
 /** GET /me's "agreement" ({at, terms} or null); undefined from a server that does not keep one. */
@@ -6580,6 +6594,11 @@ const TOUR_TITLE_MS = 1500;
 const TOUR_POSTING_MS = 1000;
 const TOUR_READY = tKey("Posting is ready!");
 const TOUR_END = tKey("Snap your first item");
+/** The last button before there is an account: it leads to the landing, not to a snap (2026-11-17). */
+const TOUR_START = tKey("Get started");
+/** Over the title, with three chevrons after it (Michal, 2026-11-17: "a small button to skip intro"). */
+const TOUR_SKIP = tKey("Skip intro");
+const TOUR_CHEVRONS = "›››";
 /** The example strip: five photos, two of them marked AI (Michal, 2026-11-02). */
 const TOUR_PHOTOS = 5;
 const TOUR_AI_MARKED = [1, 3];
@@ -6608,9 +6627,10 @@ function tourNote(words, above = false) {
 }
 
 /**
- * Looks good done, or How Snap works: "How it works?" on top, then the goods screen's Snap and
- * venue buttons alone; under Snap an example of eight photos, four marked AI; a hand-written
- * note at each, a long way apart, read by scrolling down, and its last button to the screen.
+ * A first open with no account, Looks good done, or How Snap works: "How it works?" on top, then
+ * the goods screen's Snap and venue buttons alone; under Snap an example of eight photos, four
+ * marked AI; a hand-written note at each, a long way apart, read by scrolling down, and its last
+ * button to the screen. Skip intro over the title ends it the same way as the last button.
  */
 function startTour() {
     if (touring) return;
@@ -6618,11 +6638,41 @@ function startTour() {
     tourNodes = [];
     tourWords = [];
     if (mode !== "goods") setMode("goods");
+    // no account yet: the landing comes after it, not a snap (Michal, 2026-11-17)
+    const before = !settings() || adding;
+    // the last button, and Skip intro: the landing before there is an account; else the agreements
+    // next, unless this phone or the server already has them (Michal, 2026-11-02; 2026-11-04: an
+    // agreement recorded is never asked again, a new phone included)
+    const finish = () => {
+        endTour();
+        if (!before && !agreedAlready()) showAgree(true);
+    };
     // the title alone on top, large and centred: no switch, no banner (Michal, 2026-11-02)
     const head = tourNode("h2", "tour-node tour-head tour-hand");
     head.textContent = t(TOUR_TITLE);
     tourWords.push([head, TOUR_TITLE]);
     el.work.insertBefore(head, el.work.firstChild);
+    // Skip intro, small, centred in the room over the title and staying in sight as he scrolls; it
+    // takes no room, so the walk-through spaces as before (Michal, 2026-11-17: "just black text
+    // underlined like a link with some three chevron arrows to the right ... better in the center
+    // of the screen as you start scrolling. Don't disturb spacing of the already existing animation")
+    const skipRow = tourNode("div", "tour-node tour-skip-row");
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.id = "tour-skip";
+    skip.className = "tour-skip";
+    const skipWords = document.createElement("span");
+    skipWords.className = "tour-skip-words";
+    skipWords.textContent = t(TOUR_SKIP);
+    tourWords.push([skipWords, TOUR_SKIP]);
+    const chevrons = document.createElement("span");
+    chevrons.className = "tour-chevrons";
+    chevrons.setAttribute("aria-hidden", "true");
+    chevrons.textContent = TOUR_CHEVRONS;
+    skip.append(skipWords, chevrons);
+    skip.addEventListener("click", finish);
+    skipRow.append(skip);
+    el.work.insertBefore(skipRow, head);
     const steps = tourNode("p", "tour-node tour-steps tour-hand");
     steps.textContent = TOUR_STEPS;
     head.after(steps);
@@ -6671,14 +6721,11 @@ function startTour() {
     done.type = "button";
     done.id = "tour-done";
     done.className = "big tour-done";
-    done.textContent = t(TOUR_END);
-    tourWords.push([done, TOUR_END]);
-    done.addEventListener("click", () => {
-        endTour();
-        // the agreements next, unless this phone or the server already has them (Michal, 2026-11-02;
-        // 2026-11-04: an agreement recorded is never asked again, a new phone included)
-        if (!agreedAlready()) showAgree(true);
-    });
+    // "Get started" before there is an account: there is nothing to snap with yet (2026-11-17)
+    const endWords = before ? TOUR_START : TOUR_END;
+    done.textContent = t(endWords);
+    tourWords.push([done, endWords]);
+    done.addEventListener("click", finish);
     end.append(ready, nudge, done);
     venue.after(end);
     const posting = () => {
@@ -6739,10 +6786,14 @@ function startTour() {
     window.scrollTo(0, 0);
 }
 
-/** Skip or the last button: the notes gone, the goods screen as he left it, from the top. */
+/**
+ * Skip intro or the last button: the notes gone, the goods screen as he left it (the landing,
+ * before there is an account), from the top; this phone has seen it (INTRO_KEY).
+ */
 function endTour() {
     if (!touring) return;
     touring = false;
+    writeText("localStorage", INTRO_KEY, "yes");
     if (tourSeen) tourSeen.disconnect();
     tourSeen = null;
     for (const timer of tourTimers) clearTimeout(timer);
@@ -6759,7 +6810,8 @@ function endTour() {
 /**
  * Looks good: the choices agreed to as they are (POST /me/policies/confirm), the server sets
  * them up on eBay, /me says registered and the goods screen is theirs, the first-listing
- * walk-through over it (startTour).
+ * walk-through over it (startTour); a phone that has seen it goes straight to the agreements,
+ * or to the goods screen once they are given (Michal, 2026-11-17).
  */
 async function confirmPoliciesNow() {
     const pc = settings();
@@ -6770,7 +6822,10 @@ async function confirmPoliciesNow() {
     try {
         policies.info = await confirmPolicies(pc);
         await loadMe();
-        if (me && me.registered) startTour();
+        if (me && me.registered) {
+            if (!introSeen()) startTour();
+            else if (!agreedAlready()) showAgree(true);
+        }
     } catch (e) {
         if (e.status === 0 || e.status === 401) heard(e.status);
         policies.status = e.message;
@@ -9734,6 +9789,10 @@ function main() {
     else checkServer().catch(() => {});
     // the landing on screen: does the product's server take new accounts?
     if (!token && !settings()) askSignup().catch(() => {});
+    // a first open with no account: the walk-through first, the landing once it ends or is skipped
+    // (Michal, 2026-11-17: "I would like the animation of how it works to be the first thing after
+    // you click the link")
+    if (!token && !settings() && !adding && entry !== "signin" && el.admin.hidden && !introSeen()) startTour();
 }
 
 main();

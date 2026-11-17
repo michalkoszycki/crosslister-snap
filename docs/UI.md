@@ -96,6 +96,14 @@ nowhere else on the page repeats it.
 
 ### 4.1 Landing (first open, or no account on this phone)
 
+The very first open on a phone with no account plays the walk-through (4.4) first, in the
+landing's place, and the landing comes once it ends or is skipped; the phone keeps that it has
+seen it (`snap.intro.seen`), so every open after goes straight to the landing (Michal,
+2026-11-17: "I would like the animation of how it works to be the first thing after you click
+the link ... That animation should be first so people know what's up before the account sign up
+page"). A sign-in link, an account being added, or the sign-in screen opened before, go where they
+did.
+
 Top to bottom: "← Back" (only while adding an account); the big mark; "$nap" written as the header writes it (Michal, 2026-10-31), "a
 crosslisting app"; one line of what it does, naming no venue ("From photo to live listing in seconds";
 Michal, 2026-10-31, who also took the postings count off the landing); **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
@@ -128,14 +136,16 @@ Admin. In place of the posting screens, until eBay is connected and the address 
 "Finish setting up" with no line under it (Michal, 2026-10-31: "take this out"). Step 1 as a card: **Connect eBay**, which
 becomes "eBay connected" in green, as tall and wide as before, the eBay name in small letters under it in the same button (Michal, 2026-10-31). Step 2 as a card: the address where you ship
 from in a box right there (Michal, 2026-10-31: "you should just be able to edit the address here"), prefilled from eBay once connected, US addresses only for now (a state US_STATES knows, else "Snap takes US addresses only for now: the state is two letters, as IL."; Michal, 2026-10-31: "dont allow international addresses. for now."), a green ✓ at the box's right end once saved and checked, gone at the first edit ("add a check on the right of this text field"); **Save** under it once it is typed in, **Looks right** for one prefilled and not yet confirmed, saved through PATCH /me/seller; saved, the button says **Saved** and the address goes light grey until it is typed in again (Michal, 2026-10-31). Step 3 (Michal,
-2026-10-31): "Review what Snap adds to your eBay account", never ticked, and no step gets a checkmark (Michal, 2026-10-31: "no checkmark . i dont like them here"): in step 2's words, "eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:", the server's policy lines with open round bullets (Michal, 2026-10-31), then what every account gets besides (Payment through eBay's own checkout; a separate USPS Media Mail policy for books) before the ship-from line, then "Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub." (Michal, 2026-10-31: "describe all here"). No policy names in it: Edit opens on a picker headed "Snap creates the following policies" (Michal, 2026-10-31), of each eBay policy Snap makes with something to see, its type before its name ("Shipping: Snap shipping", "Shipping: Snap pickup", "Returns: Snap returns", "Shipping: Snap books"; Michal, 2026-10-31: "specif the policy type"; payment, business policies and the ship-from left out: "no choices", "since above"); the picked one's **Name** first, to rename it, from a server that keeps the names (GET/PATCH /me/policies "policy_names", 64 characters at most, only the changed ones sent: "the first item of a policy should be NAME so that one can rename it"), then its choices, or a line saying what it is where there is nothing more to set; Return shipping paid by's chips "Buyer" and "Seller - free returns" (Michal, 2026-10-31) (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the picker"). **Looks good - let's start** (Edit policies' size, in yellow, before Edit policies; smoke while the address is not in; Michal, 2026-10-31) agrees to it as it is: POST /me/policies/confirm, the server sets it up and /me says registered (Michal, 2026-10-31: "if someone reads and likes what it is - they will just go ahead without editing"), and the goods screen is theirs, the first-listing walk-through over it (4.4); a server that does not ask ("confirmed" absent) shows none and registers on the address as before. **Edit policies** under them (GET/PATCH /me/policies; not for the admin's, set on the server; shut until eBay is connected): each choice a menu in the list's place (Shipping service, or from a server with "shipping" **Shipping options** ("- buyer picks" after it once two or more are ticked; Michal, 2026-10-31): a small white row and box per service, cheapest first (shipOrder), Media Mail last with "for media only" after it in a thinner font, then Local pickup ("the buyer collects it", outside eBay's four, on by default; Michal, 2026-10-31: "return this to this list"), no Check all (Michal, 2026-10-31: "eliminate check all. order the options from cheapest down"), the server's default four ticked, a ticked one's flat rate beside it when the cost is flat, at least one always ticked, "max_services" at most ticked with the rest greyed and "eBay takes up to N." under them (Michal, 2026-10-31: "provide them as a checkbox list. and first checkbox should be 'check all'"; Save sends the list whole when it changed; the step's lead and closing lines hidden while Edit is open); Shipping cost calculated, flat or, from a server that offers it ("cost_types"), Free shipping (Michal, 2026-10-31: the server tells the price draft the price must cover postage), its flat rate box the shipping menu's size, Handling time, Returns, Return shipping paid by, Offer local pickup, Allow best offers, which once ticked says "You will be able to review the offers before finalizing."), **Save**, large and grey as Edit is, sends what changed (**Reset to defaults** under it, from a server that gives its defaults, puts them back in the menus for Save to keep; Michal, 2026-10-31) and the list comes back (Michal, 2026-10-31). Back from eBay's consent, a new account lands on
+2026-10-31): "Review what Snap adds to your eBay account", never ticked, and no step gets a checkmark (Michal, 2026-10-31: "no checkmark . i dont like them here"): in step 2's words, "eBay needs these before Snap can post for you. Snap turns on business policies on your account and adds:", the server's policy lines with open round bullets (Michal, 2026-10-31), then what every account gets besides (Payment through eBay's own checkout; a separate USPS Media Mail policy for books) before the ship-from line, then "Nothing else on your eBay account changes. You can edit or delete these later in eBay's Seller Hub." (Michal, 2026-10-31: "describe all here"). No policy names in it: Edit opens on a picker headed "Snap creates the following policies" (Michal, 2026-10-31), of each eBay policy Snap makes with something to see, its type before its name ("Shipping: Snap shipping", "Shipping: Snap pickup", "Returns: Snap returns", "Shipping: Snap books"; Michal, 2026-10-31: "specif the policy type"; payment, business policies and the ship-from left out: "no choices", "since above"); the picked one's **Name** first, to rename it, from a server that keeps the names (GET/PATCH /me/policies "policy_names", 64 characters at most, only the changed ones sent: "the first item of a policy should be NAME so that one can rename it"), then its choices, or a line saying what it is where there is nothing more to set; Return shipping paid by's chips "Buyer" and "Seller - free returns" (Michal, 2026-10-31) (Michal, 2026-10-31: "provide a fold down picker ... put all policies in the picker"). **Looks good - let's start** (Edit policies' size, in yellow, before Edit policies; smoke while the address is not in; Michal, 2026-10-31) agrees to it as it is: POST /me/policies/confirm, the server sets it up and /me says registered (Michal, 2026-10-31: "if someone reads and likes what it is - they will just go ahead without editing"), and the goods screen is theirs, the first-listing walk-through over it (4.4) unless this phone has seen it; a server that does not ask ("confirmed" absent) shows none and registers on the address as before. **Edit policies** under them (GET/PATCH /me/policies; not for the admin's, set on the server; shut until eBay is connected): each choice a menu in the list's place (Shipping service, or from a server with "shipping" **Shipping options** ("- buyer picks" after it once two or more are ticked; Michal, 2026-10-31): a small white row and box per service, cheapest first (shipOrder), Media Mail last with "for media only" after it in a thinner font, then Local pickup ("the buyer collects it", outside eBay's four, on by default; Michal, 2026-10-31: "return this to this list"), no Check all (Michal, 2026-10-31: "eliminate check all. order the options from cheapest down"), the server's default four ticked, a ticked one's flat rate beside it when the cost is flat, at least one always ticked, "max_services" at most ticked with the rest greyed and "eBay takes up to N." under them (Michal, 2026-10-31: "provide them as a checkbox list. and first checkbox should be 'check all'"; Save sends the list whole when it changed; the step's lead and closing lines hidden while Edit is open); Shipping cost calculated, flat or, from a server that offers it ("cost_types"), Free shipping (Michal, 2026-10-31: the server tells the price draft the price must cover postage), its flat rate box the shipping menu's size, Handling time, Returns, Return shipping paid by, Offer local pickup, Allow best offers, which once ticked says "You will be able to review the offers before finalizing."), **Save**, large and grey as Edit is, sends what changed (**Reset to defaults** under it, from a server that gives its defaults, puts them back in the menus for Save to keep; Michal, 2026-10-31) and the list comes back (Michal, 2026-10-31). Back from eBay's consent, a new account lands on
 this screen again (not Settings), step 1 green, its line saying "eBay connected". The same
 two things are in Settings, Venues, under eBay, with the note "Connect eBay to start
 posting".
 
 ### 4.4 The first-listing walk-through
 
-After Looks good - let's start (4.3), or any time after from the footer's **How Snap
+First of all, on a first open with no account (4.1); after Looks good - let's start (4.3) on a
+phone that has not seen it yet (one that has goes straight to Before you start, 4.5, or to the
+goods screen once that is agreed; Michal, 2026-11-17); or any time after from the footer's **How Snap
 works** (shown once registered, hidden while it is running itself): the goods screen walks
 him through it over itself, in its own place, no switch, no banner (Michal, 2026-11-01:
 "after the looks good on policies i want to see the expanded Snap page. with some arrows and
@@ -148,8 +158,18 @@ at which two of the five light as marked AI; "3. Tap the venue" over a narrow bu
 for the account's first venue, which, scrolled to, spins for 1 s and turns posted; under it
 "Posting is ready!", a big bobbing hand-drawn arrow, and a Snap-sized **Snap your first
 item**, which puts the walk-through away and, the first time on this phone, opens the
-agreements (4.5). The notes, the title and the buttons are hand-written (fonts/Caveat.woff2,
-OFL licence).
+agreements (4.5). Before there is an account it says **Get started** instead (there is nothing to
+snap with yet) and leads to the landing, from the top. The notes, the title and the buttons are
+hand-written (fonts/Caveat.woff2, OFL licence).
+**Skip intro ›››** (Michal, 2026-11-17: "a small button to skip intro ... Maybe without
+background, just black text underlined like a link with some three chevron arrows to the right
+... better in the center of the screen as you start scrolling. Don't disturb spacing of the
+already existing animation"): small ink words (black, white in the dark) underlined, the three
+chevrons after them, no background, centred in the room over **How it works:**; it takes no
+room (a row of no height), so the walk-through spaces as before, and it stays at the top of the
+screen as he scrolls. A tap leads where the last button does: the landing before there is an
+account, else the agreements the first time, else the goods screen. Ended either way, the phone
+has seen it (4.1).
 
 ### 4.5 Before you start (the agreements)
 
@@ -553,3 +573,13 @@ controls disabled, the row edits refused with the server's words); **an expired 
   one Snap answered; the dot counts unseen replies too. Where the build settled what the ask
   left open: the Reviewed mark keeps its "Admin" head while replies say "Snap"; a box being typed
   in is not drawn again while nothing in its list changed.
+- 2026-11-17: the walk-through first (4.1, 4.4): a first open with no account plays it before the
+  landing, once per phone (`snap.intro.seen`); **Skip intro ›››** over its title, taking no room
+  and staying at the top as he scrolls; its last button says **Get started** before there is an
+  account and leads to the landing; Looks good on a phone that has seen it goes straight to Before
+  you start. Where the build settled what the ask left open: the footer's About and privacy is
+  hidden during the first-open walk-through, as under a registered account's; the walk-through
+  ended by either button counts as seen, a replay from How Snap works included; a sign-in link, an
+  account being added, Admin or the sign-in screen open at load do not start it; the language
+  chips stay on the landing, so the first walk-through shows in the phone's chosen language
+  (English until one is chosen).
