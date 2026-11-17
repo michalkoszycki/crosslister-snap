@@ -787,6 +787,16 @@ body.touring .venue-btn:disabled { opacity: 1; }
 .tour-steps { margin: 0 0 140px; font-size: 52px; font-weight: 700; line-height: 1; text-align: center; animation: tour-fade 1s ease 0.2s both; }
 .tour-head { margin: 90px 0 20px; font-size: 52px; font-weight: 700; line-height: 1; text-align: center; animation: tour-fade 1s ease 0.2s both; }
 @keyframes tour-fade { from { opacity: 0; translate: 0 20px; } to { opacity: 1; translate: none; } }
+/* Skip intro: small ink words underlined like a link, no background, three chevrons after them,
+   centred in the room over the title; a row of no height, so it takes no room, held at the top as
+   he scrolls (Michal, 2026-11-17: "better in the center of the screen as you start scrolling.
+   Don't disturb spacing of the already existing animation"). The row sits at the title's top (its
+   90 px margin falls outside #work), the words up in that room; held 90 px down, they ride 20 px
+   under the screen's top */
+.tour-skip-row { position: sticky; top: 90px; z-index: 2; height: 0; }
+.tour-skip { position: absolute; top: -70px; left: 50%; translate: -50% 0; min-height: 40px; margin: 0; padding: 8px 12px; border: none; border-radius: 0; background: none; color: var(--ink); font-size: 15px; font-weight: 700; white-space: nowrap; }
+.tour-skip-words { text-decoration: underline; text-underline-offset: 3px; }
+.tour-chevrons { margin-left: 6px; letter-spacing: -0.12em; }
 /* the walk-through's venue button: shown, never pressed; it runs, then turns posted */
 .tour-venue { width: 62%; margin: 0 auto; pointer-events: none; }
 /* the tip above it, gone once it runs (Michal, 2026-11-02) */

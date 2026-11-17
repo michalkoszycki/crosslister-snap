@@ -1163,6 +1163,8 @@ async function settle() {
 }
 
 const GOOD = { "snap.pc": "http://127.0.0.1:8765", "snap.key": "test-key-0123456789" };
+/** A phone that has seen the walk-through: a first open with no account plays it before the landing (Michal, 2026-11-17). */
+const SEEN = { "snap.intro.seen": "yes" };
 /** Where POST /pay/checkout and GET /ebay/connect send the browser, in the fake server. */
 const STRIPE = "https://checkout.stripe.com/c/pay/cs_test_a1";
 const EBAY_CONSENT = "https://auth.ebay.com/oauth2/authorize?client_id=snap&state=s1";
@@ -1333,7 +1335,7 @@ async function said(lang, english, vars = {}) {
 }
 
 test("Language: a chip on the landing words the page at once and is kept on this phone; This phone's chips agree", async () => {
-    const local = memoryStore();
+    const local = memoryStore(SEEN);
     const { nodes } = await loadPage({ local });
     const page = globalThis.document.documentElement;
     const chosen = (place) => ["en", "zh", "es"].filter((v) => nodes.get(`language-${place}-${v}`).attrs["aria-pressed"] === "true");
@@ -7899,9 +7901,9 @@ test("the landing, sign-in and the home-screen banner come first in main, before
     assert.match(html, /<button type="button" id="settings-signout"[^>]*hidden>Sign out</);
 });
 
-test("a first open is the landing: Install, then a key; saved, the goods screen; Sign out, the landing again", async (t) => {
+test("a first open, its walk-through seen, is the landing: Install, then a key; saved, the goods screen; Sign out, the landing again", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const local = memoryStore();
+    const local = memoryStore(SEEN);
     const pc = fakePc();
     const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
     const shown = (ids) => ids.filter((id) => !nodes.get(id).hidden);
@@ -8047,7 +8049,7 @@ test("the home screen: a banner over the posting screens, away longer at each cl
 
 test("from the home screen there is no nudge; an iPhone is told Share, then Add to Home Screen", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const home = await loadPage({ display: "standalone" });
+    const home = await loadPage({ local: memoryStore(SEEN), display: "standalone" });
     assert.equal(home.nodes.get("landing").hidden, false);
     assert.equal(home.nodes.get("landing-install").hidden, true, "the landing's install step goes");
     const homeKeyed = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch, display: "standalone" });
@@ -8064,7 +8066,7 @@ test("from the home screen there is no nudge; an iPhone is told Share, then Add 
 test("Sign in: a link by email from the product's server, Keep me signed in with it; no server lane says ask for a key", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = signinPc();
-    const { nodes } = await loadPage({ fetchImpl: pc.fetch });
+    const { nodes } = await loadPage({ local: memoryStore(SEEN), fetchImpl: pc.fetch });
     nodes.get("landing-signin").fire("click");
     assert.equal(nodes.get("signin").hidden, false);
     assert.equal(nodes.get("landing").hidden, true);
@@ -8302,7 +8304,7 @@ test("an iPhone in Safari is told to sign in inside the installed Snap; the inst
 test("a desktop browser is not nudged to install: no Install on the landing, no banner", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pcAgent = { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", platform: "Win32", maxTouchPoints: 0 };
-    const desk = await loadPage({ agent: pcAgent });
+    const desk = await loadPage({ local: memoryStore(SEEN), agent: pcAgent });
     assert.equal(desk.nodes.get("landing").hidden, false);
     assert.equal(desk.nodes.get("landing-install").hidden, true);
     assert.equal(desk.nodes.get("landing-install-steps").hidden, true);
@@ -9296,7 +9298,7 @@ test("the address where you ship from is on a venue's own page after its block, 
 
 test("About and privacy: under the landing and Admin, not under the posting screens", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
-    const first = await loadPage({ fetchImpl: fakePc().fetch });
+    const first = await loadPage({ local: memoryStore(SEEN), fetchImpl: fakePc().fetch });
     assert.equal(first.nodes.get("about-link").hidden, false, "the landing's foot");
     const { nodes } = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc().fetch });
     assert.equal(nodes.get("work").hidden, false);
@@ -12293,7 +12295,7 @@ test("no one signed in: Back to sign-in above Settings takes them to the landing
     // Michal, 2026-10-31: "when someone did not sign in yet- there shoudl be a back to sign-in at top of the settings"
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const pc = fakePc();
-    const { nodes } = await loadPage({ local: memoryStore({}), fetchImpl: pc.fetch });
+    const { nodes } = await loadPage({ local: memoryStore(SEEN), fetchImpl: pc.fetch });
     await settle();
     nodes.get("landing-key").fire("click");
     assert.equal(nodes.get("admin").hidden, false);
@@ -12782,6 +12784,8 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
     assert.equal(nodes.get("tour-link").hidden, true, "not while it runs");
     const words = () => tourParts(nodes).map((n) => (n.tag === "ul" ? `strip of ${n.children.length}` : wordsOf(n)));
     assert.deepEqual(words(), [
+        // Skip intro over the title, taking no room (Michal, 2026-11-17)
+        "Skip intro›››",
         "How it works:",
         "1 - 2 - 3",
         "1. Snap some photos",
@@ -12791,10 +12795,10 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
         "ebay",
         "Posting is ready!Snap your first item",
     ]);
-    const strip = tourParts(nodes)[3];
+    const strip = tourParts(nodes)[4];
     assert.deepEqual(strip.children.map((s) => s.className), ["shot tour-ai", "shot", "shot tour-ai", "shot", "shot"], "two marked AI");
-    const venue = tourParts(nodes)[6];
-    const end = tourParts(nodes)[7];
+    const venue = tourParts(nodes)[7];
+    const end = tourParts(nodes)[8];
     // the title alone first; then, with no IntersectionObserver here, every part at once; the venue
     // button runs, then posted, "Posting is ready!" under it
     assert.equal(venue.classList.contains("tour-in"), false);
@@ -12829,4 +12833,153 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
     // an account still signing up has no walk-through to see
     const fresh = await loadPage({ local: memoryStore(GOOD), fetchImpl: fakePc({ me: { ...MICHAL_ME, registered: false } }).fetch });
     assert.equal(fresh.nodes.get("tour-link").hidden, true);
+});
+
+/** The walk-through's own button by its id: Skip intro over the title, or the last one. */
+function tourButton(nodes, id) {
+    for (const part of tourParts(nodes)) {
+        const found = (part.children || []).find((c) => typeof c !== "string" && c.id === id);
+        if (found) return found;
+    }
+    return undefined;
+}
+
+test("a first open with no account: the walk-through first, Skip intro over it; skipped, the landing, and this phone remembers", async (t) => {
+    // Michal, 2026-11-17: "I would like the animation of how it works to be the first thing after you
+    // click the link ... somewhere in the beginning, a small button to skip intro as well"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore();
+    const { nodes, win } = await loadPage({ local, fetchImpl: fakePc().fetch });
+    const body = globalThis.document.body;
+    const shown = () => ["landing", "signin", "modes", "work", "book", "admin", "agree"].filter((id) => !nodes.get(id).hidden);
+    assert.equal(body.classList.contains("touring"), true);
+    assert.deepEqual(shown(), ["work"], "the walk-through in the landing's place");
+    assert.equal(nodes.get("about-link").hidden, true, "its foot as a registered account's");
+    assert.equal(nodes.get("tour-link").hidden, true);
+    const words = tourParts(nodes).map((n) => (n.tag === "ul" ? `strip of ${n.children.length}` : wordsOf(n)));
+    assert.equal(words[0], "Skip intro›››");
+    assert.equal(words[1], "How it works:");
+    // no account yet: the last button gets him started, there is nothing to snap with
+    assert.equal(words.at(-1), "Posting is ready!Get started");
+    assert.equal(local.getItem("snap.intro.seen"), null, "not seen until it ends");
+    // the chevrons are not read out
+    const skip = tourButton(nodes, "tour-skip");
+    assert.equal(skip.tag, "button");
+    assert.equal(skip.children[1].attrs["aria-hidden"], "true");
+    // small ink words, underlined, no background; a row of no height held at the top, so the
+    // walk-through's spacing is as before
+    const css = readFileSync(join(root, "styles.css"), "utf8");
+    assert.match(css, /\.tour-skip-row \{ position: sticky; top: 90px; z-index: 2; height: 0; \}/);
+    assert.match(css, /\.tour-skip \{ position: absolute;[^}]* background: none; color: var\(--ink\); font-size: 15px;/);
+    assert.match(css, /\.tour-skip-words \{ text-decoration: underline;/);
+
+    const scrolls = [];
+    win.scrollTo = (x, y) => scrolls.push([x, y]);
+    skip.fire("click");
+    assert.equal(body.classList.contains("touring"), false);
+    assert.deepEqual(tourParts(nodes), [], "the walk-through's nodes taken out");
+    assert.deepEqual(shown(), ["landing"], "the landing, and no agreements before an account");
+    assert.equal(nodes.get("about-link").hidden, false, "the landing's foot");
+    assert.deepEqual(scrolls.at(-1), [0, 0], "from the top");
+    assert.equal(local.getItem("snap.intro.seen"), "yes");
+
+    // the next open on this phone: the landing directly
+    const again = await loadPage({ local, fetchImpl: fakePc().fetch });
+    assert.equal(globalThis.document.body.classList.contains("touring"), false);
+    assert.equal(again.nodes.get("landing").hidden, false);
+    assert.equal(again.nodes.get("work").hidden, true);
+});
+
+test("the first open's last button, Get started: the landing from the top, the intro seen; in Chinese, its own words", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore({ "snap.language": "zh" });
+    const { nodes, win } = await loadPage({ local, fetchImpl: fakePc().fetch });
+    const body = globalThis.document.body;
+    assert.equal(wordsOf(tourButton(nodes, "tour-skip")), "跳过介绍›››");
+    assert.equal(tourButton(nodes, "tour-done").textContent, "开始使用");
+    t.mock.timers.tick(5000);
+    const scrolls = [];
+    win.scrollTo = (x, y) => scrolls.push([x, y]);
+    tourButton(nodes, "tour-done").fire("click");
+    assert.equal(body.classList.contains("touring"), false);
+    assert.equal(nodes.get("landing").hidden, false);
+    assert.equal(nodes.get("work").hidden, true);
+    assert.equal(nodes.get("agree").hidden, true);
+    assert.deepEqual(scrolls.at(-1), [0, 0]);
+    assert.equal(local.getItem("snap.intro.seen"), "yes");
+});
+
+test("an account on this phone opens as before: no walk-through first, whether or not the intro was seen", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore(GOOD);
+    const pc = fakePc({ me: { ...MICHAL_ME, registered: true } });
+    const { nodes } = await loadPage({ local, fetchImpl: pc.fetch });
+    assert.equal(globalThis.document.body.classList.contains("touring"), false);
+    assert.equal(nodes.get("landing").hidden, true);
+    assert.equal(nodes.get("work").hidden, false);
+    assert.equal(nodes.get("tour-link").hidden, false, "How Snap works in the footer");
+    assert.equal(local.getItem("snap.intro.seen"), null);
+    // a sign-in link opened on a new phone: signing in, not the walk-through
+    const linked = await loadPage({ hash: "#login=tok-1", fetchImpl: signinPc().fetch });
+    assert.equal(globalThis.document.body.classList.contains("touring"), false);
+    assert.equal(linked.nodes.get("work").hidden, false);
+});
+
+test("Looks good on a phone that has seen the intro: straight to Before you start, or the goods screen once agreed; How Snap works still replays it, Skip intro leading where its last button does", async (t) => {
+    // Michal, 2026-11-17: the walk-through is first, before sign-up; seen, it is not played again after Looks good
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const lookGood = async (local) => {
+        const pc = fakePc({ me: structuredClone(CONNECTED_ME) });
+        pc.address = structuredClone(NEW_ADDRESS);
+        pc.seller = structuredClone(SELLER_SAVED);
+        pc.policies = { ...structuredClone(POLICIES), confirmed: false };
+        const page = await loadPage({ local, fetchImpl: pc.fetch });
+        await settle();
+        const n = page.nodes;
+        n.get("signup-address-line").value = "12 Oak St, Chicago, IL 60601";
+        n.get("signup-address-line").fire("input");
+        n.get("signup-address").fire("click");
+        await settle();
+        assert.equal(n.get("signup-policies-ok").disabled, false);
+        n.get("signup-policies-ok").fire("click");
+        await settle();
+        assert.equal(pc.confirms, 1);
+        return n;
+    };
+    const body = () => globalThis.document.body;
+    const n = await lookGood(memoryStore({ "snap.session": "sess-1", ...SEEN }));
+    assert.equal(body().classList.contains("touring"), false, "no walk-through a second time");
+    assert.equal(n.get("agree").hidden, false, "Before you start");
+    assert.equal(body().classList.contains("agreeing"), true);
+    n.get("agree-ok").fire("click");
+    assert.equal(n.get("agree").hidden, true);
+    assert.equal(n.get("work").hidden, false);
+
+    // agreed on this phone already: the goods screen
+    const agreed = await lookGood(memoryStore({ "snap.session": "sess-1", "snap.agreed": "yes", ...SEEN }));
+    assert.equal(body().classList.contains("touring"), false);
+    assert.equal(agreed.get("agree").hidden, true);
+    assert.equal(agreed.get("work").hidden, false);
+
+    // not seen on this phone: the walk-through, as before; its Skip intro, then Before you start
+    const local = memoryStore({ "snap.session": "sess-1" });
+    const fresh = await lookGood(local);
+    assert.equal(body().classList.contains("touring"), true);
+    assert.equal(tourButton(fresh, "tour-done").textContent, "Snap your first item", "an account: something to snap");
+    tourButton(fresh, "tour-skip").fire("click");
+    assert.equal(body().classList.contains("touring"), false);
+    assert.equal(fresh.get("agree").hidden, false, "where the last button leads");
+    assert.equal(fresh.get("landing").hidden, true);
+    assert.equal(local.getItem("snap.intro.seen"), "yes");
+    fresh.get("agree-ok").fire("click");
+
+    // How Snap works any time after: the walk-through again, Skip intro on it too
+    assert.equal(fresh.get("tour-link").hidden, false);
+    fresh.get("tour-link").fire("click");
+    assert.equal(body().classList.contains("touring"), true);
+    assert.equal(wordsOf(tourParts(fresh)[0]), "Skip intro›››");
+    tourButton(fresh, "tour-skip").fire("click");
+    assert.equal(body().classList.contains("touring"), false);
+    assert.equal(fresh.get("work").hidden, false, "the goods screen, the agreements given");
+    assert.equal(fresh.get("agree").hidden, true);
 });
