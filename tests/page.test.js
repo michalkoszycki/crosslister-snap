@@ -742,6 +742,12 @@ test("the header carries the A2 mark and the $nap wordmark; the font comes from 
     assert.ok(css.includes(`url("fonts/Caveat.woff2?v=${VERSION}")`), "Caveat's URL carries VERSION");
     assert.ok(existsSync(join(root, "fonts/Caveat.woff2")));
     assert.ok(existsSync(join(root, "fonts/Caveat-OFL.txt")));
+    // the Polish letters' part of each face, used only for them (Michal, 2026-11-19: "polish characters do not look good")
+    for (const face of ["Manrope", "Caveat"]) {
+        assert.ok(css.includes(`url("fonts/${face}-latin-ext.woff2?v=${VERSION}")`), `${face}'s Latin Extended part carries VERSION`);
+        assert.ok(existsSync(join(root, `fonts/${face}-latin-ext.woff2`)));
+    }
+    assert.match(css, /unicode-range: U\+0100-02BA/, "the extended part only for its letters");
 });
 
 test("nothing is logged to the console, so the key never is", () => {
