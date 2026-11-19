@@ -12784,8 +12784,8 @@ test("How Snap works: the walk-through over the goods screen, then the agreement
     assert.equal(nodes.get("tour-link").hidden, true, "not while it runs");
     const words = () => tourParts(nodes).map((n) => (n.tag === "ul" ? `strip of ${n.children.length}` : wordsOf(n)));
     assert.deepEqual(words(), [
-        // Skip intro over the title, taking no room (Michal, 2026-11-17)
-        "Skip intro›››",
+        // Skip intro first, taking no room, held in the bottom corner (Michal, 2026-11-17; 2026-11-19)
+        "Skip intro",
         "How it works:",
         "1 - 2 - 3",
         "1. Snap some photos",
@@ -12857,21 +12857,23 @@ test("a first open with no account: the walk-through first, Skip intro over it; 
     assert.equal(nodes.get("about-link").hidden, true, "its foot as a registered account's");
     assert.equal(nodes.get("tour-link").hidden, true);
     const words = tourParts(nodes).map((n) => (n.tag === "ul" ? `strip of ${n.children.length}` : wordsOf(n)));
-    assert.equal(words[0], "Skip intro›››");
+    assert.equal(words[0], "Skip intro");
     assert.equal(words[1], "How it works:");
     // no account yet: the last button gets him started, there is nothing to snap with
     assert.equal(words.at(-1), "Posting is ready!Get started");
     assert.equal(local.getItem("snap.intro.seen"), null, "not seen until it ends");
-    // the chevrons are not read out
+    // Skip intro alone, no chevrons after it; beside it the scroll hint, not read out
     const skip = tourButton(nodes, "tour-skip");
     assert.equal(skip.tag, "button");
-    assert.equal(skip.children[1].attrs["aria-hidden"], "true");
-    // small ink words, underlined, no background; a row of no height held at the top, so the
-    // walk-through's spacing is as before
+    assert.equal(skip.children.length, 1);
+    // small ink words, underlined, no background, fixed in the bottom right corner; the chevrons
+    // down fixed at the bottom's centre, bobbing; a row of no height, the walk-through as before
+    // (Michal, 2026-11-19)
     const css = readFileSync(join(root, "styles.css"), "utf8");
-    assert.match(css, /\.tour-skip-row \{ position: sticky; top: 90px; z-index: 2; height: 0; \}/);
-    assert.match(css, /\.tour-skip \{ position: absolute;[^}]* background: none; color: var\(--ink\); font-size: 15px;/);
+    assert.match(css, /\.tour-skip-row \{ height: 0; \}/);
+    assert.match(css, /\.tour-skip \{ position: fixed; right: [^}]* bottom: [^}]* background: none; color: var\(--ink\); font-size: 15px;/);
     assert.match(css, /\.tour-skip-words \{ text-decoration: underline;/);
+    assert.match(css, /\.tour-scroll \{ position: fixed; left: 50%; bottom: [^}]* animation: tour-scroll-bob /);
 
     const scrolls = [];
     win.scrollTo = (x, y) => scrolls.push([x, y]);
@@ -12895,7 +12897,7 @@ test("the first open's last button, Get started: the landing from the top, the i
     const local = memoryStore({ "snap.language": "zh" });
     const { nodes, win } = await loadPage({ local, fetchImpl: fakePc().fetch });
     const body = globalThis.document.body;
-    assert.equal(wordsOf(tourButton(nodes, "tour-skip")), "跳过介绍›››");
+    assert.equal(wordsOf(tourButton(nodes, "tour-skip")), "跳过介绍");
     assert.equal(tourButton(nodes, "tour-done").textContent, "开始使用");
     t.mock.timers.tick(5000);
     const scrolls = [];
@@ -12977,7 +12979,7 @@ test("Looks good on a phone that has seen the intro: straight to Before you star
     assert.equal(fresh.get("tour-link").hidden, false);
     fresh.get("tour-link").fire("click");
     assert.equal(body().classList.contains("touring"), true);
-    assert.equal(wordsOf(tourParts(fresh)[0]), "Skip intro›››");
+    assert.equal(wordsOf(tourParts(fresh)[0]), "Skip intro");
     tourButton(fresh, "tour-skip").fire("click");
     assert.equal(body().classList.contains("touring"), false);
     assert.equal(fresh.get("work").hidden, false, "the goods screen, the agreements given");

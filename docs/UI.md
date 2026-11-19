@@ -164,10 +164,13 @@ hand-written (fonts/Caveat.woff2, OFL licence).
 **Skip intro ›››** (Michal, 2026-11-17: "a small button to skip intro ... Maybe without
 background, just black text underlined like a link with some three chevron arrows to the right
 ... better in the center of the screen as you start scrolling. Don't disturb spacing of the
-already existing animation"): small ink words (black, white in the dark) underlined, the three
-chevrons after them, no background, centred in the room over **How it works:**; it takes no
-room (a row of no height), so the walk-through spaces as before, and it stays at the top of the
-screen as he scrolls. A tap leads where the last button does: the landing before there is an
+already existing animation"; 2026-11-19: "the skip intro should move to the right bottom corner of
+the screen. eliminate the chevrons behind it"): small ink words (black, white in the dark)
+underlined, no background, held in the screen's bottom right corner as he scrolls. Beside it, at
+the bottom's centre, two chevrons pointing down, bobbing, say there is more below (2026-11-19: "it
+is not clear that you should scroll down. add the usual symbol"); they go once the bottom is in
+sight. The screen's foot fades to the page behind both, so what scrolls under them fades out. Both
+sit in a row of no height, so the walk-through spaces as before. A tap leads where the last button does: the landing before there is an
 account, else the agreements the first time, else the goods screen. Ended either way, the phone
 has seen it (4.1).
 
@@ -574,7 +577,7 @@ controls disabled, the row edits refused with the server's words); **an expired 
   left open: the Reviewed mark keeps its "Admin" head while replies say "Snap"; a box being typed
   in is not drawn again while nothing in its list changed.
 - 2026-11-17: the walk-through first (4.1, 4.4): a first open with no account plays it before the
-  landing, once per phone (`snap.intro.seen`); **Skip intro ›››** over its title, taking no room
+  landing, once per phone (`snap.intro.seen`); **Skip intro** (since 2026-11-19 in the bottom right corner, with chevrons down at the bottom's centre), taking no room
   and staying at the top as he scrolls; its last button says **Get started** before there is an
   account and leads to the landing; Looks good on a phone that has seen it goes straight to Before
   you start. Where the build settled what the ask left open: the footer's About and privacy is

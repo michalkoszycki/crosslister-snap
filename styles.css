@@ -4,7 +4,7 @@
 
 @font-face {
     font-family: "Manrope";
-    src: url("fonts/Manrope.woff2?v=2.47.0") format("woff2");
+    src: url("fonts/Manrope.woff2?v=2.47.1") format("woff2");
     font-weight: 200 800;
     font-display: swap;
 }
@@ -772,7 +772,7 @@ input[type="text"].kept { background: transparent; color: var(--muted); }
    hand-written note a long way from the next; the rest of the screen waits */
 @font-face {
     font-family: "Caveat";
-    src: url("fonts/Caveat.woff2?v=2.47.0") format("woff2");
+    src: url("fonts/Caveat.woff2?v=2.47.1") format("woff2");
     font-weight: 400 700;
     font-display: swap;
 }
@@ -793,10 +793,18 @@ body.touring .venue-btn:disabled { opacity: 1; }
    Don't disturb spacing of the already existing animation"). The row sits at the title's top (its
    90 px margin falls outside #work), the words up in that room; held 90 px down, they ride 20 px
    under the screen's top */
-.tour-skip-row { position: sticky; top: 90px; z-index: 2; height: 0; }
-.tour-skip { position: absolute; top: -70px; left: 50%; translate: -50% 0; min-height: 40px; margin: 0; padding: 8px 12px; border: none; border-radius: 0; background: none; color: var(--ink); font-size: 15px; font-weight: 700; white-space: nowrap; }
+/* Skip intro in the screen's bottom right corner, two chevrons down bobbing at the bottom's centre:
+   both held on the screen, in a row of no height (Michal, 2026-11-19) */
+.tour-skip-row { height: 0; }
+/* the screen's foot fades to the page behind them, so what scrolls under them fades out, not into them */
+.tour-skip-row::before { content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; height: calc(78px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to bottom, transparent, var(--bg) 62%); pointer-events: none; }
+.tour-skip { position: fixed; right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 5; min-height: 40px; margin: 0; padding: 8px 10px; border: none; border-radius: 0; background: none; color: var(--ink); font-size: 15px; font-weight: 700; white-space: nowrap; }
 .tour-skip-words { text-decoration: underline; text-underline-offset: 3px; }
-.tour-chevrons { margin-left: 6px; letter-spacing: -0.12em; }
+.tour-scroll { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 5; display: block; width: 32px; height: 34px; color: var(--ink); pointer-events: none; animation: tour-scroll-bob 1.3s ease-in-out infinite; }
+.tour-scroll svg { display: block; }
+.tour-scroll.tour-scroll-end { display: none; }
+@keyframes tour-scroll-bob { 0%, 100% { translate: -50% -5px; opacity: 0.5; } 50% { translate: -50% 5px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tour-scroll { animation: none; translate: -50% 0; } }
 /* the walk-through's venue button: shown, never pressed; it runs, then turns posted */
 .tour-venue { width: 62%; margin: 0 auto; pointer-events: none; }
 /* the tip above it, gone once it runs (Michal, 2026-11-02) */

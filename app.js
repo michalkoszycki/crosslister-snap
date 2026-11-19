@@ -11,7 +11,7 @@
 // queue serves both, the shown item's requests first), and a job running for
 // the hidden item keeps being polled, its link waiting when he switches back.
 
-import { VERSION } from "./version.js?v=2.47.0";
+import { VERSION } from "./version.js?v=2.47.1";
 import {
     adminLink,
     anyActive,
@@ -267,8 +267,8 @@ import {
     deleteError,
     newAccount,
     SIGNED_OUT,
-} from "./core.js?v=2.47.0";
-import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.47.0";
+} from "./core.js?v=2.47.1";
+import { badgeText, NOTE_DEBOUNCE_MS, nextTask, noteDirty, retryDelayMs } from "./queue.js?v=2.47.1";
 import {
     addVenue,
     applyWrap,
@@ -327,8 +327,8 @@ import {
     signOutDevice,
     signOutOthers,
     startSession,
-} from "./pc.js?v=2.47.0";
-import { shrinkPhoto } from "./shrink.js?v=2.47.0";
+} from "./pc.js?v=2.47.1";
+import { shrinkPhoto } from "./shrink.js?v=2.47.1";
 import {
     bookCard,
     bookPriceValue,
@@ -341,9 +341,9 @@ import {
     priceNote,
     scanHint,
     SEARCH_DEBOUNCE_MS,
-} from "./book.js?v=2.47.0";
-import { canScan, readIsbn } from "./scan.js?v=2.47.0";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.47.0";
+} from "./book.js?v=2.47.1";
+import { canScan, readIsbn } from "./scan.js?v=2.47.1";
+import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.47.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -729,6 +729,8 @@ let touring = false;
 let tourNodes = [];
 /** Watches the walk-through's parts come into view, each faded in once it does. */
 let tourSeen = null;
+/** The walk-through's scroll watch: its chevrons gone once the bottom is in sight. */
+let tourScroll = null;
 /** The walk-through's timers (the venue button running, then posted), cleared when it ends. */
 let tourTimers = [];
 /** The walk-through's words on screen, each node with its English, for a language changed meanwhile. */
@@ -6598,7 +6600,6 @@ const TOUR_END = tKey("Snap your first item");
 const TOUR_START = tKey("Get started");
 /** Over the title, with three chevrons after it (Michal, 2026-11-17: "a small button to skip intro"). */
 const TOUR_SKIP = tKey("Skip intro");
-const TOUR_CHEVRONS = "›››";
 /** The example strip: five photos, two of them marked AI (Michal, 2026-11-02). */
 const TOUR_PHOTOS = 5;
 const TOUR_AI_MARKED = [1, 3];
@@ -6652,10 +6653,11 @@ function startTour() {
     head.textContent = t(TOUR_TITLE);
     tourWords.push([head, TOUR_TITLE]);
     el.work.insertBefore(head, el.work.firstChild);
-    // Skip intro, small, centred in the room over the title and staying in sight as he scrolls; it
-    // takes no room, so the walk-through spaces as before (Michal, 2026-11-17: "just black text
-    // underlined like a link with some three chevron arrows to the right ... better in the center
-    // of the screen as you start scrolling. Don't disturb spacing of the already existing animation")
+    // Skip intro, small ink words underlined, held in the screen's bottom right corner; beside it, at
+    // the bottom's centre, two chevrons down bobbing, saying there is more below, gone at the end.
+    // Both in a row of no height, so the walk-through spaces as before (Michal, 2026-11-17; 2026-11-19:
+    // "not clear that you should scroll down. add the usual symbol ... the skip intro should move to
+    // the right bottom corner of the screen. eliminate the chevrons behind it")
     const skipRow = tourNode("div", "tour-node tour-skip-row");
     const skip = document.createElement("button");
     skip.type = "button";
@@ -6665,13 +6667,22 @@ function startTour() {
     skipWords.className = "tour-skip-words";
     skipWords.textContent = t(TOUR_SKIP);
     tourWords.push([skipWords, TOUR_SKIP]);
-    const chevrons = document.createElement("span");
-    chevrons.className = "tour-chevrons";
-    chevrons.setAttribute("aria-hidden", "true");
-    chevrons.textContent = TOUR_CHEVRONS;
-    skip.append(skipWords, chevrons);
+    skip.append(skipWords);
     skip.addEventListener("click", finish);
-    skipRow.append(skip);
+    const more = document.createElement("span");
+    more.className = "tour-scroll";
+    more.setAttribute("aria-hidden", "true");
+    more.innerHTML =
+        '<svg viewBox="0 0 32 34" width="32" height="34" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5l10 10 10-10"/><path d="M6 17l10 10 10-10"/></svg>';
+    skipRow.append(skip, more);
+    // the chevrons go once the bottom is in sight: nothing more to scroll to
+    tourScroll = () => {
+        const win = globalThis.window;
+        const page = document.documentElement;
+        const left = page && typeof page.scrollHeight === "number" ? page.scrollHeight - (win.scrollY || 0) - (win.innerHeight || 0) : Infinity;
+        more.classList.toggle("tour-scroll-end", left < 80);
+    };
+    if (typeof globalThis.window.addEventListener === "function") globalThis.window.addEventListener("scroll", tourScroll, { passive: true });
     el.work.insertBefore(skipRow, head);
     const steps = tourNode("p", "tour-node tour-steps tour-hand");
     steps.textContent = TOUR_STEPS;
@@ -6796,6 +6807,8 @@ function endTour() {
     writeText("localStorage", INTRO_KEY, "yes");
     if (tourSeen) tourSeen.disconnect();
     tourSeen = null;
+    if (tourScroll && typeof globalThis.window.removeEventListener === "function") globalThis.window.removeEventListener("scroll", tourScroll);
+    tourScroll = null;
     for (const timer of tourTimers) clearTimeout(timer);
     tourTimers = [];
     for (const node of tourNodes) node.remove();
