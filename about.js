@@ -7,7 +7,7 @@
 // is the app's own choice, kept in this browser's storage, or with none chosen the phone's own as
 // the app takes it (i18n.js); nothing is fetched, nothing is sent.
 
-import { htmlLang, language, preferredLanguages, setLanguage, startingLanguage, t } from "./i18n.js?v=2.47.1";
+import { htmlLang, language, preferredLanguages, setLanguage, startingLanguage, t } from "./i18n.js?v=2.48.0";
 
 /** The attributes a page marks for translation, each as data-t-<attribute>. */
 const ATTRIBUTES = ["placeholder", "aria-label", "title"];

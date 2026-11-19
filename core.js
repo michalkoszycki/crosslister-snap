@@ -3,8 +3,8 @@
 // by `node --test`. The upload queue's own rules (what goes next, how long
 // to wait) are in queue.js; the state they act on is reduced here.
 
-import { noteDirty, unsent } from "./queue.js?v=2.47.1";
-import { t, tKey } from "./i18n.js?v=2.47.1";
+import { noteDirty, unsent } from "./queue.js?v=2.48.0";
+import { t, tKey } from "./i18n.js?v=2.48.0";
 import {
     bookListings,
     bookPriceValue,
@@ -16,7 +16,7 @@ import {
     FORMATS,
     formatOf,
     money,
-} from "./book.js?v=2.47.1";
+} from "./book.js?v=2.48.0";
 
 // --- the item name and photo file names ------------------------------------
 
