@@ -3950,8 +3950,11 @@ export function presentNote(record) {
 // goods snapped with the box empty are made on the PC unnamed (POST /items {"name": ""}), and
 // the draft's title names them.
 
-/** What the photos of goods with no name are called, and the first word of their label. */
-export const UNNAMED = "Unnamed";
+/**
+ * What the photos of goods with no name are called (in English: a file name on the server), and
+ * the first word of their label (in the chosen language: unnamedWord).
+ */
+export const UNNAMED = tKey("Unnamed");
 
 /** The Snap line while a server that wants names (needsName) has none: as before 2.15.0. */
 export const TYPE_NAME_HINT = tKey("Type the item name to start snapping.");
@@ -3969,8 +3972,8 @@ export const NAME_WAIT_HINT = tKey("This server needs the item name: type it so 
 export function unnamedWord(serverName) {
     const name = typeof serverName === "string" ? serverName.trim() : "";
     const at = /^Unnamed \d{4}-\d{2}-\d{2} (\d{2})(\d{2})$/.exec(name);
-    if (at) return `${UNNAMED} ${at[1]}:${at[2]}`;
-    return name || UNNAMED;
+    if (at) return `${t(UNNAMED)} ${at[1]}:${at[2]}`;
+    return name || t(UNNAMED);
 }
 
 /**
@@ -4570,7 +4573,7 @@ export function rowPhotos(row) {
     const list = Array.isArray(row.photos) ? row.photos : [];
     return list
         .filter((p) => p && Number.isInteger(p.n) && p.n > 0)
-        .map((p) => ({ n: p.n, name: plain(p.name) || `photo ${p.n}` }));
+        .map((p) => ({ n: p.n, name: plain(p.name) || t("photo {n}", { n: p.n }) }));
 }
 
 /**

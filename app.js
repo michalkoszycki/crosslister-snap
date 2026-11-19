@@ -343,7 +343,7 @@ import {
     SEARCH_DEBOUNCE_MS,
 } from "./book.js?v=2.47.1";
 import { canScan, readIsbn } from "./scan.js?v=2.47.1";
-import { htmlLang, LANGUAGES, languageOf, setLanguage, t, tKey } from "./i18n.js?v=2.47.1";
+import { htmlLang, LANGUAGES, languageOf, preferredLanguages, setLanguage, startingLanguage, t, tKey } from "./i18n.js?v=2.47.1";
 
 const COUNTER_KEY = "snap.counters";
 const PC_KEY = "snap.pc";
@@ -3274,7 +3274,7 @@ function oneLine(text) {
 /**
  * The words in a language: index.html's own (data-t), <html lang>, both rows of language chips;
  * the caller then redraws app.js's own words (redrawWords).
- * @param {"en"|"zh"|"es"} lang
+ * @param {import("./i18n.js").Language} lang
  */
 function applyLanguage(lang) {
     setLanguage(lang);
@@ -3292,7 +3292,7 @@ function applyLanguage(lang) {
 /**
  * A language chip, on the landing or under This phone: at once, remembered on this phone, every
  * part on screen drawn again in it.
- * @param {"en"|"zh"|"es"} lang
+ * @param {import("./i18n.js").Language} lang
  */
 function chooseLanguage(lang) {
     writeText("localStorage", LANGUAGE_KEY, lang);
@@ -3354,7 +3354,12 @@ function rewordRows() {
     }
 }
 
-/** At start: each marked element's English kept as index.html wrote it, then the language this phone chose. */
+/**
+ * At start, before the first paint: each marked element's English kept as index.html wrote it,
+ * then the language chosen on this phone's chips, or with none chosen the phone's own
+ * (Michal, 2026-11-19: so the first-open walk-through is already in it), not stored, so the page
+ * follows the phone until a chip is chosen.
+ */
 function startLanguage() {
     const selector = ["[data-t]", ...TRANSLATED_ATTRIBUTES.map((a) => `[data-t-${a}]`)].join(", ");
     marked = [...document.querySelectorAll(selector)].map((node) => ({
@@ -3362,7 +3367,7 @@ function startLanguage() {
         text: node.hasAttribute("data-t") ? [oneLine(node.textContent), node.textContent ?? ""] : null,
         attributes: TRANSLATED_ATTRIBUTES.filter((a) => node.hasAttribute(`data-t-${a}`)).map((a) => [a, oneLine(node.getAttribute(a)), node.getAttribute(a) ?? ""]),
     }));
-    applyLanguage(languageOf(readText("localStorage", LANGUAGE_KEY)));
+    applyLanguage(startingLanguage(readText("localStorage", LANGUAGE_KEY), preferredLanguages()));
 }
 
 /** The inventory foldout: opened, it shows the list and asks the PC for it. */

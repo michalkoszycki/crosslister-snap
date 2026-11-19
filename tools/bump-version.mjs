@@ -24,7 +24,7 @@ const files = [
     "shrink.js",
     "book.js",
     "scan.js",
-    "i18n.js", // its catalogs' imports (lang/zh.js, lang/es.js)
+    "i18n.js", // its catalogs' imports (lang/zh.js, lang/es.js, lang/pl.js)
     "about.js", // about.html's words in the chosen language: its i18n.js import
     "version.js",
 ];

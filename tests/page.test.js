@@ -22,7 +22,7 @@ const markedHtml = readFileSync(join(root, "index.html"), "utf8");
 // what the static checks read: the page with those marks left out, so a check of its markup and
 // its English stays one of markup and English (the marks have tests of their own)
 const html = markedHtml.replace(/ data-t(?:-[\w-]+)?(?=[\s>])/g, "");
-const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js", "i18n.js", "lang/zh.js", "lang/es.js", "about.js"];
+const PAGE_FILES = ["app.js", "core.js", "pc.js", "queue.js", "shrink.js", "book.js", "scan.js", "version.js", "i18n.js", "lang/zh.js", "lang/es.js", "lang/pl.js", "about.js"];
 
 function idsIn(source) {
     return new Set([...source.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
@@ -466,6 +466,7 @@ test("Admin reads top to bottom: the inventory and a listing's foldouts, Setting
         "language-phone-en",
         "language-phone-zh",
         "language-phone-es",
+        "language-phone-pl",
         "phone-install",
         "phone-install-steps",
         "phone-installed",
@@ -1338,7 +1339,7 @@ test("Language: a chip on the landing words the page at once and is kept on this
     const local = memoryStore(SEEN);
     const { nodes } = await loadPage({ local });
     const page = globalThis.document.documentElement;
-    const chosen = (place) => ["en", "zh", "es"].filter((v) => nodes.get(`language-${place}-${v}`).attrs["aria-pressed"] === "true");
+    const chosen = (place) => ["en", "zh", "es", "pl"].filter((v) => nodes.get(`language-${place}-${v}`).attrs["aria-pressed"] === "true");
     assert.equal(nodes.get("landing").hidden, false);
     assert.equal(page.lang, "en", "English by default");
     assert.deepEqual(chosen("landing"), ["en"]);
@@ -1352,6 +1353,8 @@ test("Language: a chip on the landing words the page at once and is kept on this
     assert.deepEqual(chosen("phone"), ["zh"], "the chips under This phone agree");
     assert.equal(nodes.get("landing-key").textContent, await said("zh", "I have a key"));
     assert.equal(nodes.get("language-landing").attrs["aria-label"], await said("zh", "Language"));
+    // customize's Save as default, which app.js words only once tapped (2026-11-19: it showed in English)
+    assert.equal(nodes.get("customize-save-default").textContent, await said("zh", "Save as default"));
 
     // a reload keeps it; the chips under This phone choose too, English back as it was
     const again = await loadPage({ local });
@@ -1360,6 +1363,10 @@ test("Language: a chip on the landing words the page at once and is kept on this
     again.nodes.get("language-phone-es").fire("click");
     assert.equal(local.getItem("snap.language"), "es");
     assert.equal(again.nodes.get("landing-key").textContent, await said("es", "I have a key"));
+    again.nodes.get("language-phone-pl").fire("click");
+    assert.equal(local.getItem("snap.language"), "pl");
+    assert.equal(globalThis.document.documentElement.lang, "pl");
+    assert.equal(again.nodes.get("landing-key").textContent, await said("pl", "I have a key"));
     again.nodes.get("language-phone-en").fire("click");
     assert.equal(local.getItem("snap.language"), "en");
     assert.equal(again.nodes.get("landing-key").textContent, "I have a key");
@@ -7807,6 +7814,7 @@ test("the landing, sign-in and the home-screen banner come first in main, before
         "language-landing-en",
         "language-landing-zh",
         "language-landing-es",
+        "language-landing-pl",
         "landing-status",
         "signin",
         "signin-back",
@@ -9365,8 +9373,8 @@ test("about.html: what Snap is, privacy and terms, the version; one script, its 
 });
 
 let abouts = 0;
-/** about.html run by about.js with `stored` as this phone's language: its marked nodes by English. */
-async function aboutIn(stored) {
+/** about.html run by about.js with `stored` as this phone's language, `languages` the phone's own: its marked nodes by English. */
+async function aboutIn(stored, languages = []) {
     const about = readFileSync(join(root, "about.html"), "utf8");
     const nodes = new Map([...idsIn(about)].map((id) => [id, fakeElement(id)]));
     nodes.get("about-governs").hidden = true;
@@ -9381,6 +9389,7 @@ async function aboutIn(stored) {
         getElementById: (id) => nodes.get(id) ?? null,
     };
     Object.defineProperty(globalThis, "localStorage", { value: memoryStore(stored ? { "snap.language": stored } : {}), configurable: true, writable: true });
+    Object.defineProperty(globalThis, "navigator", { value: { onLine: true, languages }, configurable: true, writable: true });
     abouts += 1;
     await import(`../about.js?run=${abouts}`);
     return { byEnglish, nodes, page: globalThis.document.documentElement };
@@ -9391,13 +9400,19 @@ test("about.js: the about page in the language chosen on this phone, the English
     assert.equal(english.page.lang, "en");
     assert.equal(english.byEnglish.get("What Snap is").textContent, "What Snap is");
     assert.equal(english.nodes.get("about-governs").hidden, true, "no translation, no governing line");
-    for (const lang of ["zh", "es"]) {
+    for (const lang of ["zh", "es", "pl"]) {
         const { byEnglish, nodes, page } = await aboutIn(lang);
-        assert.equal(page.lang, lang === "zh" ? "zh-Hans" : "es");
+        assert.equal(page.lang, lang === "zh" ? "zh-Hans" : lang);
         assert.equal(byEnglish.get("What Snap is").textContent, await said(lang, "What Snap is"));
         assert.equal(byEnglish.get("The service may stop or change at any time.").textContent, await said(lang, "The service may stop or change at any time."));
         assert.equal(nodes.get("about-governs").hidden, false, `${lang}: the English governs`);
     }
+    // nothing chosen: the phone's own language, as the app takes it; a choice wins over it (2026-11-19)
+    const phone = await aboutIn(null, ["pl-PL", "en"]);
+    assert.equal(phone.page.lang, "pl");
+    assert.equal(phone.byEnglish.get("What Snap is").textContent, await said("pl", "What Snap is"));
+    assert.equal((await aboutIn("en", ["pl-PL"])).page.lang, "en");
+    assert.equal((await aboutIn(null, ["de-DE"])).page.lang, "en");
 });
 
 /** GET /me/address for a seller who has saved none yet: one shared address, eBay the venue that uses it. */
@@ -12909,6 +12924,54 @@ test("the first open's last button, Get started: the landing from the top, the i
     assert.equal(nodes.get("agree").hidden, true);
     assert.deepEqual(scrolls.at(-1), [0, 0]);
     assert.equal(local.getItem("snap.intro.seen"), "yes");
+});
+
+test("a first open on a phone set to Polish: the walk-through in Polish before any chip is tapped, nothing stored; English tapped is kept and wins (Michal, 2026-11-19)", async (t) => {
+    // "would be good if the site was reading ... the phone language, so that the how it works can
+    // immediately show in a language that is relevant to the user"
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const local = memoryStore();
+    const polish = { languages: ["pl-PL", "en-US"], language: "pl-PL" };
+    const { nodes } = await loadPage({ local, fetchImpl: fakePc().fetch, agent: polish });
+    const page = globalThis.document.documentElement;
+    const chosen = (place) => ["en", "zh", "es", "pl"].filter((v) => nodes.get(`language-${place}-${v}`).attrs["aria-pressed"] === "true");
+    assert.equal(globalThis.document.body.classList.contains("touring"), true);
+    assert.equal(page.lang, "pl");
+    const words = tourParts(nodes).map((n) => (n.tag === "ul" ? `strip of ${n.children.length}` : wordsOf(n)));
+    assert.notEqual(await said("pl", "How it works:"), "How it works:", "Polish has the title");
+    assert.equal(words[1], await said("pl", "How it works:"));
+    assert.equal(words[0], await said("pl", "Skip intro"));
+    assert.deepEqual(chosen("landing"), ["pl"], "Polski shown chosen");
+    assert.deepEqual(chosen("phone"), ["pl"]);
+    assert.equal(local.getItem("snap.language"), null, "the phone's language is not stored");
+
+    tourButton(nodes, "tour-skip").fire("click");
+    assert.equal(nodes.get("landing-key").textContent, await said("pl", "I have a key"));
+    assert.equal(local.getItem("snap.language"), null);
+    nodes.get("language-landing-en").fire("click");
+    assert.equal(local.getItem("snap.language"), "en");
+    assert.equal(page.lang, "en");
+    assert.deepEqual(chosen("landing"), ["en"]);
+    assert.equal(nodes.get("landing-key").textContent, "I have a key");
+
+    // the next open on the same Polish phone: the English chosen wins
+    const again = await loadPage({ local, fetchImpl: fakePc().fetch, agent: polish });
+    assert.equal(globalThis.document.documentElement.lang, "en");
+    assert.equal(again.nodes.get("landing-key").textContent, "I have a key");
+});
+
+test("a phone in a language Snap lacks opens in English; its first we have is taken (zh-TW, es-MX)", async () => {
+    const german = await loadPage({ local: memoryStore(SEEN), agent: { languages: ["de-DE"] } });
+    assert.equal(globalThis.document.documentElement.lang, "en");
+    assert.equal(german.nodes.get("landing-key").textContent, "I have a key");
+    const taiwan = await loadPage({ local: memoryStore(SEEN), agent: { languages: ["zh-TW"] } });
+    assert.equal(globalThis.document.documentElement.lang, "zh-Hans");
+    assert.equal(taiwan.nodes.get("landing-key").textContent, await said("zh", "I have a key"));
+    const mexico = await loadPage({ local: memoryStore(SEEN), agent: { languages: ["de-DE", "es-MX"] } });
+    assert.equal(mexico.nodes.get("landing-key").textContent, await said("es", "I have a key"));
+    // no navigator.languages: navigator.language
+    const one = await loadPage({ local: memoryStore(SEEN), agent: { language: "pl" } });
+    assert.equal(one.nodes.get("landing-key").textContent, await said("pl", "I have a key"));
 });
 
 test("an account on this phone opens as before: no walk-through first, whether or not the intro was seen", async (t) => {

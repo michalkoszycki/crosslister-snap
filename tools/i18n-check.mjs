@@ -9,7 +9,9 @@
 //   MISSING  English the page shows that the catalog (lang/<language>.js) has no entry for:
 //            it shows in English until the pass translates it;
 //   UNUSED   catalog entries whose English the page no longer shows: delete them;
-//   BROKEN   entries whose {placeholders} are not the English key's.
+//   BROKEN   entries whose {placeholders} are not the English key's (each count form's, for a
+//            line split by "|" into its forms; only a line with {n} may be split).
+// Every language in i18n.js's CATALOGS is checked: zh, es and pl.
 // The exit code is always 0: translations lag on purpose (Michal, 2026-11-02, docs/UI.md
 // rule 8); a pending line is work for the pass, never a failed check. A t() whose words are not
 // a literal (a variable) cannot be read here: its words must be marked where they are written,
@@ -86,6 +88,18 @@ export function placeholders(words) {
     return [...words.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 }
 
+/**
+ * Whether a translation keeps its English's {placeholders}: each of its count forms split by "|"
+ * (i18n.js) has them all, none empty, and forms only where {n} picks one.
+ * @param {string} english
+ * @param {string} words
+ */
+export function keepsPlaceholders(english, words) {
+    const forms = words.split("|");
+    if (forms.length > 1 && !placeholders(english).includes("n")) return false;
+    return forms.every((form) => form.trim() !== "" && placeholders(form).join() === placeholders(english).join());
+}
+
 async function main() {
     const asJson = process.argv.includes("--json");
     const used = new Set();
@@ -103,7 +117,7 @@ async function main() {
         const missing = report.keys.filter((k) => !(k in catalog));
         const unused = Object.keys(catalog).filter((k) => !used.has(k));
         const broken = Object.entries(catalog)
-            .filter(([k, v]) => placeholders(k).join() !== placeholders(v).join())
+            .filter(([k, v]) => !keepsPlaceholders(k, v))
             .map(([k]) => k);
         report.languages[lang] = { missing, unused, broken };
     }
