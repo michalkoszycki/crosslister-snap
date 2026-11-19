@@ -107,11 +107,13 @@
          (Michal, 2026-10-18): Settings' list, where it is switched to (app.js) -->
     <button type="button" id="landing-accounts" class="secondary landing-small" hidden data-t>Switch account</button>
     <!-- the language, kept on this phone (Michal, 2026-11-02: English, Chinese, Spanish, English the
-         default): option chips, each named in its own language; the same three under This phone -->
+         default; 2026-11-19: Polish, and until one is chosen the phone's own): option chips, each
+         named in its own language; the same four under This phone -->
     <div id="language-landing" class="chips option-chips landing-languages" role="group" aria-label="Language" data-t-aria-label>
       <button type="button" id="language-landing-en" class="chip option" data-value="en" aria-pressed="true" lang="en">English</button>
       <button type="button" id="language-landing-zh" class="chip option" data-value="zh" aria-pressed="false" lang="zh-Hans">中文</button>
       <button type="button" id="language-landing-es" class="chip option" data-value="es" aria-pressed="false" lang="es">Español</button>
+      <button type="button" id="language-landing-pl" class="chip option" data-value="pl" aria-pressed="false" lang="pl">Polski</button>
     </div>
     <!-- Michal, 2026-10-08: "when you hover on I have a key, give a tooltip at the bottom below
          the buttons: key allows you to join a family account; in a similar way explain install".
@@ -754,6 +756,7 @@
           <button type="button" id="language-phone-en" class="chip option" data-value="en" aria-pressed="true" lang="en">English</button>
           <button type="button" id="language-phone-zh" class="chip option" data-value="zh" aria-pressed="false" lang="zh-Hans">中文</button>
           <button type="button" id="language-phone-es" class="chip option" data-value="es" aria-pressed="false" lang="es">Español</button>
+          <button type="button" id="language-phone-pl" class="chip option" data-value="pl" aria-pressed="false" lang="pl">Polski</button>
         </div>
         <button type="button" id="phone-install" class="pill pill-ink pill-small phone-install" aria-expanded="false"
                 aria-controls="phone-install-steps" hidden data-t>Install on the home screen</button>
@@ -991,7 +994,7 @@
       </label>
       <!-- this item's values as every new item's (Settings, Posting defaults, its twin: Michal,
            2026-10-31: "any comments i make on this menu should trickle to its twin in settings") -->
-      <button type="button" id="customize-save-default" class="secondary">Save as default</button>
+      <button type="button" id="customize-save-default" class="secondary" data-t>Save as default</button>
       <p class="small customize-more" data-t>See Settings for more options.</p>
       </div>
     </div>

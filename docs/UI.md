@@ -48,10 +48,16 @@
    bordered chip in the field colour with ink words (`.chip.option`); the chosen one is solid
    white with black words and a check mark " ✓" after the word, its border white so it is its
    neighbours' size (no black border, no outline), the same in the dark.
-8. **Languages** (Michal, 2026-11-02). The page reads in English, 中文 (Simplified Chinese) or
-   Español (neutral Latin American Spanish, tú), English the default; three chips, each named in
-   its own language, on the landing and under This phone; kept on the phone, never sent to the
-   server. The English text is the lookup key (`i18n.js`, `lang/zh.js`, `lang/es.js`):
+8. **Languages** (Michal, 2026-11-02; Polski 2026-11-19). The page reads in English, 中文
+   (Simplified Chinese), Español (neutral Latin American Spanish, tú) or Polski (Polish, ty);
+   four chips, each named in its own language, on the landing and under This phone; a chip
+   tapped is kept on the phone, never sent to the server. Until one is tapped the page reads in
+   the phone's own language when it is one of these (the first of `navigator.languages` whose
+   primary part matches: zh-TW is 中文, es-MX Español, pl-PL Polski), else English; that is
+   applied before the first paint, so the first-open walk-through is already in it, and not
+   stored, so the page follows the phone until a chip is tapped (Michal, 2026-11-19). The
+   phone's language, never its location: that would need another site. The English text is
+   the lookup key (`i18n.js`, `lang/zh.js`, `lang/es.js`, `lang/pl.js`):
    index.html marks its own words `data-t` (`data-t-placeholder`, `data-t-aria-label`), the
    scripts write theirs through `t("...")`. Everything the page writes is translated, its own
    error and warning lines included ("Could not ...", the offline banner, NEXT, "server off");
@@ -108,8 +114,9 @@ Top to bottom: "← Back" (only while adding an account); the big mark; "$nap" w
 crosslisting app"; one line of what it does, naming no venue ("From photo to live listing in seconds";
 Michal, 2026-10-31, who also took the postings count off the landing); **Sign in** ("Sign in or create an account" when sign-up is open); **I have a
 key**; **Install** (hidden on the home screen and on desktop); **Switch account** (only
-when another usable account is kept on this phone); the language, three option chips centred under
-the buttons, "English", "中文", "Español", each in its own language, the chosen one solid black with
+when another usable account is kept on this phone); the language, four option chips centred under
+the buttons, "English", "中文", "Español", "Polski", each in its own language (until one is tapped,
+the phone's own language shows chosen, rule 8), the chosen one solid black with
 white words (Michal, 2026-11-02: "let the chosen button be black. cant see it otherwise"; "keep it as
 language names", a round flag button having been tried and dropped the same day; rule 8); no help line under the buttons (a phone
 has no hover, so it only flashed; Michal, 2026-10-31: "no tip is fine"); the
@@ -419,7 +426,7 @@ submenus"); the People page and Buy postings' page (below) carry the same title 
    posts to one venue, gets that venue chosen.4. **Server.** Only for an account that signed in by key: Server address, Key, **Save and
    check**, its status line. An email account has no Server part.
 5. **This phone.** Dark / Light / Sync with device, three option chips with no label over
-   them; under them the language, English / 中文 / Español, the landing's three as option chips
+   them; under them the language, English / 中文 / Español / Polski, the landing's four as option chips
    (the chosen white with its check, rule 7; rule 8); and **Install on the home screen**, the press-me pill, where the app is not
    installed; where it is, the chosen chip with its check, "Installed on home screen"
    (Michal, 2026-10-31). "Show photos" is an inventory setting and stays at the top of the
@@ -585,4 +592,21 @@ controls disabled, the row edits refused with the server's words); **an expired 
   ended by either button counts as seen, a replay from How Snap works included; a sign-in link, an
   account being added, Admin or the sign-in screen open at load do not start it; the language
   chips stay on the landing, so the first walk-through shows in the phone's chosen language
-  (English until one is chosen).
+  (English until one is chosen; since 2026-11-19 the phone's own language until one is chosen).
+- 2026-11-19: rule 8: Polski, a fourth language and chip (landing 4.1, This phone 4.7), Polish in
+  the informal ty with its three count forms (i18n.js: a translation split by "|", one|few|many,
+  {n} picking one); and the phone's own language until a chip is chosen (Michal, 2026-11-19:
+  "would be good if the site was reading the location language or/and the phone language, so
+  that the how it works can immediately show in a language that is relevant to the user"): the
+  first of `navigator.languages` (else `navigator.language`) whose primary part is one of ours
+  (zh-TW Chinese, es-MX Spanish, pl-PL Polish, en-GB English), else English, set before the first
+  paint, so the first-open walk-through and about.html are already in it; not stored, so the page
+  follows the phone until a chip is tapped, and a chip tapped is stored and wins from then on.
+  Where the build settled what the ask left open: the phone's language, not its location, which
+  would need another site to look up (rule 8 keeps everything on the phone). The audit of what
+  still showed in English: customize's **Save as default** (until tapped), an item snapped with
+  no name ("Unnamed 17:01") and a listing's photo the server gave no name ("photo 3") are now
+  in the language too; left English on purpose: the books request Feedback's box is filled with
+  ("I would like to list books.", words to the developer), the photos' file names on the server,
+  the home-screen app's name and description (manifest.webmanifest, one per site), and the
+  package's oz and in.
